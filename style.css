@@ -23,13 +23,16 @@ body {
   text-align: center;
   color: white;
   padding: 100px 20px;
+  text-shadow: 2px 2px 8px #000;
 }
 .hero h1 {
   font-size: 2.5rem;
   margin-bottom: 0.5rem;
+  text-shadow: 2px 2px 8px #000;
 }
 .hero p {
   margin: 0.5rem 0 2rem;
+  text-shadow: 2px 2px 8px #000;
 }
 .buttons {
   display: flex;
@@ -46,6 +49,7 @@ body {
   border-radius: 8px;
   font-weight: bold;
   transition: opacity 0.2s;
+  text-shadow: 2px 2px 8px #000;
 }
 .buttons a:hover {
   opacity: 0.8;
