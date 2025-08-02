@@ -1,14 +1,13 @@
 body {
   margin: 0;
   font-family: Arial, sans-serif;
-  background-image: url('photo_2025-08-01_18-34-34.jpg');
+  background: #191919 url('photo_2025-08-01_18-34-34.jpg') no-repeat center center fixed;
   background-size: cover;
-  background-position: center;
   color: #fff;
   min-height: 100vh;
 }
 .overlay {
-  background: rgba(0,0,0,0.68);
+  background: rgba(0,0,0,0.74);
   min-height: 100vh;
   padding: 0 0 48px 0;
   display: flex;
@@ -17,48 +16,77 @@ body {
   justify-content: flex-start;
 }
 h1 {
-  margin-top: 54px;
-  font-size: 2.4rem;
+  margin-top: 36px;
+  font-size: 2.1rem;
   font-weight: bold;
   text-shadow: 0 2px 8px #000, 0 1px 0 #444;
 }
 .button-row {
-  margin: 38px 0 18px 0;
+  margin: 28px 0 14px 0;
   display: flex;
   flex-wrap: wrap;
   gap: 13px;
   justify-content: center;
 }
-button {
-  background: #ff1111;
+.icon-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #181818;
   color: #fff;
   border: none;
   border-radius: 12px;
-  padding: 14px 24px;
-  font-size: 1.1rem;
-  font-weight: bold;
+  padding: 13px 18px;
+  font-size: 1.08rem;
+  font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.24);
-  transition: background 0.2s, transform 0.14s;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.21);
+  transition: background 0.18s, transform 0.13s;
+  text-decoration: none;
+  outline: none;
 }
-button:hover {
-  background: #d40000;
-  transform: scale(1.04);
+.icon-btn span {
+  display: inline-block;
+  width: 1.7em;
+  height: 1.7em;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
 }
-.mobile-only {
-  display: none;
-}
-@media (max-width: 900px) {
-  h1 { font-size: 1.4rem; }
-  .button-row button { font-size: 1em; padding: 10px 16px;}
-  .overlay { padding-bottom: 7vw; }
+/* Replace these URLs with your own SVG icons for more control if you want */
+.icon-btn.ig span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/instagram.svg'); }
+.icon-btn.fb span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/facebook.svg'); }
+.icon-btn.tt span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/tiktok.svg'); }
+.icon-btn.yt span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/youtube.svg'); }
+.icon-btn.th span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/threads.svg'); }
+.icon-btn.sc span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/snapchat.svg'); }
+.icon-btn.tg span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/telegram.svg'); }
+.icon-btn.rd span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/reddit.svg'); }
+.icon-btn.dk span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/draftkings.svg'); }
+.icon-btn.zl span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/zelle.svg'); }
+.icon-btn.ca span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/cashapp.svg'); }
+.icon-btn.ve span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/venmo.svg'); }
+.icon-btn.sn span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/snap-on.svg'); }
+.icon-btn.sp span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/spotify.svg'); }
+.icon-btn.st span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/steam.svg'); }
+.icon-btn.sngal span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/snap-on.svg'); }
+.icon-btn.cgal span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/car.svg'); }
+.icon-btn.ar span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/plus-circle.svg'); }
+.icon-btn.em span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/maildotru.svg'); }
+.icon-btn.ph span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/phone.svg'); }
+.icon-btn.tx span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/sms.svg'); }
+.icon-btn.yg span { background-image: url('https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/questionmarkcircle.svg'); }
+.icon-btn:visited { color: #fff; }
+.icon-btn:hover, .icon-btn:focus { background: #ff1111; color: #fff; text-decoration: none; transform: scale(1.04); }
+@media (max-width: 950px) {
+  .button-row { gap: 8px; }
+  h1 { font-size: 1.2rem; }
+  .icon-btn { font-size: 1em; padding: 11px 13px;}
 }
 @media (max-width: 650px) {
-  .button-row {
-    gap: 9px;
-  }
+  .button-row { gap: 7px; }
 }
-/* Show Call Me on mobile only */
+.mobile-only { display: none; }
 @media (max-width: 800px) {
   .mobile-only { display: inline; }
 }
@@ -71,8 +99,89 @@ button:hover {
   text-align: center;
   padding: 9px 0 2px 0;
   opacity: 0.97;
-  background: rgba(0,0,0,0.25);
+  background: rgba(0,0,0,0.22);
   border-radius: 7px;
   line-height: 1.6;
 }
 .icon { font-size: 1em; color: #ffc400; vertical-align: middle; }
+.ai-section {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  margin: 30px 0 14px 0;
+  background: rgba(255,255,255,0.04);
+  border-radius: 16px;
+  padding: 20px 30px;
+  box-shadow: 0 2px 14px rgba(0,0,0,0.10);
+}
+.ai-avatar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-right: 20px;
+}
+.ai-avatar img {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  margin-bottom: 7px;
+  border: 2px solid #fff;
+}
+.ai-name { font-size: 1.06em; font-weight: 700; margin-bottom: 3px;}
+.ai-tagline { font-size: 0.98em; color: #ccc; }
+.ai-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.ai-box input[type="text"] {
+  padding: 7px 15px;
+  border-radius: 7px;
+  border: none;
+  background: #fff;
+  color: #111;
+  width: 185px;
+  font-size: 0.98em;
+  outline: none;
+}
+.ai-box button {
+  padding: 7px 15px;
+  border-radius: 7px;
+  background: #eee;
+  color: #333;
+  font-weight: 600;
+  border: none;
+  cursor: not-allowed;
+  opacity: 0.67;
+}
+.ai-notice { font-size: 0.94em; color: #ccc; margin-top: 3px;}
+.stats-section {
+  margin: 29px 0 0 0;
+  background: rgba(255,255,255,0.03);
+  border-radius: 14px;
+  padding: 20px 30px;
+  box-shadow: 0 2px 14px rgba(0,0,0,0.07);
+  max-width: 360px;
+}
+.stats-section h2 {
+  font-size: 1.2em;
+  margin-bottom: 9px;
+}
+.stats-section ul {
+  margin: 0 0 4px 0;
+  padding-left: 19px;
+}
+.stats-section li {
+  font-size: 1em;
+  margin-bottom: 3px;
+}
+.stats-note { font-size: 0.94em; color: #ccc; }
+.easter-egg {
+  margin-top: 13px;
+  text-align: center;
+}
+.egg-link {
+  font-size: 2em;
+  text-decoration: none;
+}
