@@ -1,139 +1,70 @@
 body {
   margin: 0;
-  padding: 0;
-  font-family: 'Segoe UI', Arial, sans-serif;
-  color: #fff;
-  background: url('images/photo_2025-08-01_18-34-34.jpg') no-repeat center center fixed;
+  font-family: Arial, sans-serif;
+  background-image: url('photo_2025-08-01_18-34-34.jpg');
   background-size: cover;
+  background-position: center;
+  color: #fff;
   min-height: 100vh;
-  position: relative;
 }
-.bg-overlay {
-  background: rgba(0,0,0,0.68);
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-}
-.container {
-  position: relative;
-  z-index: 1;
+.overlay {
+  background: rgba(0,0,0,0.65);
   min-height: 100vh;
+  padding: 0 0 48px 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding-bottom: 40px;
-}
-header {
-  margin-top: 44px;
-  margin-bottom: 24px;
-  text-align: center;
 }
 h1 {
-  font-size: 2.5em;
-  font-weight: 700;
-  text-shadow: 2px 2px 16px #000, 0 2px 14px #222;
-}
-.subtitle {
-  font-size: 1.2em;
-  margin-top: 14px;
-  margin-bottom: 12px;
-  text-shadow: 1px 2px 8px #000;
+  margin-top: 56px;
+  font-size: 2.8rem;
+  font-weight: bold;
+  text-shadow: 0 2px 8px #000, 0 1px 0 #444;
 }
 .button-row {
+  margin: 40px 0 18px 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 16px;
   justify-content: center;
-  margin-bottom: 36px;
 }
-a, .direct-link, .special-btn {
-  background: #e00;
+button {
+  background: #ff1111;
   color: #fff;
-  padding: 12px 21px;
-  border-radius: 11px;
-  font-size: 1.08em;
-  text-decoration: none;
-  font-weight: 600;
-  box-shadow: 2px 3px 12px #0006;
-  transition: background 0.16s, box-shadow 0.14s, transform 0.12s;
-  text-shadow: 1.5px 2px 6px #000;
-  display: inline-block;
-  margin: 6px 4px;
-  border: 2px solid #fff4;
-}
-a:hover, .direct-link:hover, .special-btn:hover {
-  background: #900;
-  color: #fff;
-  box-shadow: 4px 6px 14px #000a;
-  transform: scale(1.06);
-}
-.special-btn {
-  background: #ff9800;
-  color: #222;
-  border: 2px solid #fff7;
-  box-shadow: 1px 2px 7px #000b;
-  text-shadow: 0px 1px 5px #fff8;
-}
-.qr-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 34px 20px;
-  justify-content: center;
-  align-items: flex-end;
-  margin: 40px 0 36px 0;
-}
-.qr-block {
-  background: rgba(0,0,0,0.52);
-  padding: 15px 11px 9px 11px;
-  border-radius: 18px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  box-shadow: 1.5px 2.5px 9px #000b;
-  min-width: 110px;
-  max-width: 130px;
-}
-.qr-block img {
-  max-width: 95px;
-  max-height: 95px;
-  border-radius: 8px;
-  margin-bottom: 7px;
-  border: 2px solid #fff6;
-  box-shadow: 0 0 12px #1118;
-  background: #fff;
-}
-.qr-block span {
-  font-size: 0.97em;
-  margin-top: 3px;
-  color: #ffc400;
-  text-shadow: 1.5px 1.5px 6px #000c;
+  border: none;
+  border-radius: 12px;
+  padding: 14px 24px;
+  font-size: 1.2rem;
   font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  transition: background 0.2s;
 }
-footer {
-  width: 100%;
+button:hover {
+  background: #d40000;
+}
+.qr-codes {
+  display: flex;
+  gap: 18px;
+  margin: 32px 0 12px 0;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.qr-codes img {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  border-radius: 16px;
+  box-shadow: 0 2px 14px rgba(0,0,0,0.38);
+  background: #fff;
+  padding: 4px;
+}
+.contact-emails {
+  margin-top: 30px;
+  color: #eee;
+  font-size: 1.1rem;
+  text-shadow: 0 1px 4px #000;
+  word-break: break-all;
   text-align: center;
-  margin-top: 32px;
-}
-.contact {
-  font-size: 1.12em;
-  margin-bottom: 14px;
-  color: #fff;
-  text-shadow: 1.2px 1.2px 5px #0009;
-}
-.footer-quote {
-  font-size: 1.14em;
-  font-weight: 600;
-  margin-top: 7px;
-  color: #ff3939;
-  text-shadow: 0.5px 1.5px 8px #000c;
-  letter-spacing: 1px;
-}
-@media (max-width: 800px) {
-  h1 { font-size: 1.6em; }
-  .subtitle { font-size: 1em; }
-  .button-row a { font-size: 1em; padding: 8px 10px;}
-  .footer-quote, .contact { font-size: 1em; }
-  .container { padding-bottom: 14vw; }
 }
