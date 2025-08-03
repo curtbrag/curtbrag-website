@@ -4,331 +4,384 @@
   <meta charset="UTF-8">
   <title>Snap-on Gallery</title>
   <link rel="stylesheet" href="../style.css">
+  <style>
+    .gallery-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: center;
+      margin: 2em 0;
+    }
+    .gallery-grid img {
+      width: 220px;
+      max-width: 100%;
+      height: 150px;
+      object-fit: cover;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px #0003;
+      cursor: pointer;
+      transition: transform 0.13s;
+    }
+    .gallery-grid img:hover {
+      transform: scale(1.06);
+      box-shadow: 0 4px 20px #0007;
+    }
+    @media (max-width: 900px) {
+      .gallery-grid img { width: 45vw; height: 120px; }
+    }
+    @media (max-width: 600px) {
+      .gallery-grid img { width: 96vw; height: 96px; }
+    }
+    .icon-btn, .back-btn {
+      display: inline-block;
+      margin: 2em 0 0 0;
+      padding: 10px 20px;
+      background: #111;
+      color: #fff;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: bold;
+      font-size: 1.1em;
+      box-shadow: 0 2px 8px #0002;
+      border: none;
+      transition: background 0.15s;
+    }
+    .icon-btn:hover, .back-btn:hover {
+      background: #e71b1c;
+      color: #fff;
+    }
+  </style>
 </head>
 <body>
   <div class="overlay">
     <h1>Snap-on Gallery</h1>
-    <p>(Add images to /gallery/snapon as needed. You can upload .jpg or .png.)</p>
+    <p style="margin-bottom: 1em;">(Add images to <code>/gallery/snapon</code> as needed. Supports .jpg or .png.)</p>
     <div class="gallery-grid">
-  <img src="snapon/20160811_173654.jpg" alt="">
-  <img src="snapon/20160811_182939.jpg" alt="">
-  <img src="snapon/20160811_182953.jpg" alt="">
-  <img src="snapon/20160811_185037.jpg" alt="">
-  <img src="snapon/20160811_185053.jpg" alt="">
-  <img src="snapon/20160811_210838.jpg" alt="">
-  <img src="snapon/20160811_230907.jpg" alt="">
-  <img src="snapon/20160811_230913.jpg" alt="">
-  <img src="snapon/20160811_230919(1).jpg" alt="">
-  <img src="snapon/20160811_230919.jpg" alt="">
-  <img src="snapon/20160812_083309(1).jpg" alt="">
-  <img src="snapon/20160812_083309.jpg" alt="">
-  <img src="snapon/20160812_085747.jpg" alt="">
-  <img src="snapon/20160812_085750(1).jpg" alt="">
-  <img src="snapon/20160812_085750.jpg" alt="">
-  <img src="snapon/20160812_110309(1).jpg" alt="">
-  <img src="snapon/20160812_110309.jpg" alt="">
-  <img src="snapon/20160812_160527.jpg" alt="">
-  <img src="snapon/20160812_163904(1).jpg" alt="">
-  <img src="snapon/20160812_163904.jpg" alt="">
-  <img src="snapon/20160812_163914(1).jpg" alt="">
-  <img src="snapon/20160812_163914.jpg" alt="">
-  <img src="snapon/20160812_164348.jpg" alt="">
-  <img src="snapon/20160812_170235.jpg" alt="">
-  <img src="snapon/20160812_170239.jpg" alt="">
-  <img src="snapon/20160812_170739.jpg" alt="">
-  <img src="snapon/20160812_171829.jpg" alt="">
-  <img src="snapon/20160812_174036.jpg" alt="">
-  <img src="snapon/20160812_180759(1).jpg" alt="">
-  <img src="snapon/20160812_180759.jpg" alt="">
-  <img src="snapon/20160812_180826(1).jpg" alt="">
-  <img src="snapon/20160812_180826.jpg" alt="">
-  <img src="snapon/20160812_180832(1).jpg" alt="">
-  <img src="snapon/20160812_180832.jpg" alt="">
-  <img src="snapon/20160812_181208(1).jpg" alt="">
-  <img src="snapon/20160812_181208.jpg" alt="">
-  <img src="snapon/20160812_182856.jpg" alt="">
-  <img src="snapon/20160812_182901.jpg" alt="">
-  <img src="snapon/20160813_100655.jpg" alt="">
-  <img src="snapon/20160813_100705.jpg" alt="">
-  <img src="snapon/20160813_102216.jpg" alt="">
-  <img src="snapon/20160813_124305.jpg" alt="">
-  <img src="snapon/20160813_133157.jpg" alt="">
-  <img src="snapon/20160813_133200.jpg" alt="">
-  <img src="snapon/20160813_133205.jpg" alt="">
-  <img src="snapon/20160813_135453.jpg" alt="">
-  <img src="snapon/20160813_135455.jpg" alt="">
-  <img src="snapon/20160813_141245.jpg" alt="">
-  <img src="snapon/20160813_141249.jpg" alt="">
-  <img src="snapon/20160813_141250.jpg" alt="">
-  <img src="snapon/20160813_141748.jpg" alt="">
-  <img src="snapon/20160813_141903(1).jpg" alt="">
-  <img src="snapon/20160813_141903.jpg" alt="">
-  <img src="snapon/20160813_143241(1).jpg" alt="">
-  <img src="snapon/20160813_143241.jpg" alt="">
-  <img src="snapon/20160813_143246.jpg" alt="">
-  <img src="snapon/20160813_143250.jpg" alt="">
-  <img src="snapon/20160813_143620.jpg" alt="">
-  <img src="snapon/20160813_143944.jpg" alt="">
-  <img src="snapon/20160813_143949(1).jpg" alt="">
-  <img src="snapon/20160813_143949.jpg" alt="">
-  <img src="snapon/20160813_144037.jpg" alt="">
-  <img src="snapon/20160813_144039.jpg" alt="">
-  <img src="snapon/20160813_144044.jpg" alt="">
-  <img src="snapon/20160813_144300.jpg" alt="">
-  <img src="snapon/20160813_144840.jpg" alt="">
-  <img src="snapon/20160813_144842(1).jpg" alt="">
-  <img src="snapon/20160813_144842.jpg" alt="">
-  <img src="snapon/20160813_150319.jpg" alt="">
-  <img src="snapon/20160813_150625(1).jpg" alt="">
-  <img src="snapon/20160813_150625.jpg" alt="">
-  <img src="snapon/20160813_150659.jpg" alt="">
-  <img src="snapon/20160813_150706.jpg" alt="">
-  <img src="snapon/20160813_150751.jpg" alt="">
-  <img src="snapon/20160813_150755.jpg" alt="">
-  <img src="snapon/20160813_150801.jpg" alt="">
-  <img src="snapon/20160813_150811.jpg" alt="">
-  <img src="snapon/20160813_150818.jpg" alt="">
-  <img src="snapon/20160813_150822.jpg" alt="">
-  <img src="snapon/20160813_150850.jpg" alt="">
-  <img src="snapon/20160813_150857.jpg" alt="">
-  <img src="snapon/20160813_150901.jpg" alt="">
-  <img src="snapon/20160813_150934.jpg" alt="">
-  <img src="snapon/20160813_150945.jpg" alt="">
-  <img src="snapon/20160813_150952.jpg" alt="">
-  <img src="snapon/20160813_150954.jpg" alt="">
-  <img src="snapon/20160813_150957.jpg" alt="">
-  <img src="snapon/20160813_151014.jpg" alt="">
-  <img src="snapon/20160813_151025.jpg" alt="">
-  <img src="snapon/20160813_151031.jpg" alt="">
-  <img src="snapon/20160813_151040.jpg" alt="">
-  <img src="snapon/20160813_151139.jpg" alt="">
-  <img src="snapon/20160813_151202.jpg" alt="">
-  <img src="snapon/20160813_151218.jpg" alt="">
-  <img src="snapon/20160813_151320.jpg" alt="">
-  <img src="snapon/20160813_151412.jpg" alt="">
-  <img src="snapon/20160813_151416.jpg" alt="">
-  <img src="snapon/20160813_151420.jpg" alt="">
-  <img src="snapon/20160813_151428.jpg" alt="">
-  <img src="snapon/20160813_151436.jpg" alt="">
-  <img src="snapon/20160813_151442.jpg" alt="">
-  <img src="snapon/20160813_151447.jpg" alt="">
-  <img src="snapon/20160813_151449.jpg" alt="">
-  <img src="snapon/20160813_151522.jpg" alt="">
-  <img src="snapon/20160813_151645.jpg" alt="">
-  <img src="snapon/20160813_151733.jpg" alt="">
-  <img src="snapon/20160813_151741.jpg" alt="">
-  <img src="snapon/20160813_151746.jpg" alt="">
-  <img src="snapon/20160813_151805.jpg" alt="">
-  <img src="snapon/20160813_151808.jpg" alt="">
-  <img src="snapon/20160813_151810.jpg" alt="">
-  <img src="snapon/20160813_151851.jpg" alt="">
-  <img src="snapon/20160813_151856.jpg" alt="">
-  <img src="snapon/20160813_151858.jpg" alt="">
-  <img src="snapon/20160813_152014.jpg" alt="">
-  <img src="snapon/20160813_152018.jpg" alt="">
-  <img src="snapon/20160813_152028.jpg" alt="">
-  <img src="snapon/20160813_152122.jpg" alt="">
-  <img src="snapon/20160813_152213.jpg" alt="">
-  <img src="snapon/20160813_152216.jpg" alt="">
-  <img src="snapon/20160813_152252.jpg" alt="">
-  <img src="snapon/20160813_152301.jpg" alt="">
-  <img src="snapon/20160813_152744.jpg" alt="">
-  <img src="snapon/20160813_152748.jpg" alt="">
-  <img src="snapon/20160813_152854.jpg" alt="">
-  <img src="snapon/20160813_152857.jpg" alt="">
-  <img src="snapon/20160813_153029.jpg" alt="">
-  <img src="snapon/20160813_153035.jpg" alt="">
-  <img src="snapon/20160813_153128.jpg" alt="">
-  <img src="snapon/20160813_153132.jpg" alt="">
-  <img src="snapon/20160813_153140.jpg" alt="">
-  <img src="snapon/20160813_153151.jpg" alt="">
-  <img src="snapon/20160813_153246.jpg" alt="">
-  <img src="snapon/20160813_153249.jpg" alt="">
-  <img src="snapon/20160813_153253.jpg" alt="">
-  <img src="snapon/20160813_153257.jpg" alt="">
-  <img src="snapon/20160813_153301.jpg" alt="">
-  <img src="snapon/20160813_153436.jpg" alt="">
-  <img src="snapon/20160813_153447.jpg" alt="">
-  <img src="snapon/20160813_153458.jpg" alt="">
-  <img src="snapon/20160813_153504.jpg" alt="">
-  <img src="snapon/20160813_153842.jpg" alt="">
-  <img src="snapon/20160813_154221.jpg" alt="">
-  <img src="snapon/20160813_154226.jpg" alt="">
-  <img src="snapon/20160813_162413(1).jpg" alt="">
-  <img src="snapon/20160813_162413.jpg" alt="">
-  <img src="snapon/20160813_191325(1).jpg" alt="">
-  <img src="snapon/20160813_191325.jpg" alt="">
-  <img src="snapon/20160813_191330.jpg" alt="">
-  <img src="snapon/20160813_195125(1).jpg" alt="">
-  <img src="snapon/20160813_195125.jpg" alt="">
-  <img src="snapon/20160813_195820(1).jpg" alt="">
-  <img src="snapon/20160813_195820.jpg" alt="">
-  <img src="snapon/20160813_195822.jpg" alt="">
-  <img src="snapon/20160813_195828.jpg" alt="">
-  <img src="snapon/20160813_205826(1).jpg" alt="">
-  <img src="snapon/20160813_205826.jpg" alt="">
-  <img src="snapon/20160813_232503(1).jpg" alt="">
-  <img src="snapon/20160813_232503.jpg" alt="">
-  <img src="snapon/20160813_232507.jpg" alt="">
-  <img src="snapon/20160813_232509.jpg" alt="">
-  <img src="snapon/20160814_082030(1).jpg" alt="">
-  <img src="snapon/20160814_082030.jpg" alt="">
-  <img src="snapon/20160814_082034.jpg" alt="">
-  <img src="snapon/20160814_083412.jpg" alt="">
-  <img src="snapon/20160814_083432.jpg" alt="">
-  <img src="snapon/20160814_085107(1).jpg" alt="">
-  <img src="snapon/20160814_085107.jpg" alt="">
-  <img src="snapon/20160814_085112(1).jpg" alt="">
-  <img src="snapon/20160814_085112.jpg" alt="">
-  <img src="snapon/20160814_085117_001(1).jpg" alt="">
-  <img src="snapon/20160814_085117_001.jpg" alt="">
-  <img src="snapon/20160814_085118.jpg" alt="">
-  <img src="snapon/20160814_085124.jpg" alt="">
-  <img src="snapon/20160814_085130(1).jpg" alt="">
-  <img src="snapon/20160814_085130.jpg" alt="">
-  <img src="snapon/20160814_085137(1).jpg" alt="">
-  <img src="snapon/20160814_085137.jpg" alt="">
-  <img src="snapon/20160814_085146.jpg" alt="">
-  <img src="snapon/20160814_085157.jpg" alt="">
-  <img src="snapon/20160814_085203.jpg" alt="">
-  <img src="snapon/20160814_085207.jpg" alt="">
-  <img src="snapon/20160814_085209(1).jpg" alt="">
-  <img src="snapon/20160814_085209.jpg" alt="">
-  <img src="snapon/20160814_091250(1).jpg" alt="">
-  <img src="snapon/20160814_091250.jpg" alt="">
-  <img src="snapon/20160814_091817.jpg" alt="">
-  <img src="snapon/20160814_091829(1).jpg" alt="">
-  <img src="snapon/20160814_091829.jpg" alt="">
-  <img src="snapon/20160814_091915(1).jpg" alt="">
-  <img src="snapon/20160814_091915.jpg" alt="">
-  <img src="snapon/20160814_092210(1).jpg" alt="">
-  <img src="snapon/20160814_092210.jpg" alt="">
-  <img src="snapon/20160814_092215(1).jpg" alt="">
-  <img src="snapon/20160814_092215.jpg" alt="">
-  <img src="snapon/20160814_092216(1).jpg" alt="">
-  <img src="snapon/20160814_092216.jpg" alt="">
-  <img src="snapon/20160814_092230.jpg" alt="">
-  <img src="snapon/20160814_092240(1).jpg" alt="">
-  <img src="snapon/20160814_092240.jpg" alt="">
-  <img src="snapon/20160814_092248.jpg" alt="">
-  <img src="snapon/20160814_092255.jpg" alt="">
-  <img src="snapon/20160814_092321(1).jpg" alt="">
-  <img src="snapon/20160814_092321.jpg" alt="">
-  <img src="snapon/20160814_092327.jpg" alt="">
-  <img src="snapon/20160814_092401(1).jpg" alt="">
-  <img src="snapon/20160814_092401.jpg" alt="">
-  <img src="snapon/20160814_092429(1).jpg" alt="">
-  <img src="snapon/20160814_092429.jpg" alt="">
-  <img src="snapon/20160814_092437(1).jpg" alt="">
-  <img src="snapon/20160814_092437.jpg" alt="">
-  <img src="snapon/20160814_092442(1).jpg" alt="">
-  <img src="snapon/20160814_092442.jpg" alt="">
-  <img src="snapon/20160814_092521(1).jpg" alt="">
-  <img src="snapon/20160814_092521.jpg" alt="">
-  <img src="snapon/20160814_092539(1).jpg" alt="">
-  <img src="snapon/20160814_092539.jpg" alt="">
-  <img src="snapon/20160814_092554(1).jpg" alt="">
-  <img src="snapon/20160814_092554.jpg" alt="">
-  <img src="snapon/20160814_092638(1).jpg" alt="">
-  <img src="snapon/20160814_092638.jpg" alt="">
-  <img src="snapon/20160814_092641.jpg" alt="">
-  <img src="snapon/20160814_092734(1).jpg" alt="">
-  <img src="snapon/20160814_092734.jpg" alt="">
-  <img src="snapon/20160814_092756(1).jpg" alt="">
-  <img src="snapon/20160814_092756.jpg" alt="">
-  <img src="snapon/20160814_092915(1).jpg" alt="">
-  <img src="snapon/20160814_092915.jpg" alt="">
-  <img src="snapon/20160814_092918.jpg" alt="">
-  <img src="snapon/20160814_092923(1).jpg" alt="">
-  <img src="snapon/20160814_092923.jpg" alt="">
-  <img src="snapon/20160814_093030(1).jpg" alt="">
-  <img src="snapon/20160814_093030.jpg" alt="">
-  <img src="snapon/20160814_093033.jpg" alt="">
-  <img src="snapon/20160814_093039(1).jpg" alt="">
-  <img src="snapon/20160814_093039.jpg" alt="">
-  <img src="snapon/20160814_093128.jpg" alt="">
-  <img src="snapon/20160814_093135(1).jpg" alt="">
-  <img src="snapon/20160814_093135.jpg" alt="">
-  <img src="snapon/20160814_093210(1).jpg" alt="">
-  <img src="snapon/20160814_093210.jpg" alt="">
-  <img src="snapon/20160814_093216(1).jpg" alt="">
-  <img src="snapon/20160814_093216.jpg" alt="">
-  <img src="snapon/20160814_093225.jpg" alt="">
-  <img src="snapon/20160814_093858.jpg" alt="">
-  <img src="snapon/Mobile uploads(1).jpg" alt="">
-  <img src="snapon/Mobile uploads(10).jpg" alt="">
-  <img src="snapon/Mobile uploads(11).jpg" alt="">
-  <img src="snapon/Mobile uploads(12).jpg" alt="">
-  <img src="snapon/Mobile uploads(13).jpg" alt="">
-  <img src="snapon/Mobile uploads(14).jpg" alt="">
-  <img src="snapon/Mobile uploads(15).jpg" alt="">
-  <img src="snapon/Mobile uploads(16).jpg" alt="">
-  <img src="snapon/Mobile uploads(17).jpg" alt="">
-  <img src="snapon/Mobile uploads(18).jpg" alt="">
-  <img src="snapon/Mobile uploads(19).jpg" alt="">
-  <img src="snapon/Mobile uploads(2).jpg" alt="">
-  <img src="snapon/Mobile uploads(20).jpg" alt="">
-  <img src="snapon/Mobile uploads(21).jpg" alt="">
-  <img src="snapon/Mobile uploads(22).jpg" alt="">
-  <img src="snapon/Mobile uploads(23).jpg" alt="">
-  <img src="snapon/Mobile uploads(24).jpg" alt="">
-  <img src="snapon/Mobile uploads(25).jpg" alt="">
-  <img src="snapon/Mobile uploads(26).jpg" alt="">
-  <img src="snapon/Mobile uploads(27).jpg" alt="">
-  <img src="snapon/Mobile uploads(28).jpg" alt="">
-  <img src="snapon/Mobile uploads(29).jpg" alt="">
-  <img src="snapon/Mobile uploads(3).jpg" alt="">
-  <img src="snapon/Mobile uploads(30).jpg" alt="">
-  <img src="snapon/Mobile uploads(31).jpg" alt="">
-  <img src="snapon/Mobile uploads(32).jpg" alt="">
-  <img src="snapon/Mobile uploads(33).jpg" alt="">
-  <img src="snapon/Mobile uploads(34).jpg" alt="">
-  <img src="snapon/Mobile uploads(35).jpg" alt="">
-  <img src="snapon/Mobile uploads(36).jpg" alt="">
-  <img src="snapon/Mobile uploads(37).jpg" alt="">
-  <img src="snapon/Mobile uploads(38).jpg" alt="">
-  <img src="snapon/Mobile uploads(39).jpg" alt="">
-  <img src="snapon/Mobile uploads(4).jpg" alt="">
-  <img src="snapon/Mobile uploads(40).jpg" alt="">
-  <img src="snapon/Mobile uploads(41).jpg" alt="">
-  <img src="snapon/Mobile uploads(42).jpg" alt="">
-  <img src="snapon/Mobile uploads(43).jpg" alt="">
-  <img src="snapon/Mobile uploads(44).jpg" alt="">
-  <img src="snapon/Mobile uploads(45).jpg" alt="">
-  <img src="snapon/Mobile uploads(46).jpg" alt="">
-  <img src="snapon/Mobile uploads(47).jpg" alt="">
-  <img src="snapon/Mobile uploads(48).jpg" alt="">
-  <img src="snapon/Mobile uploads(49).jpg" alt="">
-  <img src="snapon/Mobile uploads(5).jpg" alt="">
-  <img src="snapon/Mobile uploads(50).jpg" alt="">
-  <img src="snapon/Mobile uploads(51).jpg" alt="">
-  <img src="snapon/Mobile uploads(52).jpg" alt="">
-  <img src="snapon/Mobile uploads(53).jpg" alt="">
-  <img src="snapon/Mobile uploads(54).jpg" alt="">
-  <img src="snapon/Mobile uploads(55).jpg" alt="">
-  <img src="snapon/Mobile uploads(56).jpg" alt="">
-  <img src="snapon/Mobile uploads(57).jpg" alt="">
-  <img src="snapon/Mobile uploads(58).jpg" alt="">
-  <img src="snapon/Mobile uploads(59).jpg" alt="">
-  <img src="snapon/Mobile uploads(6).jpg" alt="">
-  <img src="snapon/Mobile uploads(60).jpg" alt="">
-  <img src="snapon/Mobile uploads(61).jpg" alt="">
-  <img src="snapon/Mobile uploads(62).jpg" alt="">
-  <img src="snapon/Mobile uploads(63).jpg" alt="">
-  <img src="snapon/Mobile uploads(64).jpg" alt="">
-  <img src="snapon/Mobile uploads(65).jpg" alt="">
-  <img src="snapon/Mobile uploads(66).jpg" alt="">
-  <img src="snapon/Mobile uploads(67).jpg" alt="">
-  <img src="snapon/Mobile uploads(68).jpg" alt="">
-  <img src="snapon/Mobile uploads(69).jpg" alt="">
-  <img src="snapon/Mobile uploads(7).jpg" alt="">
-  <img src="snapon/Mobile uploads(70).jpg" alt="">
-  <img src="snapon/Mobile uploads(8).jpg" alt="">
-  <img src="snapon/Mobile uploads(9).jpg" alt="">
-  <img src="snapon/Mobile uploads.jpg" alt="">
-      <a href="../index.html" class="icon-btn" style="margin-top:30px;">← Back to Home</a>
-</div>
-
+      <img src="snapon/20160811_173654.jpg" alt="">
+      <img src="snapon/20160811_182939.jpg" alt="">
+      <img src="snapon/20160811_182953.jpg" alt="">
+      <img src="snapon/20160811_185037.jpg" alt="">
+      <img src="snapon/20160811_185053.jpg" alt="">
+      <img src="snapon/20160811_210838.jpg" alt="">
+      <img src="snapon/20160811_230907.jpg" alt="">
+      <img src="snapon/20160811_230913.jpg" alt="">
+      <img src="snapon/20160811_230919(1).jpg" alt="">
+      <img src="snapon/20160811_230919.jpg" alt="">
+      <img src="snapon/20160812_083309(1).jpg" alt="">
+      <img src="snapon/20160812_083309.jpg" alt="">
+      <img src="snapon/20160812_085747.jpg" alt="">
+      <img src="snapon/20160812_085750(1).jpg" alt="">
+      <img src="snapon/20160812_085750.jpg" alt="">
+      <img src="snapon/20160812_110309(1).jpg" alt="">
+      <img src="snapon/20160812_110309.jpg" alt="">
+      <img src="snapon/20160812_160527.jpg" alt="">
+      <img src="snapon/20160812_163904(1).jpg" alt="">
+      <img src="snapon/20160812_163904.jpg" alt="">
+      <img src="snapon/20160812_163914(1).jpg" alt="">
+      <img src="snapon/20160812_163914.jpg" alt="">
+      <img src="snapon/20160812_164348.jpg" alt="">
+      <img src="snapon/20160812_170235.jpg" alt="">
+      <img src="snapon/20160812_170239.jpg" alt="">
+      <img src="snapon/20160812_170739.jpg" alt="">
+      <img src="snapon/20160812_171829.jpg" alt="">
+      <img src="snapon/20160812_174036.jpg" alt="">
+      <img src="snapon/20160812_180759(1).jpg" alt="">
+      <img src="snapon/20160812_180759.jpg" alt="">
+      <img src="snapon/20160812_180826(1).jpg" alt="">
+      <img src="snapon/20160812_180826.jpg" alt="">
+      <img src="snapon/20160812_180832(1).jpg" alt="">
+      <img src="snapon/20160812_180832.jpg" alt="">
+      <img src="snapon/20160812_181208(1).jpg" alt="">
+      <img src="snapon/20160812_181208.jpg" alt="">
+      <img src="snapon/20160812_182856.jpg" alt="">
+      <img src="snapon/20160812_182901.jpg" alt="">
+      <img src="snapon/20160813_100655.jpg" alt="">
+      <img src="snapon/20160813_100705.jpg" alt="">
+      <img src="snapon/20160813_102216.jpg" alt="">
+      <img src="snapon/20160813_124305.jpg" alt="">
+      <img src="snapon/20160813_133157.jpg" alt="">
+      <img src="snapon/20160813_133200.jpg" alt="">
+      <img src="snapon/20160813_133205.jpg" alt="">
+      <img src="snapon/20160813_135453.jpg" alt="">
+      <img src="snapon/20160813_135455.jpg" alt="">
+      <img src="snapon/20160813_141245.jpg" alt="">
+      <img src="snapon/20160813_141249.jpg" alt="">
+      <img src="snapon/20160813_141250.jpg" alt="">
+      <img src="snapon/20160813_141748.jpg" alt="">
+      <img src="snapon/20160813_141903(1).jpg" alt="">
+      <img src="snapon/20160813_141903.jpg" alt="">
+      <img src="snapon/20160813_143241(1).jpg" alt="">
+      <img src="snapon/20160813_143241.jpg" alt="">
+      <img src="snapon/20160813_143246.jpg" alt="">
+      <img src="snapon/20160813_143250.jpg" alt="">
+      <img src="snapon/20160813_143620.jpg" alt="">
+      <img src="snapon/20160813_143944.jpg" alt="">
+      <img src="snapon/20160813_143949(1).jpg" alt="">
+      <img src="snapon/20160813_143949.jpg" alt="">
+      <img src="snapon/20160813_144037.jpg" alt="">
+      <img src="snapon/20160813_144039.jpg" alt="">
+      <img src="snapon/20160813_144044.jpg" alt="">
+      <img src="snapon/20160813_144300.jpg" alt="">
+      <img src="snapon/20160813_144840.jpg" alt="">
+      <img src="snapon/20160813_144842(1).jpg" alt="">
+      <img src="snapon/20160813_144842.jpg" alt="">
+      <img src="snapon/20160813_150319.jpg" alt="">
+      <img src="snapon/20160813_150625(1).jpg" alt="">
+      <img src="snapon/20160813_150625.jpg" alt="">
+      <img src="snapon/20160813_150659.jpg" alt="">
+      <img src="snapon/20160813_150706.jpg" alt="">
+      <img src="snapon/20160813_150751.jpg" alt="">
+      <img src="snapon/20160813_150755.jpg" alt="">
+      <img src="snapon/20160813_150801.jpg" alt="">
+      <img src="snapon/20160813_150811.jpg" alt="">
+      <img src="snapon/20160813_150818.jpg" alt="">
+      <img src="snapon/20160813_150822.jpg" alt="">
+      <img src="snapon/20160813_150850.jpg" alt="">
+      <img src="snapon/20160813_150857.jpg" alt="">
+      <img src="snapon/20160813_150901.jpg" alt="">
+      <img src="snapon/20160813_150934.jpg" alt="">
+      <img src="snapon/20160813_150945.jpg" alt="">
+      <img src="snapon/20160813_150952.jpg" alt="">
+      <img src="snapon/20160813_150954.jpg" alt="">
+      <img src="snapon/20160813_150957.jpg" alt="">
+      <img src="snapon/20160813_151014.jpg" alt="">
+      <img src="snapon/20160813_151025.jpg" alt="">
+      <img src="snapon/20160813_151031.jpg" alt="">
+      <img src="snapon/20160813_151040.jpg" alt="">
+      <img src="snapon/20160813_151139.jpg" alt="">
+      <img src="snapon/20160813_151202.jpg" alt="">
+      <img src="snapon/20160813_151218.jpg" alt="">
+      <img src="snapon/20160813_151320.jpg" alt="">
+      <img src="snapon/20160813_151412.jpg" alt="">
+      <img src="snapon/20160813_151416.jpg" alt="">
+      <img src="snapon/20160813_151420.jpg" alt="">
+      <img src="snapon/20160813_151428.jpg" alt="">
+      <img src="snapon/20160813_151436.jpg" alt="">
+      <img src="snapon/20160813_151442.jpg" alt="">
+      <img src="snapon/20160813_151447.jpg" alt="">
+      <img src="snapon/20160813_151449.jpg" alt="">
+      <img src="snapon/20160813_151522.jpg" alt="">
+      <img src="snapon/20160813_151645.jpg" alt="">
+      <img src="snapon/20160813_151733.jpg" alt="">
+      <img src="snapon/20160813_151741.jpg" alt="">
+      <img src="snapon/20160813_151746.jpg" alt="">
+      <img src="snapon/20160813_151805.jpg" alt="">
+      <img src="snapon/20160813_151808.jpg" alt="">
+      <img src="snapon/20160813_151810.jpg" alt="">
+      <img src="snapon/20160813_151851.jpg" alt="">
+      <img src="snapon/20160813_151856.jpg" alt="">
+      <img src="snapon/20160813_151858.jpg" alt="">
+      <img src="snapon/20160813_152014.jpg" alt="">
+      <img src="snapon/20160813_152018.jpg" alt="">
+      <img src="snapon/20160813_152028.jpg" alt="">
+      <img src="snapon/20160813_152122.jpg" alt="">
+      <img src="snapon/20160813_152213.jpg" alt="">
+      <img src="snapon/20160813_152216.jpg" alt="">
+      <img src="snapon/20160813_152252.jpg" alt="">
+      <img src="snapon/20160813_152301.jpg" alt="">
+      <img src="snapon/20160813_152744.jpg" alt="">
+      <img src="snapon/20160813_152748.jpg" alt="">
+      <img src="snapon/20160813_152854.jpg" alt="">
+      <img src="snapon/20160813_152857.jpg" alt="">
+      <img src="snapon/20160813_153029.jpg" alt="">
+      <img src="snapon/20160813_153035.jpg" alt="">
+      <img src="snapon/20160813_153128.jpg" alt="">
+      <img src="snapon/20160813_153132.jpg" alt="">
+      <img src="snapon/20160813_153140.jpg" alt="">
+      <img src="snapon/20160813_153151.jpg" alt="">
+      <img src="snapon/20160813_153246.jpg" alt="">
+      <img src="snapon/20160813_153249.jpg" alt="">
+      <img src="snapon/20160813_153253.jpg" alt="">
+      <img src="snapon/20160813_153257.jpg" alt="">
+      <img src="snapon/20160813_153301.jpg" alt="">
+      <img src="snapon/20160813_153436.jpg" alt="">
+      <img src="snapon/20160813_153447.jpg" alt="">
+      <img src="snapon/20160813_153458.jpg" alt="">
+      <img src="snapon/20160813_153504.jpg" alt="">
+      <img src="snapon/20160813_153842.jpg" alt="">
+      <img src="snapon/20160813_154221.jpg" alt="">
+      <img src="snapon/20160813_154226.jpg" alt="">
+      <img src="snapon/20160813_162413(1).jpg" alt="">
+      <img src="snapon/20160813_162413.jpg" alt="">
+      <img src="snapon/20160813_191325(1).jpg" alt="">
+      <img src="snapon/20160813_191325.jpg" alt="">
+      <img src="snapon/20160813_191330.jpg" alt="">
+      <img src="snapon/20160813_195125(1).jpg" alt="">
+      <img src="snapon/20160813_195125.jpg" alt="">
+      <img src="snapon/20160813_195820(1).jpg" alt="">
+      <img src="snapon/20160813_195820.jpg" alt="">
+      <img src="snapon/20160813_195822.jpg" alt="">
+      <img src="snapon/20160813_195828.jpg" alt="">
+      <img src="snapon/20160813_205826(1).jpg" alt="">
+      <img src="snapon/20160813_205826.jpg" alt="">
+      <img src="snapon/20160813_232503(1).jpg" alt="">
+      <img src="snapon/20160813_232503.jpg" alt="">
+      <img src="snapon/20160813_232507.jpg" alt="">
+      <img src="snapon/20160813_232509.jpg" alt="">
+      <img src="snapon/20160814_082030(1).jpg" alt="">
+      <img src="snapon/20160814_082030.jpg" alt="">
+      <img src="snapon/20160814_082034.jpg" alt="">
+      <img src="snapon/20160814_083412.jpg" alt="">
+      <img src="snapon/20160814_083432.jpg" alt="">
+      <img src="snapon/20160814_085107(1).jpg" alt="">
+      <img src="snapon/20160814_085107.jpg" alt="">
+      <img src="snapon/20160814_085112(1).jpg" alt="">
+      <img src="snapon/20160814_085112.jpg" alt="">
+      <img src="snapon/20160814_085117_001(1).jpg" alt="">
+      <img src="snapon/20160814_085117_001.jpg" alt="">
+      <img src="snapon/20160814_085118.jpg" alt="">
+      <img src="snapon/20160814_085124.jpg" alt="">
+      <img src="snapon/20160814_085130(1).jpg" alt="">
+      <img src="snapon/20160814_085130.jpg" alt="">
+      <img src="snapon/20160814_085137(1).jpg" alt="">
+      <img src="snapon/20160814_085137.jpg" alt="">
+      <img src="snapon/20160814_085146.jpg" alt="">
+      <img src="snapon/20160814_085157.jpg" alt="">
+      <img src="snapon/20160814_085203.jpg" alt="">
+      <img src="snapon/20160814_085207.jpg" alt="">
+      <img src="snapon/20160814_085209(1).jpg" alt="">
+      <img src="snapon/20160814_085209.jpg" alt="">
+      <img src="snapon/20160814_091250(1).jpg" alt="">
+      <img src="snapon/20160814_091250.jpg" alt="">
+      <img src="snapon/20160814_091817.jpg" alt="">
+      <img src="snapon/20160814_091829(1).jpg" alt="">
+      <img src="snapon/20160814_091829.jpg" alt="">
+      <img src="snapon/20160814_091915(1).jpg" alt="">
+      <img src="snapon/20160814_091915.jpg" alt="">
+      <img src="snapon/20160814_092210(1).jpg" alt="">
+      <img src="snapon/20160814_092210.jpg" alt="">
+      <img src="snapon/20160814_092215(1).jpg" alt="">
+      <img src="snapon/20160814_092215.jpg" alt="">
+      <img src="snapon/20160814_092216(1).jpg" alt="">
+      <img src="snapon/20160814_092216.jpg" alt="">
+      <img src="snapon/20160814_092230.jpg" alt="">
+      <img src="snapon/20160814_092240(1).jpg" alt="">
+      <img src="snapon/20160814_092240.jpg" alt="">
+      <img src="snapon/20160814_092248.jpg" alt="">
+      <img src="snapon/20160814_092255.jpg" alt="">
+      <img src="snapon/20160814_092321(1).jpg" alt="">
+      <img src="snapon/20160814_092321.jpg" alt="">
+      <img src="snapon/20160814_092327.jpg" alt="">
+      <img src="snapon/20160814_092401(1).jpg" alt="">
+      <img src="snapon/20160814_092401.jpg" alt="">
+      <img src="snapon/20160814_092429(1).jpg" alt="">
+      <img src="snapon/20160814_092429.jpg" alt="">
+      <img src="snapon/20160814_092437(1).jpg" alt="">
+      <img src="snapon/20160814_092437.jpg" alt="">
+      <img src="snapon/20160814_092442(1).jpg" alt="">
+      <img src="snapon/20160814_092442.jpg" alt="">
+      <img src="snapon/20160814_092521(1).jpg" alt="">
+      <img src="snapon/20160814_092521.jpg" alt="">
+      <img src="snapon/20160814_092539(1).jpg" alt="">
+      <img src="snapon/20160814_092539.jpg" alt="">
+      <img src="snapon/20160814_092554(1).jpg" alt="">
+      <img src="snapon/20160814_092554.jpg" alt="">
+      <img src="snapon/20160814_092638(1).jpg" alt="">
+      <img src="snapon/20160814_092638.jpg" alt="">
+      <img src="snapon/20160814_092641.jpg" alt="">
+      <img src="snapon/20160814_092734(1).jpg" alt="">
+      <img src="snapon/20160814_092734.jpg" alt="">
+      <img src="snapon/20160814_092756(1).jpg" alt="">
+      <img src="snapon/20160814_092756.jpg" alt="">
+      <img src="snapon/20160814_092915(1).jpg" alt="">
+      <img src="snapon/20160814_092915.jpg" alt="">
+      <img src="snapon/20160814_092918.jpg" alt="">
+      <img src="snapon/20160814_092923(1).jpg" alt="">
+      <img src="snapon/20160814_092923.jpg" alt="">
+      <img src="snapon/20160814_093030(1).jpg" alt="">
+      <img src="snapon/20160814_093030.jpg" alt="">
+      <img src="snapon/20160814_093033.jpg" alt="">
+      <img src="snapon/20160814_093039(1).jpg" alt="">
+      <img src="snapon/20160814_093039.jpg" alt="">
+      <img src="snapon/20160814_093128.jpg" alt="">
+      <img src="snapon/20160814_093135(1).jpg" alt="">
+      <img src="snapon/20160814_093135.jpg" alt="">
+      <img src="snapon/20160814_093210(1).jpg" alt="">
+      <img src="snapon/20160814_093210.jpg" alt="">
+      <img src="snapon/20160814_093216(1).jpg" alt="">
+      <img src="snapon/20160814_093216.jpg" alt="">
+      <img src="snapon/20160814_093225.jpg" alt="">
+      <img src="snapon/20160814_093858.jpg" alt="">
+      <img src="snapon/Mobile uploads(1).jpg" alt="">
+      <img src="snapon/Mobile uploads(10).jpg" alt="">
+      <img src="snapon/Mobile uploads(11).jpg" alt="">
+      <img src="snapon/Mobile uploads(12).jpg" alt="">
+      <img src="snapon/Mobile uploads(13).jpg" alt="">
+      <img src="snapon/Mobile uploads(14).jpg" alt="">
+      <img src="snapon/Mobile uploads(15).jpg" alt="">
+      <img src="snapon/Mobile uploads(16).jpg" alt="">
+      <img src="snapon/Mobile uploads(17).jpg" alt="">
+      <img src="snapon/Mobile uploads(18).jpg" alt="">
+      <img src="snapon/Mobile uploads(19).jpg" alt="">
+      <img src="snapon/Mobile uploads(2).jpg" alt="">
+      <img src="snapon/Mobile uploads(20).jpg" alt="">
+      <img src="snapon/Mobile uploads(21).jpg" alt="">
+      <img src="snapon/Mobile uploads(22).jpg" alt="">
+      <img src="snapon/Mobile uploads(23).jpg" alt="">
+      <img src="snapon/Mobile uploads(24).jpg" alt="">
+      <img src="snapon/Mobile uploads(25).jpg" alt="">
+      <img src="snapon/Mobile uploads(26).jpg" alt="">
+      <img src="snapon/Mobile uploads(27).jpg" alt="">
+      <img src="snapon/Mobile uploads(28).jpg" alt="">
+      <img src="snapon/Mobile uploads(29).jpg" alt="">
+      <img src="snapon/Mobile uploads(3).jpg" alt="">
+      <img src="snapon/Mobile uploads(30).jpg" alt="">
+      <img src="snapon/Mobile uploads(31).jpg" alt="">
+      <img src="snapon/Mobile uploads(32).jpg" alt="">
+      <img src="snapon/Mobile uploads(33).jpg" alt="">
+      <img src="snapon/Mobile uploads(34).jpg" alt="">
+      <img src="snapon/Mobile uploads(35).jpg" alt="">
+      <img src="snapon/Mobile uploads(36).jpg" alt="">
+      <img src="snapon/Mobile uploads(37).jpg" alt="">
+      <img src="snapon/Mobile uploads(38).jpg" alt="">
+      <img src="snapon/Mobile uploads(39).jpg" alt="">
+      <img src="snapon/Mobile uploads(4).jpg" alt="">
+      <img src="snapon/Mobile uploads(40).jpg" alt="">
+      <img src="snapon/Mobile uploads(41).jpg" alt="">
+      <img src="snapon/Mobile uploads(42).jpg" alt="">
+      <img src="snapon/Mobile uploads(43).jpg" alt="">
+      <img src="snapon/Mobile uploads(44).jpg" alt="">
+      <img src="snapon/Mobile uploads(45).jpg" alt="">
+      <img src="snapon/Mobile uploads(46).jpg" alt="">
+      <img src="snapon/Mobile uploads(47).jpg" alt="">
+      <img src="snapon/Mobile uploads(48).jpg" alt="">
+      <img src="snapon/Mobile uploads(49).jpg" alt="">
+      <img src="snapon/Mobile uploads(5).jpg" alt="">
+      <img src="snapon/Mobile uploads(50).jpg" alt="">
+      <img src="snapon/Mobile uploads(51).jpg" alt="">
+      <img src="snapon/Mobile uploads(52).jpg" alt="">
+      <img src="snapon/Mobile uploads(53).jpg" alt="">
+      <img src="snapon/Mobile uploads(54).jpg" alt="">
+      <img src="snapon/Mobile uploads(55).jpg" alt="">
+      <img src="snapon/Mobile uploads(56).jpg" alt="">
+      <img src="snapon/Mobile uploads(57).jpg" alt="">
+      <img src="snapon/Mobile uploads(58).jpg" alt="">
+      <img src="snapon/Mobile uploads(59).jpg" alt="">
+      <img src="snapon/Mobile uploads(6).jpg" alt="">
+      <img src="snapon/Mobile uploads(60).jpg" alt="">
+      <img src="snapon/Mobile uploads(61).jpg" alt="">
+      <img src="snapon/Mobile uploads(62).jpg" alt="">
+      <img src="snapon/Mobile uploads(63).jpg" alt="">
+      <img src="snapon/Mobile uploads(64).jpg" alt="">
+      <img src="snapon/Mobile uploads(65).jpg" alt="">
+      <img src="snapon/Mobile uploads(66).jpg" alt="">
+      <img src="snapon/Mobile uploads(67).jpg" alt="">
+      <img src="snapon/Mobile uploads(68).jpg" alt="">
+      <img src="snapon/Mobile uploads(69).jpg" alt="">
+      <img src="snapon/Mobile uploads(7).jpg" alt="">
+      <img src="snapon/Mobile uploads(70).jpg" alt="">
+      <img src="snapon/Mobile uploads(8).jpg" alt="">
+      <img src="snapon/Mobile uploads(9).jpg" alt="">
+      <img src="snapon/Mobile uploads.jpg" alt="">
+    </div>
+    <a href="../index.html" class="back-btn" style="margin-top:30px;">← Back to Home</a>
   </div>
+  <script>
+    document.querySelectorAll('.gallery-grid img').forEach(img => {
+      img.addEventListener('click', () => {
+        window.open(img.src, '_blank');
+      });
+    });
+  </script>
 </body>
 </html>
