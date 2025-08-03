@@ -173,5 +173,44 @@ h1 {
   opacity: 1;
   color: #fff;
 }
+/* Gallery grid layout */
+.gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;                   /* spacing between images */
+  justify-content: center;     /* center the gallery images */
+  margin: 20px 0;
+}
+.gallery img {
+  max-width: calc(33.333% - 10px); /* three images per row on large screens */
+  height: auto;
+  border: 2px solid #000;      /* optional: add a border or other styling */
+  cursor: pointer;            /* pointer cursor to hint clickability */
+}
+@media (max-width: 768px) {
+  .gallery img {
+    max-width: calc(50% - 10px); /* two images per row on tablets/smaller screens */
+  }
+}
+@media (max-width: 480px) {
+  .gallery img {
+    max-width: 100%;            /* one image per row on very small screens */
+  }
+}
+
+/* "Back to Home" button styling */
+.back-btn {
+  display: inline-block;
+  margin: 20px 0;
+  padding: 10px 15px;
+  background: #000;       /* black button with white text (matches Snap-on style) */
+  color: #fff;
+  text-decoration: none;
+  font-weight: bold;
+  border-radius: 5px;
+}
+.back-btn:hover {
+  background: #444;       /* hover effect */
+}
 ::-webkit-scrollbar { width: 7px; background: #222;}
 ::-webkit-scrollbar-thumb { background: #ed232a; border-radius: 4px;}
