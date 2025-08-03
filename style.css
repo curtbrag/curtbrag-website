@@ -22,8 +22,8 @@ body {
   margin-bottom: 1.5rem;    /* space below logo before headline */
 }
 .logo-container img {
-  max-width: 240px;         /* cap its width */
-  width: 100%;              /* shrink on mobile */
+  max-width: 220px;    /* or 240px */
+  width: 100%;
   height: auto;
   display: inline-block;
 }
