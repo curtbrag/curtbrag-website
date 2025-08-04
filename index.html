@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Curtis Bragdon's World</title>
-  <!-- Google Fonts: Bebas Neue for hero text, Montserrat for body text -->
+  <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
   <!-- Font Awesome for icons -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
@@ -12,76 +12,230 @@
     body {
       margin: 0;
       padding: 0;
-      background: url('assets/background.jpg') no-repeat center center fixed;
+      background: url('assets/background.jpg') no-repeat center center fixed, #181818;
       background-size: cover;
       color: #f0f0f0;
-      font-family: 'Montserrat', sans-serif;
+      font-family: 'Montserrat', Arial, sans-serif;
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 24px;
     }
     #logoImg {
-      max-width: 400px;
+      max-width: 370px;
       width: 100%;
       height: auto;
-      display: block;
-      margin: 20px auto;
+      margin-bottom: 16px;
+      background: none;
+      /* Optional drop shadow for pop */
+      filter: drop-shadow(0px 5px 18px #000b);
     }
+    /* HERO HEADLINE */
     #hero-text {
       text-align: center;
-      font-family: 'Bebas Neue', sans-serif;
-      color: #ff0000;
-      text-shadow: 2px 2px 5px #000;
-      font-size: 3rem;
-      line-height: 1.2;
-      margin: 20px;
+      font-family: 'Bebas Neue', Arial, sans-serif;
+      font-size: 2.8rem;
+      line-height: 1.1;
+      font-weight: 900;
+      letter-spacing: 0.03em;
+      color: #ff2a2a;
+      text-shadow:
+        0 2px 8px #000d,
+        0 1px 0 #c0c0c0,
+        1px 1px 0 #181818;
+      margin: 0 10px 18px 10px;
+      background: linear-gradient(90deg, #ff2a2a, #9d0d0d 70%, #ff6d00 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      /* For Safari only */
+      background-clip: text;
     }
+    @media (max-width: 768px) {
+      #hero-text { font-size: 1.6rem; }
+      #logoImg { max-width: 230px; }
+    }
+    /* BUTTONS */
     #button-container {
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
-      margin: 20px auto;
-      max-width: 950px;
+      margin: 24px auto 10px auto;
+      gap: 10px;
+      max-width: 900px;
     }
     .link-button {
-      display: inline-flex;
+      display: flex;
       align-items: center;
       text-decoration: none;
       border-radius: 30px;
-      padding: 8px 14px;
-      margin: 6px;
-      font-size: 1rem;
+      padding: 10px 18px;
+      margin: 4px;
+      font-size: 1.04rem;
       font-weight: 700;
-      font-family: 'Montserrat', sans-serif;
-      color: #f0f0f0;
-      transition: filter 0.1s, box-shadow 0.1s;
+      transition: transform 0.1s, box-shadow 0.1s, filter 0.2s;
+      box-shadow: 0 1px 12px #0006;
+      gap: 9px;
+      letter-spacing: 0.01em;
+      filter: brightness(0.94) saturate(1.25);
+      border: none;
     }
-    .link-button i {
-      margin-right: 6px;
+    .link-button:hover, .link-button:focus {
+      filter: brightness(1.09) saturate(1.4);
+      transform: translateY(-2px) scale(1.06);
+      box-shadow: 0 4px 20px #c00c;
+      text-decoration: underline;
     }
-    .link-button:hover { filter: brightness(1.13); box-shadow: 0 2px 16px #000a; }
-    .instagram    { background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); }
-    .facebook     { background: #1877F2; }
-    .tiktok       { background: #000; }
-    .youtube      { background: #FF0000; }
-    .threads      { background: #000; }
-    .snapchat     { background: #FFFC00; color: #000; }
-    .telegram     { background: #0088CC; }
-    .reddit       { background: #FF4500; }
-    .draftkings   { background: #00471B; }
-    .zelle        { background: #6D1ED4; }
-    .cashapp      { background: #00C244; }
-    .venmo        { background: #3D95CE; }
-    .spotify      { background: #1DB954; }
-    .steam        { background: #000; }
+    /* Brand Colors */
+    .instagram { background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); color: #fff;}
+    .facebook { background: #1877F2; }
+    .tiktok { background: #161823; }
+    .youtube { background: #ff0000; }
+    .threads { background: #181818; }
+    .snapchat { background: #FFFC00; color: #191919; }
+    .telegram { background: #0088CC; }
+    .reddit { background: #FF4500; }
+    .draftkings { background: #00471B; }
+    .zelle { background: #6D1ED4; }
+    .cashapp { background: #00C244; }
+    .venmo { background: #3D95CE; }
+    .spotify { background: #1DB954; }
+    .steam { background: #212224; }
+    /* Snap-on, site, and unbranded */
     .yougood, .call, .text, .email, .snapon, .snapgallery, .carsgallery, .addyourride {
-      background: #ff0000;
+      background: linear-gradient(45deg,#ff0000,#990000 80%);
+      color: #fff;
     }
-    /* ... rest of your CSS unchanged ... */
+    /* POWER USER PANEL */
+    #chat-info {
+      background: rgba(18,18,18,0.87);
+      border-radius: 15px;
+      box-shadow: 0 2px 16px #0005;
+      padding: 20px 28px 14px 28px;
+      max-width: 430px;
+      margin: 40px auto 14px auto;
+      text-align: left;
+    }
+    #chat-info h2 {
+      font-family: 'Bebas Neue', Arial, sans-serif;
+      color: #ff2a2a;
+      font-size: 1.6rem;
+      margin-bottom: 7px;
+    }
+    #chat-info ul {
+      list-style: none;
+      margin: 0 0 5px 0;
+      padding: 0;
+      font-size: 1.08em;
+      color: #ffdbb2;
+    }
+    #chat-info ul li {
+      margin-bottom: 3px;
+    }
+    #chat-info .stat-icon {
+      color: #ff2a2a;
+      margin-right: 7px;
+      font-size: 1.2em;
+      vertical-align: -2px;
+    }
+    /* CHATBOT PANEL */
+    #chatbot {
+      background: rgba(24,24,24,0.90);
+      border-radius: 14px;
+      margin: 25px auto 16px auto;
+      padding: 18px 17px 15px 17px;
+      max-width: 430px;
+      text-align: center;
+      box-shadow: 0 2px 20px #0007;
+    }
+    #chatbot h3 {
+      font-family: 'Montserrat', Arial, sans-serif;
+      font-size: 1.14rem;
+      color: #ff6d00;
+      margin-bottom: 10px;
+    }
+    #chat-log {
+      background: #1d1618d0;
+      border-radius: 9px;
+      padding: 10px 8px;
+      min-height: 50px;
+      font-size: 1em;
+      color: #fff3;
+      margin-bottom: 9px;
+      max-height: 150px;
+      overflow-y: auto;
+      text-align: left;
+    }
+    .message { margin: 3px 0; }
+    .message.user { color: #fff; font-weight: bold; }
+    .message.alana { color: #ffcdde; font-style: italic; }
+    #chat-input-area {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      align-items: center;
+    }
+    #user-input {
+      flex: 1;
+      padding: 8px 10px;
+      font-size: 1em;
+      border-radius: 6px;
+      border: 1px solid #ff2a2a;
+      background: #181818;
+      color: #fff;
+    }
+    #user-input::placeholder { color: #888; }
+    #send-btn {
+      background: #ff2a2a;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 16px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 1em;
+      box-shadow: 0 2px 8px #ff2a2a22;
+      transition: background 0.14s;
+    }
+    #send-btn:hover, #send-btn:focus { background: #ff5700; }
+    /* CONTACT LINE */
+    #contact {
+      text-align: center;
+      margin: 32px auto 15px auto;
+      padding: 12px 10px 4px 10px;
+      border-radius: 12px;
+      background: rgba(15,15,15,0.95);
+      color: #ffaeae;
+      font-size: 1.12em;
+      box-shadow: 0 2px 16px #0008;
+    }
+    #contact a {
+      color: #ff5050;
+      margin: 0 8px;
+      text-decoration: none;
+      font-weight: 600;
+      transition: color 0.13s;
+    }
+    #contact a:hover { color: #ffd4c0; }
+    #contact i {
+      color: #ff2a2a;
+      margin-right: 3px;
+      font-size: 1.05em;
+    }
+    /* SCROLLBAR */
+    ::-webkit-scrollbar { width: 7px; background: #222;}
+    ::-webkit-scrollbar-thumb { background: #ff2a2a; border-radius: 4px;}
   </style>
 </head>
 <body>
+
   <!-- Logo Section -->
   <header>
     <img id="logoImg" src="assets/truck_logo_transparent.png" alt="CurtBrag Snap-on Truck">
   </header>
+
   <!-- Hero Headline Section -->
   <main>
     <section id="hero">
@@ -95,84 +249,127 @@
         If You’re Here, You’re Either Family or You Owe Me.
       </h1>
     </section>
-    <!-- Link Buttons Section -->
+
+    <!-- Button Row -->
     <section id="links">
       <div id="button-container">
-        <!-- Social & External links with icons -->
-        <a class="link-button instagram" href="https://otis.curtbrag.com/curtinsta" target="_blank" rel="noopener">
-          <i class="fab fa-instagram"></i> Instagram
-        </a>
-        <a class="link-button facebook" href="https://otis.curtbrag.com/curtfacebook" target="_blank" rel="noopener">
-          <i class="fab fa-facebook-f"></i> Facebook
-        </a>
-        <a class="link-button tiktok" href="https://otis.curtbrag.com/curttiktok" target="_blank" rel="noopener">
-          <i class="fab fa-tiktok"></i> TikTok
-        </a>
-        <a class="link-button youtube" href="https://otis.curtbrag.com/curtyoutube" target="_blank" rel="noopener">
-          <i class="fab fa-youtube"></i> YouTube
-        </a>
-        <a class="link-button threads" href="https://otis.curtbrag.com/curtthreads" target="_blank" rel="noopener">
-          <i class="fa-brands fa-threads"></i> Threads
-        </a>
-        <a class="link-button snapchat" href="https://otis.curtbrag.com/curtsnap" target="_blank" rel="noopener">
-          <i class="fab fa-snapchat-ghost"></i> Snapchat
-        </a>
-        <a class="link-button telegram" href="https://otis.curtbrag.com/curttelegram" target="_blank" rel="noopener">
-          <i class="fab fa-telegram"></i> Telegram
-        </a>
-        <a class="link-button reddit" href="https://otis.curtbrag.com/curtreddit" target="_blank" rel="noopener">
-          <i class="fab fa-reddit-alien"></i> Reddit
-        </a>
-        <a class="link-button draftkings" href="https://otis.curtbrag.com/curtdk" target="_blank" rel="noopener">
-          <i class="fas fa-chart-line"></i> DraftKings
-        </a>
-        <a class="link-button zelle" href="https://otis.curtbrag.com/curtzelle" target="_blank" rel="noopener">
-          <i class="fas fa-money-bill-wave"></i> Zelle
-        </a>
-        <a class="link-button cashapp" href="https://otis.curtbrag.com/curtcash" target="_blank" rel="noopener">
-          <i class="fab fa-cc-apple-pay"></i> CashApp
-        </a>
-        <a class="link-button venmo" href="https://otis.curtbrag.com/curtvenmo" target="_blank" rel="noopener">
-          <i class="fab fa-cc-visa"></i> Venmo
-        </a>
-        <a class="link-button spotify" href="https://otis.curtbrag.com/curtspotify" target="_blank" rel="noopener">
-          <i class="fab fa-spotify"></i> Spotify
-        </a>
-        <a class="link-button steam" href="https://otis.curtbrag.com/curtsteam" target="_blank" rel="noopener">
-          <i class="fab fa-steam"></i> Steam
-        </a>
-        <!-- Personal/contact and site-specific links -->
-        <a class="link-button snapgallery" href="https://otis.curtbrag.com/sngallery" target="_blank" title="Snap-on Gallery">
-          <i class="fas fa-images"></i> Snap-on Gallery
-        </a>
-        <a class="link-button carsgallery" href="https://otis.curtbrag.com/carsgallery" target="_blank" title="Cars Gallery">
-          <i class="fas fa-car"></i> Cars Gallery
-        </a>
-        <a class="link-button addyourride" href="https://otis.curtbrag.com/addyourride" target="_blank" title="Add Your Ride">
-          <i class="fas fa-plus-circle"></i> Add Your Ride
-        </a>
-        <a class="link-button yougood" href="https://otis.curtbrag.com/curtyougood" target="_blank" title="You Good?">
-          <i class="fas fa-question-circle"></i> You Good?
-        </a>
-        <a class="link-button call" href="https://otis.curtbrag.com/callcurt" target="_blank">
-          <i class="fas fa-phone"></i> Call Me
-        </a>
-        <a class="link-button text" href="https://otis.curtbrag.com/curttext" target="_blank">
-          <i class="fas fa-comment-dots"></i> Text Me
-        </a>
-        <a class="link-button email" href="https://otis.curtbrag.com/curtemail" target="_blank">
-          <i class="fas fa-envelope"></i> Email Me
-        </a>
-        <a class="link-button snapon" href="https://otis.curtbrag.com/curtsnaponsite" target="_blank">
-          <i class="fas fa-wrench"></i> Snap-on
-        </a>
+        <!-- All links/handles, colorized and branded! -->
+        <a class="link-button instagram" href="https://otis.curtbrag.com/curtinsta" target="_blank"><i class="fab fa-instagram"></i> Instagram</a>
+        <a class="link-button facebook" href="https://otis.curtbrag.com/curtfacebook" target="_blank"><i class="fab fa-facebook-f"></i> Facebook</a>
+        <a class="link-button tiktok" href="https://otis.curtbrag.com/curttiktok" target="_blank"><i class="fab fa-tiktok"></i> TikTok</a>
+        <a class="link-button youtube" href="https://otis.curtbrag.com/curtyoutube" target="_blank"><i class="fab fa-youtube"></i> YouTube</a>
+        <a class="link-button threads" href="https://otis.curtbrag.com/curtthreads" target="_blank"><i class="fa-brands fa-threads"></i> Threads</a>
+        <a class="link-button snapchat" href="https://otis.curtbrag.com/curtsnap" target="_blank"><i class="fab fa-snapchat-ghost"></i> Snapchat</a>
+        <a class="link-button telegram" href="https://otis.curtbrag.com/curttelegram" target="_blank"><i class="fab fa-telegram"></i> Telegram</a>
+        <a class="link-button reddit" href="https://otis.curtbrag.com/curtreddit" target="_blank"><i class="fab fa-reddit-alien"></i> Reddit</a>
+        <a class="link-button draftkings" href="https://otis.curtbrag.com/curtdk" target="_blank"><i class="fas fa-chart-line"></i> DraftKings</a>
+        <a class="link-button zelle" href="https://otis.curtbrag.com/curtzelle" target="_blank"><i class="fas fa-money-bill-wave"></i> Zelle</a>
+        <a class="link-button cashapp" href="https://otis.curtbrag.com/curtcash" target="_blank"><i class="fab fa-cc-apple-pay"></i> CashApp</a>
+        <a class="link-button venmo" href="https://otis.curtbrag.com/curtvenmo" target="_blank"><i class="fab fa-cc-visa"></i> Venmo</a>
+        <a class="link-button spotify" href="https://otis.curtbrag.com/curtspotify" target="_blank"><i class="fab fa-spotify"></i> Spotify</a>
+        <a class="link-button steam" href="https://otis.curtbrag.com/curtsteam" target="_blank"><i class="fab fa-steam"></i> Steam</a>
+        <a class="link-button yougood" href="https://otis.curtbrag.com/curtyougood" target="_blank"><i class="fa-regular fa-face-grin-stars"></i> You Good?</a>
+        <a class="link-button call" href="https://otis.curtbrag.com/callcurt" target="_blank"><i class="fas fa-phone"></i> Call Me</a>
+        <a class="link-button text" href="https://otis.curtbrag.com/curttext" target="_blank"><i class="fas fa-sms"></i> Text Me</a>
+        <a class="link-button email" href="https://otis.curtbrag.com/curtemail" target="_blank"><i class="fas fa-envelope"></i> Email Me</a>
+        <a class="link-button snapon" href="https://www.snapon.com/" target="_blank"><i class="fas fa-wrench"></i> Snap-on</a>
+        <a class="link-button snapgallery" href="https://otis.curtbrag.com/sngallery" target="_blank"><i class="fa-solid fa-truck-monster"></i> Snap-on Gallery</a>
+        <a class="link-button carsgallery" href="https://otis.curtbrag.com/carsgallery" target="_blank"><i class="fa-solid fa-car"></i> Cars Gallery</a>
+        <a class="link-button addyourride" href="https://otis.curtbrag.com/addyourride" target="_blank"><i class="fa-solid fa-car-side"></i> Add Your Ride</a>
       </div>
     </section>
-    <!-- Chatbot (Alana AI) Section -->
-    <!-- (Unchanged section here, leave as in your current file for now, unless you want revisions) -->
-    <!-- Contact Info Section -->
-    <!-- (Unchanged section here as well, but let me know if you want the phone/email as icons only, or more changes) -->
+
+    <!-- Power User Panel -->
+    <section id="chat-info">
+      <h2><i class="fa-solid fa-robot stat-icon"></i> Curtis AI Command Center</h2>
+      <ul>
+        <li><i class="fa-solid fa-bolt stat-icon"></i> 7,500+ GPT sessions (and counting)</li>
+        <li><i class="fa-solid fa-wrench stat-icon"></i> Custom AI automations, Bitly, Netlify, DraftKings, more</li>
+        <li><i class="fa-solid fa-truck-monster stat-icon"></i> Can bench press a Snap-on box truck*</li>
+        <li><i class="fa-solid fa-fire stat-icon"></i> Tool deals closed: ∞</li>
+        <li style="color:#ff6d00;"><i class="fa-solid fa-brain stat-icon"></i> Top 0.1% of global users (sorry, robots!)</li>
+        <li style="color:#aaa; font-size:0.96em;">*in my mind anyway</li>
+      </ul>
+    </section>
+
+    <!-- Chatbot (Alana AI) Panel -->
+    <section id="chatbot">
+      <h3><i class="fa-solid fa-comments"></i> Alana AI (Live!)</h3>
+      <div id="chat-log">
+        <div class="message alana"><strong>Alana:</strong> Привет, I’m Alana. Ask me anything (as long as it’s not about Milwaukee tools…)</div>
+      </div>
+      <div id="chat-input-area">
+        <input type="text" id="user-input" placeholder="Ask me anything…">
+        <button id="send-btn"><i class="fas fa-paper-plane"></i> Send</button>
+      </div>
+    </section>
+
+    <!-- Contact Info Line -->
+    <section id="contact">
+      <a href="mailto:curtis.bragdon@snapon.com"><i class="fas fa-envelope"></i> curtis.bragdon@snapon.com</a>
+      <a href="mailto:curtbrag@yahoo.com"><i class="fas fa-envelope"></i> curtbrag@yahoo.com</a>
+      <a href="mailto:bragdoncurtis@gmail.com"><i class="fas fa-envelope"></i> bragdoncurtis@gmail.com</a>
+      <a href="tel:7814170692"><i class="fas fa-phone"></i> 781-417-0692</a>
+    </section>
   </main>
-  <!-- (Keep the Chatbot script and rest of file as-is) -->
+
+  <!-- Alana AI: Connects to Netlify function running OpenAI -->
+  <script>
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+    const chatLog = document.getElementById('chat-log');
+
+    function escapeHTML(str) {
+      return str.replace(/[&<>"]/g, function(tag) {
+        const chars = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+        return chars[tag] || tag;
+      });
+    }
+    function addMessage(role, content) {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'message ' + role;
+      msgDiv.innerHTML = (role === 'user' ? '<strong>You:</strong> ' : '<strong>Alana:</strong> ') + escapeHTML(content).replace(/\n/g, '<br>');
+      chatLog.appendChild(msgDiv);
+      chatLog.scrollTop = chatLog.scrollHeight;
+    }
+    function sendMessage() {
+      const message = userInput.value.trim();
+      if (!message) return;
+      addMessage('user', message);
+      userInput.value = '';
+      userInput.disabled = true;
+      sendBtn.disabled = true;
+      // Call Netlify function (set up as .netlify/functions/openai.js)
+      fetch('/.netlify/functions/openai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message })
+      })
+      .then(response => response.json())
+      .then(data => {
+        let reply = '';
+        if (data.answer) reply = data.answer;
+        else if (data.message) reply = data.message;
+        else if (typeof data === 'string') reply = data;
+        else reply = '[No response]';
+        addMessage('alana', reply);
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        addMessage('alana', 'Sorry, something went wrong.');
+      })
+      .finally(() => {
+        userInput.disabled = false;
+        sendBtn.disabled = false;
+      });
+    }
+    sendBtn.addEventListener('click', sendMessage);
+    userInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+  </script>
 </body>
 </html>
