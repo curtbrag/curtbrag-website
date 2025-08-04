@@ -50,7 +50,6 @@
       background: linear-gradient(90deg, #ff2a2a, #9d0d0d 70%, #ff6d00 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      /* For Safari only */
       background-clip: text;
     }
     @media (max-width: 768px) {
@@ -103,12 +102,10 @@
     .venmo { background: #3D95CE; }
     .spotify { background: #1DB954; }
     .steam { background: #212224; }
-    /* Snap-on, site, and unbranded */
     .yougood, .call, .text, .email, .snapon, .snapgallery, .carsgallery, .addyourride {
       background: linear-gradient(45deg,#ff0000,#990000 80%);
       color: #fff;
     }
-    /* POWER USER PANEL */
     #chat-info {
       background: rgba(18,18,18,0.87);
       border-radius: 15px;
@@ -140,7 +137,6 @@
       font-size: 1.2em;
       vertical-align: -2px;
     }
-    /* CHATBOT PANEL */
     #chatbot {
       background: rgba(24,24,24,0.90);
       border-radius: 14px;
@@ -200,7 +196,6 @@
       transition: background 0.14s;
     }
     #send-btn:hover, #send-btn:focus { background: #ff5700; }
-    /* CONTACT LINE */
     #contact {
       text-align: center;
       margin: 32px auto 15px auto;
@@ -224,7 +219,6 @@
       margin-right: 3px;
       font-size: 1.05em;
     }
-    /* SCROLLBAR */
     ::-webkit-scrollbar { width: 7px; background: #222;}
     ::-webkit-scrollbar-thumb { background: #ff2a2a; border-radius: 4px;}
   </style>
@@ -253,7 +247,6 @@
     <!-- Button Row -->
     <section id="links">
       <div id="button-container">
-        <!-- All links/handles, colorized and branded! -->
         <a class="link-button instagram" href="https://otis.curtbrag.com/curtinsta" target="_blank"><i class="fab fa-instagram"></i> Instagram</a>
         <a class="link-button facebook" href="https://otis.curtbrag.com/curtfacebook" target="_blank"><i class="fab fa-facebook-f"></i> Facebook</a>
         <a class="link-button tiktok" href="https://otis.curtbrag.com/curttiktok" target="_blank"><i class="fab fa-tiktok"></i> TikTok</a>
@@ -339,8 +332,8 @@
       userInput.value = '';
       userInput.disabled = true;
       sendBtn.disabled = true;
-      // Call Netlify function (set up as .netlify/functions/openai.js)
-      fetch('/.netlify/functions/openai', {
+      // Call Netlify function (should match /chat.js in netlify/functions)
+      fetch('/.netlify/functions/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message })
