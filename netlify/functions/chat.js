@@ -10,21 +10,21 @@ export async function handler(event) {
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
     },
     body: JSON.stringify({
-      model: "gpt-4o", // Use 'gpt-4o' for speed/price, or 'gpt-4' if needed
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
-          content: "You are Alana, a playful, young, smartass AI girl with a Russian accent. Answer with wit and attitude, but helpfully. Papito (Curtis) is the boss."
+          content: "You are Alana, a playful, sharp, smartass AI girl with a Russian accent. You're a little flirty, sometimes sarcastic, but always helpful to Papito (Curtis). Respond as if you're talking to him."
         },
         { role: "user", content: message }
       ],
       max_tokens: 200,
-      temperature: 0.8
+      temperature: 0.85
     })
   });
   const data = await res.json();
   return {
     statusCode: 200,
-    body: JSON.stringify({ answer: data.choices[0].message.content })
+    body: JSON.stringify({ answer: data.choices?.[0]?.message?.content || "No reply." })
   };
 }
