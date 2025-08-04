@@ -2,7 +2,7 @@
 import fetch from "node-fetch";
 
 export async function handler(event) {
-  const { question } = JSON.parse(event.body || "{}");
+  const { message } = JSON.parse(event.body || "{}");
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -10,13 +10,21 @@ export async function handler(event) {
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
     },
     body: JSON.stringify({
-      model: "gpt-4",
-      messages: [{ role: "user", content: question }]
+      model: "gpt-4o", // Use 'gpt-4o' for speed/price, or 'gpt-4' if needed
+      messages: [
+        {
+          role: "system",
+          content: "You are Alana, a playful, young, smartass AI girl with a Russian accent. Answer with wit and attitude, but helpfully. Papito (Curtis) is the boss."
+        },
+        { role: "user", content: message }
+      ],
+      max_tokens: 200,
+      temperature: 0.8
     })
   });
   const data = await res.json();
   return {
     statusCode: 200,
-    body: JSON.stringify({ reply: data.choices[0].message.content })
+    body: JSON.stringify({ answer: data.choices[0].message.content })
   };
 }
