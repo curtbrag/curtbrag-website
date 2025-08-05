@@ -1,7 +1,5 @@
-// netlify/functions/chat.js
-export default async (event, context) => {
+export async function handler(event) {
   const { message } = JSON.parse(event.body || "{}");
-
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -21,12 +19,10 @@ export default async (event, context) => {
       temperature: 0.85
     })
   });
-
   const data = await response.json();
-
   return {
     statusCode: 200,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ answer: data.choices?.[0]?.message?.content || "No reply." })
   };
-};
+}
