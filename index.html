@@ -33,8 +33,19 @@
       max-width: 280px;
       width: 100%;
       height: auto;
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
     }
-    h1 {
+    /* HERO HEADLINE */
+    .hero-overlay {
+      background: rgba(0,0,0,0.57);
+      border-radius: 20px;
+      padding: 18px 22px;
+      display: inline-block;
+      margin-bottom: 12px;
+    }
+    h1, #hero-text {
       margin: 0 0 1rem;
       font-size: 2.2rem;
       font-weight: 900;
@@ -42,7 +53,9 @@
       text-align: center;
       font-family: 'Bebas Neue', Arial, sans-serif;
       letter-spacing: 0.03em;
+      color: #fff;
     }
+    /* BUTTONS */
     .button-row.v2 {
       display: flex;
       flex-wrap: wrap;
@@ -52,7 +65,7 @@
     }
     .button-row.v2 .btn {
       border: 2px solid #ed232a;
-      background: transparent;
+      background: rgba(0,0,0,0.32);
       color: #ed232a;
       padding: 10px 18px;
       border-radius: 12px;
@@ -84,11 +97,11 @@
     .btn.venmo { border-color: #3D95CE; color: #3D95CE;}
     .btn.spotify { border-color: #1DB954; color: #1DB954;}
     .btn.steam { border-color: #c2e9fb; color: #c2e9fb;}
-    /* For non-brand */
     .btn.yougood, .btn.call, .btn.text, .btn.email, .btn.snapon, .btn.snapgallery, .btn.carsgallery, .btn.addyourride {
       border-color: #ed232a;
       color: #ed232a;
     }
+    /* CHAT WIDGET */
     .chat-ui {
       width: 100%;
       max-width: 380px;
@@ -99,8 +112,8 @@
       position: relative;
     }
     .alana-avatar {
-      width: 44px;
-      height: 44px;
+      width: 48px;
+      height: 48px;
       border-radius: 50%;
       object-fit: cover;
       position: absolute;
@@ -108,6 +121,7 @@
       top: 12px;
       border: 2px solid #ed232a;
       background: #fff;
+      box-shadow: 0 2px 12px #ed232a66;
     }
     #chat-log {
       max-height: 180px;
@@ -200,7 +214,7 @@
       color: #fff;
     }
     @media (max-width: 600px) {
-      h1 { font-size: 1.5rem; }
+      h1, #hero-text { font-size: 1.5rem; }
       .button-row.v2 .btn { padding: 8px 12px; font-size: 0.9rem; }
       .stats-section.v2 { max-width: 100%; }
       .chat-ui { max-width: 100%; }
@@ -215,19 +229,19 @@
     </div>
 
     <!-- Hero Headline -->
-   <section id="hero">
-  <div class="hero-overlay">
-    <h1 id="hero-text">
-      All Access. No Excuses.<br>
-      This Ain’t a Linktree—It’s My Territory.<br>
-      I Don’t Just Sell Tools.<br>
-      I Build My Own Path.<br>
-      I Build Solutions That Last.<br>
-      I Build the Whole Damn Garage.<br>
-      If You’re Here, You’re Either Family or You Owe Me.
-    </h1>
-  </div>
-</section>
+    <section id="hero">
+      <div class="hero-overlay">
+        <h1 id="hero-text">
+          All Access. No Excuses.<br>
+          This Ain’t a Linktree—It’s My Territory.<br>
+          I Don’t Just Sell Tools.<br>
+          I Build My Own Path.<br>
+          I Build Solutions That Last.<br>
+          I Build the Whole Damn Garage.<br>
+          If You’re Here, You’re Either Family or You Owe Me.
+        </h1>
+      </div>
+    </section>
 
     <!-- Button Row -->
     <div class="button-row v2">
@@ -268,7 +282,7 @@
 
     <!-- Chatbot UI with Avatar -->
     <div class="chat-ui">
-      <!-- Optional Alana avatar, comment out if you don't want it -->
+      <!-- Alana avatar -->
       <img src="assets/alana_avatar.png" alt="Alana avatar" class="alana-avatar" />
       <div id="chat-log">
         <div class="bot-msg"><strong>Alana:</strong> Привет, I’m Alana. Ask me anything (as long as it’s not about Milwaukee tools…)</div>
@@ -338,13 +352,4 @@
         sendBtn.disabled = false;
       });
     }
-    sendBtn.addEventListener('click', sendMessage);
-    userInput.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        sendMessage();
-      }
-    });
-  </script>
-</body>
-</html>
+    sendBtn.addEventListener('
