@@ -35,6 +35,14 @@ h1 {
   text-shadow: 2px 4px 12px #000;
   text-align: center;
 }
+.hero-overlay {
+  background: rgba(0,0,0,0.57);
+  border-radius: 20px;
+  padding: 18px 22px;
+  display: inline-block;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 16px #000a;
+}
 
 /* Buttons v2 */
 .button-row.v2 {
