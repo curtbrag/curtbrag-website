@@ -324,32 +324,34 @@
       chatLog.scrollTop = chatLog.scrollHeight;
     }
     function sendMessage() {
-      const message = userInput.value.trim();
-      if (!message) return;
-      addMsg('user', message);
-      userInput.value = '';
-      userInput.disabled = true;
-      sendBtn.disabled = true;
-      fetch('/.netlify/functions/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message })
-      })
-      .then(res => res.json())
-      .then(data => {
-        let reply = '';
-        if (data.reply) reply = data.reply;
-        else if (data.answer) reply = data.answer;
-        else if (data.message) reply = data.message;
-        else reply = '[No response]';
-        addMsg('bot', reply);
-      })
-      .catch(err => {
-        addMsg('bot', 'Sorry, something went wrong.');
-      })
-      .finally(() => {
-        userInput.disabled = false;
-        sendBtn.disabled = false;
-      });
+  const message = userInput.value.trim();
+  if (!message) return;
+  addMsg('user', message);
+  userInput.value = '';
+  userInput.disabled = true;
+  sendBtn.disabled = true;
+  fetch('/.netlify/functions/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message })
+  })
+  .then(res => res.json())
+  .then(data => {
+    const reply = data.reply || "[No response]";
+    addMsg('bot', reply);
+  })
+  .catch(err => {
+    addMsg('bot', 'Sorry, something went wrong.');
+  })
+  .finally(() => {
+    userInput.disabled = false;
+    sendBtn.disabled = false;
+  });
+}
+sendBtn.addEventListener('click', sendMessage);
+userInput.addEventListener('keydown', e => { 
+  if (e.key === 'Enter') sendMessage();
+});
+
     }
     sendBtn.addEventListener('
