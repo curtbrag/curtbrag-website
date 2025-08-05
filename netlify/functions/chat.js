@@ -1,10 +1,12 @@
-export async function handler(event) {
+// netlify/functions/chat.js
+export default async (event, context) => {
   const { message } = JSON.parse(event.body || "{}");
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+      "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
     },
     body: JSON.stringify({
       model: "gpt-4o",
@@ -19,9 +21,12 @@ export async function handler(event) {
       temperature: 0.85
     })
   });
-  const data = await res.json();
+
+  const data = await response.json();
+
   return {
     statusCode: 200,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ answer: data.choices?.[0]?.message?.content || "No reply." })
   };
-}
+};
