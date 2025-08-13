@@ -1,31 +1,60 @@
-export default async (event, context) => {
-  const { message } = JSON.parse(event.body || "{}");
+const fetch = require("node-fetch");
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: "gpt-4o",
+exports.handler = async (event, context) => {
+  try {
+    const { message } = JSON.parse(event.body || '{}');
+
+    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY;
+    if (!apiKey) {
+      return {
+        statusCode: 500,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reply: "OpenAI API key not configured." })
+      };
+    }
+
+    const requestBody = {
+      model: "gpt-3.5-turbo",
       messages: [
-        {
-          role: "system",
-          content: "You are Alana, a playful, sharp, smartass AI girl with a Russian accent. You're a little flirty, sometimes sarcastic, but always helpful to Papito (Curtis). Respond as if you're talking to him."
-        },
+        { role: "system", content: "You are Alana, a playful, sharp, smartass AI girl with a Russian accent. You’re a little flirt but professional." },
         { role: "user", content: message }
       ],
       max_tokens: 200,
       temperature: 0.85
-    })
-  });
+    };
 
-  const data = await response.json();
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: 'Bearer ' + apiKey
+      },
+      body: JSON.stringify(requestBody)
+    });
 
-  return {
-    statusCode: 200,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ reply: data.choices?.[0]?.message?.content || "No reply." })
-  };
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        statusCode: response.status,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reply: 'Error ' + response.status + ': ' + errorText })
+      };
+    }
+
+    const data = await response.json();
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reply: (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "No reply." })
+    };
+  } catch (error) {
+    return {
+      statusCode: 500,
+      headers: { "Content-Type": "application/json" },
+     
+    };
+  }
+}; body: JSON.stringify({ reply: 'Error: ' + error.message })
+    };
+  }
 };
