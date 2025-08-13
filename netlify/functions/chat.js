@@ -1,5 +1,3 @@
-const fetch = require("node-fetch");
-
 exports.handler = async (event, context) => {
   // CORS preflight response
   if (event.httpMethod === 'OPTIONS') {
@@ -40,8 +38,7 @@ exports.handler = async (event, context) => {
       messages: [
         {
           role: 'system',
-          content:
-            'You are Alana, a playful, sharp, smartass AI girl with a Russian accent. You’re a little flirt but professional.',
+          content: 'You are Alana, a playful, sharp, smartass AI girl with a Russian accent. You’re a little flirt but professional.',
         },
         { role: 'user', content: message },
       ],
@@ -66,10 +63,9 @@ exports.handler = async (event, context) => {
     }
 
     const data = await response.json();
-    const reply =
-      data.choices?.[0]?.message?.content || 'No reply.';
+    const reply = (data.choices?.[0]?.message?.content) || 'No reply.';
     return allowCors(200, JSON.stringify({ reply }));
   } catch (error) {
-    return allowCors(500, JSON.stringify({ reply: 'Error: ' + error.message }));
+    return allowCors(500, JSON.stringify({ reply: `Error: ${error.message}` }));
   }
 };
