@@ -1,2 +1,13 @@
 [build]
   functions = "netlify/functions"
+
+# Configure Netlify Functions
+[functions]
+  # Bundle with esbuild for modern syntax support (required for ESM and schedule helper)
+  node_bundler = "esbuild"
+  # Ensure external modules are installed for Netlify Functions
+  external_node_modules = ["@netlify/blobs"]
+
+# Schedule the sports-refresh function to run daily at 07:00 UTC
+[functions."sports-refresh"]
+  schedule = "0 7 * * *"
