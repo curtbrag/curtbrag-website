@@ -125,6 +125,28 @@ box-shadow:  none;
       .chips { display:flex; gap:.5rem; flex-wrap:wrap; margin:.5rem 0 0; }
       .chip { font: inherit; padding:.4rem .6rem; border-radius: 999px; border:1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.03); cursor:pointer; color: var(--text); }
       .chip:hover { background: rgba(255,255,255,.08); }
+
+  /* Boston sports tracker styling */
+  #sports-tracker {
+    margin-top: 1rem;
+    background: rgba(255,255,255,0.08);
+    padding: 1rem;
+    border-radius: 10px;
+    color: var(--text);
+  }
+  #sports-tracker h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.2rem;
+    color: var(--text);
+  }
+  #sports-tracker ul {
+    list-style: disc;
+    padding-left: 1.25rem;
+    margin: 0;
+  }
+  #sports-tracker li {
+    margin-bottom: 0.35rem;
+  }
     </style>
 </head>
 <body>
@@ -168,8 +190,9 @@ box-shadow:  none;
       <!-- Curtis AI Command Center (Alina) -->
       <div class="cc">
         <div class="cc-head">
-          <img src="assets/photo_2025-08-13_22-41-55.jpg" alt="Alina avatar">
-          <div><strong>Alina — Curtis AI Command Center</strong></div>
+          <!-- New avatar image with ID for cycling and updated alt text -->
+          <img id="avatarImg" src="assets/photo_2025-08-13_22-41-55.jpg" alt="Alina AI avatar">
+          <div><strong>Alina AI — Curtis AI Command Center</strong></div>
         </div>
         <div class="cc-body">
           <div class="stats">GPT sessions 7,500+ • Custom automations (Bitly, Netlify, DraftKings, more) • Tool deals closed: ∞</div>
@@ -274,6 +297,23 @@ box-shadow:  none;
     <li><strong>New England Revolution:</strong> Last game – Aug 9, 2025 vs D.C. United (W 2–0); Record: 7–7–11, 28 points, 21st in MLS</li>
   </ul>
 </section>
+
+  <!-- Avatar cycling script: cycle through uploaded avatars on click -->
+  <script>
+    const avatarImgs = [
+      'assets/photo_2025-08-13_22-41-55.jpg',
+      'assets/photo_2025-08-13_22-42-08.jpg',
+      'assets/photo_2025-08-13_22-42-15.jpg'
+    ];
+    let avatarIndex = 0;
+    const avatarEl = document.getElementById('avatarImg');
+    if (avatarEl) {
+      avatarEl.addEventListener('click', () => {
+        avatarIndex = (avatarIndex + 1) % avatarImgs.length;
+        avatarEl.src = avatarImgs[avatarIndex];
+      });
+    }
+  </script>
 
 </body>
 </html>
