@@ -129,7 +129,9 @@ box-shadow:  none;
   /* Boston sports tracker styling */
   #sports-tracker {
     margin-top: 1rem;
-    background: rgba(255,255,255,0.12);
+    /* Use a darker translucent background so the panel stands out against the overlay */
+    background: rgba(14,15,16,0.9);
+    border: 1px solid var(--border);
     padding: 1rem;
     border-radius: 10px;
     color: var(--text);
@@ -137,7 +139,8 @@ box-shadow:  none;
   #sports-tracker h2 {
     margin: 0 0 0.5rem;
     font-size: 1.2rem;
-    color: var(--text);
+    /* Make the heading pop with the brand red colour */
+    color: var(--brand);
   }
   #sports-tracker ul {
     list-style: disc;
@@ -287,7 +290,7 @@ box-shadow:  none;
 
   </script>
   <!-- Boston Sports Tracker -->
-<section id="sports-tracker" class="cc">
+<section id="sports-tracker">
   <h2>Boston Sports Tracker</h2>
   <ul>
     <li><strong>Red Sox:</strong> Last game – Aug 12, 2025 vs Astros (W 14–1); Record: 66–55, 2nd in AL East</li>
