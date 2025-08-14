@@ -128,42 +128,10 @@ box-shadow:  none;
       .chip { font: inherit; padding:.4rem .6rem; border-radius: 999px; border:1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.03); cursor:pointer; color: var(--text); }
       .chip:hover { background: rgba(255,255,255,.08); }
 
-  /* Boston sports tracker styling */
-  /* Make the sports tracker pop: dark panel with bright text and custom bullets */
-  #sports-tracker {
-    margin-top: 1rem;
-    /* Darker translucent panel for contrast */
-    background: rgba(0,0,0,0.75);
-    border: 1px solid rgba(255,255,255,0.2);
-    border-radius: 10px;
-    padding: 1rem;
-    color: #f5f5f5;
-    font-size: .95rem;
-    line-height: 1.4;
-  }
-  #sports-tracker h2 {
-    color: var(--brand);
-    margin: 0 0 .5rem;
-    font-weight: 600;
-  }
-  #sports-tracker ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-  }
-  #sports-tracker li {
-    position: relative;
-    padding-left: 1.2rem;
-    margin-bottom: .4rem;
-  }
-  #sports-tracker li::before {
-    content: "•";
-    position: absolute;
-    left: 0;
-    top: 0;
-    color: var(--brand);
-  }
+  /* Removed inline sports tracker styling.  Styling is now provided in assets/css/sports.css */
     </style>
+    <!-- Load sports tracker stylesheet -->
+    <link rel="stylesheet" href="assets/css/sports.css" />
 </head>
 <body>
   <div class="overlay">
@@ -206,11 +174,21 @@ box-shadow:  none;
         <a class="btn" href="https://otis.curtbrag.com/curtshop" target="_blank" rel="noopener"><i class="fa-solid fa-shopping-cart"></i>Shop</a>
       </div>
 
+      <!-- Boston Sports Tracker -->
+      <section id="sports-tracker" class="sports-card">
+        <div class="sports-toggle">
+          <span>Boston Sports Tracker</span>
+          <span class="sports-updated"></span>
+        </div>
+        <div class="sports-content collapsed"></div>
+      </section>
+
       <!-- Curtis AI Command Center (Alina) -->
       <div class="cc">
         <div class="cc-head">
           <!-- New avatar image with ID for cycling and updated alt text -->
-          <img id="avatarImg" src="assets/alina_avatar1.jpg" alt="Alina AI avatar">
+          <!-- Default to Yuru crop #2 for the Alina AI avatar -->
+          <img id="avatarImg" src="assets/alina_avatar2.jpg" alt="Alina AI avatar">
           <div><strong>Alina AI — Curtis AI Command Center</strong></div>
         </div>
         <div class="cc-body">
@@ -305,22 +283,15 @@ box-shadow:  none;
     input?.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') send(); });
 
   </script>
-  <!-- Boston Sports Tracker -->
-<section id="sports-tracker">
-  <h2>Boston Sports Tracker</h2>
-  <ul>
-    <li><strong>Red Sox:</strong> Last game – Aug 12, 2025 vs Astros (W 14–1); Record: 66–55, 2nd in AL East</li>
-    <li><strong>Patriots:</strong> Last game – Aug 8, 2025 vs Commanders (Preseason W 48–18); Record: 1–0 preseason, 2nd in AFC East</li>
-    <li><strong>Celtics:</strong> Last game – May 16, 2025 vs Knicks (L 81–119); Season Record: 61–21, 1st in Atlantic, 2nd in East</li>
-    <li><strong>Bruins:</strong> Last game – Apr 15, 2025 vs Devils (OT L 5–4); Season Record: 33–39–10, 8th in Atlantic, 15th in East</li>
-    <li><strong>New England Revolution:</strong> Last game – Aug 9, 2025 vs D.C. United (W 2–0); Record: 7–7–11, 28 points, 21st in MLS</li>
-  </ul>
-</section>
+  <!-- Boston Sports Tracker removed: now loaded dynamically -->
 
   <!-- Avatar cycling script: cycle through uploaded avatars on click -->
   <script>
+    // Reorder avatars so that Yuru crop #2 is the default (index 0).  Clicking cycles through the other crops.
     const avatarImgs = [
-      'assets/alina_avatar1.jpg','assets/alina_avatar2.jpg','assets/alina_avatar3.jpg'
+      'assets/alina_avatar2.jpg',
+      'assets/alina_avatar3.jpg',
+      'assets/alina_avatar1.jpg'
     ];
     let avatarIndex = 0;
     const avatarEl = document.getElementById('avatarImg');
@@ -331,6 +302,9 @@ box-shadow:  none;
       });
     }
   </script>
+
+  <!-- Load dynamic sports tracker script -->
+  <script src="assets/js/sports.js"></script>
 
 </body>
 </html>
