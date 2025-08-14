@@ -129,7 +129,7 @@ box-shadow:  none;
   /* Boston sports tracker styling */
   #sports-tracker {
     margin-top: 1rem;
-    background: rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.12);
     padding: 1rem;
     border-radius: 10px;
     color: var(--text);
@@ -191,7 +191,7 @@ box-shadow:  none;
       <div class="cc">
         <div class="cc-head">
           <!-- New avatar image with ID for cycling and updated alt text -->
-          <img id="avatarImg" src="assets/photo_2025-08-13_22-41-55.jpg" alt="Alina AI avatar">
+          <img id="avatarImg" src="assets/alina_avatar1.jpg" alt="Alina AI avatar">
           <div><strong>Alina AI — Curtis AI Command Center</strong></div>
         </div>
         <div class="cc-body">
@@ -205,10 +205,10 @@ box-shadow:  none;
           </div>
           <div class="chat-wrap" id="chatWrap">
             <div class="chat-log" id="chatLog" aria-live="polite">
-              <div class="msg sys"><div class="bubble">Alina here. What do you need?</div></div>
+              <div class="msg sys"><div class="bubble">Alina AI here. What do you need?</div></div>
             </div>
             <div class="chat-input">
-              <input id="userInput" type="text" autocomplete="off" placeholder="Type to Alina…" />
+          <input id="userInput" type="text" autocomplete="off" placeholder="Type to Alina AI…" />
               <button id="sendBtn" type="button">Send</button>
             </div>
           </div>
@@ -271,7 +271,7 @@ box-shadow:  none;
         // Clear existing messages
         log.innerHTML = '';
         // Show the initial AI greeting again
-        appendMsg(log, 'sys', 'Alina here. What do you need?');
+      appendMsg(log, 'sys', 'Alina AI here. What do you need?');
         input.value = '';
         return;
       }
@@ -287,7 +287,7 @@ box-shadow:  none;
 
   </script>
   <!-- Boston Sports Tracker -->
-<section id="sports-tracker">
+<section id="sports-tracker" class="cc">
   <h2>Boston Sports Tracker</h2>
   <ul>
     <li><strong>Red Sox:</strong> Last game – Aug 12, 2025 vs Astros (W 14–1); Record: 66–55, 2nd in AL East</li>
@@ -301,9 +301,7 @@ box-shadow:  none;
   <!-- Avatar cycling script: cycle through uploaded avatars on click -->
   <script>
     const avatarImgs = [
-      'assets/photo_2025-08-13_22-41-55.jpg',
-      'assets/photo_2025-08-13_22-42-08.jpg',
-      'assets/photo_2025-08-13_22-42-15.jpg'
+      'assets/alina_avatar1.jpg','assets/alina_avatar2.jpg','assets/alina_avatar3.jpg'
     ];
     let avatarIndex = 0;
     const avatarEl = document.getElementById('avatarImg');
