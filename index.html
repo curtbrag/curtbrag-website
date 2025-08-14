@@ -71,15 +71,68 @@
     .chat-input{display:flex; gap:8px; padding:10px; background:#0f1012; border-top:1px solid var(--border)}
     .chat-input input{flex:1; padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:#0c0d0e; color:var(--text)}
     .chat-input button{padding:10px 14px; border-radius:8px; border:1px solid var(--border); background:var(--brand); color:#fff; font-weight:600; cursor:pointer}
-  </style>
+    </style>
+
+    <!-- UI overrides for larger logo, avatar, coloured icons, and chips -->
+    <style>
+      /* enlarge the truck/dog logo; responsive clamp ensures it scales on mobile/desktop */
+      .logo-icon {
+        width: clamp(96px, 12vw, 180px);
+        height: auto;
+        margin-right: 10px;
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,.35));
+      }
+      /* tagline styling to keep spacing and legibility with bigger logo */
+      .tag {
+        margin-top: 0.35rem;
+        font-size: clamp(.95rem, 1.5vw, 1.15rem);
+        opacity: .9;
+      }
+      /* bigger avatar in command center */
+      .cc-head img {
+        width: clamp(64px, 8vw, 112px);
+        height: auto;
+        border-radius: 10px;
+        border: 2px solid rgba(255,255,255,.15);
+        box-shadow: 0 2px 10px rgba(0,0,0,.45);
+      }
+      /* color the icons without changing button backgrounds */
+      .btn i.fa-instagram{color:#E4405F}
+      .btn i.fa-facebook{color:#1877F2}
+      .btn i.fa-tiktok{color:#000000}
+      .btn i.fa-youtube{color:#FF0000}
+      .btn i.fa-threads{color:#7C2E7A}
+      .btn i.fa-snapchat{color:#FFFC00}
+      .btn i.fa-telegram{color:#26A4E3}
+      .btn i.fa-reddit{color:#FF4500}
+      .btn i.fa-football{color:#007049}
+      .btn i.fa-money-bill{color:#6D1ED4}
+      .btn i.fa-square{color:#00C244}
+      .btn i.fa-vimeo{color:#3D95CE}
+      .btn i.fa-spotify{color:#1DB954}
+      .btn i.fa-heart{color:#E0245E}
+      .btn i.fa-phone{color:#34A853}
+      .btn i.fa-comment-dots{color:#34A853}
+      .btn i.fa-envelope{color:#EA4335}
+      .btn i.fa-truck-monster{color:#E11B22}
+      .btn i.fa-car{color:#6CACE4}
+      .btn i.fa-car-side{color:#6CACE4}
+      /* subtle hover effect */
+      .btn:hover { background: rgba(255,255,255,.05); }
+      /* quick chips for common prompts */
+      .chips { display:flex; gap:.5rem; flex-wrap:wrap; margin:.5rem 0 0; }
+      .chip { font: inherit; padding:.4rem .6rem; border-radius: 999px; border:1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.03); cursor:pointer; color: var(--text); }
+      .chip:hover { background: rgba(255,255,255,.08); }
+    </style>
 </head>
 <body>
   <div class="overlay">
     <div class="wrap">
 
       <!-- Header -->
-      <div class="brand"><img src="assets/logo_icon.png" alt="Snap-on Logo" style="width:28px;height:28px;margin-right:10px;"> All Access. No Excuses.</div>
-      <p class="tag">This ain’t a Linktree—it's my territory. Tools, builds, service, and Alana on standby.</p>
+      <div class="brand"><img src="assets/logo_icon.png" alt="Snap-on Logo" class="logo-icon"> All Access. No Excuses.</div>
+      <!-- Restored longer tagline: conveys building, path and solutions; correct Alina -->
+      <p class="tag">This ain’t a Linktree — it’s my territory. I don't just sell tools — I build my own path and custom solutions that last, with Alina on standby.</p>
 
       <!-- Buttons -->
       <div class="grid">
@@ -110,21 +163,27 @@
         <a class="btn" href="https://otis.curtbrag.com/addyourride"><i class="fa-solid fa-car-side"></i>Add Your Ride</a>
       </div>
 
-      <!-- Curtis AI Command Center (Alana) -->
+      <!-- Curtis AI Command Center (Alina) -->
       <div class="cc">
         <div class="cc-head">
-          <img src="assets/alina_avatar.png" alt="Alana avatar">
-          <div><strong>Alana — Curtis AI Command Center</strong></div>
+          <img src="assets/alina_avatar.png" alt="Alina avatar">
+          <div><strong>Alina — Curtis AI Command Center</strong></div>
         </div>
         <div class="cc-body">
           <div class="stats">GPT sessions 7,500+ • Custom automations (Bitly, Netlify, DraftKings, more) • Tool deals closed: ∞</div>
-
+          <!-- Quick prompt chips for common requests -->
+          <div class="chips">
+            <button class="chip" onclick="input.value='What tools are on promo this week?'; send()">Promos</button>
+            <button class="chip" onclick="input.value='Schedule a truck stop in Swampscott'; send()">Schedule Stop</button>
+            <button class="chip" onclick="input.value='DraftKings odds help'; send()">DraftKings</button>
+            <button class="chip" onclick="input.value='Share my payment options'; send()">Pay Options</button>
+          </div>
           <div class="chat-wrap" id="chatWrap">
             <div class="chat-log" id="chatLog" aria-live="polite">
-              <div class="msg sys"><div class="bubble">Alana here. What do you need?</div></div>
+              <div class="msg sys"><div class="bubble">Alina here. What do you need?</div></div>
             </div>
             <div class="chat-input">
-              <input id="userInput" type="text" autocomplete="off" placeholder="Type to Alana…" />
+              <input id="userInput" type="text" autocomplete="off" placeholder="Type to Alina…" />
               <button id="sendBtn" type="button">Send</button>
             </div>
           </div>
@@ -145,7 +204,7 @@
   </div>
 
   <script>
-    // --- Alana chat glue (fixed) ---
+    // --- Alina chat glue (fixed) ---
     const log = document.getElementById('chatLog');
     const input = document.getElementById('userInput');
     const sendBtn = document.getElementById('sendBtn');
@@ -161,7 +220,7 @@
       container.scrollTop = container.scrollHeight;
     }
 
-    async function askAlana(text){
+    async function askAlina(text){
       try{
         const res = await fetch('/.netlify/functions/chat', {
           method:'POST',
@@ -187,13 +246,13 @@
         // Clear existing messages
         log.innerHTML = '';
         // Show the initial AI greeting again
-        appendMsg(log, 'sys', 'Alana here. What do you need?');
+        appendMsg(log, 'sys', 'Alina here. What do you need?');
         input.value = '';
         return;
       }
       appendMsg(log, 'me', msg);
       input.value = '';
-      const reply = await askAlana(msg);
+      const reply = await askAlina(msg);
       appendMsg(log, 'sys', reply);
     }
 
