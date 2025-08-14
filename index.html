@@ -179,6 +179,18 @@
     async function send(){
       const msg = input.value.trim();
       if(!msg) return;
+      // Support a special command to refresh the chat conversation. When the user
+      // types "!refresh", clear the chat log and restore the initial greeting
+      // without calling the backend. This lets users start a new conversation
+      // without reloading the page.
+      if (msg.toLowerCase() === '!refresh') {
+        // Clear existing messages
+        log.innerHTML = '';
+        // Show the initial AI greeting again
+        appendMsg(log, 'sys', 'Alana here. What do you need?');
+        input.value = '';
+        return;
+      }
       appendMsg(log, 'me', msg);
       input.value = '';
       const reply = await askAlana(msg);
