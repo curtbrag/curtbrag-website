@@ -1,1 +1,40 @@
-{"updatedAt":"2025-08-15T04:00:00Z","teams":[{"league":"NBA","team":"Celtics","record":"—","standing":"","next":""},{"league":"NFL","team":"Patriots","record":"—","standing":"","next":""},{"league":"NHL","team":"Bruins","record":"—","standing":"","next":""},{"league":"MLB","team":"Red Sox","record":"—","standing":"","next":""},{"league":"MLS","team":"Revolution","record":"—","standing":"","next":""}]}
+{
+  "updatedAt": "2025-08-15T21:03:35Z",
+  "teams": [
+    {
+      "league": "NBA",
+      "team": "Celtics",
+      "record": "—",
+      "standing": "",
+      "next": ""
+    },
+    {
+      "league": "NFL",
+      "team": "Patriots",
+      "record": "—",
+      "standing": "",
+      "next": ""
+    },
+    {
+      "league": "NHL",
+      "team": "Bruins",
+      "record": "—",
+      "standing": "",
+      "next": ""
+    },
+    {
+      "league": "MLB",
+      "team": "Red Sox",
+      "record": "—",
+      "standing": "",
+      "next": ""
+    },
+    {
+      "league": "MLS",
+      "team": "Revolution",
+      "record": "—",
+      "standing": "",
+      "next": ""
+    }
+  ]
+}
