@@ -1,10 +1,1 @@
-{
-  "updatedAt": "2025-08-15T04:00:00Z",
-  "teams": [
-    { "name": "Celtics", "record": "\u2014", "nextGame": "\u2014" },
-    { "name": "Patriots", "record": "\u2014", "nextGame": "\u2014" },
-    { "name": "Bruins", "record": "\u2014", "nextGame": "\u2014" },
-    { "name": "Red Sox", "record": "\u2014", "nextGame": "\u2014" },
-    { "name": "Revolution", "record": "\u2014", "nextGame": "\u2014" }
-  ]
-}
+{"updatedAt":"2025-08-15T04:00:00Z","teams":[{"league":"NBA","team":"Celtics","record":"—","standing":"","next":""},{"league":"NFL","team":"Patriots","record":"—","standing":"","next":""},{"league":"NHL","team":"Bruins","record":"—","standing":"","next":""},{"league":"MLB","team":"Red Sox","record":"—","standing":"","next":""},{"league":"MLS","team":"Revolution","record":"—","standing":"","next":""}]}
