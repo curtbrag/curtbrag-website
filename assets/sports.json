@@ -1,40 +1,30 @@
 {
-  "updatedAt": "2025-08-15T21:03:35Z",
+  "updatedAt": "2025-08-31T12:00:00Z",
   "teams": [
     {
-      "league": "NBA",
-      "team": "Celtics",
-      "record": "—",
-      "standing": "",
-      "next": ""
+      "name": "Boston Celtics",
+      "record": "0-0 (preseason)",
+      "nextGame": "2025 season opener TBA"
     },
     {
-      "league": "NFL",
-      "team": "Patriots",
-      "record": "—",
-      "standing": "",
-      "next": ""
+      "name": "Boston Bruins",
+      "record": "0-0 (preseason)",
+      "nextGame": "2025 season opener TBA"
     },
     {
-      "league": "NHL",
-      "team": "Bruins",
-      "record": "—",
-      "standing": "",
-      "next": ""
+      "name": "New England Patriots",
+      "record": "0-0 (preseason)",
+      "nextGame": "2025 season opener TBA"
     },
     {
-      "league": "MLB",
-      "team": "Red Sox",
-      "record": "—",
-      "standing": "",
-      "next": ""
+      "name": "Boston Red Sox",
+      "record": "0-0 (preseason)",
+      "nextGame": "2025 season opener TBA"
     },
     {
-      "league": "MLS",
-      "team": "Revolution",
-      "record": "—",
-      "standing": "",
-      "next": ""
+      "name": "New England Revolution",
+      "record": "0-0 (season in progress)",
+      "nextGame": "Next match TBA"
     }
   ]
 }
