@@ -2,13 +2,52 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Add Your Ride</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="assets/css/main.css">
+  <style>
+    .ride-container {
+      max-width: 650px;
+      margin: 3rem auto;
+      padding: 2rem;
+      background: rgba(14, 15, 16, 0.88);
+      border-radius: 12px;
+      border: 1px solid #2a2b2e;
+    }
+    h1 { margin-top: 0; font-size: 2rem; text-align: center; }
+    p { text-align: center; margin-bottom: 1.5rem; }
+    form { display: flex; flex-direction: column; gap: 1rem; }
+    label { font-weight: bold; }
+    input, textarea {
+      width: 100%; padding: 0.8rem; background: #0c0d0e; color: #f5f5f5;
+      border: 1px solid #2a2b2e; border-radius: 8px; font-size: 1rem;
+    }
+    input[type="file"] { background: none; padding: 0.6rem 0; }
+    textarea { resize: vertical; min-height: 120px; }
+    button {
+      padding: 0.9rem; background: #ed232a; color: #fff;
+      border: none; border-radius: 8px; font-size: 1rem;
+      font-weight: bold; cursor: pointer; transition: background 0.15s;
+    }
+    button:hover { background: #b81b20; }
+  </style>
 </head>
 <body>
-  <div class="overlay">
+  <div class="ride-container">
     <h1>Add Your Ride</h1>
-    <p>(Upload feature coming soon! For now, email your car pic to <b>curtbrag@yahoo.com</b> and it’ll be added manually!)</p>
+    <p>Show off your wheels! Use the form below to send us a photo and a few details. We’ll feature it in the gallery.</p>
+    <form name="add-your-ride" method="POST" data-netlify="true" enctype="multipart/form-data" action="/thanks.html">
+      <input type="hidden" name="form-name" value="add-your-ride" />
+      <label for="name">Your Name</label>
+      <input id="name" type="text" name="name" required />
+      <label for="email">Your Email</label>
+      <input id="email" type="email" name="email" required />
+      <label for="ridephoto">Photo of Your Ride</label>
+      <input id="ridephoto" type="file" name="ridephoto" accept="image/*" required />
+      <label for="details">Details (optional)</label>
+      <textarea id="details" name="details" placeholder="Tell us what makes your ride special"></textarea>
+      <button type="submit">Submit Ride</button>
+    </form>
   </div>
 </body>
 </html>
