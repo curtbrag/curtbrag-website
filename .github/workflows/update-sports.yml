@@ -1,0 +1,26 @@
+name: Update Sports JSON
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 03:00 UTC = 11pm Eastern
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update sports.json timestamp
+        run: |
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          jq --arg now "$NOW" '.updatedAt = $now' assets/sports.json > tmp.json
+          mv tmp.json assets/sports.json
+          git config user.name "sports-bot"
+          git config user.email "sports-bot@users.noreply.github.com"
+          git add assets/sports.json
+          git commit -m "Daily sports.json update at $NOW"
+      - name: Push changes
+        run: |
+          git push
