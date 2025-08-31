@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cars Gallery</title>
+  <!-- Pull in the site’s shared styles -->
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    .gallery-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: center;
+      margin: 2em 0;
+    }
+    .gallery-grid img {
+      width: 220px;
+      max-width: 100%;
+      height: 150px;
+      object-fit: cover;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px #0003;
+      cursor: pointer;
+      transition: transform 0.13s;
+    }
+    .gallery-grid img:hover {
+      transform: scale(1.06);
+      box-shadow: 0 4px 20px #0007;
+    }
+    @media (max-width: 900px) {
+      .gallery-grid img { width: 45vw; height: 120px; }
+    }
+    @media (max-width: 600px) {
+      .gallery-grid img { width: 96vw; height: 96px; }
+    }
+    .back-btn {
+      display: inline-block;
+      margin: 2em 0 0 0;
+      padding: 10px 20px;
+      background: #111;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 8px;
+    }
+    .back-btn:hover {
+      background: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay">
+    <h1>Cars Gallery</h1>
+    <!-- Gallery container will be populated by JavaScript -->
+    <div id="cars-gallery" class="gallery-grid"></div>
+    <a href="../index.html" class="back-btn" style="margin-top:30px;">← Back to Home</a>
+  </div>
+  <!-- Load the dynamic gallery script -->
+  <script src="../assets/js/cars-gallery.js"></script>
+</body>
+</html>

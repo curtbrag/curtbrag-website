@@ -1,4 +1,5 @@
-[build]
+[
+build]
   functions = "netlify/functions"
 
 # Configure Netlify Functions
@@ -8,6 +9,7 @@
   # Ensure external modules are installed for Netlify Functions
   external_node_modules = ["@netlify/blobs"]
 
-# Schedule the sports-refresh function to run daily at 07:00 UTC
+# Schedule the sports-refresh function to run hourly instead of daily. The cron
+# expression "0 * * * *" triggers at the top of every hour in UTC.
 [functions."sports-refresh"]
-  schedule = "0 7 * * *"
+  schedule = "0 * * * *"
