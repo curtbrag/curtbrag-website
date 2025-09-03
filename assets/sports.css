@@ -7,6 +7,7 @@
   margin: 1rem 0;
   box-shadow: 0 2px 4px rgba(0,0,0,0.3);
 }
+
 #sports-tracker .sports-toggle {
   display: flex;
   justify-content: space-between;
@@ -14,16 +15,51 @@
   font-weight: 600;
   cursor: pointer;
 }
-#sports-tracker .sports-content.collapsed { display: none; }
-#sports-tracker .sports-list { list-style: none; margin: 0; padding: 0; }
+
+#sports-tracker .sports-content.collapsed {
+  display: none;
+}
+
+#sports-tracker .sports-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
 #sports-tracker .sports-item {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: .5rem;
   padding: .4rem 0;
   border-bottom: 1px solid rgba(255,255,255,0.12);
 }
-#sports-tracker .sports-item:last-child { border-bottom: 0; }
-#sports-tracker .team-name { flex: 2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#sports-tracker .team-record, #sports-tracker .team-next { flex: 1; text-align: right; }
-#sports-tracker .sports-updated { margin-top: .5rem; font-size: .8rem; opacity: .7; }
+
+#sports-tracker .sports-item:last-child {
+  border-bottom: 0;
+}
+
+#sports-tracker .team-name {
+  flex: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#sports-tracker .team-record,
+#sports-tracker .team-next {
+  flex: 1;
+  text-align: right;
+}
+
+#sports-tracker .sports-updated {
+  margin-top: .5rem;
+  font-size: .8rem;
+  opacity: .7;
+}
+
+/* Hide sports tracker completely */
+#sports-tracker,
+#sports-tracker-duplicate {
+  display: none !important;
+}
