@@ -31,11 +31,7 @@
   justify-content: space-between;
   align-items: center;
   gap: .5rem;
-  padding: .4rem 0;
-  border-bottom: 1px solid rgba(255,255,255,0.12);
-}
-
-#sports-tracker .sports-item:last-child {
+   .sports-item:last-child {
   border-bottom: 0;
 }
 
@@ -56,10 +52,4 @@
   margin-top: .5rem;
   font-size: .8rem;
   opacity: .7;
-}
-
-/* Hide sports tracker completely */
-#sports-tracker,
-#sports-tracker-duplicate {
-  display: none !important;
 }
