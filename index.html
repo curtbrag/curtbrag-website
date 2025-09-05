@@ -309,7 +309,35 @@ box-shadow:  none;
 <!-- Adjusted path: sports.js now lives directly in the assets folder -->
 <script src="assets/sports.js"></script>
 
-<!-- Adjusted path: sports.js now lives directly in the assets folder -->
+
+    <!-- Telegram chat widget -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+  <div id="chat-box" style="border:1px solid #ccc; max-height:200px; overflow-y:auto; padding:5px; margin-top:1rem;"></div>
+  <input id="chat-input" type="text" placeholder="Type a message..." />
+  <button onclick="sendMessage()">Send</button>
+
+  <script>
+    const socket = io('http://localhost:3000'); // change to your server
+    const box    = document.getElementById('chat-box');
+    const input  = document.getElementById('chat-input');
+
+    socket.on('telegram message', msg => {
+      const line = document.createElement('div');
+      line.textContent = `${msg.from}: ${msg.text}`;
+      box.appendChild(line);
+      box.scrollTop = box.scrollHeight;
+    });
+
+    function sendMessage() {
+      const text = input.value.trim();
+      if (text) {
+        socket.emit('chat message', text);
+        input.value = '';
+      }
+    }
+  </script>
+-- Adjusted path: sports.js now lives directly in the assets folder -->
 
 </body>
 </html>
