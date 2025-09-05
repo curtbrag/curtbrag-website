@@ -315,7 +315,9 @@ box-shadow:  none;
 
   <div id="chat-box" style="border:1px solid #ccc; max-height:200px; overflow-y:auto; padding:5px; margin-top:1rem;"></div>
   <input id="chat-input" type="text" placeholder="Type a message..." />
-  <button onclick="sendMessage()">Send</button>
+  
+    
+<button onclick="sendTelegramMessage()">Send</button>
 
   <script>
     const socket = io('http://localhost:3000'); // change to your server
@@ -329,7 +331,7 @@ box-shadow:  none;
       box.scrollTop = box.scrollHeight;
     });
 
-    function sendMessage() {
+    function sendTelegramMessage() {
       const text = input.value.trim();
       if (text) {
         socket.emit('chat message', text);
@@ -337,7 +339,7 @@ box-shadow:  none;
       }
     }
   </script>
--- Adjusted path: sports.js now lives directly in the assets folder -->
+
 
 </body>
 </html>
