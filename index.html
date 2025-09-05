@@ -184,13 +184,13 @@ box-shadow:  none;
         <div class="sports-content collapsed"></div>
       </section>
 
-      <!-- Curtis AI Command Center (Alina) -->
+      <!-- Curtis AI Command Center (Otis) -->
       <div class="cc">
         <div class="cc-head">
           <!-- New avatar image with ID for cycling and updated alt text -->
-          <!-- Default to Yuru crop #2 for the Alina AI avatar -->
-          <img id="avatarImg" src="assets/alina_avatar2.jpg" alt="Alina AI avatar">
-          <div><strong>Alina AI — Curtis AI Command Center</strong></div>
+          <!-- Default to Yuru crop #2 for the Otis AI avatar -->
+          <img id="avatarImg" src="assets/otis_avatar.png" alt="Otis AI avatar">
+          <div><strong>Otis AI — Curtis AI Command Center</strong></div>
         </div>
         <div class="cc-body">
           <div class="stats">GPT sessions 7,500+ • Custom automations (Bitly, Netlify, DraftKings, more) • Tool deals closed: ∞</div>
@@ -203,10 +203,10 @@ box-shadow:  none;
           </div>
           <div class="chat-wrap" id="chatWrap">
             <div class="chat-log" id="chatLog" aria-live="polite">
-              <div class="msg sys"><div class="bubble">Alina AI here. What do you need?</div></div>
+              <div class="msg sys"><div class="bubble">Otis AI here. What do you need?</div></div>
             </div>
             <div class="chat-input">
-          <input id="userInput" type="text" autocomplete="off" placeholder="Type to Alina AI…" />
+          <input id="userInput" type="text" autocomplete="off" placeholder="Type to Otis AI…" />
               <button id="sendBtn" type="button">Send</button>
             </div>
           </div>
@@ -245,7 +245,7 @@ box-shadow:  none;
       container.scrollTop = container.scrollHeight;
     }
 
-    async function askAlina(text){
+    async function askOtis(text){
       try{
         const res = await fetch('/.netlify/functions/chat', {
           method:'POST',
@@ -271,13 +271,13 @@ box-shadow:  none;
         // Clear existing messages
         log.innerHTML = '';
         // Show the initial AI greeting again
-      appendMsg(log, 'sys', 'Alina AI here. What do you need?');
+      appendMsg(log, 'sys', 'Otis AI here. What do you need?');
         input.value = '';
         return;
       }
       appendMsg(log, 'me', msg);
       input.value = '';
-      const reply = await askAlina(msg);
+      const reply = await askOtis(msg);
       appendMsg(log, 'sys', reply);
     }
 
@@ -292,9 +292,9 @@ box-shadow:  none;
   <script>
     // Reorder avatars so that Yuru crop #2 is the default (index 0).  Clicking cycles through the other crops.
     const avatarImgs = [
-      'assets/alina_avatar2.jpg',
-      'assets/alina_avatar3.jpg',
-      'assets/alina_avatar1.jpg'
+      'assets/otis_avatar.png',
+      'assets/otis_avatar.png',
+      'assets/otis_avatar.png'
     ];
     let avatarIndex = 0;
     const avatarEl = document.getElementById('avatarImg');
