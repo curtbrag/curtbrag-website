@@ -320,7 +320,7 @@ box-shadow:  none;
 <button onclick="sendTelegramMessage()">Send</button>
 
   <script>
-    const socket = io('https://your-app-name.onrender.com'); // change to your server
+const socket = io('https://snap-on-chat.onrender.com'); // change to your onsserver
     const box    = document.getElementById('chat-box');
     const input  = document.getElementById('chat-input');
     socket.on('telegram message', msg => {
