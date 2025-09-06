@@ -331,13 +331,21 @@ const socket = io('https://snap-on-chat.onrender.com');
       box.scrollTop = box.scrollHeight;
     });
 
-    function sendTelegramMessage() {
-      const text = input.value.trim();
-      if (text) {
-        socket.emit('chat message', text);
-        input.value = '';
-      }
-    }
+function sendTelegramMessage() {
+  const text = input.value.trim();
+  if (text) {
+    // Display your message immediately in the chat box
+    const myLine = document.createElement('div');
+    myLine.textContent = `You: ${text}`;
+    box.appendChild(myLine);
+    box.scrollTop = box.scrollHeight;
+    
+    socket.emit('chat message', text);
+    input.value = '';
+  }
+}
+       
+        }
   </script>
 
 
