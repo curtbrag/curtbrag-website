@@ -6,7 +6,12 @@ const TelegramBot = require('node-telegram-bot-api');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+const io = socketIo(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+});
 
 // Use environment variables for your bot token and chat ID
 const token = process.env.TELEGRAM_BOT_TOKEN || 'PASTE-YOUR-BOT-TOKEN';
