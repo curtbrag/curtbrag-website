@@ -1,0 +1,14 @@
+{
+  "name": "live-services",
+  "version": "1.0.0",
+  "description": "Real-time data services for Curt Brag's website",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.1"
+  }
+}
