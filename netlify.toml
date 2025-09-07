@@ -12,3 +12,11 @@
 # expression "0 * * * *" triggers at the top of every hour in UTC.
 [functions."sports-refresh"]
   schedule = "0 * * * *"
+
+
+# Security headers[
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    Content-Security-Policy = "default-src 'self'; img-src 'self' data:; script-src 'self' plausible.io; style-src 'self' fonts.googleapis.com cdn.jsdelivr.net; font-src 'self' fonts.gstatic.com cdn.jsdelivr.net; connect-src 'self'; frame-ancestors 'none';"
