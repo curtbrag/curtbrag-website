@@ -1,0 +1,21 @@
+{
+  "name": "Curtis Bragdon's World",
+  "short_name": "Curt Brag",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ed232a",
+  "theme_color": "#ed232a",
+  "description": "Curtis Bragdon—Snap-on tools, service, custom AI and builds with Otis AI. Galleries, contact, and more.",
+  "icons": [
+    {
+      "src": "/assets/logo_icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/logo_icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
