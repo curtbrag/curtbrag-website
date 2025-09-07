@@ -189,15 +189,11 @@ box-shadow:  none;
         <a class="btn" href="https://otis.curtbrag.com/curtshop" target="_blank" rel="noopener"><i class="fa-solid fa-shopping-cart"></i>Shop</a>
       </div>
 
-      <!-- Boston Sports Tracker -->
-      <section id="sports-tracker" class="sports-card">
-        <div class="sports-toggle">
-          <span>Boston Sports Tracker</span>
-          <span class="sports-updated"></span>
-        </div>
-        <div class="sports-content collapsed"></div>
-      </section>
+  <h2>Boston Sports Tracker</h2>
+<p id="boston-sports-tracker">Loading score...</p>
 
+<h2>Snap‑on Stock Price</h2>
+<p id="snapon-stock">Loading price.../p>
       <!-- Curtis AI Command Center (Otis) -->
       <div class="cc">
         <div class="cc-head">
@@ -236,7 +232,20 @@ box-shadow:  none;
 
       <div style="margin-top:16px; color:var(--muted); font-size:.85rem;">© Curtis Bragdon</div>
         <div style="margin-top:8px; font-size:.85rem;">
-    <a href="privacy.html">Privacy Policy</a> | <a href="terms.html">Terms of Service</a>
+  
+<!-- Start of group chat -->
+<section id="group-chat" aria-label="Group Chat">
+  <h2>Group Chat</h2>
+  <iframe
+    src="https://minnit.chat/CurtBrag?embed&web"
+    loading="lazy"
+    style="width:100%;height:560px;border:0;overflow:hidden"
+    allow="camera;microphone"
+  ></iframe>
+  <p>If the chat doesn’t load, <a href="https://minnit.chat/CurtBrag" rel="noopener">open it here</a>.</p>
+</section>
+<!-- End of group chat -->
+  <a href="privacy.html">Privacy Policy</a> | <a href="terms.html">Terms of Service</a>
   </div>
     </div>
   </div>
@@ -320,48 +329,46 @@ box-shadow:  none;
   </script>
  <!-- Load dynamic sports tracker script -->
 <!-- Sports tracker container -->
-<div id=="sports-tracker-duplicate">
-  <div class="sports"></div>
-</div>
-<!-- Adjusted path: sports.js now lives directly in the assets folder -->
-<script src="assets/sports.js"></script>
-
-
-    <!-- Telegram chat widget -->
-  <script src="https://cdn.socket.io/4.7.2/socket.io.minjs"></script>
-
-  <div id="chat-box" style="border:1px solid #ccc; max-height:200px; overflow-y:auto; padding:5px; margin-top:1rem;"></div>
-  <input id="chat-input" type="text" placeholder="Type a message..." />
-  
-    
-<button onclick="sendTelegramMessage()">Send</button>
-
-  <script>
-const socket = io('https://snap-on-chat.onrender.com'); 
-    const box    = document.getElementById('chat-box');
-    const input  = document.getElementById('chat-input');
-    socket.on('telegram message', msg => {
-      const line = document.createElement('div');
-      line.textContent = `${msg.from}: ${msg.text}`;
-      box.appendChild(line);
-      box.scrollTop = box.scrollHeight;
-    });
-
-function sendTelegramMessage() {
-  const text = input.value.trim();
-  if (text) {
-    // Display your message immediately in the chat box
-    const myLine = document.createElement('div');
-    myLine.textContent = `You: ${text}`;
-    box.appendChild(myLine);
-    box.scrollTop = box.scrollHeight;
-    
-    socket.emit('chat message', text);
-    input.value = '';
+<d<script>
+(async function() {
+  const API = 'https://curtbrag-live-services.onrender.com';
+  async function updateCeltics() {
+    try {
+      const res = await fetch(API + '/nba/celtics');
+      const data = await res.json();
+      const el = document.getElementById('boston-sports-tracker');
+      if (data.success && data.game) {
+        const g = data.game;
+        el.textContent = `${g.homeTeam} ${g.homeScore} — ${g.visitorTeam} ${g.visitorScore} (${g.status})`;
+      } else {
+        el.textContent = data.message || 'No Celtics game today.';
+      }
+    } catch (err) {
+      console.error('Failed to update Celtics score:', err);
+      const el = document.getElementById('boston-sports-tracker');
+      if (el) el.textContent = 'Error loading score';
+    }
   }
-       
-       }
-  </script>
+
+  async function updateStock() {
+    try {
+      const res = await fetch(API + '/stock/SNA');
+      const data = await res.json();
+      const q = data.quote;
+      const el = document.getElementById('snapon-stock');
+      el.textContent = `${q.symbol}: ${q.price.toFixed(2)} ${q.currency} (${q.change.toFixed(2)}, ${q.percentChange.toFixed(2)}%)`;
+    } catch (err) {
+      console.error('Failed to update stock price:', err);
+      const el = document.getElementById('snapon-stock');
+      if (el) el.textContent = 'Error loading stock price';
+    }
+  }
+
+  );
+  updateStock();
+})();
+</script>
+
 
 
 </body>
