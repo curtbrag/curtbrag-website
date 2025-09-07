@@ -14,7 +14,7 @@
   <meta property="og:url" content="https://curtbrag.com/" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
->
+
 
   <!-- Fonts / Icons -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -142,7 +142,37 @@ box-shadow:  none;
     <!-- Load sports tracker stylesheet -->
     <!-- Adjusted path: sports.css now lives directly in the assets folder -->
     <link rel="stylesheet" href="assets/sports.css" />
-</head>
+</h
+    <!-- Organization Schema -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "Curtis Bragdon's World",
+    "url": "https://curtbrag.com/",
+    "logo": "https://curtbrag.com/assets/logo_icon.png",
+    "sameAs": [
+      "https://otis.curtbrag.com/curtinstagram",
+      "https://otis.curtbrag.com/curtfacebook",
+      "https://otis.curtbrag.com/curttiktok",
+      "https://otis.curtbrag.com/curtyoutube",
+      "https://otis.curtbrag.com/curtthreads",
+      "https://otis.curtbrag.com/curtsnap",
+      "https://otis.curtbrag.com/curttelegram",
+      "https://otis.curtbrag.com/curtreddit"
+    ]
+  }
+  </script>
+
+  <!-- App Manifest -->
+  <link rel="manifest" href="/site.webmanifest">
+
+  <!-- Theme color -->
+  <meta name="theme-color" content="#ed232a">
+
+  <!-- Plausible analytics -->
+  <script defer data-domain="curtbrag.com" src="https://plausible.io/js/plausible.js"></script>
+>
 <body>
   <div class="overlay">
     <div class="wrap">
@@ -185,12 +215,12 @@ box-shadow:  none;
         <a class="btn" href="https://otis.curtbrag.com/carsgallery"><i class="fa-solid fa-car"></i>Cars Gallery</a>
         <a class="btn" href="https://otis.curtbrag.com/addyourride"><i class="fa-solid fa-car-side"></i>Add Your Ride</a>
 
-        <!-- New shop button – points to the shop slug (tracking via otis) -->
-        <a class="btn" href="https://otis.curtbrag.com/curtshop" target="_blank" rel="noopener"><i class="fa-solid fa-shopping-cart"></i>Shop</a>
+        !--<!-- New shop button – points to the shop slug (tracking via otis) -->
+<!--         <a class="btn" href="https://otis.curtbrag.com/curtshop" target="_blank" rel="noopener"><i class="fa-solid fa-shopping-cart"></i>Shop</a> -->
       </div>
 
       <!-- Boston Sports Tracker -->
-      <section id="sports-tracker" class="sports-card">
+   s   <section id="sports-tracker" class="sports-card" style="display:none">
         <div class="sports-toggle">
           <span>Boston Sports Tracker</span>
           <span class="sports-updated"></span>
