@@ -11,8 +11,11 @@ fetch('../assets/data/cars_gallery.json')
     const images = Array.isArray(data.images) ? data.images : [];
     images.forEach(file => {
       const img = document.createElement('img');
-      img.src = `cars/${file}`;
-      img.alt = `cars ${file}`;
+   img.src = 'cars/' + file;
+   img.alt = 'cars ' + file;
+          img.loading = 'lazy';
+    img.width = 220;
+    img.height = 150;
       img.addEventListener('click', () => {
         window.open(img.src, '_blank');
       });
