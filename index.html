@@ -327,18 +327,7 @@ box-shadow:  none;
       });
     }
   
- <!-- Load dynamic sports tracker script -->
-<!-- Sports tracker container -->
-<dh2>Boston Sports Tracker</h2>
-<p id="boston-sports-tracker">Loading score...</p>
-<h2<>Snap-on Stock Price</h2>
-<p id="snapon-stock">Loading price...</p>
-
-      <sript>
-(async function() {
-  const API = 'https://curtbrag-live-services.onrender.com';
-  async function updateCeltics() {
-    try {
+ <<!--!-- L{
       const res = await fetch(API + '/nba/celtics');
       const data = await res.json();
       const el = document.getElementById('boston-sports-tracker');
