@@ -12,3 +12,14 @@
 # expression "0 * * * *" triggers at the top of every hour in UTC.
 [functions."sports-refresh"]
   schedule = "0 * * * *"
+
+# Redirect scoreboard requests to Netlify functions
+[[redirects]]
+  from = "/sports/celtics"
+  to   = "/.netlify/functions/celtics"
+  status = 200
+
+[[redirects]]
+  from = "/stocks/sna"
+  to   = "/.netlify/functions/sna"
+  status = 200
