@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,15 +5,14 @@
   <title>Curtis Bragdon's World</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <!-- SEO (safe) -->
-  <meta name="description" content="Curtis BragdoCurtis Bragdon — Snap-on tools, service, custom AI and builds with Otis AI. Galleries, contact, and more." />
-      <!-- Social sharing / Open Graph -->
+  <meta name="description" content="Curtis Bragdon — Snap-on tools, service, custom AI and builds with Otis AI. Galleries, contact, and more." />
+  <!-- Social sharing / Open Graph -->
   <meta property="og:title" content="Curtis Bragdon's World" />
   <meta property="og:description" content="Snap-on tools, custom builds and Otis AI – schedule a stop, request tools and more." />
   <meta property="og:image" content="https://curtbrag.com/assets/logo_icon.png" />
   <meta property="og:url" content="https://curtbrag.com/" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
->
 
   <!-- Fonts / Icons -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -68,80 +66,67 @@
     .cc-head img{width:28px; height:28px; border-radius:50%; object-fit:cover; background:#222}
     .cc-body{padding:12px 14px}
     .stats{color:var(--muted); font-size:.92rem}
+  </style>
 
-    /* Chat widget */
-    .chat-wrap{margin-top:10px; border:1px solid var(--border); border-radius:10px; overflow:hidden}
-    .chat-log{height:240px; overflow:auto; padding:10px 12px; background:#111214}
-    .msg{margin:8px 0; display:flex; gap:8px}
-    .msg.me{justify-content:flex-end}
-    .bubble{max-width:75%; padding:10px 12px; border-radius:14px; line-height:1.45; background:#1e1f23; border:1px solid #2b2c30}
-    .me .bubble{background:#1b2a1b; border-color:#294029}
-    .sys .bubble{background:#1b202b; border-color:#2b3952}
-    .chat-input{display:flex; gap:8px; padding:10px; background:#0f1012; border-top:1px solid var(--border)}
-    .chat-input input{flex:1; padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:#0c0d0e; color:var(--text)}
-    .chat-input button{padding:10px 14px; border-radius:8px; border:1px solid var(--border); background:var(--brand); color:#fff; font-weight:600; cursor:pointer}
-    </style>
+  <!-- UI overrides for larger logo, avatar, coloured icons, and chips -->
+  <style>
+    /* enlarge the truck/dog logo; responsive clamp ensures it scales on mobile/desktop */
+    .logo-icon {
+      width: clamp(96px, 12vw, 180px);
+      height: auto;
+      margin-right: 10px;
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,.35));
+    }
+    /* tagline styling to keep spacing and legibility with bigger logo */
+    .tag {
+      margin-top: 0.35rem;
+      font-size: clamp(.95rem, 1.5vw, 1.15rem);
+      opacity: .9;
+    }
+    /* bigger avatar in command center */
+    .cc-head img {
+      width: clamp(64px, 8vw, 112px);
+      height: clamp(64px, 8vw, 112px);
+      border-radius: 10px;
+      border: 2px solid rgba(255,255,255,.15);
+      box-shadow: none;
+      object-fit: cover;
+      object-position: center top;
+    }
+    /* the icons without changing button backgrounds */
+    .btn i.fa-instagram{color:#E4405F}
+    .btn i.fa-facebook{color:#1877F2}
+    .btn i.fa-tiktok{color:#000000}
+    .btn i.fa-youtube{color:#FF0000}
+    .btn i.fa-threads{color:#7C2E7A}
+    .btn i.fa-snapchat{color:#FFFC00}
+    .btn i.fa-telegram{color:#26A4E3}
+    .btn i.fa-reddit{color:#FF4500}
+    .btn i.fa-football{color:#007049}
+    .btn i.fa-money-bill{color:#6D1ED4}
+    .btn i.fa-square{color:#00C244}
+    .btn i.fa-vimeo{color:#3D95CE}
+    .btn i.fa-spotify{color:#1DB954}
+    .btn i.fa-heart{color:#E0245E}
+    .btn i.fa-phone{color:#34A853}
+    .btn i.fa-comment-dots{color:#34A853}
+    .btn i.fa-envelope{color:#EA4335}
+    .btn i.fa-truck-monster{color:#E11B22}
+    .btn i.fa-car{color:#6CACE4}
+    .btn i.fa-car-side{color:#6CACE4}
+    /* new shop icon colour */
+    .btn i.fa-shopping-cart{color:var(--brand)}
+    /* subtle hover effect */
+    .btn:hover { background: rgba(255,255,255,.05); }
+    /* quick chips for common prompts */
+    .chips { display:flex; gap:.5rem; flex-wrap:wrap; margin:.5rem 0 0; }
+    .chip { font: inherit; padding:.4rem .6rem; border-radius: 999px; border:1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.03); cursor:pointer; color: var(--text); }
+    .chip:hover { background: rgba(255,255,255,.08); }
 
-    <!-- UI overrides for larger logo, avatar, coloured icons, and chips -->
-    <style>
-      /* enlarge the truck/dog logo; responsive clamp ensures it scales on mobile/desktop */
-      .logo-icon {
-        width: clamp(96px, 12vw, 180px);
-        height: auto;
-        margin-right: 10px;
-        filter: drop-shadow(0 2px 6px rgba(0,0,0,.35));
-      }
-      /* tagline styling to keep spacing and legibility with bigger logo */
-      .tag {
-        margin-top: 0.35rem;
-        font-size: clamp(.95rem, 1.5vw, 1.15rem);
-        opacity: .9;
-      }
-      /* bigger avatar in command center */
-      .cc-head img {
-        width: clamp(64px, 8vw, 112px);
-        height: clamp(64px, 8vw, 112px);
-        border-radius: 10px;
-        border: 2px solid rgba(255,255,255,.15);
-box-shadow:  none;
-                object-fit: cover;
-        object-position: center top;
-      }
-               the icons without changing button backgrounds */
-      .btn i.fa-instagram{color:#E4405F}
-      .btn i.fa-facebook{color:#1877F2}
-      .btn i.fa-tiktok{color:#000000}
-      .btn i.fa-youtube{color:#FF0000}
-      .btn i.fa-threads{color:#7C2E7A}
-      .btn i.fa-snapchat{color:#FFFC00}
-      .btn i.fa-telegram{color:#26A4E3}
-      .btn i.fa-reddit{color:#FF4500}
-      .btn i.fa-football{color:#007049}
-      .btn i.fa-money-bill{color:#6D1ED4}
-      .btn i.fa-square{color:#00C244}
-      .btn i.fa-vimeo{color:#3D95CE}
-      .btn i.fa-spotify{color:#1DB954}
-      .btn i.fa-heart{color:#E0245E}
-      .btn i.fa-phone{color:#34A853}
-      .btn i.fa-comment-dots{color:#34A853}
-      .btn i.fa-envelope{color:#EA4335}
-      .btn i.fa-truck-monster{color:#E11B22}
-      .btn i.fa-car{color:#6CACE4}
-      .btn i.fa-car-side{color:#6CACE4}
-  /* new shop icon colour */
-  .btn i.fa-shopping-cart{color:var(--brand)}
-      /* subtle hover effect */
-      .btn:hover { background: rgba(255,255,255,.05); }
-      /* quick chips for common prompts */
-      .chips { display:flex; gap:.5rem; flex-wrap:wrap; margin:.5rem 0 0; }
-      .chip { font: inherit; padding:.4rem .6rem; border-radius: 999px; border:1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.03); cursor:pointer; color: var(--text); }
-      .chip:hover { background: rgba(255,255,255,.08); }
-
-  /* Removed inline sports tracker styling.  Styling is now provided in assets/sports.css */
-    </style>
-    <!-- Load sports tracker stylesheet -->
-    <!-- Adjusted path: sports.css now lives directly in the assets folder -->
-    <link rel="stylesheet" href="assets/sports.css" />
+    /* Removed inline sports tracker styling.  Styling is now provided in assets/sports.css */
+  </style>
+  <!-- Sports assets (keep exactly one of each) -->
+  <link rel="stylesheet" href="assets/sports.css" />
 </head>
 <body>
   <div class="overlay">
@@ -149,17 +134,15 @@ box-shadow:  none;
 
       <!-- Header -->
       <div class="brand"><img src="assets/logo_icon.png" alt="Snap-on Logo" class="logo-icon"> All Access. No Excuses.</div>
-      <!-- Restored longer tagline: conveys building, path and solutions; correct Otis -->
       <p class="tag">This ain’t a Linktree — it’s my territory. I don't just sell tools — I build my own path and custom solutions that last, with Otis AI on standby.</p>
 
-      <!-- Buttons --> AI
+      <!-- Buttons -->
       <div class="grid">
-        
-                <!-- Internal call-to-action buttons -->
+        <!-- Internal call-to-action buttons -->
         <a class="btn" href="https://otis.curtbrag.com/curtschedule" target="_blank" rel="noopener"><i class="fa-solid fa-calendar-check"></i>Schedule Stop</a>
         <a class="btn" href="https://otis.curtbrag.com/curtrequest" target="_blank" rel="noopener"><i class="fa-solid fa-toolbox"></i>Request a Tool</a>
         <a class="btn" href="https://otis.curtbrag.com/curtwarranty" target="_blank" rel="noopener"><i class="fa-solid fa-shield-alt"></i>Warranty/RA Help</a>
-<!-- External (Bitly/otis preserved for tracking) -->
+        <!-- External (Bitly/otis preserved for tracking) -->
         <a class="btn" href="https://otis.curtbrag.com/curtinsta" target="_blank" rel="noopener"><i class="fa-brands fa-instagram"></i>Instagram</a>
         <a class="btn" href="https://otis.curtbrag.com/curtfacebook" target="_blank" rel="noopener"><i class="fa-brands fa-facebook"></i>Facebook</a>
         <a class="btn" href="https://otis.curtbrag.com/curttiktok" target="_blank" rel="noopener"><i class="fa-brands fa-tiktok"></i>TikTok</a>
@@ -181,7 +164,7 @@ box-shadow:  none;
         <a class="btn" href="https://otis.curtbrag.com/curtemail"><i class="fa-solid fa-envelope"></i>Email Me</a>
 
         <!-- Galleries via otis (tracking kept) -->
-        <a class="btn" href="https://otis.curtbrag.com/sngallery"><i class="fa-solid fa-truck-monster"></i>Snap‑on Gallery</a>
+        <a class="btn" href="https://otis.curtbrag.com/sngallery"><i class="fa-solid fa-truck-monster"></i>Snap-on Gallery</a>
         <a class="btn" href="https://otis.curtbrag.com/carsgallery"><i class="fa-solid fa-car"></i>Cars Gallery</a>
         <a class="btn" href="https://otis.curtbrag.com/addyourride"><i class="fa-solid fa-car-side"></i>Add Your Ride</a>
 
@@ -189,16 +172,70 @@ box-shadow:  none;
         <a class="btn" href="https://otis.curtbrag.com/curtshop" target="_blank" rel="noopener"><i class="fa-solid fa-shopping-cart"></i>Shop</a>
       </div>
 
-  <h2>Boston Sports Tracker</h2>
-<p id="boston-sports-tracker">Loading score...</p>
+      <!-- Scoreboards -->
+      <h2>Boston Sports Tracker</h2>
+      <p id="boston-sports-tracker">Loading…</p>
 
-<h2>Snap‑on Stock Price</h2>
-<p id="snapon-stock">Loading price.../p>
+      <h2>Snap-on Stock Price</h2>
+      <p id="snapon-stock">Loading…</p>
+
+      <!-- Live updater: placed immediately under placeholders; single instance -->
+      <script>
+      (function () {
+        const BASE = "https://curtbrag-live-services.onrender.com";
+        const $celtics = document.getElementById("boston-sports-tracker");
+        const $sna = document.getElementById("snapon-stock");
+        const set = (el, t) => { if (el) el.textContent = t; };
+
+        async function get(url) {
+          const r = await fetch(url, { cache: "no-store" });
+          if (!r.ok) throw new Error(r.status + " " + r.statusText);
+          return r.json();
+        }
+
+        function renderCeltics(data) {
+          if (typeof data === "string") return data;
+          if (data?.score) return data.score;
+          const g = data?.game;
+          if (g && (g.score || (g.homeTeam && g.homeScore != null && g.visitorTeam && g.visitorScore != null && g.status))) {
+            return g.score || `${g.homeTeam} ${g.homeScore} — ${g.visitorTeam} ${g.visitorScore} (${g.status})`;
+          }
+          return "No game data";
+        }
+
+        function renderQuote(data) {
+          const q = data?.quote ?? data?.price ?? data?.last ?? data?.c;
+          if (q == null) return "No quote";
+          const ch = data?.change ?? data?.d;
+          const pct = data?.percent ?? data?.dp;
+          return (ch != null && pct != null)
+            ? `SNA $${Number(q).toFixed(2)} (${Number(ch).toFixed(2)}, ${Number(pct).toFixed(2)}%)`
+            : `SNA $${Number(q).toFixed(2)}`;
+        }
+
+        async function updateOnce() {
+          try {
+            const [cRaw, sRaw] = await Promise.all([
+              get(`${BASE}/sports/celtics`).catch(() => get(`${BASE}/celtics`)),
+              get(`${BASE}/stocks/sna`).catch(() => get(`${BASE}/stock/sna`)),
+            ]);
+            set($celtics, renderCeltics(cRaw));
+            set($sna, renderQuote(sRaw));
+          } catch (err) {
+            set($celtics, "Error loading score");
+            set($sna, "Error loading price");
+            console.error("Updater error:", err);
+          }
+        }
+
+        updateOnce();
+        setInterval(updateOnce, 60_000);
+      })();
+      </script>
+
       <!-- Curtis AI Command Center (Otis) -->
       <div class="cc">
         <div class="cc-head">
-          <!-- New avatar image with ID for cycling and updated alt text -->
-          <!-- Default to Yuru crop #2 for the Otis AI avatar -->
           <img id="avatarImg" src="assets/otis_avatar.png" alt="Otis AI avatar">
           <div><strong>Otis AI — Curtis AI Command Center</strong></div>
         </div>
@@ -206,113 +243,43 @@ box-shadow:  none;
           <div class="stats">GPT sessions 7,500+ • Custom automations (Bitly, Netlify, DraftKings, more) • Tool deals closed: ∞</div>
           <!-- Quick prompt chips for common requests -->
           <div class="chips">
-            <button class="chip" onclick="input.value='What tools are on promo this week?'; send()">Promos</button>
-            <button class="chip" onclick="input.value='Schedule a truck stop in Swampscott'; send()">Schedule Stop</button>
-            <button class="chip" onclick="input.value='DraftKings odds help'; send()">DraftKings</button>
-            <button class="chip" onclick="input.value='Share my payment options'; send()">Pay Options</button>
+            <button class="chip">Promos</button>
+            <button class="chip">Schedule Stop</button>
+            <button class="chip">DraftKings</button>
+            <button class="chip">Pay Options</button>
           </div>
-          <div class="chat-wrap" id="chatWrap">
-            <div class="chat-log" id="chatLog" aria-live="polite">
-              <div class="msg sys"><div class="bubble">Otis AI here. What do you need?</div></div>
-            </div>
-            <div class="chat-input">
-          <input id="userInput" type="text" autocomplete="off" placeholder="Type to Otis AI…" />
-              <button id="sendBtn" type="button">Send</button>
-            </div>
-          </div>
-        </div>      </div>
+        </div>
+      </div>
 
       <!-- Contact -->
       <div class="section-title">Contact</div>
       <div class="contact-section">
-  <a href="contact.html">Contact Form</a>
-        
+        <a href="contact.html">Contact Form</a>
       </div>
 
       <div style="margin-top:16px; color:var(--muted); font-size:.85rem;">© Curtis Bragdon</div>
-        <div style="margin-top:8px; font-size:.85rem;">
-  
-<!-- Start of group chat -->
-<section id="group-chat" aria-label="Group Chat">
-  <h2>Group Chat</h2>
-  <iframe
-  
-    src="https://tlk.io/curtbrag"
-    loading="lazy"
-    style="width:100%;height:560px;border:0;overflow:hidden"
-    allow="camera;microphone"
-  ></iframe>
-          <p>If the chat doesn’t load, <a href="https://tlk.io/curtbrag" rel="noopener">open it here</a>.</p>
-</section>
-<!-- End of group chat -->
-  <a href="privacy.html">Privacy Policy</a> | <a href="terms.html">Terms of Service</a>
-  </div>
+      <div style="margin-top:8px; font-size:.85rem;"></div>
+
+      <!-- Start of group chat -->
+      <section id="group-chat" aria-label="Group Chat">
+        <h2>Group Chat</h2>
+        <iframe
+          src="https://tlk.io/curtbrag"
+          loading="lazy"
+          style="width:100%;height:560px;border:0;overflow:hidden"
+          allow="camera;microphone"
+        ></iframe>
+        <p>If the chat doesn’t load, <a href="https://tlk.io/curtbrag" rel="noopener">open it here</a>.</p>
+      </section>
+      <!-- End of group chat -->
+
+      <a href="privacy.html">Privacy Policy</a> | <a href="terms.html">Terms of Service</a>
+
     </div>
   </div>
 
+  <!-- Avatar cycling script -->
   <script>
-    // --- Otis chat glue (fixed) ---
-    const log = document.getElementById('chatLog');
-    const input = document.getElementById('userInput');
-    const sendBtn = document.getElementById('sendBtn');
-
-    function appendMsg(container, who, text){
-      const row = document.createElement('div');
-      row.className = 'msg ' + (who === 'me' ? 'me' : (who === 'sys' ? 'sys' : ''));
-      const b = document.createElement('div');
-      b.className = 'bubble';
-      b.textContent = text;
-      row.appendChild(b);
-      container.appendChild(row);
-      container.scrollTop = container.scrollHeight;
-    }
-
-    async function askOtis(text){
-      try{
-        const res = await fetch('/.netlify/functions/chat', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ message: text })
-        });
-        if(!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json().catch(()=>null);
-        return String(data?.reply || data?.message || 'OK');
-      }catch(err){
-        return 'Error: ' + err.message;
-      }
-    }
-
-    async function send(){
-      const msg = input.value.trim();
-      if(!msg) return;
-      // Support a special command to refresh the chat conversation. When the user
-      // types "!refresh", clear the chat log and restore the initial greeting
-      // without calling the backend. This lets users start a new conversation
-      // without reloading the page.
-      if (msg.toLowerCase() === '!refresh') {
-        // Clear existing messages
-        log.innerHTML = '';
-        // Show the initial AI greeting again
-      appendMsg(log, 'sys', 'Otis AI here. What do you need?');
-        input.value = '';
-        return;
-      }
-      appendMsg(log, 'me', msg);
-      input.value = '';
-      const reply = await askOtis(msg);
-      appendMsg(log, 'sys', reply);
-    }
-
- 
-    sendBtn?.addEventListener('click', send);
-    input?.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') send(); });
-
-  </script>
-  <!-- Boston Sports Tracker removed: now loaded dynamically -->
-
-  <!-- Avatar cycling script: cycle through uploaded avatars on click -->
-  <script>
-    // Reorder avatars so that Yuru crop #2 is the default (index 0).  Clicking cycles through the other crops.
     const avatarImgs = [
       'assets/otis_avatar.png',
       'assets/otis_avatar.png',
@@ -326,45 +293,6 @@ box-shadow:  none;
         avatarEl.src = avatarImgs[avatarIndex];
       });
     }
-  
- <<!--!-- L{
-      const res = await fetch(API + '/nba/celtics');
-      const data = await res.json();
-      const el = document.getElementById('boston-sports-tracker');
-      if (data.success && data.game) {
-        const g = data.game;
-        el.textContent = `${g.homeTeam} ${g.homeScore} — ${g.visitorTeam} ${g.visitorScore} (${g.status})`;
-      } else {
-        el.textContent = data.message || 'No Celtics game today.';
-      }
-   catch (err) {
-      console.error('Failed to update Celtics score:', err);
-      const el = document.getElementById('boston-sports-tracker');
-      if (el) el.textContent = 'Error loading score';
-    }
-  }
-
-  async function updateStock() {
-    try {
-      const res = await fetch(API + '/stock/SNA');
-      const data = await res.json();
-      
-      const el = document.getElementById('snapon-stock');
-      el.textContent = `${q.symbol}: ${q.price.toFixed(2)} ${q.currency} (${q.change.toFixed(2)}, ${q.percentChange.toFixed(2)}%)`;
-    } catch (err) {
-      console.error('Failed to update stock price:', err);
-      const el = document.getElementById('snapon-stock');
-      if (el) el.textContent = 'Error loading stock price';
-    }
-  }
-
-          updateCeltics();
-        
-        updateStock();
-    })();
-
-
+  </script>
 </body>
 </html>
-
-<!-- rebuild trigger -->
