@@ -179,60 +179,6 @@
       <h2>Snap-on Stock Price</h2>
       <p id="snapon-stock">Loadingâ€¦</p>
 
-      <!-- Live updater: placed immediately under placeholders; single instance -->
-      <script>
-      (function () {
-        const BASE = "https://curtbrag-live-services.onrender.com";
-        const $celtics = document.getElementById("boston-sports-tracker");
-        const $sna = document.getElementById("snapon-stock");
-        const set = (el, t) => { if (el) el.textContent = t; };
-
-        async function get(url) {
-          const r = await fetch(url, { cache: "no-store" });
-          if (!r.ok) throw new Error(r.status + " " + r.statusText);
-          return r.json();
-        }
-
-        function renderCeltics(data) {
-          if (typeof data === "string") return data;
-          if (data?.score) return data.score;
-          const g = data?.game;
-          if (g && (g.score || (g.homeTeam && g.homeScore != null && g.visitorTeam && g.visitorScore != null && g.status))) {
-            return g.score || `${g.homeTeam} ${g.homeScore} â€” ${g.visitorTeam} ${g.visitorScore} (${g.status})`;
-          }
-          return "No game data";
-        }
-
-        function renderQuote(data) {
-          const q = data?.quote ?? data?.price ?? data?.last ?? data?.c;
-          if (q == null) return "No quote";
-          const ch = data?.change ?? data?.d;
-          const pct = data?.percent ?? data?.dp;
-          return (ch != null && pct != null)
-            ? `SNA $${Number(q).toFixed(2)} (${Number(ch).toFixed(2)}, ${Number(pct).toFixed(2)}%)`
-            : `SNA $${Number(q).toFixed(2)}`;
-        }
-
-        async function updateOnce() {
-          try {
-            const [cRaw, sRaw] = await Promise.all([
-              get(`${BASE}/sports/celtics`).catch(() => get(`${BASE}/celtics`)),
-              get(`${BASE}/stocks/sna`).catch(() => get(`${BASE}/stock/sna`)),
-            ]);
-            set($celtics, renderCeltics(cRaw));
-            set($sna, renderQuote(sRaw));
-          } catch (err) {
-            set($celtics, "Error loading score");
-            set($sna, "Error loading price");
-            console.error("Updater error:", err);
-          }
-        }
-
-        updateOnce();
-        setInterval(updateOnce, 60_000);
-      })();
-      </script>
-
       <!-- Curtis AI Command Center (Otis) -->
       <div class="cc">
         <div class="cc-head">
@@ -298,4 +244,5 @@
   <script src="assets/scoreboard.js" defer></script>
 </body>
 </html>
+
 
