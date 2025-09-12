@@ -1,19 +1,17 @@
-[build]
+﻿[build]
   functions = "netlify/functions"
 
-# Configure Netlify Functions
 [functions]
-  # Bundle with esbuild for modern syntax support (required for ESM and schedule helper)
+  # Bundle Netlify Functions with esbuild and allow external deps
   node_bundler = "esbuild"
-  # Ensure external modules are installed for Netlify Functions
   external_node_modules = ["@netlify/blobs"]
 
-# Schedule the sports-refresh function to run hourly instead of daily. The cron
-# expression "0 * * * *" triggers at the top of every hour in UTC.
-[functions."sports-refresh"]
-  schedule = "0 * * * *"
+# Hourly schedule for sports-refresh (top of every hour, UTC)
+[[scheduled.functions]]
+  name = "sports-refresh"
+  cron = "0 * * * *"
 
-# Redirect scoreboard requests to Netlify functions
+# Redirect scoreboard requests to Netlify Functions
 [[redirects]]
   from = "/sports/celtics"
   to   = "/.netlify/functions/celtics"
@@ -24,20 +22,21 @@
   to   = "/.netlify/functions/sna"
   status = 200
 
-[[headers]]
-  for = "/assets/*"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-
+# HTML: always revalidate
 [[headers]]
   for = "/*"
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
 
+# Functions: conservative caching (Netlify still returns no-store; fine)
 [[headers]]
   for = "/.netlify/functions/*"
   [headers.values]
     Cache-Control = "no-cache"
+
+# Static assets: long-lived and immutable (you cache-bust with ?v=<hash>)
 [[headers]]
   for = "/assets/*"
   [headers.values]
