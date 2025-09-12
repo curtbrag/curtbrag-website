@@ -3,6 +3,11 @@
 const CELTICS_URL = "/.netlify/functions/celtics";
 const SNA_URL = "/.netlify/functions/sna";
 
+
+function cbTime(d=new Date()){
+  try{ return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+  catch(_){ return d.toTimeString().slice(0,5); }
+}
 function $(q, root=document){ return root.querySelector(q); }
 function $all(q, root=document){ return [...root.querySelectorAll(q)]; }
 
@@ -70,10 +75,9 @@ async function renderCeltics() {
     if (j?.game) {
       const g = j.game;
       val.textContent = `${g.visitorTeam} ${g.visitorScore}  @  ${g.homeTeam} ${g.homeScore}`;
-      meta.textContent = g.status || "";
+      meta.textContent = (g.status || "") + (g.status ? " • " : "") + `"`Updated ${cbTime()}`"`;
     } else if (j?.result) {
-      val.textContent = j.result;
-      meta.textContent = "";
+      val.textContent = j.result; meta.textContent = `"`Updated ${cbTime()}`"`;
     } else {
       throw new Error("No game data");
     }
@@ -96,7 +100,7 @@ async function renderSna() {
     const arrow = (ch==null ? "" : (ch >= 0 ? "▲" : "▼"));
     const cls   = (ch==null ? "" : (ch >= 0 ? "cb-up" : "cb-down"));
     val.innerHTML = `$${q.toFixed(2)} <span class="${cls}" style="font-size:14px;font-weight:600;margin-left:6px;">${arrow} ${ch!=null?ch.toFixed(2):"—"}${pct!=null?` (${pct.toFixed(2)}%)`:""}</span>`;
-    meta.textContent = "Refreshed just now";
+    meta.textContent = `"`Updated ${cbTime()}`"`;
   } catch (e) {
     val.textContent = "Unable to load price";
     meta.textContent = String(e.message || e);
@@ -109,3 +113,4 @@ async function renderSna() {
   renderSna();
   setInterval(renderSna, 60_000);
 })();
+
