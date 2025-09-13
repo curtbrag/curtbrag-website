@@ -1,6 +1,4 @@
 /*
   X-Frame-Options: DENY
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-
-/*
-  Content-Security-Policy-Report-Only: default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'
+  Content-Security-Policy-Report-Only: default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; report-uri /.netlify/functions/csp-report
