@@ -1,2 +1,2 @@
 /*
-  Content-Security-Policy: default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'; font-src 'self' data:; frame-src https://tlk.io; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'; font-src 'self' data:; frame-src https://tlk.io; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /.netlify/functions/csp-report
