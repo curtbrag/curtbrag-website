@@ -90,3 +90,13 @@
 }
 
 .cb-change{font-size:14px;font-weight:600;margin-left:6px;}
+
+.cb-widget { margin: 8px 0 16px 0; }
+.cb-card { background: rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.06);
+  border-radius:12px; padding:12px 14px; color:#eee;
+  font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+.cb-label { font-weight:600; font-size:14px; opacity:.9; letter-spacing:.3px; }
+.cb-value { font-size:20px; font-weight:700; margin-top:4px; }
+.cb-meta  { font-size:12px; opacity:.8; margin-top:2px; }
+.cb-up { color:#63ffa3; } .cb-down { color:#ff6b6b; }
+.cb-change{font-size:14px;font-weight:600;margin-left:6px;}
