@@ -1,4 +1,4 @@
-// Boston Sports Tracker logic with Netlify function + JSON fallback
+﻿// Boston Sports Tracker logic with Netlify function + JSON fallback
 async function fetchSportsData() {
  const urls = ['/assets/sports.json', '/.netlify/functions/sports'];
   for (const url of urls) {
@@ -63,3 +63,4 @@ if (document.readyState === 'loading') {
 } else {
   initSportsTracker();
 }
+

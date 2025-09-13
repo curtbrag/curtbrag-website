@@ -1,4 +1,4 @@
-// Dynamically build the cars gallery from a JSON manifest.
+﻿// Dynamically build the cars gallery from a JSON manifest.
 fetch('../assets/data/cars_gallery.json')
   .then(resp => {
     if (!resp.ok) throw new Error('Failed to load gallery manifest');
@@ -22,3 +22,4 @@ fetch('../assets/data/cars_gallery.json')
   .catch(err => {
     console.error('Error loading cars gallery:', err);
   });
+

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Live services server for Curt Brag's website.
  *
  * Provides two endpoints:
@@ -76,3 +76,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log('Live services server listening on port ' + PORT);
 });
+

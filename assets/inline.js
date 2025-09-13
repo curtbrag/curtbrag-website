@@ -1,4 +1,4 @@
-const avatarImgs = [
+﻿const avatarImgs = [
       'assets/otis_avatar.png',
       'assets/otis_avatar.png',
       'assets/otis_avatar.png'
@@ -11,3 +11,4 @@ const avatarImgs = [
         avatarEl.src = avatarImgs[avatarIndex];
       });
     }
+

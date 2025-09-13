@@ -1,4 +1,4 @@
-exports.handler = async (event, context) => {
+﻿exports.handler = async (event, context) => {
   // CORS preflight response
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -69,3 +69,4 @@ exports.handler = async (event, context) => {
     return allowCors(500, JSON.stringify({ reply: `Error: ${error.message}` }));
   }
 };
+

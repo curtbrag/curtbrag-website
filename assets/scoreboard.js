@@ -1,4 +1,4 @@
-/* scoreboard.js ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã\u2026Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â wires Celtics + SNA panels using Netlify functions */
+﻿/* scoreboard.js ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã\u2026Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â wires Celtics + SNA panels using Netlify functions */
 
 const CELTICS_URL = "/.netlify/functions/celtics";
 const SNA_URL = "/.netlify/functions/sna";
@@ -108,4 +108,5 @@ async function renderSna() {
   renderSna();
   setInterval(renderSna, 60_000);
 })();
+
 

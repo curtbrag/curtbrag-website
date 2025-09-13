@@ -1,4 +1,4 @@
-const fs = require('fs/promises');
+﻿const fs = require('fs/promises');
 
 const fetchJson = async (url) => {
   const fetch = (await import('node-fetch')).default;
@@ -209,3 +209,4 @@ main().catch(err => {
   console.error(err);
   process.exit(1);
 });
+
