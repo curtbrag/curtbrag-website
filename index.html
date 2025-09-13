@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -225,23 +225,10 @@
   </div>
 
   <!-- Avatar cycling script -->
-  <script>
-    const avatarImgs = [
-      'assets/otis_avatar.png',
-      'assets/otis_avatar.png',
-      'assets/otis_avatar.png'
-    ];
-    let avatarIndex = 0;
-    const avatarEl = document.getElementById('avatarImg');
-    if (avatarEl) {
-      avatarEl.addEventListener('click', () => {
-        avatarIndex = (avatarIndex + 1) % avatarImgs.length;
-        avatarEl.src = avatarImgs[avatarIndex];
-      });
-    }
-  </script>
+  
   <!-- scoreboard wiring -->
   <script src="assets/scoreboard.js?v=52076ab9" defer></script>
+<script src="/assets/inline.js?v=e7a59883" defer></script>
 </body>
 </html>
 
