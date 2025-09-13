@@ -1,4 +1,4 @@
-/* scoreboard.js Ã¢â‚¬â€ wires Celtics + SNA panels using Netlify functions */
+/* scoreboard.js ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â wires Celtics + SNA panels using Netlify functions */
 
 const CELTICS_URL = "/.netlify/functions/celtics";
 const SNA_URL = "/.netlify/functions/sna";
@@ -33,19 +33,14 @@ function upsertContainer(headingText, id, label) {
   host.innerHTML = `
     <div class="cb-card">
       <div class="cb-label">${label}</div>
-      <div class="cb-value" id="${id}-value">LoadingÃ¢â‚¬Â¦</div>
+      <div class="cb-value" id="${id}-value">LoadingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</div>
       <div class="cb-meta"  id="${id}-meta"></div>
     </div>
   `;
   return host;
 }
 
-function styleOnce() {
-  if (document.getElementById("cb-style")) return;
-  const css = document.createElement("style");
-  css.id = "cb-style";
-  css.textContent = `
-    .cb-widget { margin: 8px 0 16px 0; }
+function styleOnce(){ /* moved to site.css */ }
     .cb-card { background: rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.06);
                border-radius:12px; padding:12px 14px; color:#eee; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
     .cb-label { font-weight:600; font-size:14px; opacity:.9; letter-spacing:.3px; }
@@ -75,7 +70,7 @@ async function renderCeltics() {
     if (j?.game) {
       const g = j.game;
       val.textContent = `${g.visitorTeam} ${g.visitorScore}  @  ${g.homeTeam} ${g.homeScore}`;
-      meta.textContent = (g.status || "") + (g.status ? " Ã¢â‚¬Â¢ " : "") + `Updated ${cbTime()}`;
+      meta.textContent = (g.status || "") + (g.status ? " ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ " : "") + `Updated ${cbTime()}`;
     } else if (j?.result) {
       val.textContent = j.result; meta.textContent = `Updated ${cbTime()}`;
     } else {
@@ -97,9 +92,9 @@ async function renderSna() {
     const ch = (Number.isFinite(j?.change) ? j.change : null);
     const pct= (Number.isFinite(j?.percent) ? j.percent : null);
     if (!Number.isFinite(q)) throw new Error(j?.error || "Invalid quote");
-    const arrow = (ch==null ? "" : (ch >= 0 ? "Ã¢â€“Â²" : "Ã¢â€“Â¼"));
+    const arrow = (ch==null ? "" : (ch >= 0 ? "ÃƒÂ¢Ã¢â‚¬â€œÃ‚Â²" : "ÃƒÂ¢Ã¢â‚¬â€œÃ‚Â¼"));
     const cls   = (ch==null ? "" : (ch >= 0 ? "cb-up" : "cb-down"));
-    val.innerHTML = `$${q.toFixed(2)} <span class="cb-change ${cls}">${arrow} ${ch!=null?ch.toFixed(2):"Ã¢â‚¬â€"}${pct!=null?` (${pct.toFixed(2)}%)`:""}</span>`;
+    val.innerHTML = `$${q.toFixed(2)} <span class="cb-change ${cls}">${arrow} ${ch!=null?ch.toFixed(2):"ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â"}${pct!=null?` (${pct.toFixed(2)}%)`:""}</span>`;
     meta.textContent = `Updated ${cbTime()}`;
   } catch (e) {
     val.textContent = "Unable to load price";
