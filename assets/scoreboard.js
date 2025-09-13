@@ -1,4 +1,4 @@
-﻿/* scoreboard.js — wires Celtics + SNA panels using Netlify functions */
+/* scoreboard.js — wires Celtics + SNA panels using Netlify functions */
 
 const CELTICS_URL = "/.netlify/functions/celtics";
 const SNA_URL = "/.netlify/functions/sna";
@@ -75,9 +75,9 @@ async function renderCeltics() {
     if (j?.game) {
       const g = j.game;
       val.textContent = `${g.visitorTeam} ${g.visitorScore}  @  ${g.homeTeam} ${g.homeScore}`;
-      meta.textContent = (g.status || "") + (g.status ? " • " : "") + `"`Updated ${cbTime()}`"`;
+      meta.textContent = (g.status || "") + (g.status ? " • " : "") + ``Updated ${cbTime()}``;
     } else if (j?.result) {
-      val.textContent = j.result; meta.textContent = `"`Updated ${cbTime()}`"`;
+      val.textContent = j.result; meta.textContent = ``Updated ${cbTime()}``;
     } else {
       throw new Error("No game data");
     }
@@ -100,7 +100,7 @@ async function renderSna() {
     const arrow = (ch==null ? "" : (ch >= 0 ? "▲" : "▼"));
     const cls   = (ch==null ? "" : (ch >= 0 ? "cb-up" : "cb-down"));
     val.innerHTML = `$${q.toFixed(2)} <span class="${cls}" style="font-size:14px;font-weight:600;margin-left:6px;">${arrow} ${ch!=null?ch.toFixed(2):"—"}${pct!=null?` (${pct.toFixed(2)}%)`:""}</span>`;
-    meta.textContent = `"`Updated ${cbTime()}`"`;
+    meta.textContent = ``Updated ${cbTime()}``;
   } catch (e) {
     val.textContent = "Unable to load price";
     meta.textContent = String(e.message || e);
