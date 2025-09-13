@@ -1,4 +1,4 @@
-/* scoreboard.js — wires Celtics + SNA panels using Netlify functions */
+/* scoreboard.js â€” wires Celtics + SNA panels using Netlify functions */
 
 const CELTICS_URL = "/.netlify/functions/celtics";
 const SNA_URL = "/.netlify/functions/sna";
@@ -33,7 +33,7 @@ function upsertContainer(headingText, id, label) {
   host.innerHTML = `
     <div class="cb-card">
       <div class="cb-label">${label}</div>
-      <div class="cb-value" id="${id}-value">Loading…</div>
+      <div class="cb-value" id="${id}-value">Loadingâ€¦</div>
       <div class="cb-meta"  id="${id}-meta"></div>
     </div>
   `;
@@ -75,9 +75,9 @@ async function renderCeltics() {
     if (j?.game) {
       const g = j.game;
       val.textContent = `${g.visitorTeam} ${g.visitorScore}  @  ${g.homeTeam} ${g.homeScore}`;
-      meta.textContent = (g.status || "") + (g.status ? " • " : "") + ``Updated ${cbTime()}``;
+      meta.textContent = (g.status || "") + (g.status ? " â€¢ " : "") + `Updated ${cbTime()}`;
     } else if (j?.result) {
-      val.textContent = j.result; meta.textContent = ``Updated ${cbTime()}``;
+      val.textContent = j.result; meta.textContent = `Updated ${cbTime()}`;
     } else {
       throw new Error("No game data");
     }
@@ -97,10 +97,10 @@ async function renderSna() {
     const ch = (Number.isFinite(j?.change) ? j.change : null);
     const pct= (Number.isFinite(j?.percent) ? j.percent : null);
     if (!Number.isFinite(q)) throw new Error(j?.error || "Invalid quote");
-    const arrow = (ch==null ? "" : (ch >= 0 ? "▲" : "▼"));
+    const arrow = (ch==null ? "" : (ch >= 0 ? "â–²" : "â–¼"));
     const cls   = (ch==null ? "" : (ch >= 0 ? "cb-up" : "cb-down"));
-    val.innerHTML = `$${q.toFixed(2)} <span class="${cls}" style="font-size:14px;font-weight:600;margin-left:6px;">${arrow} ${ch!=null?ch.toFixed(2):"—"}${pct!=null?` (${pct.toFixed(2)}%)`:""}</span>`;
-    meta.textContent = ``Updated ${cbTime()}``;
+    val.innerHTML = `$${q.toFixed(2)} <span class="${cls}" style="font-size:14px;font-weight:600;margin-left:6px;">${arrow} ${ch!=null?ch.toFixed(2):"â€”"}${pct!=null?` (${pct.toFixed(2)}%)`:""}</span>`;
+    meta.textContent = `Updated ${cbTime()}`;
   } catch (e) {
     val.textContent = "Unable to load price";
     meta.textContent = String(e.message || e);
