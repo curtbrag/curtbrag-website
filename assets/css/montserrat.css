@@ -88,3 +88,9 @@
   src: url(/assets/fonts/s/montserrat/v31/JTUSjIg1_i6t8kCHKm459Wlhyw.woff2) format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
+
+  /* curt-final-hotfix-20250915200352 */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin:14px 0 26px;}
+  .grid a, .grid .btn{display:flex;align-items:center;gap:10px;padding:12px 14px;background:#141517;color:#f5f5f5;text-decoration:none;border:1px solid #2a2b2e;border-radius:10px;}
+  .grid a:hover, .grid .btn:hover{border-color:#3a3b3f;background:#1a1b1e}
+
