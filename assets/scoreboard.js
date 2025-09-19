@@ -1,2 +1,1 @@
-﻿;/* cb-card-cleanup */(function(){try{var ids=['boston-sports-tracker','snapon-stock'];ids.forEach(function(id){var p=document.getElementById(id);if(!p)return;var n=p.nextElementSibling;if(n&&n.classList&&n.classList.contains('cb-card')){p.parentNode.removeChild(p);}});}catch(e){}})();
-
+{"id":"/assets/scoreboard.js","path":"/assets/scoreboard.js","sha":"84dd25efc9bcab34b228389e30052eb25c804d1a","mime_type":"application/javascript","size":291,"site_id":"f72cbb6e-d6de-4acc-969e-27b0cf4b1c23","deploy_id":"68cb7d14eed4400008e6b040"}
