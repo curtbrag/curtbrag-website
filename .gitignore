@@ -1,0 +1,4 @@
+
+# quarantine & recovery dirs
+netlify/functions.quarantine*
+Recovered-*/
