@@ -1,1 +1,1 @@
-{"id":"/assets/js/cars-gallery.js","path":"/assets/js/cars-gallery.js","sha":"57218c316b6921e2cd61027a2387edc31a2d9471","mime_type":"application/javascript","size":3,"site_id":"f72cbb6e-d6de-4acc-969e-27b0cf4b1c23","deploy_id":"68cb7d14eed4400008e6b040"}
+{"id":"/assets/js/cars-gallery.js","path":"/assets/js/cars-gallery.js","sha":"48bc5b256ccecb6cdffb83960644c6d7ad3c2782","mime_type":"application/javascript","size":805,"site_id":"f72cbb6e-d6de-4acc-969e-27b0cf4b1c23","deploy_id":"68ba10a00492880008ed7a8f"}

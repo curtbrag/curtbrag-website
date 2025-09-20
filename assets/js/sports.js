@@ -1,1 +1,1 @@
-{"id":"/assets/js/sports.js","path":"/assets/js/sports.js","sha":"57218c316b6921e2cd61027a2387edc31a2d9471","mime_type":"application/javascript","size":3,"site_id":"f72cbb6e-d6de-4acc-969e-27b0cf4b1c23","deploy_id":"68cb7d14eed4400008e6b040"}
+{"id":"/assets/js/sports.js","path":"/assets/js/sports.js","sha":"c3ade9f7b3c2d15fe5f269866b9cb77ca9e11cef","mime_type":"application/javascript","size":2038,"site_id":"f72cbb6e-d6de-4acc-969e-27b0cf4b1c23","deploy_id":"68ba10a00492880008ed7a8f"}
