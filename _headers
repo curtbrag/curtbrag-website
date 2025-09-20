@@ -1,1 +1,3 @@
-{"id":"/_headers","path":"/_headers","sha":"84d3bca43c6f2daf914d56af3afbcdd29f727563","mime_type":"text/plain","size":1044,"site_id":"f72cbb6e-d6de-4acc-969e-27b0cf4b1c23","deploy_id":"68cb7d14eed4400008e6b040"}
+/*
+  Cache-Control: public, max-age=600
+  X-Content-Type-Options: nosniff
