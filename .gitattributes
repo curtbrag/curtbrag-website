@@ -1,5 +1,12 @@
-* text=auto
-*.js   text eol=lf
-*.mjs  text eol=lf
-*.html text eol=lf
-*.css  text eol=lf
+# Normalize text files; enforce LF for code, including this file
+*                 text=auto
+.gitattributes    text eol=lf
+*.js              text eol=lf
+*.mjs             text eol=lf
+*.ts              text eol=lf
+*.tsx             text eol=lf
+*.jsx             text eol=lf
+*.css             text eol=lf
+*.html            text eol=lf
+*.json            text eol=lf
+*.toml            text eol=lf
