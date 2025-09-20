@@ -1,1 +1,8 @@
-{"id":"/netlify/functions/sports-refresh.mjs","path":"/netlify/functions/sports-refresh.mjs","sha":"fa39268bbda3769307b925fc1d54150a3343bcd4","mime_type":"application/javascript","size":801,"site_id":"f72cbb6e-d6de-4acc-969e-27b0cf4b1c23","deploy_id":"68cb7d14eed4400008e6b040"}
+export async function handler(event, context) {
+  // Temporary stub: keep build green. Replace with real refresh logic when ready.
+  return {
+    statusCode: 200,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ok: true, function: "sports-refresh", note: "temporary stub" })
+  };
+}
