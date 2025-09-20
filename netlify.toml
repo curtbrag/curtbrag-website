@@ -1,4 +1,4 @@
-﻿# Minimal, known-good netlify.toml
+# Minimal, known-good Netlify config
 [build]
   publish = "."
   functions = "netlify/functions"
