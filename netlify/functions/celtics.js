@@ -1,7 +1,1 @@
-exports.handler = async function(event, context) {
-  return {
-    statusCode: 200,
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ ok: true, stub: true, function: 'celtics' })
-  };
-};
+{"id":"/netlify/functions/celtics.js","path":"/netlify/functions/celtics.js","sha":"57218c316b6921e2cd61027a2387edc31a2d9471","mime_type":"application/javascript","size":3,"site_id":"f72cbb6e-d6de-4acc-969e-27b0cf4b1c23","deploy_id":"68cb7d14eed4400008e6b040"}
