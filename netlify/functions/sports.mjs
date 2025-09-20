@@ -1,7 +1,1 @@
-export async function handler(event, context) {
-  return {
-    statusCode: 200,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ok: true, function: "sports", note: "temporary stub" })
-  };
-}
+{"id":"/netlify/functions/sports.mjs","path":"/netlify/functions/sports.mjs","sha":"65c90c176e579cf8b1e04822b78e590e621bd2eb","mime_type":"application/javascript","size":932,"site_id":"f72cbb6e-d6de-4acc-969e-27b0cf4b1c23","deploy_id":"68cb7d14eed4400008e6b040"}
