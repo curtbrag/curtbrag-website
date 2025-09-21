@@ -1,0 +1,1 @@
+{"id":"/netlify/functions/csp-report.mjs","path":"/netlify/functions/csp-report.mjs","sha":"61c83644354b56d741794f2204480e80bc16160f","mime_type":"application/javascript","size":867,"site_id":"f72cbb6e-d6de-4acc-969e-27b0cf4b1c23","deploy_id":"68cb7d14eed4400008e6b040"}
