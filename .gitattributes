@@ -1,3 +1,4 @@
+# Normalize; enforce LF for code
 *                 text=auto
 .gitattributes    text eol=lf
 *.js              text eol=lf
