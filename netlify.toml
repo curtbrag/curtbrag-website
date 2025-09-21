@@ -1,4 +1,4 @@
-# Minimal Netlify config
+# Minimal Netlify config (safe)
 [build]
   publish = "."
   functions = "netlify/functions"
