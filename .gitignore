@@ -2,3 +2,5 @@
 # quarantine & recovery dirs
 netlify/functions.quarantine*
 Recovered-*/
+script-logs/
+
