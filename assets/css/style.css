@@ -1,0 +1,76 @@
+/* Simple dark theme styling */
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #111;
+  color: #eee;
+  line-height: 1.4;
+}
+
+.hero {
+  background: #222;
+  padding: 4rem 1rem;
+  text-align: center;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: 2.5rem;
+  color: #fff;
+}
+
+.hero p {
+  margin-top: 0.5rem;
+  font-size: 1.2rem;
+  color: #aaa;
+}
+
+.buttons-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+  margin: 2rem;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.8rem 1rem;
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 4px;
+  text-decoration: none;
+  color: #eee;
+  font-size: 1rem;
+  transition: background 0.3s;
+}
+
+.btn:hover {
+  background: #333;
+}
+
+main section {
+  margin: 2rem;
+  padding: 1rem;
+  background: #1a1a1a;
+  border-radius: 4px;
+}
+
+main section h2 {
+  margin-top: 0;
+  color: #ddd;
+}
+
+footer {
+  text-align: center;
+  padding: 2rem 1rem;
+  background: #222;
+  color: #777;
+}
+
+footer a {
+  color: #888;
+  text-decoration: none;
+}
