@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add Your Ride</title>
+  <meta name="description" content="Share your ride or card collection with CurtBrag. Submit details and photos to be featured.">
+  <link rel="stylesheet" href="../assets/css/style.css">
+  <!-- Font Awesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-N6vGJSLCiY4HxyZ5h3V+MtdEz5K6FMCQCy21xLG2c/cDWl05RMprr12/s5xpM/5KP1q/2A0FB6N3We5xZ8fXVA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+</head>
+<body>
+  <header class="hero">
+    <h1>Add Your Ride</h1>
+    <p>We love seeing what you're driving and collecting! Use the form below to share your vehicle or card collection with us.</p>
+  </header>
+  
+  <main>
+    <section>
+      <form name="ride-submission" method="POST" data-netlify="true" enctype="multipart/form-data">
+        <!-- The hidden input is required for Netlify forms -->
+        <input type="hidden" name="form-name" value="ride-submission">
+        <div class="buttons-grid">
+          <label class="btn" for="name"><i class="fa-solid fa-user"></i> Your Name</label>
+          <input type="text" id="name" name="name" required>
+          <label class="btn" for="email"><i class="fa-solid fa-envelope"></i> Email</label>
+          <input type="email" id="email" name="email" required>
+          <label class="btn" for="description"><i class="fa-solid fa-align-left"></i> Description</label>
+          <textarea id="description" name="description" rows="4" placeholder="Tell us about your ride or collection..." required></textarea>
+          <label class="btn" for="photo"><i class="fa-solid fa-camera"></i> Photo</label>
+          <input type="file" id="photo" name="photo" accept="image/*" required>
+        </div>
+        <p style="margin-top:1rem;"><button class="btn" type="submit"><i class="fa-solid fa-paper-plane"></i> Submit</button></p>
+      </form>
+    </section>
+  </main>
+
+  <footer>
+    <p>&copy; 2025 Curtis Bragdon. All rights reserved.</p>
+    <p><a href="/privacy">Privacy Policy</a> | <a href="/terms">Terms of Service</a></p>
+    <p>Disclosure: Some outbound links are affiliate links. If you buy, we may earn a commission.</p>
+  </footer>
+</body>
+</html>
