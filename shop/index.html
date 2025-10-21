@@ -1,1 +1,49 @@
-{"id":"/shop/index.html","path":"/shop/index.html","sha":"34e399cb21690bfb4dbcc6308f96cd984461160b","mime_type":"text/html","size":4,"site_id":"f72cbb6e-d6de-4acc-969e-27b0cf4b1c23","deploy_id":"68cb7d14eed4400008e6b040"}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Card Shop</title>
+  <meta name="description" content="Browse our latest trading card listings from eBay. All listings update automatically from our eBay store.">
+  <link rel="stylesheet" href="../assets/css/style.css">
+  <!-- Font Awesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-N6vGJSLCiY4HxyZ5h3V+MtdEz5K6FMCQCy21xLG2c/cDWl05RMprr12/s5xpM/5KP1q/2A0FB6N3We5xZ8fXVA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+</head>
+<body>
+  <header class="hero">
+    <h1>Card Shop</h1>
+    <p>Discover our latest trading cards on eBay</p>
+  </header>
+  
+  <main>
+    <section>
+      <p>Below is a feed of our active eBay listings. If nothing appears, please ensure you have replaced the placeholder in the script with your actual eBay username.</p>
+      <!--
+        Auction Nudge embed: replace YOUR_EBAY_USERNAME below with your eBay seller username.
+        You can customize the theme and options by generating a code snippet at https://www.auctionnudge.com/
+      -->
+      <div id="auction-nudge-items"></div>
+      <script type="text/javascript" src="//www.auctionnudge.com/feed/item/js/YOUR_EBAY_USERNAME"></script>
+      <div id="auction-nudge-items" class="auction-nudge"></div>
+    </section>
+    <section>
+      <h2>Quick Filters</h2>
+      <p>Jump directly to categories in our eBay store (links open in a new tab).</p>
+      <div class="buttons-grid">
+        <a class="btn" href="https://www.ebay.com/str/YOUR_EBAY_USERNAME" target="_blank"><i class="fa-solid fa-layer-group"></i>All Listings</a>
+        <a class="btn" href="https://www.ebay.com/str/YOUR_EBAY_USERNAME?_nkw=baseball" target="_blank"><i class="fa-solid fa-baseball"></i>Baseball</a>
+        <a class="btn" href="https://www.ebay.com/str/YOUR_EBAY_USERNAME?_nkw=basketball" target="_blank"><i class="fa-solid fa-basketball"></i>Basketball</a>
+        <a class="btn" href="https://www.ebay.com/str/YOUR_EBAY_USERNAME?_nkw=pokemon" target="_blank"><i class="fa-solid fa-gamepad"></i>Pokémon</a>
+        <a class="btn" href="https://www.ebay.com/str/YOUR_EBAY_USERNAME?_nkw=graded" target="_blank"><i class="fa-solid fa-award"></i>Graded Cards</a>
+        <a class="btn" href="https://www.ebay.com/str/YOUR_EBAY_USERNAME?_udhi=50" target="_blank"><i class="fa-solid fa-dollar-sign"></i>Under $50</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>&copy; 2025 Curtis Bragdon. All rights reserved.</p>
+    <p><a href="/privacy">Privacy Policy</a> | <a href="/terms">Terms of Service</a></p>
+    <p>Disclosure: Some outbound links are affiliate links. If you buy, we may earn a commission.</p>
+  </footer>
+</body>
+</html>
