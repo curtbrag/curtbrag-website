@@ -5,3 +5,10 @@
 
 [build.environment]
   NODE_VERSION = "20"
+
+# Enable branch deploys for all branches
+[context.branch-deploy]
+  publish = "."
+
+[context."claude/restore-sept-design-brug3"]
+  publish = "."
