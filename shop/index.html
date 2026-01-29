@@ -3,47 +3,200 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Card Shop</title>
-  <meta name="description" content="Browse our latest trading card listings from eBay. All listings update automatically from our eBay store.">
-  <link rel="stylesheet" href="../assets/css/style.css">
-  <!-- Font Awesome for icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-N6vGJSLCiY4HxyZ5h3V+MtdEz5K6FMCQCy21xLG2c/cDWl05RMprr12/s5xpM/5KP1q/2A0FB6N3We5xZ8fXVA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <title>Card Shop - Curtis Bragdon</title>
+  <meta name="description" content="Browse Curtis Bragdon's trading card listings on eBay. Baseball, basketball, Pokemon and more.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/css/all.min.css" rel="stylesheet"/>
+  <style>
+    :root {
+      --brand: #ed232a;
+      --bg: #0e0f10;
+      --panel: #141517;
+      --text: #f5f5f5;
+      --muted: #a7a7a7;
+      --border: #2a2b2e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Montserrat, Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100vh;
+    }
+    .header {
+      background: linear-gradient(135deg, var(--brand), #b91c22);
+      padding: 2rem 1.5rem;
+      text-align: center;
+    }
+    .header h1 {
+      margin: 0 0 0.5rem;
+      font-size: 2rem;
+    }
+    .header p {
+      margin: 0;
+      opacity: 0.9;
+    }
+    .nav {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      padding: 1rem;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .nav a {
+      color: var(--text);
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      transition: all 0.2s;
+    }
+    .nav a:hover, .nav a.active {
+      background: var(--brand);
+      border-color: var(--brand);
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+    .section {
+      margin-bottom: 2rem;
+    }
+    .section h2 {
+      color: var(--brand);
+      margin: 0 0 1rem;
+      font-size: 1.3rem;
+    }
+    .section p {
+      color: var(--muted);
+      margin: 0 0 1rem;
+    }
+    .btn-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 0.75rem;
+    }
+    .btn {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+      background: var(--panel);
+      color: var(--text);
+      text-decoration: none;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      transition: all 0.2s;
+    }
+    .btn:hover {
+      background: rgba(255,255,255,0.05);
+      border-color: var(--brand);
+    }
+    .btn i {
+      color: var(--brand);
+    }
+    .ebay-section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      min-height: 400px;
+    }
+    .ebay-section h2 {
+      margin-top: 0;
+    }
+    #auction-nudge-items {
+      min-height: 300px;
+    }
+    .direct-link {
+      text-align: center;
+      padding: 2rem;
+      background: var(--panel);
+      border-radius: 12px;
+      margin-top: 1.5rem;
+    }
+    .direct-link p {
+      margin: 0 0 1rem;
+    }
+    .direct-link .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 1rem 2rem;
+      background: var(--brand);
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 1.1rem;
+    }
+    .direct-link .btn-primary:hover {
+      background: #c91a20;
+    }
+    .footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .footer a {
+      color: var(--brand);
+      text-decoration: none;
+    }
+  </style>
 </head>
 <body>
-  <header class="hero">
-    <h1>Card Shop</h1>
-    <p>Discover our latest trading cards on eBay</p>
-  </header>
-  
-  <main>
-    <section>
-      <p>Below is a feed of our active eBay listings. If nothing appears, please ensure you have replaced the placeholder in the script with your actual eBay username.</p>
-      <!--
-        Auction Nudge embed: replace YOUR_EBAY_USERNAME below with your eBay seller username.
-        You can customize the theme and options by generating a code snippet at https://www.auctionnudge.com/
-      -->
-      <div id="auction-nudge-items"></div>
-      <script type="text/javascript" src="//www.auctionnudge.com/feed/item/js/YOUR_EBAY_USERNAME"></script>
-      <div id="auction-nudge-items" class="auction-nudge"></div>
-    </section>
-    <section>
-      <h2>Quick Filters</h2>
-      <p>Jump directly to categories in our eBay store (links open in a new tab).</p>
-      <div class="buttons-grid">
-        <a class="btn" href="https://www.ebay.com/str/YOUR_EBAY_USERNAME" target="_blank"><i class="fa-solid fa-layer-group"></i>All Listings</a>
-        <a class="btn" href="https://www.ebay.com/str/YOUR_EBAY_USERNAME?_nkw=baseball" target="_blank"><i class="fa-solid fa-baseball"></i>Baseball</a>
-        <a class="btn" href="https://www.ebay.com/str/YOUR_EBAY_USERNAME?_nkw=basketball" target="_blank"><i class="fa-solid fa-basketball"></i>Basketball</a>
-        <a class="btn" href="https://www.ebay.com/str/YOUR_EBAY_USERNAME?_nkw=pokemon" target="_blank"><i class="fa-solid fa-gamepad"></i>Pokémon</a>
-        <a class="btn" href="https://www.ebay.com/str/YOUR_EBAY_USERNAME?_nkw=graded" target="_blank"><i class="fa-solid fa-award"></i>Graded Cards</a>
-        <a class="btn" href="https://www.ebay.com/str/YOUR_EBAY_USERNAME?_udhi=50" target="_blank"><i class="fa-solid fa-dollar-sign"></i>Under $50</a>
-      </div>
-    </section>
-  </main>
+  <div class="header">
+    <h1><i class="fa-solid fa-shopping-cart"></i> Card Shop</h1>
+    <p>Trading cards from Curtis Bragdon's collection</p>
+  </div>
 
-  <footer>
+  <nav class="nav">
+    <a href="/"><i class="fa-solid fa-home"></i> Home</a>
+    <a href="/shop" class="active"><i class="fa-solid fa-shopping-cart"></i> Shop</a>
+    <a href="/gallery"><i class="fa-solid fa-image"></i> Gallery</a>
+  </nav>
+
+  <div class="container">
+    <div class="section">
+      <h2><i class="fa-solid fa-filter"></i> Quick Filters</h2>
+      <p>Jump to categories in my eBay store:</p>
+      <div class="btn-grid">
+        <a class="btn" href="https://www.ebay.com/str/curtbrag" target="_blank"><i class="fa-solid fa-layer-group"></i>All Listings</a>
+        <a class="btn" href="https://www.ebay.com/str/curtbrag?_nkw=baseball" target="_blank"><i class="fa-solid fa-baseball"></i>Baseball</a>
+        <a class="btn" href="https://www.ebay.com/str/curtbrag?_nkw=basketball" target="_blank"><i class="fa-solid fa-basketball"></i>Basketball</a>
+        <a class="btn" href="https://www.ebay.com/str/curtbrag?_nkw=football" target="_blank"><i class="fa-solid fa-football"></i>Football</a>
+        <a class="btn" href="https://www.ebay.com/str/curtbrag?_nkw=pokemon" target="_blank"><i class="fa-solid fa-gamepad"></i>Pokemon</a>
+        <a class="btn" href="https://www.ebay.com/str/curtbrag?_nkw=graded+psa" target="_blank"><i class="fa-solid fa-award"></i>Graded/PSA</a>
+        <a class="btn" href="https://www.ebay.com/str/curtbrag?_udhi=25" target="_blank"><i class="fa-solid fa-tag"></i>Under $25</a>
+        <a class="btn" href="https://www.ebay.com/str/curtbrag?_udhi=50" target="_blank"><i class="fa-solid fa-dollar-sign"></i>Under $50</a>
+      </div>
+    </div>
+
+    <div class="ebay-section">
+      <h2><i class="fa-brands fa-ebay"></i> Live eBay Listings</h2>
+      <div id="auction-nudge-items"></div>
+      <script type="text/javascript" src="//www.auctionnudge.com/feed/item/js/theme/gallery/page/init/img_size/220/cats_output/dropdown/search_box/1/SellerID/curtbrag"></script>
+    </div>
+
+    <div class="direct-link">
+      <p>Want to see everything? Visit my eBay store directly:</p>
+      <a href="https://www.ebay.com/str/curtbrag" target="_blank" class="btn-primary">
+        <i class="fa-brands fa-ebay"></i> Visit eBay Store
+      </a>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p><a href="/">← Back to Curtis Bragdon's World</a></p>
     <p>&copy; 2025 Curtis Bragdon. All rights reserved.</p>
-    <p><a href="/privacy">Privacy Policy</a> | <a href="/terms">Terms of Service</a></p>
-    <p>Disclosure: Some outbound links are affiliate links. If you buy, we may earn a commission.</p>
-  </footer>
+    <p style="font-size:0.8rem;">Some links may be affiliate links.</p>
+  </div>
 </body>
 </html>

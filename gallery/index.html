@@ -3,38 +3,200 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Card Gallery</title>
-  <!-- Link the base styles; this file imports the card‑gallery styles -->
-  <link rel="stylesheet" href="../assets/css/style.css">
+  <title>Gallery - Curtis Bragdon</title>
+  <meta name="description" content="Browse Curtis Bragdon's photo galleries - cars, Snap-on tools, and more.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/css/all.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --brand: #ed232a;
+      --bg: #0e0f10;
+      --panel: #141517;
+      --text: #f5f5f5;
+      --muted: #a7a7a7;
+      --border: #2a2b2e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Montserrat, Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100vh;
+    }
+    .header {
+      background: linear-gradient(135deg, var(--brand), #b91c22);
+      padding: 2rem 1.5rem;
+      text-align: center;
+    }
+    .header h1 {
+      margin: 0 0 0.5rem;
+      font-size: 2rem;
+    }
+    .header p {
+      margin: 0;
+      opacity: 0.9;
+    }
+    .nav {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      padding: 1rem;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .nav a {
+      color: var(--text);
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      transition: all 0.2s;
+    }
+    .nav a:hover, .nav a.active {
+      background: var(--brand);
+      border-color: var(--brand);
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+    .gallery-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+    .gallery-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      text-decoration: none;
+      color: var(--text);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .gallery-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .gallery-card img {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+      background: #222;
+    }
+    .gallery-card .info {
+      padding: 1.25rem;
+    }
+    .gallery-card h2 {
+      margin: 0 0 0.5rem;
+      font-size: 1.25rem;
+      color: var(--brand);
+    }
+    .gallery-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .gallery-card .count {
+      display: inline-block;
+      margin-top: 0.75rem;
+      padding: 0.25rem 0.75rem;
+      background: var(--bg);
+      border-radius: 20px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .cta-section {
+      text-align: center;
+      padding: 2rem;
+      background: var(--panel);
+      margin-top: 2rem;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    .cta-section h2 {
+      color: var(--brand);
+      margin: 0 0 0.5rem;
+    }
+    .cta-section p {
+      color: var(--muted);
+      margin: 0 0 1rem;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.5rem;
+      background: var(--brand);
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+    }
+    .btn:hover {
+      background: #c91a20;
+    }
+    .footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .footer a {
+      color: var(--brand);
+      text-decoration: none;
+    }
+  </style>
 </head>
 <body>
-  <header class="hero">
-    <h1>Card Gallery</h1>
-    <p>Explore our collection of trading cards.</p>
-  </header>
-  <main>
-    <section class="card-gallery">
-      <!--
-        Replace the placeholder image filenames (placeholder1.jpg, etc.) with
-        your actual card image files. Each figure displays a single trading
-        card with a caption. Add or remove <figure> elements as needed.
-      -->
-      <figure>
-        <img src="placeholder1.jpg" alt="Card 1">
-        <figcaption>Example Card Title #1</figcaption>
-      </figure>
-      <figure>
-        <img src="placeholder2.jpg" alt="Card 2">
-        <figcaption>Example Card Title #2</figcaption>
-      </figure>
-      <figure>
-        <img src="placeholder3.jpg" alt="Card 3">
-        <figcaption>Example Card Title #3</figcaption>
-      </figure>
-    </section>
-  </main>
-  <footer>
-    <p>Some links on this site may be affiliate links. If you purchase through these links, we may earn a commission.</p>
-  </footer>
+  <div class="header">
+    <h1><i class="fa-solid fa-images"></i> Photo Gallery</h1>
+    <p>Browse the collections</p>
+  </div>
+
+  <nav class="nav">
+    <a href="/"><i class="fa-solid fa-home"></i> Home</a>
+    <a href="/shop"><i class="fa-solid fa-shopping-cart"></i> Card Shop</a>
+    <a href="/gallery" class="active"><i class="fa-solid fa-images"></i> Gallery</a>
+    <a href="/addyourride"><i class="fa-solid fa-car-side"></i> Add Your Ride</a>
+  </nav>
+
+  <div class="container">
+    <div class="gallery-cards">
+      <a href="/gallery/cars.html" class="gallery-card">
+        <img src="/gallery/cars/20140328_111738.jpg" alt="Cars Gallery">
+        <div class="info">
+          <h2><i class="fa-solid fa-car"></i> Cars Gallery</h2>
+          <p>Customer cars, trucks, and rides from around Boston</p>
+          <span class="count"><i class="fa-solid fa-image"></i> 100+ photos</span>
+        </div>
+      </a>
+
+      <a href="/gallery/snapon.html" class="gallery-card">
+        <img src="/gallery/snapon/20160811_173654.jpg" alt="Snap-on Gallery">
+        <div class="info">
+          <h2><i class="fa-solid fa-wrench"></i> Snap-on Gallery</h2>
+          <p>Tools, truck photos, and Snap-on memories</p>
+          <span class="count"><i class="fa-solid fa-image"></i> 250+ photos</span>
+        </div>
+      </a>
+    </div>
+
+    <div class="cta-section">
+      <h2><i class="fa-solid fa-camera"></i> Got a Ride to Share?</h2>
+      <p>Submit your car or truck to be featured in the gallery!</p>
+      <a href="/addyourride" class="btn"><i class="fa-solid fa-plus"></i> Add Your Ride</a>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p><a href="/"><i class="fa-solid fa-arrow-left"></i> Back to Home</a></p>
+    <p>&copy; 2025 Curtis Bragdon. All rights reserved.</p>
+  </div>
 </body>
 </html>
