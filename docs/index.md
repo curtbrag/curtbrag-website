@@ -1,1 +1,3 @@
-{"id":"/docs/index.md","path":"/docs/index.md","sha":"1a0423ddb37b0ea95b8320cbfbd25c54c0f5553a","mime_type":"text/markdown","size":89,"site_id":"f72cbb6e-d6de-4acc-969e-27b0cf4b1c23","deploy_id":"68cb7d14eed4400008e6b040"}
+# Curtis Bragdon Documentation
+
+This folder is deprecated. Visit [curtbrag.com](https://www.curtbrag.com) for the main site.
