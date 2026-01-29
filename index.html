@@ -243,12 +243,13 @@
       <section id="sports-tracker">
         <h2>Boston Sports Tracker</h2>
         <ul>
-          <li><strong>Red Sox:</strong> Check back for latest scores and standings</li>
-          <li><strong>Patriots:</strong> Check back for latest scores and standings</li>
-          <li><strong>Celtics:</strong> Check back for latest scores and standings</li>
-          <li><strong>Bruins:</strong> Check back for latest scores and standings</li>
-          <li><strong>Revolution:</strong> Check back for latest scores and standings</li>
+          <li><strong>Red Sox:</strong> <span id="score-redsox">Loading...</span></li>
+          <li><strong>Patriots:</strong> <span id="score-patriots">Loading...</span></li>
+          <li><strong>Celtics:</strong> <span id="score-celtics">Loading...</span></li>
+          <li><strong>Bruins:</strong> <span id="score-bruins">Loading...</span></li>
+          <li><strong>Revolution:</strong> <span id="score-revolution">Loading...</span></li>
         </ul>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:.5rem;">Auto-updates every 5 min</div>
       </section>
 
       <!-- Contact -->
@@ -313,6 +314,26 @@
 
     sendBtn?.addEventListener('click', send);
     input?.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') send(); });
+
+    // --- Sports Tracker ---
+    async function loadSports() {
+      try {
+        const res = await fetch('/.netlify/functions/sports');
+        const data = await res.json();
+        if (data.success && data.teams) {
+          document.getElementById('score-redsox').textContent = data.teams.redsox || 'No data';
+          document.getElementById('score-patriots').textContent = data.teams.patriots || 'No data';
+          document.getElementById('score-celtics').textContent = data.teams.celtics || 'No data';
+          document.getElementById('score-bruins').textContent = data.teams.bruins || 'No data';
+          document.getElementById('score-revolution').textContent = data.teams.revolution || 'No data';
+        }
+      } catch (e) {
+        console.error('Sports load error:', e);
+        document.querySelectorAll('[id^="score-"]').forEach(el => el.textContent = 'Unavailable');
+      }
+    }
+    loadSports();
+    setInterval(loadSports, 300000); // Refresh every 5 minutes
   </script>
 </body>
 </html>

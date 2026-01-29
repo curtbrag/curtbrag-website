@@ -3,38 +3,180 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Card Gallery</title>
-  <!-- Link the base styles; this file imports the card‑gallery styles -->
-  <link rel="stylesheet" href="../assets/css/style.css">
+  <title>Card Gallery - Curtis Bragdon</title>
+  <meta name="description" content="Browse Curtis Bragdon's trading card collection. Baseball, basketball, Pokemon and more.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/css/all.min.css" rel="stylesheet"/>
+  <style>
+    :root {
+      --brand: #ed232a;
+      --bg: #0e0f10;
+      --panel: #141517;
+      --text: #f5f5f5;
+      --muted: #a7a7a7;
+      --border: #2a2b2e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Montserrat, Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100vh;
+    }
+    .header {
+      background: linear-gradient(135deg, var(--brand), #b91c22);
+      padding: 2rem 1.5rem;
+      text-align: center;
+    }
+    .header h1 {
+      margin: 0 0 0.5rem;
+      font-size: 2rem;
+    }
+    .header p {
+      margin: 0;
+      opacity: 0.9;
+    }
+    .nav {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      padding: 1rem;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .nav a {
+      color: var(--text);
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      transition: all 0.2s;
+    }
+    .nav a:hover, .nav a.active {
+      background: var(--brand);
+      border-color: var(--brand);
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+    .card-item {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .card-item:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .card-item img {
+      width: 100%;
+      height: 300px;
+      object-fit: cover;
+      background: #222;
+    }
+    .card-item .info {
+      padding: 1rem;
+    }
+    .card-item h3 {
+      margin: 0 0 0.5rem;
+      font-size: 1rem;
+    }
+    .card-item p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .cta-section {
+      text-align: center;
+      padding: 3rem 1.5rem;
+      background: var(--panel);
+      margin-top: 2rem;
+      border-radius: 12px;
+    }
+    .cta-section h2 {
+      color: var(--brand);
+      margin: 0 0 1rem;
+    }
+    .cta-section p {
+      color: var(--muted);
+      margin: 0 0 1.5rem;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.5rem;
+      background: var(--brand);
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+      margin: 0.5rem;
+    }
+    .btn:hover {
+      background: #c91a20;
+    }
+    .footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .footer a {
+      color: var(--brand);
+      text-decoration: none;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 4rem 2rem;
+      color: var(--muted);
+    }
+    .empty-state i {
+      font-size: 4rem;
+      margin-bottom: 1rem;
+      opacity: 0.5;
+    }
+  </style>
 </head>
 <body>
-  <header class="hero">
-    <h1>Card Gallery</h1>
-    <p>Explore our collection of trading cards.</p>
-  </header>
-  <main>
-    <section class="card-gallery">
-      <!--
-        Replace the placeholder image filenames (placeholder1.jpg, etc.) with
-        your actual card image files. Each figure displays a single trading
-        card with a caption. Add or remove <figure> elements as needed.
-      -->
-      <figure>
-        <img src="placeholder1.jpg" alt="Card 1">
-        <figcaption>Example Card Title #1</figcaption>
-      </figure>
-      <figure>
-        <img src="placeholder2.jpg" alt="Card 2">
-        <figcaption>Example Card Title #2</figcaption>
-      </figure>
-      <figure>
-        <img src="placeholder3.jpg" alt="Card 3">
-        <figcaption>Example Card Title #3</figcaption>
-      </figure>
-    </section>
-  </main>
-  <footer>
-    <p>Some links on this site may be affiliate links. If you purchase through these links, we may earn a commission.</p>
-  </footer>
+  <div class="header">
+    <h1><i class="fa-solid fa-image"></i> Card Gallery</h1>
+    <p>Browse the collection of trading cards</p>
+  </div>
+
+  <nav class="nav">
+    <a href="/" class=""><i class="fa-solid fa-home"></i> Home</a>
+    <a href="/shop" class=""><i class="fa-solid fa-shopping-cart"></i> Shop on eBay</a>
+    <a href="/gallery" class="active"><i class="fa-solid fa-image"></i> Gallery</a>
+  </nav>
+
+  <div class="container">
+    <div class="empty-state">
+      <i class="fa-solid fa-images"></i>
+      <h2>Gallery Coming Soon</h2>
+      <p>Card images are being uploaded. Check back soon to browse the full collection!</p>
+      <p>In the meantime, shop our live eBay listings:</p>
+      <a href="/shop" class="btn"><i class="fa-solid fa-shopping-cart"></i> Browse Card Shop</a>
+      <a href="https://www.ebay.com/str/curtbrag" target="_blank" class="btn"><i class="fa-brands fa-ebay"></i> View on eBay</a>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p><a href="/">← Back to Curtis Bragdon's World</a></p>
+    <p>&copy; 2025 Curtis Bragdon. All rights reserved.</p>
+  </div>
 </body>
 </html>
