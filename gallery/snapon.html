@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Snap-on Gallery - Curtis Bragdon</title>
-  <meta name="description" content="Check out Snap-on tools and truck photos from Curtis Bragdon's collection.">
+  <meta name="description" content="Snap-on tools, truck photos, and memories from Curtis Bragdon's franchise.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&display=swap" rel="stylesheet">
@@ -31,14 +31,8 @@
       padding: 2rem 1.5rem;
       text-align: center;
     }
-    .header h1 {
-      margin: 0 0 0.5rem;
-      font-size: 2rem;
-    }
-    .header p {
-      margin: 0;
-      opacity: 0.9;
-    }
+    .header h1 { margin: 0 0 0.5rem; font-size: 2rem; }
+    .header p { margin: 0; opacity: 0.9; }
     .nav {
       display: flex;
       justify-content: center;
@@ -56,44 +50,31 @@
       border: 1px solid var(--border);
       transition: all 0.2s;
     }
-    .nav a:hover, .nav a.active {
-      background: var(--brand);
-      border-color: var(--brand);
-    }
+    .nav a:hover, .nav a.active { background: var(--brand); border-color: var(--brand); }
     .container {
-      max-width: 1200px;
+      max-width: 1400px;
       margin: 0 auto;
-      padding: 2rem 1.5rem;
+      padding: 2rem 1rem;
     }
-    .section {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 2rem;
-      text-align: center;
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
     }
-    .section h2 {
-      color: var(--brand);
-      margin: 0 0 1rem;
-    }
-    .section p {
-      color: var(--muted);
-      margin: 0 0 1.5rem;
-    }
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.8rem 1.5rem;
-      background: var(--brand);
-      color: white;
+    .gallery-item {
+      position: relative;
+      overflow: hidden;
       border-radius: 8px;
-      text-decoration: none;
-      font-weight: 600;
-      transition: background 0.2s;
+      background: var(--panel);
+      cursor: pointer;
+      transition: transform 0.2s;
     }
-    .btn:hover {
-      background: #c91a20;
+    .gallery-item:hover { transform: scale(1.02); }
+    .gallery-item img {
+      width: 100%;
+      height: 220px;
+      object-fit: cover;
+      display: block;
     }
     .footer {
       text-align: center;
@@ -101,36 +82,172 @@
       color: var(--muted);
       font-size: 0.85rem;
     }
-    .footer a {
-      color: var(--brand);
-      text-decoration: none;
+    .footer a { color: var(--brand); text-decoration: none; }
+    /* Lightbox */
+    .lightbox {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.95);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
     }
+    .lightbox.active { display: flex; }
+    .lightbox img {
+      max-width: 90vw;
+      max-height: 85vh;
+      object-fit: contain;
+      border-radius: 8px;
+    }
+    .lightbox-close {
+      position: absolute;
+      top: 1rem; right: 1.5rem;
+      background: none;
+      border: none;
+      color: white;
+      font-size: 2rem;
+      cursor: pointer;
+    }
+    .lightbox-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--brand);
+      border: none;
+      color: white;
+      width: 50px; height: 50px;
+      border-radius: 50%;
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+    .lightbox-nav.prev { left: 1rem; }
+    .lightbox-nav.next { right: 1rem; }
   </style>
 </head>
 <body>
   <div class="header">
     <h1><i class="fa-solid fa-wrench"></i> Snap-on Gallery</h1>
-    <p>Tools and truck photos</p>
+    <p>Tools, truck, and memories</p>
   </div>
 
   <nav class="nav">
     <a href="/"><i class="fa-solid fa-home"></i> Home</a>
-    <a href="/shop"><i class="fa-solid fa-shopping-cart"></i> Shop</a>
-    <a href="/gallery"><i class="fa-solid fa-image"></i> Gallery</a>
+    <a href="/shop"><i class="fa-solid fa-shopping-cart"></i> Card Shop</a>
+    <a href="/gallery"><i class="fa-solid fa-images"></i> Gallery</a>
     <a href="/addyourride"><i class="fa-solid fa-car-side"></i> Add Your Ride</a>
   </nav>
 
   <div class="container">
-    <div class="section">
-      <h2><i class="fa-solid fa-toolbox"></i> Coming Soon</h2>
-      <p>Photos of Snap-on tools and the truck are on the way. Check back soon!</p>
-      <a href="/gallery" class="btn"><i class="fa-solid fa-arrow-left"></i> Back to Gallery</a>
-    </div>
+    <div class="gallery-grid" id="gallery"></div>
   </div>
 
   <div class="footer">
     <p><a href="/gallery"><i class="fa-solid fa-arrow-left"></i> Back to Gallery</a></p>
     <p>&copy; 2025 Curtis Bragdon. All rights reserved.</p>
   </div>
+
+  <div class="lightbox" id="lightbox">
+    <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+    <button class="lightbox-nav prev" onclick="navLightbox(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+    <img id="lightbox-img" src="" alt="">
+    <button class="lightbox-nav next" onclick="navLightbox(1)"><i class="fa-solid fa-chevron-right"></i></button>
+  </div>
+
+  <script>
+    const images = [
+      "20160811_173654.jpg","20160811_182939.jpg","20160811_182953.jpg","20160811_185037.jpg",
+      "20160811_185053.jpg","20160811_210838.jpg","20160811_230907.jpg","20160811_230913.jpg",
+      "20160811_230919.jpg","20160812_083309.jpg","20160812_085747.jpg","20160812_085750.jpg",
+      "20160812_110309.jpg","20160812_160527.jpg","20160812_163904.jpg","20160812_163914.jpg",
+      "20160812_164348.jpg","20160812_170235.jpg","20160812_170239.jpg","20160812_170739.jpg",
+      "20160812_171829.jpg","20160812_174036.jpg","20160812_180759.jpg","20160812_180826.jpg",
+      "20160812_180832.jpg","20160812_181208.jpg","20160812_182856.jpg","20160812_182901.jpg",
+      "20160813_100655.jpg","20160813_100705.jpg","20160813_102216.jpg","20160813_124305.jpg",
+      "20160813_133157.jpg","20160813_133200.jpg","20160813_133205.jpg","20160813_135453.jpg",
+      "20160813_135455.jpg","20160813_141245.jpg","20160813_141249.jpg","20160813_141250.jpg",
+      "20160813_141748.jpg","20160813_141903.jpg","20160813_143241.jpg","20160813_143246.jpg",
+      "20160813_143250.jpg","20160813_143620.jpg","20160813_143944.jpg","20160813_143949.jpg",
+      "20160813_144037.jpg","20160813_144039.jpg","20160813_144044.jpg","20160813_144300.jpg",
+      "20160813_144840.jpg","20160813_144842.jpg","20160813_150319.jpg","20160813_150625.jpg",
+      "20160813_150659.jpg","20160813_150706.jpg","20160813_150751.jpg","20160813_150755.jpg",
+      "20160813_150801.jpg","20160813_150811.jpg","20160813_150818.jpg","20160813_150822.jpg",
+      "20160813_150850.jpg","20160813_150857.jpg","20160813_150901.jpg","20160813_150934.jpg",
+      "20160813_150945.jpg","20160813_150952.jpg","20160813_150954.jpg","20160813_150957.jpg",
+      "20160813_151014.jpg","20160813_151025.jpg","20160813_151031.jpg","20160813_151040.jpg",
+      "20160813_151139.jpg","20160813_151202.jpg","20160813_151218.jpg","20160813_151320.jpg",
+      "20160813_151412.jpg","20160813_151416.jpg","20160813_151420.jpg","20160813_151428.jpg",
+      "20160813_151436.jpg","20160813_151442.jpg","20160813_151447.jpg","20160813_151449.jpg",
+      "20160813_151522.jpg","20160813_151645.jpg","20160813_151733.jpg","20160813_151741.jpg",
+      "20160813_151746.jpg","20160813_151805.jpg","20160813_151808.jpg","20160813_151810.jpg",
+      "20160813_151851.jpg","20160813_151856.jpg","20160813_151858.jpg","20160813_152014.jpg",
+      "20160813_152018.jpg","20160813_152028.jpg","20160813_152122.jpg","20160813_152213.jpg",
+      "20160813_152216.jpg","20160813_152252.jpg","20160813_152301.jpg","20160813_152744.jpg",
+      "20160813_152748.jpg","20160813_152854.jpg","20160813_152857.jpg","20160813_153029.jpg",
+      "20160813_153035.jpg","20160813_153128.jpg","20160813_153132.jpg","20160813_153140.jpg",
+      "20160813_153151.jpg","20160813_153246.jpg","20160813_153249.jpg","20160813_153253.jpg",
+      "20160813_153257.jpg","20160813_153301.jpg","20160813_153436.jpg","20160813_153447.jpg",
+      "20160813_153458.jpg","20160813_153504.jpg","20160813_153842.jpg","20160813_154221.jpg",
+      "20160813_154226.jpg","20160813_162413.jpg","20160813_191325.jpg","20160813_191330.jpg",
+      "20160813_195125.jpg","20160813_195820.jpg","20160813_195822.jpg","20160813_195828.jpg",
+      "20160813_205826.jpg","20160813_232503.jpg","20160813_232507.jpg","20160813_232509.jpg",
+      "20160814_082030.jpg","20160814_082034.jpg","20160814_083412.jpg","20160814_083432.jpg",
+      "20160814_085107.jpg","20160814_085112.jpg","20160814_085117_001.jpg","20160814_085118.jpg",
+      "20160814_085124.jpg","20160814_085130.jpg","20160814_085137.jpg","20160814_085146.jpg",
+      "20160814_085157.jpg","20160814_085203.jpg","20160814_085207.jpg","20160814_085209.jpg",
+      "20160814_091250.jpg","20160814_091817.jpg","20160814_091829.jpg","20160814_091915.jpg",
+      "20160814_092210.jpg","20160814_092215.jpg","20160814_092216.jpg","20160814_092230.jpg",
+      "20160814_092240.jpg","20160814_092248.jpg","20160814_092255.jpg","20160814_092321.jpg",
+      "20160814_092327.jpg","20160814_092401.jpg","20160814_092429.jpg","20160814_092437.jpg",
+      "20160814_092442.jpg","20160814_092521.jpg","20160814_092539.jpg","20160814_092554.jpg",
+      "20160814_092638.jpg","20160814_092641.jpg","20160814_092734.jpg","20160814_092756.jpg",
+      "20160814_092915.jpg","20160814_092918.jpg","20160814_092923.jpg","20160814_093030.jpg",
+      "20160814_093033.jpg","20160814_093039.jpg","20160814_093128.jpg","20160814_093135.jpg",
+      "20160814_093210.jpg","20160814_093216.jpg","20160814_093225.jpg","20160814_093858.jpg",
+      "Mobile uploads.jpg"
+    ];
+
+    let currentIndex = 0;
+    const gallery = document.getElementById('gallery');
+    const lightbox = document.getElementById('lightbox');
+    const lightboxImg = document.getElementById('lightbox-img');
+
+    images.forEach((img, i) => {
+      const div = document.createElement('div');
+      div.className = 'gallery-item';
+      div.innerHTML = `<img src="/gallery/snapon/${img}" alt="Snap-on photo" loading="lazy">`;
+      div.onclick = () => openLightbox(i);
+      gallery.appendChild(div);
+    });
+
+    function openLightbox(index) {
+      currentIndex = index;
+      lightboxImg.src = `/gallery/snapon/${images[currentIndex]}`;
+      lightbox.classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeLightbox() {
+      lightbox.classList.remove('active');
+      document.body.style.overflow = '';
+    }
+
+    function navLightbox(dir) {
+      currentIndex = (currentIndex + dir + images.length) % images.length;
+      lightboxImg.src = `/gallery/snapon/${images[currentIndex]}`;
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (!lightbox.classList.contains('active')) return;
+      if (e.key === 'Escape') closeLightbox();
+      if (e.key === 'ArrowLeft') navLightbox(-1);
+      if (e.key === 'ArrowRight') navLightbox(1);
+    });
+
+    lightbox.addEventListener('click', (e) => {
+      if (e.target === lightbox) closeLightbox();
+    });
+  </script>
 </body>
 </html>

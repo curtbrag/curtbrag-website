@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Card Gallery - Curtis Bragdon</title>
-  <meta name="description" content="Browse Curtis Bragdon's trading card collection. Baseball, basketball, Pokemon and more.">
+  <title>Gallery - Curtis Bragdon</title>
+  <meta name="description" content="Browse Curtis Bragdon's photo galleries - cars, Snap-on tools, and more.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&display=swap" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/css/all.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/css/all.min.css" rel="stylesheet">
   <style>
     :root {
       --brand: #ed232a;
@@ -61,58 +61,71 @@
       border-color: var(--brand);
     }
     .container {
-      max-width: 1200px;
+      max-width: 1000px;
       margin: 0 auto;
       padding: 2rem 1.5rem;
     }
-    .gallery-grid {
+    .gallery-cards {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       gap: 1.5rem;
     }
-    .card-item {
+    .gallery-card {
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 12px;
       overflow: hidden;
+      text-decoration: none;
+      color: var(--text);
       transition: transform 0.2s, box-shadow 0.2s;
     }
-    .card-item:hover {
+    .gallery-card:hover {
       transform: translateY(-4px);
       box-shadow: 0 8px 24px rgba(0,0,0,0.4);
     }
-    .card-item img {
+    .gallery-card img {
       width: 100%;
-      height: 300px;
+      height: 200px;
       object-fit: cover;
       background: #222;
     }
-    .card-item .info {
-      padding: 1rem;
+    .gallery-card .info {
+      padding: 1.25rem;
     }
-    .card-item h3 {
+    .gallery-card h2 {
       margin: 0 0 0.5rem;
-      font-size: 1rem;
+      font-size: 1.25rem;
+      color: var(--brand);
     }
-    .card-item p {
+    .gallery-card p {
       margin: 0;
       color: var(--muted);
       font-size: 0.9rem;
     }
+    .gallery-card .count {
+      display: inline-block;
+      margin-top: 0.75rem;
+      padding: 0.25rem 0.75rem;
+      background: var(--bg);
+      border-radius: 20px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
     .cta-section {
       text-align: center;
-      padding: 3rem 1.5rem;
+      padding: 2rem;
       background: var(--panel);
       margin-top: 2rem;
       border-radius: 12px;
+      border: 1px solid var(--border);
     }
     .cta-section h2 {
       color: var(--brand);
-      margin: 0 0 1rem;
+      margin: 0 0 0.5rem;
     }
     .cta-section p {
       color: var(--muted);
-      margin: 0 0 1.5rem;
+      margin: 0 0 1rem;
     }
     .btn {
       display: inline-flex;
@@ -124,7 +137,6 @@
       text-decoration: none;
       border-radius: 8px;
       font-weight: 600;
-      margin: 0.5rem;
     }
     .btn:hover {
       background: #c91a20;
@@ -139,43 +151,51 @@
       color: var(--brand);
       text-decoration: none;
     }
-    .empty-state {
-      text-align: center;
-      padding: 4rem 2rem;
-      color: var(--muted);
-    }
-    .empty-state i {
-      font-size: 4rem;
-      margin-bottom: 1rem;
-      opacity: 0.5;
-    }
   </style>
 </head>
 <body>
   <div class="header">
-    <h1><i class="fa-solid fa-image"></i> Card Gallery</h1>
-    <p>Browse the collection of trading cards</p>
+    <h1><i class="fa-solid fa-images"></i> Photo Gallery</h1>
+    <p>Browse the collections</p>
   </div>
 
   <nav class="nav">
-    <a href="/" class=""><i class="fa-solid fa-home"></i> Home</a>
-    <a href="/shop" class=""><i class="fa-solid fa-shopping-cart"></i> Shop on eBay</a>
-    <a href="/gallery" class="active"><i class="fa-solid fa-image"></i> Gallery</a>
+    <a href="/"><i class="fa-solid fa-home"></i> Home</a>
+    <a href="/shop"><i class="fa-solid fa-shopping-cart"></i> Card Shop</a>
+    <a href="/gallery" class="active"><i class="fa-solid fa-images"></i> Gallery</a>
+    <a href="/addyourride"><i class="fa-solid fa-car-side"></i> Add Your Ride</a>
   </nav>
 
   <div class="container">
-    <div class="empty-state">
-      <i class="fa-solid fa-images"></i>
-      <h2>Gallery Coming Soon</h2>
-      <p>Card images are being uploaded. Check back soon to browse the full collection!</p>
-      <p>In the meantime, shop our live eBay listings:</p>
-      <a href="/shop" class="btn"><i class="fa-solid fa-shopping-cart"></i> Browse Card Shop</a>
-      <a href="https://www.ebay.com/str/curtbrag" target="_blank" class="btn"><i class="fa-brands fa-ebay"></i> View on eBay</a>
+    <div class="gallery-cards">
+      <a href="/gallery/cars.html" class="gallery-card">
+        <img src="/gallery/cars/20140328_111738.jpg" alt="Cars Gallery">
+        <div class="info">
+          <h2><i class="fa-solid fa-car"></i> Cars Gallery</h2>
+          <p>Customer cars, trucks, and rides from around Boston</p>
+          <span class="count"><i class="fa-solid fa-image"></i> 100+ photos</span>
+        </div>
+      </a>
+
+      <a href="/gallery/snapon.html" class="gallery-card">
+        <img src="/gallery/snapon/20160811_173654.jpg" alt="Snap-on Gallery">
+        <div class="info">
+          <h2><i class="fa-solid fa-wrench"></i> Snap-on Gallery</h2>
+          <p>Tools, truck photos, and Snap-on memories</p>
+          <span class="count"><i class="fa-solid fa-image"></i> 250+ photos</span>
+        </div>
+      </a>
+    </div>
+
+    <div class="cta-section">
+      <h2><i class="fa-solid fa-camera"></i> Got a Ride to Share?</h2>
+      <p>Submit your car or truck to be featured in the gallery!</p>
+      <a href="/addyourride" class="btn"><i class="fa-solid fa-plus"></i> Add Your Ride</a>
     </div>
   </div>
 
   <div class="footer">
-    <p><a href="/">← Back to Curtis Bragdon's World</a></p>
+    <p><a href="/"><i class="fa-solid fa-arrow-left"></i> Back to Home</a></p>
     <p>&copy; 2025 Curtis Bragdon. All rights reserved.</p>
   </div>
 </body>
