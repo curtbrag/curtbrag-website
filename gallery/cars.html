@@ -1,1 +1,136 @@
-{"id":"/gallery/cars.html","path":"/gallery/cars.html","sha":"34e399cb21690bfb4dbcc6308f96cd984461160b","mime_type":"text/html","size":4,"site_id":"f72cbb6e-d6de-4acc-969e-27b0cf4b1c23","deploy_id":"68cb7d14eed4400008e6b040"}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cars Gallery - Curtis Bragdon</title>
+  <meta name="description" content="Check out cars and rides from Curtis Bragdon's collection and community.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/css/all.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --brand: #ed232a;
+      --bg: #0e0f10;
+      --panel: #141517;
+      --text: #f5f5f5;
+      --muted: #a7a7a7;
+      --border: #2a2b2e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Montserrat, Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100vh;
+    }
+    .header {
+      background: linear-gradient(135deg, var(--brand), #b91c22);
+      padding: 2rem 1.5rem;
+      text-align: center;
+    }
+    .header h1 {
+      margin: 0 0 0.5rem;
+      font-size: 2rem;
+    }
+    .header p {
+      margin: 0;
+      opacity: 0.9;
+    }
+    .nav {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      padding: 1rem;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .nav a {
+      color: var(--text);
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      transition: all 0.2s;
+    }
+    .nav a:hover, .nav a.active {
+      background: var(--brand);
+      border-color: var(--brand);
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      text-align: center;
+    }
+    .section h2 {
+      color: var(--brand);
+      margin: 0 0 1rem;
+    }
+    .section p {
+      color: var(--muted);
+      margin: 0 0 1.5rem;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.8rem 1.5rem;
+      background: var(--brand);
+      color: white;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .btn:hover {
+      background: #c91a20;
+    }
+    .footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .footer a {
+      color: var(--brand);
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1><i class="fa-solid fa-car"></i> Cars Gallery</h1>
+    <p>Rides from the community</p>
+  </div>
+
+  <nav class="nav">
+    <a href="/"><i class="fa-solid fa-home"></i> Home</a>
+    <a href="/shop"><i class="fa-solid fa-shopping-cart"></i> Shop</a>
+    <a href="/gallery"><i class="fa-solid fa-image"></i> Gallery</a>
+    <a href="/addyourride"><i class="fa-solid fa-car-side"></i> Add Your Ride</a>
+  </nav>
+
+  <div class="container">
+    <div class="section">
+      <h2><i class="fa-solid fa-car-side"></i> Coming Soon</h2>
+      <p>We're collecting awesome rides from the community. Want yours featured here?</p>
+      <a href="/addyourride" class="btn"><i class="fa-solid fa-plus"></i> Submit Your Ride</a>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p><a href="/gallery"><i class="fa-solid fa-arrow-left"></i> Back to Gallery</a></p>
+    <p>&copy; 2025 Curtis Bragdon. All rights reserved.</p>
+  </div>
+</body>
+</html>
