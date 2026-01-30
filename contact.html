@@ -101,9 +101,28 @@
       font-size: 0.9rem;
       transition: all 0.2s;
     }
-    .quick-contact a:hover {
+    .quick-contact a:hover,
+    .quick-contact .copy-btn:hover {
       border-color: var(--brand);
       color: var(--brand);
+    }
+    .quick-contact .copy-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1rem;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+    .quick-contact .copy-btn.copied {
+      border-color: #22c55e;
+      color: #22c55e;
     }
     form {
       display: flex;
@@ -152,6 +171,28 @@
     button:hover {
       background: #c91a20;
     }
+    button:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+    button .spinner {
+      display: none;
+      animation: spin 1s linear infinite;
+    }
+    button.loading .spinner {
+      display: inline-block;
+    }
+    button.loading .btn-text {
+      display: none;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    /* Focus states */
+    input:focus, textarea:focus {
+      box-shadow: 0 0 0 2px rgba(237, 35, 42, 0.2);
+    }
     .footer {
       text-align: center;
       padding: 2rem;
@@ -186,6 +227,9 @@
         <a href="sms:+17814170692"><i class="fa-solid fa-comment-sms"></i> Text</a>
         <a href="mailto:curtbrag@yahoo.com"><i class="fa-solid fa-envelope"></i> Email</a>
         <a href="/zelle.html"><i class="fa-solid fa-dollar-sign"></i> Zelle</a>
+        <button type="button" class="copy-btn" id="copyBtn" title="Copy phone number">
+          <i class="fa-solid fa-copy" id="copyIcon"></i> <span id="copyText">Copy #</span>
+        </button>
       </div>
 
       <a id="schedule"></a>
@@ -210,10 +254,44 @@
         <label for="message">Message</label>
         <textarea id="message" name="message" placeholder="How can I help you?" required></textarea>
 
-        <button type="submit"><i class="fa-solid fa-paper-plane"></i> Send Message</button>
+        <button type="submit" id="submitBtn">
+          <i class="fa-solid fa-spinner spinner"></i>
+          <span class="btn-text"><i class="fa-solid fa-paper-plane"></i> Send Message</span>
+        </button>
       </form>
     </div>
   </div>
+
+  <script>
+    // Form submit loading state
+    const form = document.querySelector('form');
+    const submitBtn = document.getElementById('submitBtn');
+    form.addEventListener('submit', function() {
+      submitBtn.classList.add('loading');
+      submitBtn.disabled = true;
+    });
+
+    // Copy phone number
+    const copyBtn = document.getElementById('copyBtn');
+    const copyText = document.getElementById('copyText');
+    const copyIcon = document.getElementById('copyIcon');
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText('781-417-0692');
+        copyBtn.classList.add('copied');
+        copyIcon.className = 'fa-solid fa-check';
+        copyText.textContent = 'Copied!';
+        setTimeout(() => {
+          copyBtn.classList.remove('copied');
+          copyIcon.className = 'fa-solid fa-copy';
+          copyText.textContent = 'Copy #';
+        }, 2000);
+      } catch (err) {
+        copyText.textContent = 'Failed';
+        setTimeout(() => { copyText.textContent = 'Copy #'; }, 2000);
+      }
+    });
+  </script>
 
   <div class="footer">
     <p><a href="/"><i class="fa-solid fa-arrow-left"></i> Back to Home</a></p>
