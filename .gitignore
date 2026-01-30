@@ -4,3 +4,6 @@ netlify/functions.quarantine*
 Recovered-*/
 script-logs/
 
+
+# Local Netlify folder
+.netlify

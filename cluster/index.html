@@ -725,6 +725,31 @@
       </div>
     </div>
 
+    <!-- Network Status -->
+    <div class="section-header">
+      <h2 class="section-title"><i class="fa-solid fa-wifi"></i> Network</h2>
+    </div>
+    <div class="info-grid" id="networkGrid">
+      <div class="info-card" id="tailscaleCard">
+        <h3><i class="fa-solid fa-shield-halved"></i> Tailscale VPN</h3>
+        <div class="info-list" id="tailscaleInfo">
+          <div class="info-item">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            <span class="muted">Loading...</span>
+          </div>
+        </div>
+      </div>
+      <div class="info-card" id="wifiCard">
+        <h3><i class="fa-solid fa-wifi"></i> WiFi Connection</h3>
+        <div class="info-list" id="wifiInfo">
+          <div class="info-item">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            <span class="muted">Loading...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Cluster Info -->
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-circle-info"></i> Cluster Specs</h2>
@@ -870,6 +895,9 @@
         document.getElementById('svcBadge').textContent = `${allServices.length} services`;
         renderServices();
 
+        // Render network status
+        renderNetwork(data.network);
+
         // Update last update time
         const lastUpdate = document.getElementById('lastUpdate');
         if (data.lastUpdate) {
@@ -1011,6 +1039,86 @@
           </tr>
         `;
       }).join('');
+    }
+
+    function renderNetwork(network) {
+      const tailscaleInfo = document.getElementById('tailscaleInfo');
+      const wifiInfo = document.getElementById('wifiInfo');
+
+      // Render Tailscale info
+      if (network?.tailscale?.connected) {
+        const ts = network.tailscale;
+        const onlinePeers = (ts.peers || []).filter(p => p.online).length;
+        const totalPeers = (ts.peers || []).length;
+        tailscaleInfo.innerHTML = `
+          <div class="info-item">
+            <i class="fa-solid fa-circle-check" style="color: var(--green);"></i>
+            <span class="label">Status:</span>
+            <span class="value" style="color: var(--green);">Connected</span>
+          </div>
+          <div class="info-item">
+            <i class="fa-solid fa-at"></i>
+            <span class="label">Hostname:</span>
+            <span class="value">${ts.hostname || '-'}</span>
+          </div>
+          <div class="info-item">
+            <i class="fa-solid fa-location-dot"></i>
+            <span class="label">Tailscale IP:</span>
+            <span class="value"><code>${ts.ip || '-'}</code></span>
+          </div>
+          <div class="info-item">
+            <i class="fa-solid fa-users"></i>
+            <span class="label">Peers Online:</span>
+            <span class="value">${onlinePeers}/${totalPeers}</span>
+          </div>
+        `;
+      } else {
+        tailscaleInfo.innerHTML = `
+          <div class="info-item">
+            <i class="fa-solid fa-circle-xmark" style="color: var(--muted);"></i>
+            <span class="muted">Not connected</span>
+          </div>
+        `;
+      }
+
+      // Render WiFi info
+      if (network?.wifi?.connected) {
+        const wifi = network.wifi;
+        const signal = parseInt(wifi.signal) || 0;
+        const signalClass = signal > -50 ? 'green' : signal > -70 ? 'yellow' : 'red';
+        const signalIcon = signal > -50 ? 'fa-signal' : signal > -70 ? 'fa-signal' : 'fa-signal-weak';
+        wifiInfo.innerHTML = `
+          <div class="info-item">
+            <i class="fa-solid fa-circle-check" style="color: var(--green);"></i>
+            <span class="label">Status:</span>
+            <span class="value" style="color: var(--green);">Connected</span>
+          </div>
+          <div class="info-item">
+            <i class="fa-solid fa-broadcast-tower"></i>
+            <span class="label">SSID:</span>
+            <span class="value">${wifi.ssid || '-'}</span>
+          </div>
+          <div class="info-item">
+            <i class="fa-solid ${signalIcon}"></i>
+            <span class="label">Signal:</span>
+            <span class="value" style="color: var(--${signalClass});">${wifi.signal || '-'} dBm</span>
+          </div>
+          ${network.localIP ? `
+          <div class="info-item">
+            <i class="fa-solid fa-ethernet"></i>
+            <span class="label">Local IP:</span>
+            <span class="value"><code>${network.localIP}</code></span>
+          </div>
+          ` : ''}
+        `;
+      } else {
+        wifiInfo.innerHTML = `
+          <div class="info-item">
+            <i class="fa-solid fa-circle-xmark" style="color: var(--muted);"></i>
+            <span class="muted">Not connected</span>
+          </div>
+        `;
+      }
     }
 
     // Load on page load

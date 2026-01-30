@@ -70,6 +70,43 @@ SERVICES_JSON=$(kubectl get svc -A -o json 2>/dev/null | jq -c '[.items[] | {
 
 log "Got $(echo "$SERVICES_JSON" | jq 'length') services"
 
+# Get network status (Tailscale and local interfaces)
+log "Gathering network info..."
+NETWORK_JSON='{"tailscale":null,"wifi":null,"localIP":null}'
+
+# Get Tailscale status if available
+if command -v tailscale >/dev/null 2>&1; then
+  TS_STATUS=$(tailscale status --json 2>/dev/null || echo '{}')
+  TS_SELF=$(echo "$TS_STATUS" | jq -c '.Self // null')
+  TS_PEERS=$(echo "$TS_STATUS" | jq -c '[.Peer // {} | to_entries[] | {name: .value.HostName, ip: .value.TailscaleIPs[0], online: .value.Online, lastSeen: .value.LastSeen}]')
+
+  if [ "$TS_SELF" != "null" ]; then
+    TS_IP=$(echo "$TS_SELF" | jq -r '.TailscaleIPs[0] // empty')
+    TS_NAME=$(echo "$TS_SELF" | jq -r '.HostName // empty')
+    NETWORK_JSON=$(echo "$NETWORK_JSON" | jq --arg ip "$TS_IP" --arg name "$TS_NAME" --argjson peers "$TS_PEERS" '.tailscale = {ip: $ip, hostname: $name, connected: true, peers: $peers}')
+    log "Tailscale: $TS_NAME ($TS_IP)"
+  fi
+fi
+
+# Get WiFi info if available
+if command -v iw >/dev/null 2>&1; then
+  WIFI_SSID=$(iw dev wlan0 link 2>/dev/null | grep SSID | awk '{print $2}' || echo "")
+  WIFI_SIGNAL=$(iw dev wlan0 link 2>/dev/null | grep signal | awk '{print $2}' || echo "")
+
+  if [ -n "$WIFI_SSID" ]; then
+    NETWORK_JSON=$(echo "$NETWORK_JSON" | jq --arg ssid "$WIFI_SSID" --arg signal "$WIFI_SIGNAL" '.wifi = {ssid: $ssid, signal: $signal, connected: true}')
+    log "WiFi: $WIFI_SSID (${WIFI_SIGNAL}dBm)"
+  fi
+fi
+
+# Get local IP
+LOCAL_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)192\.168\.\d+\.\d+' | head -1 || echo "")
+if [ -n "$LOCAL_IP" ]; then
+  NETWORK_JSON=$(echo "$NETWORK_JSON" | jq --arg ip "$LOCAL_IP" '.localIP = $ip')
+fi
+
+log "Network info gathered"
+
 # Calculate summary
 NODES_READY=$(echo "$NODES_JSON" | jq '[.[] | select(.status=="Ready")] | length')
 NODES_TOTAL=$(echo "$NODES_JSON" | jq 'length')
@@ -85,6 +122,7 @@ PAYLOAD=$(jq -n \
   --argjson nodes "$NODES_JSON" \
   --argjson pods "$PODS_JSON" \
   --argjson services "$SERVICES_JSON" \
+  --argjson network "$NETWORK_JSON" \
   --argjson nodesReady "$NODES_READY" \
   --argjson nodesTotal "$NODES_TOTAL" \
   --argjson podsRunning "$PODS_RUNNING" \
@@ -95,6 +133,7 @@ PAYLOAD=$(jq -n \
     nodes: $nodes,
     pods: $pods,
     services: $services,
+    network: $network,
     summary: {
       nodesReady: $nodesReady,
       nodesTotal: $nodesTotal,
