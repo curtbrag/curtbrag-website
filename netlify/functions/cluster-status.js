@@ -20,16 +20,16 @@ let clusterStatus = {
 // Demo data for when no live data is available
 const DEMO_DATA = {
   nodes: [
-    { name: 'node1', status: 'Ready', role: 'control-plane', ip: '192.168.1.206' },
-    { name: 'node2', status: 'Ready', role: 'worker', ip: '192.168.1.207' },
-    { name: 'node3', status: 'Ready', role: 'worker', ip: '192.168.1.208' },
-    { name: 'node4', status: 'Ready', role: 'worker', ip: '192.168.1.209' },
-    { name: 'node5', status: 'Ready', role: 'worker', ip: '192.168.1.210' },
-    { name: 'node6', status: 'Ready', role: 'worker', ip: '192.168.1.211' },
-    { name: 'node7', status: 'Ready', role: 'worker', ip: '192.168.1.212' },
-    { name: 'node8', status: 'NotReady', role: 'worker', ip: '192.168.1.213' },
-    { name: 'node9', status: 'NotReady', role: 'worker', ip: '192.168.1.214' },
-    { name: 'node10', status: 'NotReady', role: 'worker', ip: '192.168.1.215' }
+    { name: 'node1', status: 'Ready', role: 'control-plane', ip: '192.168.1.206', cpuPercent: 12, memoryPercent: 45 },
+    { name: 'node2', status: 'Ready', role: 'worker', ip: '192.168.1.207', cpuPercent: 8, memoryPercent: 38 },
+    { name: 'node3', status: 'Ready', role: 'worker', ip: '192.168.1.208', cpuPercent: 15, memoryPercent: 52 },
+    { name: 'node4', status: 'Ready', role: 'worker', ip: '192.168.1.209', cpuPercent: 6, memoryPercent: 41 },
+    { name: 'node5', status: 'Ready', role: 'worker', ip: '192.168.1.210', cpuPercent: 22, memoryPercent: 67 },
+    { name: 'node6', status: 'Ready', role: 'worker', ip: '192.168.1.211', cpuPercent: 9, memoryPercent: 35 },
+    { name: 'node7', status: 'Ready', role: 'worker', ip: '192.168.1.212', cpuPercent: 11, memoryPercent: 44 },
+    { name: 'node8', status: 'NotReady', role: 'worker', ip: '192.168.1.213', cpuPercent: 0, memoryPercent: 0 },
+    { name: 'node9', status: 'NotReady', role: 'worker', ip: '192.168.1.214', cpuPercent: 0, memoryPercent: 0 },
+    { name: 'node10', status: 'NotReady', role: 'worker', ip: '192.168.1.215', cpuPercent: 0, memoryPercent: 0 }
   ],
   pods: [
     { name: 'nginx-deployment-7c5b4f9d8-x2k9m', namespace: 'default', status: 'Running', node: 'node2' },
@@ -78,6 +78,15 @@ const DEMO_DATA = {
     },
     localIP: '192.168.1.206'
   },
+  resources: {
+    cpuPercent: 12,
+    memoryPercent: 45,
+    memoryUsedMB: 2867,
+    memoryTotalMB: 6144,
+    battery: { level: 87, status: 'Charging' },
+    temperature: 38,
+    uptimeHours: 127
+  },
   summary: {
     nodesReady: 7,
     nodesTotal: 10,
@@ -121,6 +130,7 @@ exports.handler = async function(event, context) {
         pods: data.pods || [],
         services: data.services || [],
         network: data.network || null,
+        resources: data.resources || null,
         summary: data.summary || {
           nodesReady: 0,
           nodesTotal: 0,

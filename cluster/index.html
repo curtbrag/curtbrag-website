@@ -759,6 +759,15 @@
           </div>
         </div>
       </div>
+      <div class="info-card" id="resourcesCard">
+        <h3><i class="fa-solid fa-gauge-high"></i> Control Plane Resources</h3>
+        <div class="info-list" id="resourcesInfo">
+          <div class="info-item">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            <span class="muted">Loading...</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     </div>
@@ -959,6 +968,9 @@
 
         // Render network status
         renderNetwork(data.network);
+
+        // Render resources
+        renderResources(data.resources);
 
         // Update last update time
         const lastUpdate = document.getElementById('lastUpdate');
@@ -1224,6 +1236,57 @@
           </tr>
         `;
       }).join('');
+    }
+
+    function renderResources(resources) {
+      const resourcesInfo = document.getElementById('resourcesInfo');
+
+      if (!resources) {
+        resourcesInfo.innerHTML = `
+          <div class="info-item">
+            <i class="fa-solid fa-circle-xmark" style="color: var(--muted);"></i>
+            <span class="muted">No resource data available</span>
+          </div>
+        `;
+        return;
+      }
+
+      const cpuColor = resources.cpuPercent > 80 ? 'red' : resources.cpuPercent > 60 ? 'yellow' : 'green';
+      const memColor = resources.memoryPercent > 80 ? 'red' : resources.memoryPercent > 60 ? 'yellow' : 'green';
+      const batteryColor = resources.battery?.level > 50 ? 'green' : resources.battery?.level > 20 ? 'yellow' : 'red';
+      const tempColor = resources.temperature > 50 ? 'red' : resources.temperature > 40 ? 'yellow' : 'green';
+
+      resourcesInfo.innerHTML = `
+        <div class="info-item">
+          <i class="fa-solid fa-microchip"></i>
+          <span class="label">CPU:</span>
+          <span class="value" style="color: var(--${cpuColor});">${resources.cpuPercent || 0}%</span>
+        </div>
+        <div class="info-item">
+          <i class="fa-solid fa-memory"></i>
+          <span class="label">Memory:</span>
+          <span class="value" style="color: var(--${memColor});">${resources.memoryPercent || 0}% (${resources.memoryUsedMB || 0}/${resources.memoryTotalMB || 0} MB)</span>
+        </div>
+        ${resources.battery ? `
+        <div class="info-item">
+          <i class="fa-solid fa-battery-${resources.battery.level > 75 ? 'full' : resources.battery.level > 50 ? 'three-quarters' : resources.battery.level > 25 ? 'half' : 'quarter'}"></i>
+          <span class="label">Battery:</span>
+          <span class="value" style="color: var(--${batteryColor});">${resources.battery.level}% (${resources.battery.status})</span>
+        </div>
+        ` : ''}
+        ${resources.temperature ? `
+        <div class="info-item">
+          <i class="fa-solid fa-temperature-half"></i>
+          <span class="label">Temperature:</span>
+          <span class="value" style="color: var(--${tempColor});">${resources.temperature}°C</span>
+        </div>
+        ` : ''}
+        <div class="info-item">
+          <i class="fa-solid fa-clock"></i>
+          <span class="label">Uptime:</span>
+          <span class="value">${resources.uptimeHours || 0} hours</span>
+        </div>
+      `;
     }
 
     // Load on page load
