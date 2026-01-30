@@ -33,15 +33,6 @@ fi
 
 log "Connected to cluster, gathering data..."
 
-
-# Check cluster connectivity
-if ! kubectl cluster-info >/dev/null 2>&1; then
-  log "ERROR: Cannot connect to cluster"
-  exit 1
-fi
-
-log "Connected to cluster, gathering data..."
-
 # Get node status with more details
 NODES_JSON=$(kubectl get nodes -o json 2>/dev/null | jq -c '[.items[] | {
   name: .metadata.name,

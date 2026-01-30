@@ -274,17 +274,6 @@
       color: var(--muted);
       font-family: 'JetBrains Mono', monospace;
     }
-    }
-    .section-title i { color: var(--brand); font-size: 1rem; }
-    .section-badge {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      padding: 0.3rem 0.75rem;
-      border-radius: 20px;
-      font-size: 0.75rem;
-      color: var(--muted);
-      font-family: 'JetBrains Mono', monospace;
-    }
 
     /* Node Grid */
     .node-grid {
@@ -770,57 +759,6 @@
       </div>
     </div>
 
-    </div>
-
-    <!-- Pods Section -->
-    <div class="section-header">
-      <h2 class="section-title"><i class="fa-solid fa-cubes"></i> Workloads</h2>
-    </div>
-    <div class="tabs" id="podTabs">
-      <button class="tab active" data-ns="all"><i class="fa-solid fa-layer-group"></i> All <span class="count" id="podCountAll">0</span></button>
-    </div>
-    <div class="table-container">
-      <div class="table-scroll">
-        <table id="podTable">
-          <thead>
-            <tr>
-              <th>Pod Name</th>
-              <th>Namespace</th>
-              <th>Status</th>
-              <th>Node</th>
-            </tr>
-          </thead>
-          <tbody id="podTableBody">
-            <tr><td colspan="4" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Services Section -->
-    <div class="section-header">
-      <h2 class="section-title"><i class="fa-solid fa-network-wired"></i> Services</h2>
-      <span class="section-badge" id="svcBadge">0 services</span>
-    </div>
-    <div class="table-container">
-      <div class="table-scroll">
-        <table id="svcTable">
-          <thead>
-            <tr>
-              <th>Service Name</th>
-              <th>Namespace</th>
-              <th>Type</th>
-              <th>Cluster IP</th>
-              <th>Ports</th>
-            </tr>
-          </thead>
-          <tbody id="svcTableBody">
-            <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-plug"></i><br>No services found</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
     <!-- Cluster Info -->
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-circle-info"></i> Cluster Specs</h2>
@@ -1193,49 +1131,6 @@
           </div>
         `;
       }
-
-      tbody.innerHTML = filteredPods.map(pod => {
-        const statusClass = pod.status?.toLowerCase() || 'pending';
-        const statusIcon = {
-          'running': 'fa-circle-check',
-          'pending': 'fa-clock',
-          'failed': 'fa-circle-xmark',
-          'succeeded': 'fa-flag-checkered'
-        }[statusClass] || 'fa-question';
-
-        return `
-          <tr>
-            <td class="pod-name">${pod.name}</td>
-            <td><span class="pod-namespace">${pod.namespace}</span></td>
-            <td><span class="pod-status ${statusClass}"><i class="fa-solid ${statusIcon}"></i> ${pod.status}</span></td>
-            <td class="pod-node">${pod.node || '-'}</td>
-          </tr>
-        `;
-      }).join('');
-    }
-
-    function renderServices() {
-      const tbody = document.getElementById('svcTableBody');
-
-      if (allServices.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-plug"></i><br>No services found</td></tr>';
-        return;
-      }
-
-      tbody.innerHTML = allServices.map(svc => {
-        const typeClass = svc.type?.toLowerCase().replace(/\s/g, '') || 'clusterip';
-        const ports = (svc.ports || []).join(', ') || '-';
-
-        return `
-          <tr>
-            <td class="pod-name">${svc.name}</td>
-            <td><span class="pod-namespace">${svc.namespace}</span></td>
-            <td><span class="svc-type ${typeClass}">${svc.type}</span></td>
-            <td><code>${svc.clusterIP || '-'}</code></td>
-            <td class="svc-ports">${ports}</td>
-          </tr>
-        `;
-      }).join('');
     }
 
     function renderResources(resources) {
