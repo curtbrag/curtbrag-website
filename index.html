@@ -175,6 +175,52 @@
       .chip { font: inherit; padding:.4rem .6rem; border-radius: 999px; border:1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.03); cursor:pointer; color: var(--text); }
       .chip:hover { background: rgba(255,255,255,.08); }
 
+      /* Cell Phone Contact Cluster */
+      .phone-cluster {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        justify-content: center;
+        margin: 1.25rem 0;
+        padding: 1rem;
+        background: rgba(0,0,0,0.5);
+        border: 1px solid rgba(237,35,42,0.3);
+        border-radius: 12px;
+      }
+      .phone-cluster-title {
+        width: 100%;
+        text-align: center;
+        font-size: 0.85rem;
+        color: var(--muted);
+        margin-bottom: 0.25rem;
+      }
+      .phone-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 0.9rem 1.5rem;
+        background: linear-gradient(135deg, var(--brand), #b91c22);
+        color: #fff;
+        text-decoration: none;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 1rem;
+        min-width: 120px;
+        transition: transform 0.15s, box-shadow 0.15s;
+        box-shadow: 0 2px 8px rgba(237,35,42,0.3);
+      }
+      .phone-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(237,35,42,0.4);
+      }
+      .phone-btn:active {
+        transform: scale(0.98);
+      }
+      .phone-btn i {
+        font-size: 1.1rem;
+      }
+
       /* Skip link for accessibility */
       .skip-link {
         position: absolute;
@@ -239,6 +285,14 @@
       <!-- Header -->
       <div class="brand"><img src="assets/logo_icon.png" alt="Snap-on Logo" class="logo-icon"> All Access. No Excuses.</div>
       <p class="tag">This ain't your average tool truck. I don't just sell tools — I build my own path and custom solutions that last, with Alina on standby.</p>
+
+      <!-- Cell Phone Contact Cluster -->
+      <div class="phone-cluster">
+        <div class="phone-cluster-title">Quick Contact</div>
+        <a class="phone-btn" href="tel:+17814170692"><i class="fa-solid fa-phone"></i> Call</a>
+        <a class="phone-btn" href="sms:+17814170692"><i class="fa-solid fa-comment-sms"></i> Text</a>
+        <a class="phone-btn" href="mailto:curtbrag@yahoo.com"><i class="fa-solid fa-envelope"></i> Email</a>
+      </div>
 
       <!-- Buttons -->
       <main id="main-content">
