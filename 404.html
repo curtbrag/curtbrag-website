@@ -6,7 +6,7 @@
   <title>Page Not Found - Curtis Bragdon</title>
   <meta name="description" content="Page not found. Redirecting to Curtis Bragdon's homepage.">
   <meta name="theme-color" content="#ed232a">
-  <meta http-equiv="refresh" content="5; url=https://www.curtbrag.com/">
+  <meta http-equiv="refresh" content="5; url=/">
   <link rel="icon" type="image/png" href="/assets/truck_favicon.png">
   <link rel="apple-touch-icon" href="/assets/truck_favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -76,8 +76,16 @@
 <body>
   <div class="notfound-container">
     <h1><i class="fa-solid fa-wrench"></i> 404 - Lost in the Tool Truck</h1>
-    <p>Sorry, the page you're looking for doesn't exist. You'll be redirected to the home page in 5 seconds.</p>
+    <p>Sorry, the page you're looking for doesn't exist. Redirecting in <span id="countdown">5</span> seconds...</p>
     <a href="/"><i class="fa-solid fa-home"></i> Return Home Now</a>
   </div>
+  <script>
+    let count = 5;
+    const el = document.getElementById('countdown');
+    setInterval(() => {
+      count--;
+      if (count > 0) el.textContent = count;
+    }, 1000);
+  </script>
 </body>
 </html>
