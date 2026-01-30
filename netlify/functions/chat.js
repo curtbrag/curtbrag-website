@@ -26,6 +26,9 @@ const RESPONSES = {
 
   toolbox: 'Looking for a toolbox or storage? Snap-on has everything from roll carts to full Masters Series boxes. Curtis can help you spec one out and set up financing if needed.',
 
+  // Instrument Clusters
+  cluster: 'Need instrument cluster work? Curtis can help with gauge repairs, cluster programming, speedometer calibration, and odometer corrections. Whether it\'s a dead gauge, flickering lights, or mileage programming, schedule a stop to discuss your cluster issues!',
+
   // Warranty
   warranty: 'Need warranty help or an RA? Click "Warranty/RA Help" above or contact Curtis directly. Snap-on has great lifetime warranties on hand tools!',
 
@@ -139,6 +142,11 @@ function findResponse(message) {
   // Toolbox/Storage
   if (/toolbox|tool ?box|storage|roll ?cart|cabinet|chest|master.?series/i.test(msg)) {
     return RESPONSES.toolbox;
+  }
+
+  // Instrument Clusters
+  if (/cluster|gauge|speedometer|odometer|dash(board)?.*light|instrument|tach|tachometer|mileage.*(correct|program|reset)/i.test(msg)) {
+    return RESPONSES.cluster;
   }
 
   // General Tools
