@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact Dashboard - Curtis Bragdon</title>
+  <meta name="description" content="All 10 ways to reach Curtis Bragdon - call, text, email, and more. Your one-stop contact dashboard.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Contact Dashboard - Curtis Bragdon">
+  <meta property="og:description" content="10 ways to reach Curtis. Call, text, email, and more.">
+  <meta property="og:image" content="https://www.curtbrag.com/assets/logo_icon.png">
+  <meta property="og:url" content="https://www.curtbrag.com/dashboard">
+  <meta name="theme-color" content="#ed232a">
+  <link rel="icon" type="image/png" href="/assets/truck_favicon.png">
+  <link rel="apple-touch-icon" href="/assets/truck_favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/css/all.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --brand: #ed232a;
+      --bg: #0e0f10;
+      --panel: #141517;
+      --text: #f5f5f5;
+      --muted: #a7a7a7;
+      --border: #2a2b2e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Montserrat, Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100vh;
+    }
+    .header {
+      background: linear-gradient(135deg, var(--brand), #b91c22);
+      padding: 2rem 1.5rem;
+      text-align: center;
+    }
+    .header h1 {
+      margin: 0 0 0.5rem;
+      font-size: 1.8rem;
+    }
+    .header p {
+      margin: 0;
+      opacity: 0.9;
+      font-size: 0.95rem;
+    }
+    .nav {
+      display: flex;
+      justify-content: center;
+      gap: 0.75rem;
+      padding: 1rem;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .nav a {
+      color: var(--text);
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      transition: all 0.2s;
+      font-size: 0.9rem;
+    }
+    .nav a:hover, .nav a.active {
+      background: var(--brand);
+      border-color: var(--brand);
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+    .cluster-title {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+    }
+    .cluster-title span {
+      background: var(--brand);
+      color: #fff;
+      padding: 0.2rem 0.6rem;
+      border-radius: 12px;
+      font-weight: 600;
+      margin-left: 0.5rem;
+    }
+    .phone-cluster {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+    }
+    .phone-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 1rem 1.25rem;
+      background: var(--panel);
+      color: var(--text);
+      text-decoration: none;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      transition: all 0.2s;
+    }
+    .phone-btn:hover {
+      border-color: var(--brand);
+      background: rgba(237, 35, 42, 0.1);
+      transform: translateY(-2px);
+    }
+    .phone-btn:active {
+      transform: scale(0.98);
+    }
+    .phone-btn i {
+      font-size: 1.4rem;
+      width: 28px;
+      text-align: center;
+    }
+    .phone-btn .label {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .phone-btn .sub {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 0.15rem;
+    }
+    /* Icon colors */
+    .phone-btn i.fa-phone { color: #34A853; }
+    .phone-btn i.fa-comment-sms { color: #34A853; }
+    .phone-btn i.fa-envelope { color: #EA4335; }
+    .phone-btn i.fa-at { color: #6D44FF; }
+    .phone-btn i.fa-briefcase { color: #FF9800; }
+    .phone-btn i.fa-message { color: #0084FF; }
+    .phone-btn i.fa-video { color: #34A853; }
+    .phone-btn i.fa-whatsapp { color: #25D366; }
+    .phone-btn i.fa-telegram { color: #26A4E3; }
+    .phone-btn i.fa-paper-plane { color: var(--brand); }
+    /* Full width for contact form */
+    .phone-btn.full-width {
+      grid-column: span 2;
+      justify-content: center;
+      background: linear-gradient(135deg, var(--brand), #b91c22);
+      border-color: var(--brand);
+    }
+    .phone-btn.full-width:hover {
+      background: linear-gradient(135deg, #c91a20, #a01820);
+    }
+    .phone-btn.full-width i,
+    .phone-btn.full-width .label {
+      color: #fff;
+    }
+    .phone-number {
+      text-align: center;
+      margin: 1.5rem 0;
+      padding: 1rem;
+      background: var(--panel);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    .phone-number .number {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--brand);
+      letter-spacing: 0.5px;
+    }
+    .phone-number .copy-btn {
+      margin-top: 0.75rem;
+      padding: 0.5rem 1rem;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+    .phone-number .copy-btn:hover {
+      border-color: var(--brand);
+      color: var(--brand);
+    }
+    .phone-number .copy-btn.copied {
+      border-color: #22c55e;
+      color: #22c55e;
+    }
+    .footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .footer a {
+      color: var(--brand);
+      text-decoration: none;
+    }
+    @media (max-width: 400px) {
+      .phone-cluster {
+        grid-template-columns: 1fr;
+      }
+      .phone-btn.full-width {
+        grid-column: span 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1><i class="fa-solid fa-mobile-screen"></i> Contact Dashboard</h1>
+    <p>10 ways to reach Curtis - pick your favorite!</p>
+  </div>
+
+  <nav class="nav">
+    <a href="/"><i class="fa-solid fa-home"></i> Home</a>
+    <a href="/contact"><i class="fa-solid fa-envelope"></i> Contact</a>
+    <a href="/shop"><i class="fa-solid fa-shopping-cart"></i> Shop</a>
+  </nav>
+
+  <div class="container">
+    <div class="phone-number">
+      <div class="number">781-417-0692</div>
+      <button class="copy-btn" id="copyBtn" onclick="copyNumber()">
+        <i class="fa-solid fa-copy"></i> Copy Number
+      </button>
+    </div>
+
+    <div class="cluster-title">Quick Contact Cluster <span>10</span></div>
+
+    <div class="phone-cluster">
+      <!-- 1. Call -->
+      <a class="phone-btn" href="tel:+17814170692">
+        <i class="fa-solid fa-phone"></i>
+        <div>
+          <div class="label">Call</div>
+          <div class="sub">Direct call</div>
+        </div>
+      </a>
+
+      <!-- 2. Text/SMS -->
+      <a class="phone-btn" href="sms:+17814170692">
+        <i class="fa-solid fa-comment-sms"></i>
+        <div>
+          <div class="label">Text</div>
+          <div class="sub">SMS message</div>
+        </div>
+      </a>
+
+      <!-- 3. Email (Yahoo) -->
+      <a class="phone-btn" href="mailto:curtbrag@yahoo.com">
+        <i class="fa-solid fa-envelope"></i>
+        <div>
+          <div class="label">Email</div>
+          <div class="sub">Yahoo</div>
+        </div>
+      </a>
+
+      <!-- 4. Email (Gmail) -->
+      <a class="phone-btn" href="mailto:bragdoncurtis@gmail.com">
+        <i class="fa-solid fa-at"></i>
+        <div>
+          <div class="label">Email</div>
+          <div class="sub">Gmail</div>
+        </div>
+      </a>
+
+      <!-- 5. Email (Snap-on) -->
+      <a class="phone-btn" href="mailto:curtis.bragdon@snapon.com">
+        <i class="fa-solid fa-briefcase"></i>
+        <div>
+          <div class="label">Email</div>
+          <div class="sub">Snap-on</div>
+        </div>
+      </a>
+
+      <!-- 6. iMessage -->
+      <a class="phone-btn" href="imessage://+17814170692">
+        <i class="fa-solid fa-message"></i>
+        <div>
+          <div class="label">iMessage</div>
+          <div class="sub">Apple users</div>
+        </div>
+      </a>
+
+      <!-- 7. FaceTime -->
+      <a class="phone-btn" href="facetime:+17814170692">
+        <i class="fa-solid fa-video"></i>
+        <div>
+          <div class="label">FaceTime</div>
+          <div class="sub">Video call</div>
+        </div>
+      </a>
+
+      <!-- 8. WhatsApp -->
+      <a class="phone-btn" href="https://wa.me/17814170692" target="_blank" rel="noopener noreferrer">
+        <i class="fa-brands fa-whatsapp"></i>
+        <div>
+          <div class="label">WhatsApp</div>
+          <div class="sub">Chat or call</div>
+        </div>
+      </a>
+
+      <!-- 9. Telegram -->
+      <a class="phone-btn" href="https://t.me/curtbrag" target="_blank" rel="noopener noreferrer">
+        <i class="fa-brands fa-telegram"></i>
+        <div>
+          <div class="label">Telegram</div>
+          <div class="sub">@curtbrag</div>
+        </div>
+      </a>
+
+      <!-- 10. Contact Form -->
+      <a class="phone-btn full-width" href="/contact">
+        <i class="fa-solid fa-paper-plane"></i>
+        <div>
+          <div class="label">Contact Form</div>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <script>
+    function copyNumber() {
+      const btn = document.getElementById('copyBtn');
+      navigator.clipboard.writeText('781-417-0692').then(() => {
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.innerHTML = '<i class="fa-solid fa-copy"></i> Copy Number';
+          btn.classList.remove('copied');
+        }, 2000);
+      }).catch(() => {
+        btn.innerHTML = '<i class="fa-solid fa-times"></i> Failed';
+        setTimeout(() => {
+          btn.innerHTML = '<i class="fa-solid fa-copy"></i> Copy Number';
+        }, 2000);
+      });
+    }
+  </script>
+
+  <div class="footer">
+    <p><a href="/"><i class="fa-solid fa-arrow-left"></i> Back to Home</a></p>
+    <p>&copy; 2026 Curtis Bragdon. All rights reserved.</p>
+  </div>
+</body>
+</html>
