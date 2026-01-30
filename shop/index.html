@@ -116,6 +116,23 @@
     #auction-nudge-items {
       min-height: 300px;
     }
+    .loading-spinner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem;
+      color: var(--muted);
+    }
+    .loading-spinner i {
+      font-size: 2rem;
+      color: var(--brand);
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
     .direct-link {
       text-align: center;
       padding: 2rem;
@@ -183,8 +200,30 @@
 
     <div class="ebay-section">
       <h2><i class="fa-brands fa-ebay"></i> Live eBay Listings</h2>
-      <div id="auction-nudge-items"></div>
+      <div id="auction-nudge-items">
+        <div class="loading-spinner" id="ebay-loading">
+          <i class="fa-solid fa-spinner"></i>
+          <p>Loading listings from eBay...</p>
+        </div>
+      </div>
       <script type="text/javascript" src="//www.auctionnudge.com/feed/item/js/theme/gallery/page/init/img_size/220/cats_output/dropdown/search_box/1/SellerID/curtbrag"></script>
+      <script>
+        // Hide loading spinner when AuctionNudge loads
+        const observer = new MutationObserver((mutations, obs) => {
+          const loading = document.getElementById('ebay-loading');
+          const container = document.getElementById('auction-nudge-items');
+          if (container && container.children.length > 1 && loading) {
+            loading.style.display = 'none';
+            obs.disconnect();
+          }
+        });
+        observer.observe(document.getElementById('auction-nudge-items'), { childList: true, subtree: true });
+        // Fallback timeout
+        setTimeout(() => {
+          const loading = document.getElementById('ebay-loading');
+          if (loading) loading.style.display = 'none';
+        }, 10000);
+      </script>
     </div>
 
     <div class="direct-link">
