@@ -8,6 +8,7 @@ let clusterStatus = {
   nodes: [],
   pods: [],
   services: [],
+  network: null,
   summary: {
     nodesReady: 0,
     nodesTotal: 0,
@@ -53,6 +54,30 @@ const DEMO_DATA = {
     { name: 'metrics-server', namespace: 'kube-system', type: 'ClusterIP', clusterIP: '10.43.45.67', ports: ['443:443'] },
     { name: 'traefik', namespace: 'kube-system', type: 'LoadBalancer', clusterIP: '10.43.200.100', ports: ['80:80', '443:443'] }
   ],
+  network: {
+    tailscale: {
+      ip: '100.64.0.1',
+      hostname: 'node1',
+      connected: true,
+      peers: [
+        { name: 'node2', ip: '100.64.0.2', online: true },
+        { name: 'node3', ip: '100.64.0.3', online: true },
+        { name: 'node4', ip: '100.64.0.4', online: true },
+        { name: 'node5', ip: '100.64.0.5', online: true },
+        { name: 'node6', ip: '100.64.0.6', online: true },
+        { name: 'node7', ip: '100.64.0.7', online: true },
+        { name: 'node8', ip: '100.64.0.8', online: false },
+        { name: 'node9', ip: '100.64.0.9', online: false },
+        { name: 'node10', ip: '100.64.0.10', online: false }
+      ]
+    },
+    wifi: {
+      ssid: 'BragdonCluster',
+      signal: '-45',
+      connected: true
+    },
+    localIP: '192.168.1.206'
+  },
   summary: {
     nodesReady: 7,
     nodesTotal: 10,
@@ -95,6 +120,7 @@ exports.handler = async function(event, context) {
         nodes: data.nodes || [],
         pods: data.pods || [],
         services: data.services || [],
+        network: data.network || null,
         summary: data.summary || {
           nodesReady: 0,
           nodesTotal: 0,

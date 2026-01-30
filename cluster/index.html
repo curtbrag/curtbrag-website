@@ -274,6 +274,17 @@
       color: var(--muted);
       font-family: 'JetBrains Mono', monospace;
     }
+    }
+    .section-title i { color: var(--brand); font-size: 1rem; }
+    .section-badge {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      padding: 0.3rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
 
     /* Node Grid */
     .node-grid {
@@ -725,6 +736,82 @@
       </div>
     </div>
 
+    <!-- Network Status -->
+    <div class="section-header">
+      <h2 class="section-title"><i class="fa-solid fa-wifi"></i> Network</h2>
+    </div>
+    <div class="info-grid" id="networkGrid">
+      <div class="info-card" id="tailscaleCard">
+        <h3><i class="fa-solid fa-shield-halved"></i> Tailscale VPN</h3>
+        <div class="info-list" id="tailscaleInfo">
+          <div class="info-item">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            <span class="muted">Loading...</span>
+          </div>
+        </div>
+      </div>
+      <div class="info-card" id="wifiCard">
+        <h3><i class="fa-solid fa-wifi"></i> WiFi Connection</h3>
+        <div class="info-list" id="wifiInfo">
+          <div class="info-item">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            <span class="muted">Loading...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    </div>
+
+    <!-- Pods Section -->
+    <div class="section-header">
+      <h2 class="section-title"><i class="fa-solid fa-cubes"></i> Workloads</h2>
+    </div>
+    <div class="tabs" id="podTabs">
+      <button class="tab active" data-ns="all"><i class="fa-solid fa-layer-group"></i> All <span class="count" id="podCountAll">0</span></button>
+    </div>
+    <div class="table-container">
+      <div class="table-scroll">
+        <table id="podTable">
+          <thead>
+            <tr>
+              <th>Pod Name</th>
+              <th>Namespace</th>
+              <th>Status</th>
+              <th>Node</th>
+            </tr>
+          </thead>
+          <tbody id="podTableBody">
+            <tr><td colspan="4" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Services Section -->
+    <div class="section-header">
+      <h2 class="section-title"><i class="fa-solid fa-network-wired"></i> Services</h2>
+      <span class="section-badge" id="svcBadge">0 services</span>
+    </div>
+    <div class="table-container">
+      <div class="table-scroll">
+        <table id="svcTable">
+          <thead>
+            <tr>
+              <th>Service Name</th>
+              <th>Namespace</th>
+              <th>Type</th>
+              <th>Cluster IP</th>
+              <th>Ports</th>
+            </tr>
+          </thead>
+          <tbody id="svcTableBody">
+            <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-plug"></i><br>No services found</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- Cluster Info -->
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-circle-info"></i> Cluster Specs</h2>
@@ -870,6 +957,9 @@
         document.getElementById('svcBadge').textContent = `${allServices.length} services`;
         renderServices();
 
+        // Render network status
+        renderNetwork(data.network);
+
         // Update last update time
         const lastUpdate = document.getElementById('lastUpdate');
         if (data.lastUpdate) {
@@ -967,6 +1057,129 @@
       if (filteredPods.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>';
         return;
+      }
+
+      tbody.innerHTML = filteredPods.map(pod => {
+        const statusClass = pod.status?.toLowerCase() || 'pending';
+        const statusIcon = {
+          'running': 'fa-circle-check',
+          'pending': 'fa-clock',
+          'failed': 'fa-circle-xmark',
+          'succeeded': 'fa-flag-checkered'
+        }[statusClass] || 'fa-question';
+
+        return `
+          <tr>
+            <td class="pod-name">${pod.name}</td>
+            <td><span class="pod-namespace">${pod.namespace}</span></td>
+            <td><span class="pod-status ${statusClass}"><i class="fa-solid ${statusIcon}"></i> ${pod.status}</span></td>
+            <td class="pod-node">${pod.node || '-'}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderServices() {
+      const tbody = document.getElementById('svcTableBody');
+
+      if (allServices.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-plug"></i><br>No services found</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = allServices.map(svc => {
+        const typeClass = svc.type?.toLowerCase().replace(/\s/g, '') || 'clusterip';
+        const ports = (svc.ports || []).join(', ') || '-';
+
+        return `
+          <tr>
+            <td class="pod-name">${svc.name}</td>
+            <td><span class="pod-namespace">${svc.namespace}</span></td>
+            <td><span class="svc-type ${typeClass}">${svc.type}</span></td>
+            <td><code>${svc.clusterIP || '-'}</code></td>
+            <td class="svc-ports">${ports}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderNetwork(network) {
+      const tailscaleInfo = document.getElementById('tailscaleInfo');
+      const wifiInfo = document.getElementById('wifiInfo');
+
+      // Render Tailscale info
+      if (network?.tailscale?.connected) {
+        const ts = network.tailscale;
+        const onlinePeers = (ts.peers || []).filter(p => p.online).length;
+        const totalPeers = (ts.peers || []).length;
+        tailscaleInfo.innerHTML = `
+          <div class="info-item">
+            <i class="fa-solid fa-circle-check" style="color: var(--green);"></i>
+            <span class="label">Status:</span>
+            <span class="value" style="color: var(--green);">Connected</span>
+          </div>
+          <div class="info-item">
+            <i class="fa-solid fa-at"></i>
+            <span class="label">Hostname:</span>
+            <span class="value">${ts.hostname || '-'}</span>
+          </div>
+          <div class="info-item">
+            <i class="fa-solid fa-location-dot"></i>
+            <span class="label">Tailscale IP:</span>
+            <span class="value"><code>${ts.ip || '-'}</code></span>
+          </div>
+          <div class="info-item">
+            <i class="fa-solid fa-users"></i>
+            <span class="label">Peers Online:</span>
+            <span class="value">${onlinePeers}/${totalPeers}</span>
+          </div>
+        `;
+      } else {
+        tailscaleInfo.innerHTML = `
+          <div class="info-item">
+            <i class="fa-solid fa-circle-xmark" style="color: var(--muted);"></i>
+            <span class="muted">Not connected</span>
+          </div>
+        `;
+      }
+
+      // Render WiFi info
+      if (network?.wifi?.connected) {
+        const wifi = network.wifi;
+        const signal = parseInt(wifi.signal) || 0;
+        const signalClass = signal > -50 ? 'green' : signal > -70 ? 'yellow' : 'red';
+        const signalIcon = signal > -50 ? 'fa-signal' : signal > -70 ? 'fa-signal' : 'fa-signal-weak';
+        wifiInfo.innerHTML = `
+          <div class="info-item">
+            <i class="fa-solid fa-circle-check" style="color: var(--green);"></i>
+            <span class="label">Status:</span>
+            <span class="value" style="color: var(--green);">Connected</span>
+          </div>
+          <div class="info-item">
+            <i class="fa-solid fa-broadcast-tower"></i>
+            <span class="label">SSID:</span>
+            <span class="value">${wifi.ssid || '-'}</span>
+          </div>
+          <div class="info-item">
+            <i class="fa-solid ${signalIcon}"></i>
+            <span class="label">Signal:</span>
+            <span class="value" style="color: var(--${signalClass});">${wifi.signal || '-'} dBm</span>
+          </div>
+          ${network.localIP ? `
+          <div class="info-item">
+            <i class="fa-solid fa-ethernet"></i>
+            <span class="label">Local IP:</span>
+            <span class="value"><code>${network.localIP}</code></span>
+          </div>
+          ` : ''}
+        `;
+      } else {
+        wifiInfo.innerHTML = `
+          <div class="info-item">
+            <i class="fa-solid fa-circle-xmark" style="color: var(--muted);"></i>
+            <span class="muted">Not connected</span>
+          </div>
+        `;
       }
 
       tbody.innerHTML = filteredPods.map(pod => {
