@@ -59,6 +59,9 @@ const RESPONSES = {
   // About Curtis
   about: 'Curtis has been running Snap-on tools in the Boston area for years. Started turning wrenches on diesel engines, now he\'s helping Boston\'s best techs get the tools they need. He\'s also into sports betting, trading cards, and building custom automations. Real one!',
 
+  // Phone Cluster
+  cluster: 'Curtis built a Kubernetes cluster out of 10 OnePlus 6T phones! They run postmarketOS (real Linux) with K3s. Check it out at /cluster - it shows live node status, running pods, and more. Sustainable tech reuse meets edge computing!',
+
   // Social media
   social: 'Follow Curtis everywhere!\n• Instagram: @curtbrag\n• TikTok: @curtbrag\n• YouTube: Curtis Bragdon\n• Facebook, Snapchat, Threads, and more!\nAll links are on the main page.',
 
@@ -109,6 +112,11 @@ function findResponse(message) {
   // About Curtis
   if (/who.*(curtis|curt|you)|about.*(curtis|curt)|tell me about/i.test(msg)) {
     return RESPONSES.about;
+  }
+
+  // Phone Cluster
+  if (/cluster|kubernetes|k3s|k8s|oneplus|phone.*(server|cluster)|server.*(phone|arm)|postmarket/i.test(msg)) {
+    return RESPONSES.cluster;
   }
 
   // Jokes
