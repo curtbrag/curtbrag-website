@@ -25,6 +25,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Curtis Bragdon's World">
   <meta name="twitter:description" content="Snap-on tools, custom AI, trading cards, and more.">
+  <meta name="theme-color" content="#ed232a">
 
   <!-- Structured Data / JSON-LD -->
   <script type="application/ld+json">
@@ -167,12 +168,80 @@
       .btn i.fa-car-side{color:#6CACE4}
       .btn i.fa-shopping-cart{color:#FF6B6B}
       .btn i.fa-image{color:#9C27B0}
+      .btn i.fa-server{color:#22C55E}
       /* subtle hover effect */
       .btn:hover { background: rgba(255,255,255,.05); }
       /* quick chips for common prompts */
       .chips { display:flex; gap:.5rem; flex-wrap:wrap; margin:.5rem 0 0; }
       .chip { font: inherit; padding:.4rem .6rem; border-radius: 999px; border:1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.03); cursor:pointer; color: var(--text); }
       .chip:hover { background: rgba(255,255,255,.08); }
+
+      /* Cell Phone Contact Cluster */
+      .phone-cluster {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        justify-content: center;
+        margin: 1.25rem 0;
+        padding: 1rem;
+        background: rgba(0,0,0,0.5);
+        border: 1px solid rgba(237,35,42,0.3);
+        border-radius: 12px;
+      }
+      .phone-cluster-title {
+        width: 100%;
+        text-align: center;
+        font-size: 0.85rem;
+        color: var(--muted);
+        margin-bottom: 0.25rem;
+      }
+      .phone-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 0.9rem 1.5rem;
+        background: linear-gradient(135deg, var(--brand), #b91c22);
+        color: #fff;
+        text-decoration: none;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 1rem;
+        min-width: 120px;
+        transition: transform 0.15s, box-shadow 0.15s;
+        box-shadow: 0 2px 8px rgba(237,35,42,0.3);
+      }
+      .phone-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(237,35,42,0.4);
+      }
+      .phone-btn:active {
+        transform: scale(0.98);
+      }
+      .phone-btn i {
+        font-size: 1.1rem;
+      }
+
+      /* Skip link for accessibility */
+      .skip-link {
+        position: absolute;
+        top: -100px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--brand);
+        color: #fff;
+        padding: 0.75rem 1.5rem;
+        border-radius: 0 0 8px 8px;
+        z-index: 9999;
+        text-decoration: none;
+        font-weight: 600;
+        transition: top 0.2s;
+      }
+      .skip-link:focus {
+        top: 0;
+        outline: 2px solid #fff;
+        outline-offset: 2px;
+      }
 
       /* Boston Sports Tracker */
       #sports-tracker {
@@ -210,6 +279,7 @@
     </style>
 </head>
 <body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
   <div class="overlay">
     <div class="wrap">
 
@@ -217,29 +287,38 @@
       <div class="brand"><img src="assets/logo_icon.png" alt="Snap-on Logo" class="logo-icon"> All Access. No Excuses.</div>
       <p class="tag">This ain't your average tool truck. I don't just sell tools — I build my own path and custom solutions that last, with Alina on standby.</p>
 
+      <!-- Cell Phone Contact Cluster -->
+      <div class="phone-cluster">
+        <div class="phone-cluster-title">Quick Contact</div>
+        <a class="phone-btn" href="tel:+17814170692"><i class="fa-solid fa-phone"></i> Call</a>
+        <a class="phone-btn" href="sms:+17814170692"><i class="fa-solid fa-comment-sms"></i> Text</a>
+        <a class="phone-btn" href="mailto:curtbrag@yahoo.com"><i class="fa-solid fa-envelope"></i> Email</a>
+      </div>
+
       <!-- Buttons -->
+      <main id="main-content">
       <div class="grid">
         <!-- Service buttons (NEW) -->
-        <a class="btn" href="https://otis.curtbrag.com/curtschedule" target="_blank" rel="noopener"><i class="fa-solid fa-calendar-check"></i>Schedule Stop</a>
-        <a class="btn" href="https://otis.curtbrag.com/curtrequest" target="_blank" rel="noopener"><i class="fa-solid fa-toolbox"></i>Request a Tool</a>
-        <a class="btn" href="https://otis.curtbrag.com/curtwarranty" target="_blank" rel="noopener"><i class="fa-solid fa-shield"></i>Warranty/RA Help</a>
+        <a class="btn" href="https://otis.curtbrag.com/curtschedule" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-calendar-check"></i>Schedule Stop</a>
+        <a class="btn" href="https://otis.curtbrag.com/curtrequest" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-toolbox"></i>Request a Tool</a>
+        <a class="btn" href="https://otis.curtbrag.com/curtwarranty" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-shield"></i>Warranty/RA Help</a>
 
         <!-- Social (Bitly/otis preserved for tracking) -->
-        <a class="btn" href="https://otis.curtbrag.com/curtinsta" target="_blank" rel="noopener"><i class="fa-brands fa-instagram"></i>Instagram</a>
-        <a class="btn" href="https://otis.curtbrag.com/curtfacebook" target="_blank" rel="noopener"><i class="fa-brands fa-facebook"></i>Facebook</a>
-        <a class="btn" href="https://otis.curtbrag.com/curttiktok" target="_blank" rel="noopener"><i class="fa-brands fa-tiktok"></i>TikTok</a>
-        <a class="btn" href="https://otis.curtbrag.com/curtyoutube" target="_blank" rel="noopener"><i class="fa-brands fa-youtube"></i>YouTube</a>
-        <a class="btn" href="https://otis.curtbrag.com/curtthreads" target="_blank" rel="noopener"><i class="fa-brands fa-threads"></i>Threads</a>
-        <a class="btn" href="https://otis.curtbrag.com/curtsnap" target="_blank" rel="noopener"><i class="fa-brands fa-snapchat"></i>Snapchat</a>
-        <a class="btn" href="https://otis.curtbrag.com/curttelegram" target="_blank" rel="noopener"><i class="fa-brands fa-telegram"></i>Telegram</a>
-        <a class="btn" href="https://otis.curtbrag.com/curtreddit" target="_blank" rel="noopener"><i class="fa-brands fa-reddit"></i>Reddit</a>
+        <a class="btn" href="https://otis.curtbrag.com/curtinsta" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-instagram"></i>Instagram</a>
+        <a class="btn" href="https://otis.curtbrag.com/curtfacebook" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-facebook"></i>Facebook</a>
+        <a class="btn" href="https://otis.curtbrag.com/curttiktok" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-tiktok"></i>TikTok</a>
+        <a class="btn" href="https://otis.curtbrag.com/curtyoutube" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-youtube"></i>YouTube</a>
+        <a class="btn" href="https://otis.curtbrag.com/curtthreads" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-threads"></i>Threads</a>
+        <a class="btn" href="https://otis.curtbrag.com/curtsnap" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-snapchat"></i>Snapchat</a>
+        <a class="btn" href="https://otis.curtbrag.com/curttelegram" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-telegram"></i>Telegram</a>
+        <a class="btn" href="https://otis.curtbrag.com/curtreddit" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-reddit"></i>Reddit</a>
 
         <!-- Payment & fun -->
-        <a class="btn" href="https://otis.curtbrag.com/curtdk" target="_blank" rel="noopener"><i class="fa-solid fa-football"></i>DraftKings</a>
-        <a class="btn" href="https://otis.curtbrag.com/curtzelle" target="_blank" rel="noopener"><i class="fa-solid fa-money-bill"></i>Zelle</a>
-        <a class="btn" href="https://otis.curtbrag.com/curtcash" target="_blank" rel="noopener"><i class="fa-brands fa-square-cash"></i>CashApp</a>
-        <a class="btn" href="https://otis.curtbrag.com/curtvenmo" target="_blank" rel="noopener"><i class="fa-brands fa-paypal"></i>Venmo</a>
-        <a class="btn" href="https://otis.curtbrag.com/curtspotify" target="_blank" rel="noopener"><i class="fa-brands fa-spotify"></i>Spotify</a>
+        <a class="btn" href="https://otis.curtbrag.com/curtdk" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-football"></i>DraftKings</a>
+        <a class="btn" href="https://otis.curtbrag.com/curtzelle" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-money-bill"></i>Zelle</a>
+        <a class="btn" href="https://otis.curtbrag.com/curtcash" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-square-cash"></i>CashApp</a>
+        <a class="btn" href="https://otis.curtbrag.com/curtvenmo" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-paypal"></i>Venmo</a>
+        <a class="btn" href="https://otis.curtbrag.com/curtspotify" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-spotify"></i>Spotify</a>
         <a class="btn" href="https://otis.curtbrag.com/curtyougood"><i class="fa-solid fa-heart"></i>You Good?</a>
 
         <!-- Contact -->
@@ -255,6 +334,7 @@
         <!-- Shop & Gallery -->
         <a class="btn" href="/shop"><i class="fa-solid fa-shopping-cart"></i>Card Shop</a>
         <a class="btn" href="/gallery"><i class="fa-solid fa-images"></i>Photo Gallery</a>
+        <a class="btn" href="/cluster"><i class="fa-solid fa-server"></i>Phone Cluster</a>
       </div>
 
       <!-- Curtis AI Command Center (Alina) -->
@@ -308,7 +388,8 @@
         <a href="tel:+17814170692">781‑417‑0692</a>
       </div>
 
-      <div style="margin-top:16px; color:var(--muted); font-size:.85rem;">© Curtis Bragdon</div>
+      <div style="margin-top:16px; color:var(--muted); font-size:.85rem;">© 2026 Curtis Bragdon. All rights reserved.</div>
+      </main>
     </div>
   </div>
 
@@ -366,20 +447,32 @@
     async function loadSports() {
       try {
         const res = await fetch('/.netlify/functions/sports');
+        if (!res.ok) throw new Error('Network response was not ok');
         const data = await res.json();
         if (data.success && data.teams) {
-          document.getElementById('score-redsox').textContent = data.teams.redsox || 'No data';
-          document.getElementById('score-patriots').textContent = data.teams.patriots || 'No data';
-          document.getElementById('score-celtics').textContent = data.teams.celtics || 'No data';
-          document.getElementById('score-bruins').textContent = data.teams.bruins || 'No data';
-          document.getElementById('score-revolution').textContent = data.teams.revolution || 'No data';
+          document.getElementById('score-redsox').textContent = data.teams.redsox || 'No game today';
+          document.getElementById('score-patriots').textContent = data.teams.patriots || 'No game today';
+          document.getElementById('score-celtics').textContent = data.teams.celtics || 'No game today';
+          document.getElementById('score-bruins').textContent = data.teams.bruins || 'No game today';
+          document.getElementById('score-revolution').textContent = data.teams.revolution || 'No game today';
+        } else {
+          throw new Error('Invalid data format');
         }
       } catch (e) {
         console.error('Sports load error:', e);
-        document.querySelectorAll('[id^="score-"]').forEach(el => el.textContent = 'Unavailable');
+        const fallback = 'Check ESPN for updates';
+        document.querySelectorAll('[id^="score-"]').forEach(el => el.textContent = fallback);
       }
     }
+    // Initial load with retry
     loadSports();
+    // Retry once after 5 seconds if initial load might have failed
+    setTimeout(() => {
+      const firstScore = document.getElementById('score-redsox');
+      if (firstScore && firstScore.textContent.includes('Check ESPN')) {
+        loadSports();
+      }
+    }, 5000);
     setInterval(loadSports, 300000); // Refresh every 5 minutes
   </script>
 </body>
