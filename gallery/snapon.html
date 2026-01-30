@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Snap-on Gallery - Curtis Bragdon</title>
   <meta name="description" content="Snap-on tools, truck photos, and memories from Curtis Bragdon's franchise.">
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Snap-on Gallery - Curtis Bragdon">
+  <meta property="og:description" content="Snap-on tools, truck photos, and memories from Curtis Bragdon's franchise.">
+  <meta property="og:image" content="https://www.curtbrag.com/assets/logo_icon.png">
+  <meta property="og:url" content="https://www.curtbrag.com/gallery/snapon.html">
+  <meta name="theme-color" content="#ed232a">
   <link rel="icon" type="image/png" href="/assets/truck_favicon.png">
   <link rel="apple-touch-icon" href="/assets/truck_favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -85,6 +92,22 @@
       font-size: 0.85rem;
     }
     .footer a { color: var(--brand); text-decoration: none; }
+    .share-btn {
+      margin-top: 1rem;
+      padding: 0.6rem 1.2rem;
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .share-btn:hover {
+      border-color: var(--brand);
+      color: var(--brand);
+    }
     /* Lightbox */
     .lightbox {
       display: none;
@@ -191,7 +214,10 @@
 
   <div class="footer">
     <p><a href="/gallery"><i class="fa-solid fa-arrow-left"></i> Back to Gallery</a></p>
-    <p>&copy; 2025 Curtis Bragdon. All rights reserved.</p>
+    <p>&copy; 2026 Curtis Bragdon. All rights reserved.</p>
+    <button class="share-btn" onclick="shareGallery()" title="Share this gallery">
+      <i class="fa-solid fa-share-nodes"></i> Share
+    </button>
   </div>
 
   <button class="back-to-top" id="backToTop" aria-label="Back to top">
@@ -332,6 +358,25 @@
     backToTop.addEventListener('click', () => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
+
+    // Share gallery
+    async function shareGallery() {
+      const shareData = {
+        title: 'Snap-on Gallery - Curtis Bragdon',
+        text: 'Check out the Snap-on tools and truck photos from Curtis Bragdon!',
+        url: window.location.href
+      };
+      try {
+        if (navigator.share) {
+          await navigator.share(shareData);
+        } else {
+          await navigator.clipboard.writeText(window.location.href);
+          alert('Link copied to clipboard!');
+        }
+      } catch (err) {
+        console.log('Share failed:', err);
+      }
+    }
   </script>
 </body>
 </html>

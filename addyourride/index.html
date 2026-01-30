@@ -11,6 +11,7 @@
   <meta property="og:description" content="Submit your car, truck, or collection to be featured on Curtis Bragdon's gallery!">
   <meta property="og:image" content="https://www.curtbrag.com/assets/logo_icon.png">
   <meta property="og:url" content="https://www.curtbrag.com/addyourride">
+  <meta name="theme-color" content="#ed232a">
   <link rel="icon" type="image/png" href="/assets/truck_favicon.png">
   <link rel="apple-touch-icon" href="/assets/truck_favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -213,8 +214,11 @@
 
   <div class="container">
     <div class="form-section">
-      <form name="ride-submission" method="POST" data-netlify="true" enctype="multipart/form-data" action="/thanks.html">
+      <form name="ride-submission" method="POST" data-netlify="true" netlify-honeypot="bot-field" enctype="multipart/form-data" action="/thanks.html">
         <input type="hidden" name="form-name" value="ride-submission">
+        <p style="display:none">
+          <label>Don't fill this out if you're human: <input name="bot-field"></label>
+        </p>
 
         <div class="form-group">
           <label for="name"><i class="fa-solid fa-user"></i> Your Name</label>
@@ -302,7 +306,7 @@
 
   <div class="footer">
     <p><a href="/">← Back to Curtis Bragdon's World</a></p>
-    <p>&copy; 2025 Curtis Bragdon. All rights reserved.</p>
+    <p>&copy; 2026 Curtis Bragdon. All rights reserved.</p>
     <p><a href="/privacy">Privacy Policy</a> | <a href="/terms">Terms of Service</a></p>
   </div>
 </body>
