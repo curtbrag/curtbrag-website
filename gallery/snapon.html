@@ -142,6 +142,34 @@
       .lightbox-nav.prev { left: 0.5rem; }
       .lightbox-nav.next { right: 0.5rem; }
     }
+    /* Back to top button */
+    .back-to-top {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      width: 50px;
+      height: 50px;
+      background: var(--brand);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      font-size: 1.25rem;
+      cursor: pointer;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s;
+      z-index: 100;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+    .back-to-top.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+    .back-to-top:hover {
+      background: #c91a20;
+      transform: translateY(-3px);
+    }
+    html { scroll-behavior: smooth; }
   </style>
 </head>
 <body>
@@ -165,6 +193,10 @@
     <p><a href="/gallery"><i class="fa-solid fa-arrow-left"></i> Back to Gallery</a></p>
     <p>&copy; 2025 Curtis Bragdon. All rights reserved.</p>
   </div>
+
+  <button class="back-to-top" id="backToTop" aria-label="Back to top">
+    <i class="fa-solid fa-arrow-up"></i>
+  </button>
 
   <div class="lightbox" id="lightbox">
     <button class="lightbox-close" onclick="closeLightbox()" aria-label="Close">&times;</button>
@@ -286,6 +318,19 @@
         if (diff > 0) navLightbox(1); // swipe left = next
         else navLightbox(-1); // swipe right = prev
       }
+    });
+
+    // Back to top button
+    const backToTop = document.getElementById('backToTop');
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 400) {
+        backToTop.classList.add('visible');
+      } else {
+        backToTop.classList.remove('visible');
+      }
+    }, {passive: true});
+    backToTop.addEventListener('click', () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   </script>
 </body>
