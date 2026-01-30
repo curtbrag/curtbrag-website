@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cars Gallery - Curtis Bragdon</title>
   <meta name="description" content="Customer cars, trucks, and rides from Curtis Bragdon's Snap-on route around Boston.">
+  <link rel="icon" type="image/png" href="/assets/truck_favicon.png">
+  <link rel="apple-touch-icon" href="/assets/truck_favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&display=swap" rel="stylesheet">
@@ -146,6 +148,22 @@
     }
     .lightbox-nav.prev { left: 1rem; }
     .lightbox-nav.next { right: 1rem; }
+    .lightbox-counter {
+      position: absolute;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 20px;
+      font-size: 0.9rem;
+    }
+    @media (max-width: 768px) {
+      .lightbox-nav { width: 40px; height: 40px; font-size: 1.2rem; }
+      .lightbox-nav.prev { left: 0.5rem; }
+      .lightbox-nav.next { right: 0.5rem; }
+    }
   </style>
 </head>
 <body>
@@ -177,10 +195,11 @@
   </div>
 
   <div class="lightbox" id="lightbox">
-    <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
-    <button class="lightbox-nav prev" onclick="navLightbox(-1)"><i class="fa-solid fa-chevron-left"></i></button>
-    <img id="lightbox-img" src="" alt="">
-    <button class="lightbox-nav next" onclick="navLightbox(1)"><i class="fa-solid fa-chevron-right"></i></button>
+    <button class="lightbox-close" onclick="closeLightbox()" aria-label="Close">&times;</button>
+    <button class="lightbox-nav prev" onclick="navLightbox(-1)" aria-label="Previous"><i class="fa-solid fa-chevron-left"></i></button>
+    <img id="lightbox-img" src="" alt="Gallery image">
+    <button class="lightbox-nav next" onclick="navLightbox(1)" aria-label="Next"><i class="fa-solid fa-chevron-right"></i></button>
+    <div class="lightbox-counter" id="lightbox-counter"></div>
   </div>
 
   <script>
@@ -238,6 +257,7 @@
     const gallery = document.getElementById('gallery');
     const lightbox = document.getElementById('lightbox');
     const lightboxImg = document.getElementById('lightbox-img');
+    const counter = document.getElementById('lightbox-counter');
 
     images.forEach((img, i) => {
       const div = document.createElement('div');
@@ -247,9 +267,14 @@
       gallery.appendChild(div);
     });
 
+    function updateCounter() {
+      counter.textContent = `${currentIndex + 1} / ${images.length}`;
+    }
+
     function openLightbox(index) {
       currentIndex = index;
       lightboxImg.src = `/gallery/cars/${images[currentIndex]}`;
+      updateCounter();
       lightbox.classList.add('active');
       document.body.style.overflow = 'hidden';
     }
@@ -262,7 +287,21 @@
     function navLightbox(dir) {
       currentIndex = (currentIndex + dir + images.length) % images.length;
       lightboxImg.src = `/gallery/cars/${images[currentIndex]}`;
+      updateCounter();
     }
+
+    // Touch/swipe support for mobile
+    let touchStartX = 0;
+    let touchEndX = 0;
+    lightbox.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; }, {passive: true});
+    lightbox.addEventListener('touchend', e => {
+      touchEndX = e.changedTouches[0].screenX;
+      const diff = touchStartX - touchEndX;
+      if (Math.abs(diff) > 50) {
+        if (diff > 0) navLightbox(1); // swipe left = next
+        else navLightbox(-1); // swipe right = prev
+      }
+    });
 
     document.addEventListener('keydown', (e) => {
       if (!lightbox.classList.contains('active')) return;
