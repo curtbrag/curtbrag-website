@@ -1,4 +1,4 @@
-# Minimal Netlify config
+# Netlify configuration
 [build]
   publish = "."
   functions = "netlify/functions"
@@ -6,9 +6,46 @@
 [build.environment]
   NODE_VERSION = "20"
 
-# Enable branch deploys for all branches
-[context.branch-deploy]
-  publish = "."
+# Redirects for clean URLs
+[[redirects]]
+  from = "/shop"
+  to = "/shop/index.html"
+  status = 200
 
-[context."claude/restore-sept-design-brug3"]
-  publish = "."
+[[redirects]]
+  from = "/gallery"
+  to = "/gallery/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/addyourride"
+  to = "/addyourride/index.html"
+  status = 200
+
+# Security and caching headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/gallery/cars/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/gallery/snapon/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
