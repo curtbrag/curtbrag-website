@@ -45,8 +45,6 @@
       min-height: 100vh;
       line-height: 1.5;
     }
-
-    /* Header */
     .header {
       background: linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg) 100%);
       border-bottom: 1px solid var(--border);
@@ -67,10 +65,7 @@
       opacity: 0.4;
       pointer-events: none;
     }
-    .header-content {
-      position: relative;
-      z-index: 1;
-    }
+    .header-content { position: relative; z-index: 1; }
     .header h1 {
       font-size: 1.8rem;
       font-weight: 700;
@@ -86,12 +81,7 @@
       font-size: 0.95rem;
       font-weight: 500;
     }
-    .header .subtitle span {
-      color: var(--text);
-      font-weight: 600;
-    }
-
-    /* Navigation */
+    .header .subtitle span { color: var(--text); font-weight: 600; }
     .nav {
       display: flex;
       justify-content: center;
@@ -114,19 +104,8 @@
       gap: 0.5rem;
     }
     .nav a:hover { color: var(--text); background: var(--panel-hover); }
-    .nav a.active {
-      color: var(--text);
-      background: var(--brand);
-    }
-
-    /* Main Container */
-    .container {
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 1.5rem;
-    }
-
-    /* Status Bar */
+    .nav a.active { color: var(--text); background: var(--brand); }
+    .container { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
     .status-bar {
       display: flex;
       align-items: center;
@@ -139,35 +118,13 @@
       flex-wrap: wrap;
       gap: 0.75rem;
     }
-    .status-left {
-      display: flex;
-      align-items: center;
-      gap: 1.5rem;
-      flex-wrap: wrap;
-    }
-    .status-item {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.85rem;
-    }
-    .status-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: var(--muted);
-    }
-    .status-dot.live {
-      background: var(--green);
-      box-shadow: 0 0 10px var(--green-glow);
-      animation: pulse 2s infinite;
-    }
+    .status-left { display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; }
+    .status-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+    .status-dot.live { background: var(--green); box-shadow: 0 0 10px var(--green-glow); animation: pulse 2s infinite; }
     .status-dot.demo { background: var(--yellow); box-shadow: 0 0 10px var(--yellow-glow); }
     .status-dot.offline { background: var(--red); }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.7; transform: scale(0.9); }
-    }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(0.9); } }
     .refresh-btn {
       background: var(--panel-hover);
       border: 1px solid var(--border);
@@ -183,14 +140,9 @@
       align-items: center;
       gap: 0.5rem;
     }
-    .refresh-btn:hover {
-      border-color: var(--brand);
-      background: rgba(237, 35, 42, 0.1);
-    }
+    .refresh-btn:hover { border-color: var(--brand); background: rgba(237, 35, 42, 0.1); }
     .refresh-btn.spinning i { animation: spin 1s linear infinite; }
     @keyframes spin { 100% { transform: rotate(360deg); } }
-
-    /* Demo Banner */
     .demo-banner {
       background: linear-gradient(135deg, rgba(234, 179, 8, 0.1), rgba(234, 179, 8, 0.05));
       border: 1px solid rgba(234, 179, 8, 0.3);
@@ -205,13 +157,134 @@
     }
     .demo-banner.visible { display: flex; }
 
-    /* Summary Cards */
-    .summary {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 1rem;
-      margin-bottom: 1.5rem;
+    /* Control Panel */
+    .control-panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem;
     }
+    .control-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+    .control-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .control-title i { color: var(--brand); }
+    .control-buttons {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .ctrl-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.6rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .ctrl-btn:hover { border-color: var(--text); }
+    .ctrl-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .ctrl-btn.start { border-color: var(--green); color: var(--green); }
+    .ctrl-btn.start:hover { background: rgba(34, 197, 94, 0.1); }
+    .ctrl-btn.stop { border-color: var(--red); color: var(--red); }
+    .ctrl-btn.stop:hover { background: rgba(239, 68, 68, 0.1); }
+    .ctrl-btn.restart { border-color: var(--yellow); color: var(--yellow); }
+    .ctrl-btn.restart:hover { background: rgba(234, 179, 8, 0.1); }
+    .ctrl-btn.wake { border-color: var(--blue); color: var(--blue); }
+    .ctrl-btn.wake:hover { background: rgba(59, 130, 246, 0.1); }
+    .ctrl-btn.sleep { border-color: var(--purple); color: var(--purple); }
+    .ctrl-btn.sleep:hover { background: rgba(168, 85, 247, 0.1); }
+    .control-status {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.75rem;
+      display: none;
+    }
+    .control-status.visible { display: block; }
+    .control-status.success { color: var(--green); }
+    .control-status.error { color: var(--red); }
+
+    /* Password Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.8);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      max-width: 400px;
+      width: 90%;
+    }
+    .modal h3 {
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .modal h3 i { color: var(--brand); }
+    .modal input {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+    }
+    .modal input:focus { outline: none; border-color: var(--brand); }
+    .modal-buttons {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+    }
+    .modal-btn {
+      padding: 0.6rem 1.25rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+    }
+    .modal-btn.primary {
+      background: var(--brand);
+      border-color: var(--brand);
+    }
+
+    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
     @media (max-width: 900px) { .summary { grid-template-columns: repeat(2, 1fr); } }
     @media (max-width: 500px) { .summary { grid-template-columns: 1fr; } }
     .card {
@@ -221,15 +294,9 @@
       padding: 1.25rem;
       text-align: center;
       transition: all 0.2s;
-      position: relative;
-      overflow: hidden;
     }
     .card:hover { border-color: var(--brand); transform: translateY(-2px); }
-    .card-icon {
-      font-size: 1.5rem;
-      margin-bottom: 0.5rem;
-      opacity: 0.6;
-    }
+    .card-icon { font-size: 1.5rem; margin-bottom: 0.5rem; opacity: 0.6; }
     .card-value {
       font-size: 2.75rem;
       font-weight: 700;
@@ -247,8 +314,6 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
-
-    /* Section Titles */
     .section-header {
       display: flex;
       align-items: center;
@@ -274,24 +339,7 @@
       color: var(--muted);
       font-family: 'JetBrains Mono', monospace;
     }
-    }
-    .section-title i { color: var(--brand); font-size: 1rem; }
-    .section-badge {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      padding: 0.3rem 0.75rem;
-      border-radius: 20px;
-      font-size: 0.75rem;
-      color: var(--muted);
-      font-family: 'JetBrains Mono', monospace;
-    }
-
-    /* Node Grid */
-    .node-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 0.875rem;
-    }
+    .node-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.875rem; }
     .node {
       background: var(--panel);
       border: 1px solid var(--border);
@@ -299,41 +347,17 @@
       padding: 1rem;
       position: relative;
       transition: all 0.2s;
-      cursor: default;
     }
-    .node:hover {
-      border-color: var(--border);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-    }
-    .node::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      border-radius: 12px 12px 0 0;
-    }
+    .node:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+    .node::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 12px 12px 0 0; }
     .node.ready::before { background: var(--green); }
     .node.ready:hover { border-color: var(--green); }
     .node.notready::before { background: var(--red); }
     .node.notready:hover { border-color: var(--red); }
     .node.control-plane::before { background: linear-gradient(90deg, var(--brand), var(--purple)); }
     .node.control-plane:hover { border-color: var(--brand); }
-    .node-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 0.75rem;
-    }
-    .node-name {
-      font-weight: 600;
-      font-size: 1rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
+    .node-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
+    .node-name { font-weight: 600; font-size: 1rem; display: flex; align-items: center; gap: 0.5rem; }
     .node-name i { font-size: 0.85rem; }
     .node.ready .node-name i { color: var(--green); }
     .node.notready .node-name i { color: var(--red); }
@@ -346,32 +370,12 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
-    .node.control-plane .node-role {
-      background: rgba(237, 35, 42, 0.15);
-      color: var(--brand);
-    }
-    .node.ready .node-role, .node.notready .node-role {
-      background: rgba(138, 138, 138, 0.15);
-      color: var(--muted);
-    }
-    .node-details {
-      display: flex;
-      flex-direction: column;
-      gap: 0.4rem;
-    }
-    .node-detail {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.8rem;
-      color: var(--muted);
-    }
+    .node.control-plane .node-role { background: rgba(237, 35, 42, 0.15); color: var(--brand); }
+    .node.ready .node-role, .node.notready .node-role { background: rgba(138, 138, 138, 0.15); color: var(--muted); }
+    .node-details { display: flex; flex-direction: column; gap: 0.4rem; }
+    .node-detail { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--muted); }
     .node-detail i { width: 14px; text-align: center; font-size: 0.75rem; }
-    .node-detail code {
-      font-family: 'JetBrains Mono', monospace;
-      color: var(--text);
-      font-size: 0.75rem;
-    }
+    .node-detail code { font-family: 'JetBrains Mono', monospace; color: var(--text); font-size: 0.75rem; }
     .node-status-badge {
       display: inline-flex;
       align-items: center;
@@ -382,26 +386,10 @@
       font-weight: 600;
       margin-top: 0.5rem;
     }
-    .node.ready .node-status-badge {
-      background: rgba(34, 197, 94, 0.12);
-      color: var(--green);
-    }
-    .node.notready .node-status-badge {
-      background: rgba(239, 68, 68, 0.12);
-      color: var(--red);
-    }
-    .node.control-plane .node-status-badge {
-      background: rgba(34, 197, 94, 0.12);
-      color: var(--green);
-    }
-
-    /* Tabs */
-    .tabs {
-      display: flex;
-      gap: 0.5rem;
-      margin-bottom: 1rem;
-      flex-wrap: wrap;
-    }
+    .node.ready .node-status-badge { background: rgba(34, 197, 94, 0.12); color: var(--green); }
+    .node.notready .node-status-badge { background: rgba(239, 68, 68, 0.12); color: var(--red); }
+    .node.control-plane .node-status-badge { background: rgba(34, 197, 94, 0.12); color: var(--green); }
+    .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
     .tab {
       background: var(--panel);
       border: 1px solid var(--border);
@@ -418,34 +406,11 @@
       gap: 0.5rem;
     }
     .tab:hover { color: var(--text); border-color: var(--text); }
-    .tab.active {
-      background: var(--brand);
-      border-color: var(--brand);
-      color: var(--text);
-    }
-    .tab .count {
-      background: rgba(255,255,255,0.15);
-      padding: 0.15rem 0.5rem;
-      border-radius: 10px;
-      font-size: 0.75rem;
-      font-family: 'JetBrains Mono', monospace;
-    }
-
-    /* Pod/Service Tables */
-    .table-container {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      overflow: hidden;
-    }
-    .table-scroll {
-      overflow-x: auto;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.85rem;
-    }
+    .tab.active { background: var(--brand); border-color: var(--brand); color: var(--text); }
+    .tab .count { background: rgba(255,255,255,0.15); padding: 0.15rem 0.5rem; border-radius: 10px; font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; }
+    .table-container { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .table-scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
     th {
       text-align: left;
       padding: 0.875rem 1rem;
@@ -458,103 +423,33 @@
       border-bottom: 1px solid var(--border);
       white-space: nowrap;
     }
-    td {
-      padding: 0.75rem 1rem;
-      border-bottom: 1px solid var(--border);
-      white-space: nowrap;
-    }
+    td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
     tr:last-child td { border-bottom: none; }
     tr:hover td { background: var(--panel-hover); }
     .pod-name { font-weight: 500; }
-    .pod-namespace {
-      background: var(--bg-elevated);
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
-      font-size: 0.75rem;
-      font-family: 'JetBrains Mono', monospace;
-      color: var(--blue);
-    }
-    .pod-status {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      padding: 0.25rem 0.6rem;
-      border-radius: 6px;
-      font-size: 0.75rem;
-      font-weight: 600;
-    }
+    .pod-namespace { background: var(--bg-elevated); padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; color: var(--blue); }
+    .pod-status { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
     .pod-status.running { background: rgba(34, 197, 94, 0.12); color: var(--green); }
     .pod-status.pending { background: rgba(234, 179, 8, 0.12); color: var(--yellow); }
     .pod-status.failed { background: rgba(239, 68, 68, 0.12); color: var(--red); }
     .pod-status.succeeded { background: rgba(59, 130, 246, 0.12); color: var(--blue); }
-    .pod-node {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.8rem;
-      color: var(--muted);
-    }
-    .svc-type {
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
-      font-size: 0.75rem;
-      font-weight: 600;
-    }
+    .pod-node { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--muted); }
+    .svc-type { padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
     .svc-type.clusterip { background: rgba(138, 138, 138, 0.15); color: var(--muted); }
     .svc-type.nodeport { background: rgba(168, 85, 247, 0.15); color: var(--purple); }
     .svc-type.loadbalancer { background: rgba(59, 130, 246, 0.15); color: var(--blue); }
-    .svc-ports {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.8rem;
-      color: var(--text);
-    }
-    .empty-state {
-      text-align: center;
-      padding: 3rem;
-      color: var(--muted);
-    }
+    .svc-ports { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--text); }
+    .empty-state { text-align: center; padding: 3rem; color: var(--muted); }
     .empty-state i { font-size: 2.5rem; margin-bottom: 1rem; opacity: 0.5; }
-
-    /* Cluster Info */
-    .info-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 1rem;
-      margin-top: 1rem;
-    }
-    .info-card {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.25rem;
-    }
-    .info-card h3 {
-      font-size: 0.9rem;
-      font-weight: 600;
-      margin-bottom: 1rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
+    .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 1rem; }
+    .info-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }
+    .info-card h3 { font-size: 0.9rem; font-weight: 600; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
     .info-card h3 i { color: var(--brand); }
-    .info-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-    }
-    .info-item {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      font-size: 0.875rem;
-    }
-    .info-item i {
-      color: var(--muted);
-      width: 18px;
-      text-align: center;
-    }
+    .info-list { display: flex; flex-direction: column; gap: 0.75rem; }
+    .info-item { display: flex; align-items: center; gap: 0.75rem; font-size: 0.875rem; }
+    .info-item i { color: var(--muted); width: 18px; text-align: center; }
     .info-item .label { color: var(--muted); }
     .info-item .value { color: var(--text); font-weight: 500; }
-
-    /* About Section */
     .about-section {
       background: linear-gradient(135deg, var(--panel) 0%, var(--bg-elevated) 100%);
       border: 1px solid var(--border);
@@ -562,56 +457,18 @@
       padding: 1.5rem;
       margin-top: 1.5rem;
     }
-    .about-section h3 {
-      font-size: 1rem;
-      margin-bottom: 1rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
+    .about-section h3 { font-size: 1rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
     .about-section h3 i { color: var(--brand); }
-    .about-section p {
-      color: var(--muted);
-      line-height: 1.7;
-      font-size: 0.9rem;
-    }
+    .about-section p { color: var(--muted); line-height: 1.7; font-size: 0.9rem; }
     .about-section strong { color: var(--text); }
-    .tech-tags {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-top: 1rem;
-    }
-    .tech-tag {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      padding: 0.35rem 0.75rem;
-      border-radius: 6px;
-      font-size: 0.8rem;
-      color: var(--muted);
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-    }
+    .tech-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+    .tech-tag { background: var(--bg); border: 1px solid var(--border); padding: 0.35rem 0.75rem; border-radius: 6px; font-size: 0.8rem; color: var(--muted); display: flex; align-items: center; gap: 0.4rem; }
     .tech-tag i { font-size: 0.9rem; }
     .tech-tag.k8s i { color: #326ce5; }
     .tech-tag.linux i { color: #f0c674; }
     .tech-tag.arm i { color: #0091bd; }
-
-    /* Footer */
-    .footer {
-      text-align: center;
-      padding: 2.5rem 1rem;
-      color: var(--muted);
-      font-size: 0.85rem;
-      border-top: 1px solid var(--border);
-      margin-top: 2rem;
-    }
-    .footer a {
-      color: var(--brand);
-      text-decoration: none;
-      font-weight: 500;
-    }
+    .footer { text-align: center; padding: 2.5rem 1rem; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--border); margin-top: 2rem; }
+    .footer a { color: var(--brand); text-decoration: none; font-weight: 500; }
     .footer a:hover { text-decoration: underline; }
   </style>
 </head>
@@ -646,6 +503,35 @@
       <button class="refresh-btn" onclick="loadClusterStatus()" id="refreshBtn">
         <i class="fa-solid fa-arrows-rotate"></i> Refresh
       </button>
+    </div>
+
+    <!-- Control Panel -->
+    <div class="control-panel">
+      <div class="control-header">
+        <div class="control-title"><i class="fa-solid fa-sliders"></i> Cluster Control</div>
+        <select id="targetSelect" style="background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.4rem 0.75rem; border-radius: 6px; font-family: inherit; font-size: 0.8rem;">
+          <option value="all">All Nodes</option>
+          <option value="phones">Phones Only</option>
+          <option value="node1">node1 (control)</option>
+          <option value="node2">node2</option>
+          <option value="node3">node3</option>
+          <option value="node4">node4</option>
+          <option value="node5">node5</option>
+          <option value="node6">node6</option>
+          <option value="node7">node7</option>
+          <option value="node8">node8</option>
+          <option value="node9">node9</option>
+          <option value="node10">node10</option>
+        </select>
+      </div>
+      <div class="control-buttons">
+        <button class="ctrl-btn start" onclick="sendCommand('start')"><i class="fa-solid fa-play"></i> Start</button>
+        <button class="ctrl-btn stop" onclick="sendCommand('stop')"><i class="fa-solid fa-stop"></i> Stop</button>
+        <button class="ctrl-btn restart" onclick="sendCommand('restart')"><i class="fa-solid fa-rotate"></i> Restart</button>
+        <button class="ctrl-btn wake" onclick="sendCommand('wake')"><i class="fa-solid fa-sun"></i> Wake</button>
+        <button class="ctrl-btn sleep" onclick="sendCommand('sleep')"><i class="fa-solid fa-moon"></i> Sleep</button>
+      </div>
+      <div class="control-status" id="controlStatus"></div>
     </div>
 
     <!-- Demo Banner -->
@@ -683,27 +569,20 @@
       <h2 class="section-title"><i class="fa-solid fa-microchip"></i> Cluster Nodes</h2>
       <span class="section-badge" id="nodeBadge">10 phones</span>
     </div>
-    <div class="node-grid" id="nodeGrid">
-      <!-- Nodes populated by JS -->
-    </div>
+    <div class="node-grid" id="nodeGrid"></div>
 
     <!-- Pods Section -->
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-cubes"></i> Workloads</h2>
     </div>
     <div class="tabs" id="podTabs">
-      <button class="tab active" data-ns="all"><i class="fa-solid fa-layer-group"></i> All <span class="count" id="podCountAll">0</span></button>
+      <button class="tab active" data-ns="all"><i class="fa-solid fa-layer-group"></i> All <span class="count">0</span></button>
     </div>
     <div class="table-container">
       <div class="table-scroll">
-        <table id="podTable">
+        <table>
           <thead>
-            <tr>
-              <th>Pod Name</th>
-              <th>Namespace</th>
-              <th>Status</th>
-              <th>Node</th>
-            </tr>
+            <tr><th>Pod Name</th><th>Namespace</th><th>Status</th><th>Node</th></tr>
           </thead>
           <tbody id="podTableBody">
             <tr><td colspan="4" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>
@@ -719,15 +598,9 @@
     </div>
     <div class="table-container">
       <div class="table-scroll">
-        <table id="svcTable">
+        <table>
           <thead>
-            <tr>
-              <th>Service Name</th>
-              <th>Namespace</th>
-              <th>Type</th>
-              <th>Cluster IP</th>
-              <th>Ports</th>
-            </tr>
+            <tr><th>Service Name</th><th>Namespace</th><th>Type</th><th>Cluster IP</th><th>Ports</th></tr>
           </thead>
           <tbody id="svcTableBody">
             <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-plug"></i><br>No services found</td></tr>
@@ -736,83 +609,26 @@
       </div>
     </div>
 
-    <!-- Network Status -->
+    <!-- Network Section -->
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-wifi"></i> Network</h2>
     </div>
-    <div class="info-grid" id="networkGrid">
-      <div class="info-card" id="tailscaleCard">
+    <div class="info-grid">
+      <div class="info-card">
         <h3><i class="fa-solid fa-shield-halved"></i> Tailscale VPN</h3>
         <div class="info-list" id="tailscaleInfo">
-          <div class="info-item">
-            <i class="fa-solid fa-spinner fa-spin"></i>
-            <span class="muted">Loading...</span>
-          </div>
+          <div class="info-item"><i class="fa-solid fa-spinner fa-spin"></i><span class="muted">Loading...</span></div>
         </div>
       </div>
-      <div class="info-card" id="wifiCard">
+      <div class="info-card">
         <h3><i class="fa-solid fa-wifi"></i> WiFi Connection</h3>
         <div class="info-list" id="wifiInfo">
-          <div class="info-item">
-            <i class="fa-solid fa-spinner fa-spin"></i>
-            <span class="muted">Loading...</span>
-          </div>
+          <div class="info-item"><i class="fa-solid fa-spinner fa-spin"></i><span class="muted">Loading...</span></div>
         </div>
       </div>
     </div>
 
-    </div>
-
-    <!-- Pods Section -->
-    <div class="section-header">
-      <h2 class="section-title"><i class="fa-solid fa-cubes"></i> Workloads</h2>
-    </div>
-    <div class="tabs" id="podTabs">
-      <button class="tab active" data-ns="all"><i class="fa-solid fa-layer-group"></i> All <span class="count" id="podCountAll">0</span></button>
-    </div>
-    <div class="table-container">
-      <div class="table-scroll">
-        <table id="podTable">
-          <thead>
-            <tr>
-              <th>Pod Name</th>
-              <th>Namespace</th>
-              <th>Status</th>
-              <th>Node</th>
-            </tr>
-          </thead>
-          <tbody id="podTableBody">
-            <tr><td colspan="4" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Services Section -->
-    <div class="section-header">
-      <h2 class="section-title"><i class="fa-solid fa-network-wired"></i> Services</h2>
-      <span class="section-badge" id="svcBadge">0 services</span>
-    </div>
-    <div class="table-container">
-      <div class="table-scroll">
-        <table id="svcTable">
-          <thead>
-            <tr>
-              <th>Service Name</th>
-              <th>Namespace</th>
-              <th>Type</th>
-              <th>Cluster IP</th>
-              <th>Ports</th>
-            </tr>
-          </thead>
-          <tbody id="svcTableBody">
-            <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-plug"></i><br>No services found</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Cluster Info -->
+    <!-- Cluster Specs -->
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-circle-info"></i> Cluster Specs</h2>
     </div>
@@ -820,51 +636,19 @@
       <div class="info-card">
         <h3><i class="fa-solid fa-microchip"></i> Hardware</h3>
         <div class="info-list">
-          <div class="info-item">
-            <i class="fa-solid fa-mobile"></i>
-            <span class="label">Device:</span>
-            <span class="value">OnePlus 6T (fajita)</span>
-          </div>
-          <div class="info-item">
-            <i class="fa-solid fa-bolt"></i>
-            <span class="label">CPU:</span>
-            <span class="value">Snapdragon 845 (8-core ARM64)</span>
-          </div>
-          <div class="info-item">
-            <i class="fa-solid fa-memory"></i>
-            <span class="label">RAM:</span>
-            <span class="value">6-8GB per node</span>
-          </div>
-          <div class="info-item">
-            <i class="fa-solid fa-hard-drive"></i>
-            <span class="label">Storage:</span>
-            <span class="value">128GB UFS 2.1</span>
-          </div>
+          <div class="info-item"><i class="fa-solid fa-mobile"></i><span class="label">Device:</span><span class="value">OnePlus 6T (fajita)</span></div>
+          <div class="info-item"><i class="fa-solid fa-bolt"></i><span class="label">CPU:</span><span class="value">Snapdragon 845 (8-core ARM64)</span></div>
+          <div class="info-item"><i class="fa-solid fa-memory"></i><span class="label">RAM:</span><span class="value">6-8GB per node</span></div>
+          <div class="info-item"><i class="fa-solid fa-hard-drive"></i><span class="label">Storage:</span><span class="value">128GB UFS 2.1</span></div>
         </div>
       </div>
       <div class="info-card">
         <h3><i class="fa-solid fa-code"></i> Software Stack</h3>
         <div class="info-list">
-          <div class="info-item">
-            <i class="fa-brands fa-linux"></i>
-            <span class="label">OS:</span>
-            <span class="value">postmarketOS v25.12</span>
-          </div>
-          <div class="info-item">
-            <i class="fa-solid fa-dharmachakra"></i>
-            <span class="label">K8s:</span>
-            <span class="value">K3s v1.34.3+k3s1</span>
-          </div>
-          <div class="info-item">
-            <i class="fa-solid fa-network-wired"></i>
-            <span class="label">CNI:</span>
-            <span class="value">Flannel VXLAN</span>
-          </div>
-          <div class="info-item">
-            <i class="fa-solid fa-database"></i>
-            <span class="label">Storage:</span>
-            <span class="value">Local Path Provisioner</span>
-          </div>
+          <div class="info-item"><i class="fa-brands fa-linux"></i><span class="label">OS:</span><span class="value">postmarketOS v25.12</span></div>
+          <div class="info-item"><i class="fa-solid fa-dharmachakra"></i><span class="label">K8s:</span><span class="value">K3s v1.34.3+k3s1</span></div>
+          <div class="info-item"><i class="fa-solid fa-network-wired"></i><span class="label">CNI:</span><span class="value">Flannel VXLAN</span></div>
+          <div class="info-item"><i class="fa-solid fa-database"></i><span class="label">Storage:</span><span class="value">Local Path Provisioner</span></div>
         </div>
       </div>
     </div>
@@ -874,18 +658,27 @@
       <h3><i class="fa-solid fa-lightbulb"></i> About This Project</h3>
       <p>
         This cluster repurposes <strong>10 retired OnePlus 6T smartphones</strong> as a fully functional
-        Kubernetes cluster. Each phone runs <strong>postmarketOS</strong> (a real Linux distribution for phones)
-        with <strong>K3s</strong> (lightweight Kubernetes). The phones communicate over WiFi and run production
-        workloads with automatic load balancing across all nodes. Built as a proof-of-concept for
-        <strong>edge computing</strong> and <strong>sustainable tech reuse</strong> — giving old phones a second life
-        as servers instead of e-waste.
+        Kubernetes cluster. Each phone runs <strong>postmarketOS</strong> with <strong>K3s</strong>.
+        The phones communicate over WiFi and run production workloads with automatic load balancing.
+        Built for <strong>edge computing</strong> and <strong>sustainable tech reuse</strong>.
       </p>
       <div class="tech-tags">
         <span class="tech-tag k8s"><i class="fa-solid fa-dharmachakra"></i> Kubernetes</span>
         <span class="tech-tag linux"><i class="fa-brands fa-linux"></i> Linux</span>
         <span class="tech-tag arm"><i class="fa-solid fa-microchip"></i> ARM64</span>
         <span class="tech-tag"><i class="fa-solid fa-recycle"></i> E-Waste Reduction</span>
-        <span class="tech-tag"><i class="fa-solid fa-wifi"></i> Mesh Network</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Password Modal -->
+  <div class="modal-overlay" id="passwordModal">
+    <div class="modal">
+      <h3><i class="fa-solid fa-lock"></i> Enter Password</h3>
+      <input type="password" id="passwordInput" placeholder="Cluster password" onkeypress="if(event.key==='Enter')submitPassword()">
+      <div class="modal-buttons">
+        <button class="modal-btn" onclick="closeModal()">Cancel</button>
+        <button class="modal-btn primary" onclick="submitPassword()">Submit</button>
       </div>
     </div>
   </div>
@@ -899,20 +692,20 @@
     let allPods = [];
     let allServices = [];
     let currentNamespace = 'all';
+    let pendingCommand = null;
+    let savedPassword = localStorage.getItem('clusterPassword') || '';
 
     async function loadClusterStatus() {
       const statusDot = document.getElementById('statusDot');
       const statusText = document.getElementById('statusText');
       const demoBanner = document.getElementById('demoBanner');
       const refreshBtn = document.getElementById('refreshBtn');
-
       refreshBtn.classList.add('spinning');
 
       try {
         const res = await fetch('/.netlify/functions/cluster-status');
         const data = await res.json();
 
-        // Update status indicator
         if (data.demo) {
           statusDot.className = 'status-dot demo';
           statusText.textContent = 'Demo Mode';
@@ -923,54 +716,34 @@
           demoBanner.classList.remove('visible');
         }
 
-        // Update summary cards
         const summary = data.summary || {};
         document.getElementById('nodesReady').textContent = summary.nodesReady ?? '-';
         document.getElementById('nodesTotal').textContent = summary.nodesTotal ?? '-';
         document.getElementById('podsRunning').textContent = summary.podsRunning ?? '-';
         document.getElementById('podsTotal').textContent = summary.podsTotal ?? '-';
 
-        // Color the ready count
         const readyEl = document.getElementById('nodesReady');
         const total = summary.nodesTotal || 0;
         const ready = summary.nodesReady || 0;
-        if (ready === total && total > 0) {
-          readyEl.className = 'card-value green';
-        } else if (ready >= total * 0.7) {
-          readyEl.className = 'card-value yellow';
-        } else {
-          readyEl.className = 'card-value red';
-        }
+        readyEl.className = 'card-value ' + (ready === total && total > 0 ? 'green' : ready >= total * 0.7 ? 'yellow' : 'red');
 
-        // Update node grid
-        const nodes = data.nodes || [];
-        document.getElementById('nodeBadge').textContent = `${nodes.length} phones`;
-        renderNodes(nodes);
+        renderNodes(data.nodes || []);
+        document.getElementById('nodeBadge').textContent = `${(data.nodes || []).length} nodes`;
 
-        // Store and render pods
         allPods = data.pods || [];
         buildPodTabs();
         renderPods();
 
-        // Store and render services
         allServices = data.services || [];
         document.getElementById('svcBadge').textContent = `${allServices.length} services`;
         renderServices();
 
-        // Render network status
         renderNetwork(data.network);
 
-        // Update last update time
         const lastUpdate = document.getElementById('lastUpdate');
-        if (data.lastUpdate) {
-          const date = new Date(data.lastUpdate);
-          lastUpdate.textContent = date.toLocaleTimeString();
-        } else {
-          lastUpdate.textContent = 'Never';
-        }
-
+        lastUpdate.textContent = data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : 'Never';
       } catch (error) {
-        console.error('Failed to load cluster status:', error);
+        console.error('Failed to load:', error);
         statusDot.className = 'status-dot offline';
         statusText.textContent = 'Offline';
       } finally {
@@ -979,69 +752,42 @@
     }
 
     function renderNodes(nodes) {
-      const nodeGrid = document.getElementById('nodeGrid');
+      const grid = document.getElementById('nodeGrid');
       if (nodes.length === 0) {
-        nodeGrid.innerHTML = '<div class="empty-state"><i class="fa-solid fa-server"></i><br>No nodes found</div>';
+        grid.innerHTML = '<div class="empty-state"><i class="fa-solid fa-server"></i><br>No nodes found</div>';
         return;
       }
-
-      nodeGrid.innerHTML = nodes.map(node => {
+      grid.innerHTML = nodes.map(node => {
         const isReady = node.status === 'Ready';
-        const isControlPlane = node.role === 'control-plane';
-        let classes = 'node';
-        if (isControlPlane) classes += ' control-plane ready';
-        else if (isReady) classes += ' ready';
-        else classes += ' notready';
-
-        const icon = isControlPlane ? 'fa-crown' : (isReady ? 'fa-circle-check' : 'fa-circle-xmark');
-        const roleLabel = isControlPlane ? 'Control Plane' : 'Worker';
-
-        return `
-          <div class="${classes}">
-            <div class="node-header">
-              <div class="node-name">
-                <i class="fa-solid ${icon}"></i>
-                ${node.name}
-              </div>
-              <span class="node-role">${roleLabel}</span>
-            </div>
-            <div class="node-details">
-              <div class="node-detail">
-                <i class="fa-solid fa-network-wired"></i>
-                <code>${node.ip || 'Unknown'}</code>
-              </div>
-            </div>
-            <span class="node-status-badge">
-              <i class="fa-solid ${isReady ? 'fa-check' : 'fa-xmark'}"></i>
-              ${node.status || 'Unknown'}
-            </span>
+        const isCP = node.role === 'control-plane';
+        const cls = 'node' + (isCP ? ' control-plane ready' : isReady ? ' ready' : ' notready');
+        const icon = isCP ? 'fa-crown' : isReady ? 'fa-circle-check' : 'fa-circle-xmark';
+        return `<div class="${cls}">
+          <div class="node-header">
+            <div class="node-name"><i class="fa-solid ${icon}"></i>${node.name}</div>
+            <span class="node-role">${isCP ? 'Control Plane' : 'Worker'}</span>
           </div>
-        `;
+          <div class="node-details">
+            <div class="node-detail"><i class="fa-solid fa-network-wired"></i><code>${node.ip || 'Unknown'}</code></div>
+          </div>
+          <span class="node-status-badge"><i class="fa-solid ${isReady ? 'fa-check' : 'fa-xmark'}"></i>${node.status || 'Unknown'}</span>
+        </div>`;
       }).join('');
     }
 
     function buildPodTabs() {
       const namespaces = [...new Set(allPods.map(p => p.namespace))].sort();
-      const tabsContainer = document.getElementById('podTabs');
-
-      let tabsHtml = `<button class="tab ${currentNamespace === 'all' ? 'active' : ''}" data-ns="all">
-        <i class="fa-solid fa-layer-group"></i> All <span class="count">${allPods.length}</span>
-      </button>`;
-
+      const tabs = document.getElementById('podTabs');
+      let html = `<button class="tab ${currentNamespace === 'all' ? 'active' : ''}" data-ns="all"><i class="fa-solid fa-layer-group"></i> All <span class="count">${allPods.length}</span></button>`;
       namespaces.forEach(ns => {
         const count = allPods.filter(p => p.namespace === ns).length;
-        tabsHtml += `<button class="tab ${currentNamespace === ns ? 'active' : ''}" data-ns="${ns}">
-          ${ns} <span class="count">${count}</span>
-        </button>`;
+        html += `<button class="tab ${currentNamespace === ns ? 'active' : ''}" data-ns="${ns}">${ns} <span class="count">${count}</span></button>`;
       });
-
-      tabsContainer.innerHTML = tabsHtml;
-
-      // Add click handlers
-      tabsContainer.querySelectorAll('.tab').forEach(tab => {
+      tabs.innerHTML = html;
+      tabs.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', () => {
           currentNamespace = tab.dataset.ns;
-          tabsContainer.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          tabs.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
           tab.classList.add('active');
           renderPods();
         });
@@ -1050,186 +796,118 @@
 
     function renderPods() {
       const tbody = document.getElementById('podTableBody');
-      const filteredPods = currentNamespace === 'all'
-        ? allPods
-        : allPods.filter(p => p.namespace === currentNamespace);
-
-      if (filteredPods.length === 0) {
+      const filtered = currentNamespace === 'all' ? allPods : allPods.filter(p => p.namespace === currentNamespace);
+      if (filtered.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>';
         return;
       }
-
-      tbody.innerHTML = filteredPods.map(pod => {
-        const statusClass = pod.status?.toLowerCase() || 'pending';
-        const statusIcon = {
-          'running': 'fa-circle-check',
-          'pending': 'fa-clock',
-          'failed': 'fa-circle-xmark',
-          'succeeded': 'fa-flag-checkered'
-        }[statusClass] || 'fa-question';
-
-        return `
-          <tr>
-            <td class="pod-name">${pod.name}</td>
-            <td><span class="pod-namespace">${pod.namespace}</span></td>
-            <td><span class="pod-status ${statusClass}"><i class="fa-solid ${statusIcon}"></i> ${pod.status}</span></td>
-            <td class="pod-node">${pod.node || '-'}</td>
-          </tr>
-        `;
+      tbody.innerHTML = filtered.map(pod => {
+        const st = pod.status?.toLowerCase() || 'pending';
+        const icon = {running:'fa-circle-check',pending:'fa-clock',failed:'fa-circle-xmark',succeeded:'fa-flag-checkered'}[st] || 'fa-question';
+        return `<tr><td class="pod-name">${pod.name}</td><td><span class="pod-namespace">${pod.namespace}</span></td><td><span class="pod-status ${st}"><i class="fa-solid ${icon}"></i> ${pod.status}</span></td><td class="pod-node">${pod.node || '-'}</td></tr>`;
       }).join('');
     }
 
     function renderServices() {
       const tbody = document.getElementById('svcTableBody');
-
       if (allServices.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-plug"></i><br>No services found</td></tr>';
         return;
       }
-
       tbody.innerHTML = allServices.map(svc => {
-        const typeClass = svc.type?.toLowerCase().replace(/\s/g, '') || 'clusterip';
-        const ports = (svc.ports || []).join(', ') || '-';
-
-        return `
-          <tr>
-            <td class="pod-name">${svc.name}</td>
-            <td><span class="pod-namespace">${svc.namespace}</span></td>
-            <td><span class="svc-type ${typeClass}">${svc.type}</span></td>
-            <td><code>${svc.clusterIP || '-'}</code></td>
-            <td class="svc-ports">${ports}</td>
-          </tr>
-        `;
+        const tc = svc.type?.toLowerCase().replace(/\s/g, '') || 'clusterip';
+        const ports = (svc.ports || []).map(p => typeof p === 'object' ? `${p.port}/${p.protocol || 'TCP'}` : p).join(', ') || '-';
+        return `<tr><td class="pod-name">${svc.name}</td><td><span class="pod-namespace">${svc.namespace}</span></td><td><span class="svc-type ${tc}">${svc.type}</span></td><td><code>${svc.clusterIP || '-'}</code></td><td class="svc-ports">${ports}</td></tr>`;
       }).join('');
     }
 
     function renderNetwork(network) {
-      const tailscaleInfo = document.getElementById('tailscaleInfo');
+      const tsInfo = document.getElementById('tailscaleInfo');
       const wifiInfo = document.getElementById('wifiInfo');
-
-      // Render Tailscale info
       if (network?.tailscale?.connected) {
         const ts = network.tailscale;
-        const onlinePeers = (ts.peers || []).filter(p => p.online).length;
-        const totalPeers = (ts.peers || []).length;
-        tailscaleInfo.innerHTML = `
-          <div class="info-item">
-            <i class="fa-solid fa-circle-check" style="color: var(--green);"></i>
-            <span class="label">Status:</span>
-            <span class="value" style="color: var(--green);">Connected</span>
-          </div>
-          <div class="info-item">
-            <i class="fa-solid fa-at"></i>
-            <span class="label">Hostname:</span>
-            <span class="value">${ts.hostname || '-'}</span>
-          </div>
-          <div class="info-item">
-            <i class="fa-solid fa-location-dot"></i>
-            <span class="label">Tailscale IP:</span>
-            <span class="value"><code>${ts.ip || '-'}</code></span>
-          </div>
-          <div class="info-item">
-            <i class="fa-solid fa-users"></i>
-            <span class="label">Peers Online:</span>
-            <span class="value">${onlinePeers}/${totalPeers}</span>
-          </div>
-        `;
+        const online = (ts.peers || []).filter(p => p.online).length;
+        const total = (ts.peers || []).length;
+        tsInfo.innerHTML = `
+          <div class="info-item"><i class="fa-solid fa-circle-check" style="color:var(--green)"></i><span class="label">Status:</span><span class="value" style="color:var(--green)">Connected</span></div>
+          <div class="info-item"><i class="fa-solid fa-at"></i><span class="label">Hostname:</span><span class="value">${ts.hostname || '-'}</span></div>
+          <div class="info-item"><i class="fa-solid fa-location-dot"></i><span class="label">IP:</span><span class="value"><code>${ts.ip || '-'}</code></span></div>
+          <div class="info-item"><i class="fa-solid fa-users"></i><span class="label">Peers:</span><span class="value">${online}/${total}</span></div>`;
       } else {
-        tailscaleInfo.innerHTML = `
-          <div class="info-item">
-            <i class="fa-solid fa-circle-xmark" style="color: var(--muted);"></i>
-            <span class="muted">Not connected</span>
-          </div>
-        `;
+        tsInfo.innerHTML = '<div class="info-item"><i class="fa-solid fa-circle-xmark" style="color:var(--muted)"></i><span class="muted">Not connected</span></div>';
       }
-
-      // Render WiFi info
       if (network?.wifi?.connected) {
         const wifi = network.wifi;
-        const signal = parseInt(wifi.signal) || 0;
-        const signalClass = signal > -50 ? 'green' : signal > -70 ? 'yellow' : 'red';
-        const signalIcon = signal > -50 ? 'fa-signal' : signal > -70 ? 'fa-signal' : 'fa-signal-weak';
+        const sig = parseInt(wifi.signal) || 0;
+        const sc = sig > -50 ? 'green' : sig > -70 ? 'yellow' : 'red';
         wifiInfo.innerHTML = `
-          <div class="info-item">
-            <i class="fa-solid fa-circle-check" style="color: var(--green);"></i>
-            <span class="label">Status:</span>
-            <span class="value" style="color: var(--green);">Connected</span>
-          </div>
-          <div class="info-item">
-            <i class="fa-solid fa-broadcast-tower"></i>
-            <span class="label">SSID:</span>
-            <span class="value">${wifi.ssid || '-'}</span>
-          </div>
-          <div class="info-item">
-            <i class="fa-solid ${signalIcon}"></i>
-            <span class="label">Signal:</span>
-            <span class="value" style="color: var(--${signalClass});">${wifi.signal || '-'} dBm</span>
-          </div>
-          ${network.localIP ? `
-          <div class="info-item">
-            <i class="fa-solid fa-ethernet"></i>
-            <span class="label">Local IP:</span>
-            <span class="value"><code>${network.localIP}</code></span>
-          </div>
-          ` : ''}
-        `;
+          <div class="info-item"><i class="fa-solid fa-circle-check" style="color:var(--green)"></i><span class="label">Status:</span><span class="value" style="color:var(--green)">Connected</span></div>
+          <div class="info-item"><i class="fa-solid fa-broadcast-tower"></i><span class="label">SSID:</span><span class="value">${wifi.ssid || '-'}</span></div>
+          <div class="info-item"><i class="fa-solid fa-signal"></i><span class="label">Signal:</span><span class="value" style="color:var(--${sc})">${wifi.signal || '-'} dBm</span></div>
+          ${network.localIP ? `<div class="info-item"><i class="fa-solid fa-ethernet"></i><span class="label">Local IP:</span><span class="value"><code>${network.localIP}</code></span></div>` : ''}`;
       } else {
-        wifiInfo.innerHTML = `
-          <div class="info-item">
-            <i class="fa-solid fa-circle-xmark" style="color: var(--muted);"></i>
-            <span class="muted">Not connected</span>
-          </div>
-        `;
+        wifiInfo.innerHTML = '<div class="info-item"><i class="fa-solid fa-circle-xmark" style="color:var(--muted)"></i><span class="muted">Not connected</span></div>';
       }
-
-      tbody.innerHTML = filteredPods.map(pod => {
-        const statusClass = pod.status?.toLowerCase() || 'pending';
-        const statusIcon = {
-          'running': 'fa-circle-check',
-          'pending': 'fa-clock',
-          'failed': 'fa-circle-xmark',
-          'succeeded': 'fa-flag-checkered'
-        }[statusClass] || 'fa-question';
-
-        return `
-          <tr>
-            <td class="pod-name">${pod.name}</td>
-            <td><span class="pod-namespace">${pod.namespace}</span></td>
-            <td><span class="pod-status ${statusClass}"><i class="fa-solid ${statusIcon}"></i> ${pod.status}</span></td>
-            <td class="pod-node">${pod.node || '-'}</td>
-          </tr>
-        `;
-      }).join('');
     }
 
-    function renderServices() {
-      const tbody = document.getElementById('svcTableBody');
-
-      if (allServices.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-plug"></i><br>No services found</td></tr>';
-        return;
+    // Control functions
+    function sendCommand(cmd) {
+      pendingCommand = cmd;
+      if (savedPassword) {
+        executeCommand(cmd, savedPassword);
+      } else {
+        document.getElementById('passwordModal').classList.add('visible');
+        document.getElementById('passwordInput').focus();
       }
-
-      tbody.innerHTML = allServices.map(svc => {
-        const typeClass = svc.type?.toLowerCase().replace(/\s/g, '') || 'clusterip';
-        const ports = (svc.ports || []).join(', ') || '-';
-
-        return `
-          <tr>
-            <td class="pod-name">${svc.name}</td>
-            <td><span class="pod-namespace">${svc.namespace}</span></td>
-            <td><span class="svc-type ${typeClass}">${svc.type}</span></td>
-            <td><code>${svc.clusterIP || '-'}</code></td>
-            <td class="svc-ports">${ports}</td>
-          </tr>
-        `;
-      }).join('');
     }
 
-    // Load on page load
+    function closeModal() {
+      document.getElementById('passwordModal').classList.remove('visible');
+      document.getElementById('passwordInput').value = '';
+    }
+
+    function submitPassword() {
+      const pw = document.getElementById('passwordInput').value;
+      if (pw) {
+        savedPassword = pw;
+        localStorage.setItem('clusterPassword', pw);
+        closeModal();
+        executeCommand(pendingCommand, pw);
+      }
+    }
+
+    async function executeCommand(cmd, password) {
+      const target = document.getElementById('targetSelect').value;
+      const status = document.getElementById('controlStatus');
+      status.textContent = `Sending ${cmd} to ${target}...`;
+      status.className = 'control-status visible';
+
+      try {
+        const res = await fetch('/.netlify/functions/cluster-control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: cmd, target, password })
+        });
+        const data = await res.json();
+        if (data.success) {
+          status.textContent = `${data.message} - updating in ~60s`;
+          status.className = 'control-status visible success';
+          setTimeout(loadClusterStatus, 60000);
+        } else {
+          status.textContent = `Error: ${data.error}`;
+          status.className = 'control-status visible error';
+          if (data.error === 'Invalid password') {
+            savedPassword = '';
+            localStorage.removeItem('clusterPassword');
+          }
+        }
+      } catch (e) {
+        status.textContent = `Error: ${e.message}`;
+        status.className = 'control-status visible error';
+      }
+    }
+
     loadClusterStatus();
-
-    // Auto-refresh every 30 seconds
     setInterval(loadClusterStatus, 30000);
   </script>
 </body>
