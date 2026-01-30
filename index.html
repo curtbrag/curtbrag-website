@@ -63,6 +63,7 @@
       --text:#f5f5f5; --muted:#a7a7a7; --border:#2a2b2e;
     }
     *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
     html,body{height:100%}
     body{
       margin:0; font-family:Montserrat, Arial, sans-serif; color:var(--text);
@@ -266,10 +267,12 @@
           <div class="stats">GPT sessions 7,500+ • Custom automations (Bitly, Netlify, DraftKings, more) • Tool deals closed: ∞</div>
           <!-- Quick prompt chips for common requests -->
           <div class="chips">
-            <button class="chip" onclick="input.value='What tools are on promo this week?'; send()">Promos</button>
-            <button class="chip" onclick="input.value='Schedule a truck stop'; send()">Schedule Stop</button>
-            <button class="chip" onclick="input.value='DraftKings odds help'; send()">DraftKings</button>
-            <button class="chip" onclick="input.value='Share my payment options'; send()">Pay Options</button>
+            <button class="chip" onclick="input.value='Schedule a truck stop'; send()">Schedule</button>
+            <button class="chip" onclick="input.value='What tools are on promo?'; send()">Promos</button>
+            <button class="chip" onclick="input.value='Payment options'; send()">Pay</button>
+            <button class="chip" onclick="input.value='Warranty help'; send()">Warranty</button>
+            <button class="chip" onclick="input.value='Contact info'; send()">Contact</button>
+            <button class="chip" onclick="input.value='Tell me a joke'; send()">Joke</button>
           </div>
           <div class="chat-wrap" id="chatWrap">
             <div class="chat-log" id="chatLog" aria-live="polite">
