@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phone Cluster Dashboard - Curtis Bragdon</title>
+  <meta name="description" content="Live dashboard for Curtis Bragdon's 10-node OnePlus 6T K3s cluster running postmarketOS.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Phone Cluster Dashboard - Curtis Bragdon">
+  <meta property="og:description" content="10 OnePlus 6T phones running Kubernetes. Live cluster status and monitoring.">
+  <meta property="og:image" content="https://www.curtbrag.com/assets/logo_icon.png">
+  <meta property="og:url" content="https://www.curtbrag.com/cluster">
+  <meta name="theme-color" content="#ed232a">
+  <link rel="icon" type="image/png" href="/assets/truck_favicon.png">
+  <link rel="apple-touch-icon" href="/assets/truck_favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/css/all.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --brand: #ed232a;
+      --bg: #0e0f10;
+      --panel: #141517;
+      --text: #f5f5f5;
+      --muted: #a7a7a7;
+      --border: #2a2b2e;
+      --green: #22c55e;
+      --yellow: #eab308;
+      --red: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Montserrat, Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100vh;
+    }
+    .header {
+      background: linear-gradient(135deg, #1a1b1e, #0e0f10);
+      border-bottom: 1px solid var(--border);
+      padding: 1.5rem;
+      text-align: center;
+    }
+    .header h1 {
+      margin: 0 0 0.5rem;
+      font-size: 1.6rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+    }
+    .header h1 i { color: var(--brand); }
+    .header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .nav {
+      display: flex;
+      justify-content: center;
+      gap: 0.75rem;
+      padding: 1rem;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .nav a {
+      color: var(--text);
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      transition: all 0.2s;
+      font-size: 0.9rem;
+    }
+    .nav a:hover, .nav a.active {
+      background: var(--brand);
+      border-color: var(--brand);
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+
+    /* Summary Cards */
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      text-align: center;
+    }
+    .card-value {
+      font-size: 2.5rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .card-value.green { color: var(--green); }
+    .card-value.yellow { color: var(--yellow); }
+    .card-value.red { color: var(--red); }
+    .card-label {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 0.25rem;
+    }
+
+    /* Node Grid */
+    .section-title {
+      font-size: 1.1rem;
+      color: var(--text);
+      margin: 1.5rem 0 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .section-title i { color: var(--brand); }
+    .node-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 0.75rem;
+    }
+    .node {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .node::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--border);
+    }
+    .node.ready::before { background: var(--green); }
+    .node.notready::before { background: var(--red); }
+    .node.control-plane::before { background: var(--brand); }
+    .node-name {
+      font-weight: 600;
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .node-name i {
+      font-size: 0.9rem;
+    }
+    .node.ready .node-name i { color: var(--green); }
+    .node.notready .node-name i { color: var(--red); }
+    .node.control-plane .node-name i { color: var(--brand); }
+    .node-info {
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .node-status {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      margin-top: 0.5rem;
+    }
+    .node.ready .node-status {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--green);
+    }
+    .node.notready .node-status {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--red);
+    }
+
+    /* Cluster Info */
+    .cluster-info {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin-top: 1.5rem;
+    }
+    .cluster-info h3 {
+      margin: 0 0 1rem;
+      font-size: 1rem;
+      color: var(--text);
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+    .info-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .info-item i {
+      color: var(--brand);
+      width: 20px;
+      text-align: center;
+    }
+    .info-item span {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .info-item strong {
+      color: var(--text);
+    }
+
+    /* Status indicator */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+    }
+    .status-bar .status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .status-dot.live { background: var(--green); animation: pulse 2s infinite; }
+    .status-dot.demo { background: var(--yellow); }
+    .status-dot.offline { background: var(--red); }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .refresh-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+    }
+    .refresh-btn:hover {
+      border-color: var(--brand);
+      color: var(--brand);
+    }
+
+    .footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .footer a {
+      color: var(--brand);
+      text-decoration: none;
+    }
+
+    /* Demo banner */
+    .demo-banner {
+      background: rgba(234, 179, 8, 0.1);
+      border: 1px solid rgba(234, 179, 8, 0.3);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+      color: var(--yellow);
+      display: none;
+    }
+    .demo-banner.visible { display: block; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1><i class="fa-solid fa-mobile-screen"></i> Phone Cluster Dashboard</h1>
+    <p>10x OnePlus 6T • postmarketOS • K3s v1.34</p>
+  </div>
+
+  <nav class="nav">
+    <a href="/"><i class="fa-solid fa-home"></i> Home</a>
+    <a href="/cluster" class="active"><i class="fa-solid fa-server"></i> Cluster</a>
+    <a href="/shop"><i class="fa-solid fa-shopping-cart"></i> Shop</a>
+    <a href="/gallery"><i class="fa-solid fa-image"></i> Gallery</a>
+  </nav>
+
+  <div class="container">
+    <div class="status-bar">
+      <div class="status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Connecting...</span>
+      </div>
+      <button class="refresh-btn" onclick="loadClusterStatus()">
+        <i class="fa-solid fa-sync"></i> Refresh
+      </button>
+    </div>
+
+    <div class="demo-banner" id="demoBanner">
+      <i class="fa-solid fa-info-circle"></i> Showing demo data. Live updates will appear when cluster pushes status.
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="summary">
+      <div class="card">
+        <div class="card-value green" id="nodesReady">-</div>
+        <div class="card-label">Nodes Ready</div>
+      </div>
+      <div class="card">
+        <div class="card-value" id="nodesTotal">-</div>
+        <div class="card-label">Total Nodes</div>
+      </div>
+      <div class="card">
+        <div class="card-value green" id="podsRunning">-</div>
+        <div class="card-label">Pods Running</div>
+      </div>
+      <div class="card">
+        <div class="card-value" id="podsTotal">-</div>
+        <div class="card-label">Total Pods</div>
+      </div>
+    </div>
+
+    <!-- Node Grid -->
+    <h2 class="section-title"><i class="fa-solid fa-microchip"></i> Cluster Nodes</h2>
+    <div class="node-grid" id="nodeGrid">
+      <!-- Nodes will be populated by JavaScript -->
+    </div>
+
+    <!-- Cluster Info -->
+    <div class="cluster-info">
+      <h3><i class="fa-solid fa-circle-info"></i> Cluster Details</h3>
+      <div class="info-grid">
+        <div class="info-item">
+          <i class="fa-solid fa-microchip"></i>
+          <span><strong>CPU:</strong> Snapdragon 845 ARM64</span>
+        </div>
+        <div class="info-item">
+          <i class="fa-solid fa-memory"></i>
+          <span><strong>RAM:</strong> 6-8GB per node</span>
+        </div>
+        <div class="info-item">
+          <i class="fa-brands fa-linux"></i>
+          <span><strong>OS:</strong> postmarketOS v25.12</span>
+        </div>
+        <div class="info-item">
+          <i class="fa-solid fa-dharmachakra"></i>
+          <span><strong>K8s:</strong> K3s v1.34.3+k3s1</span>
+        </div>
+        <div class="info-item">
+          <i class="fa-solid fa-network-wired"></i>
+          <span><strong>CNI:</strong> Flannel VXLAN</span>
+        </div>
+        <div class="info-item">
+          <i class="fa-solid fa-clock"></i>
+          <span><strong>Updated:</strong> <span id="lastUpdate">Never</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function loadClusterStatus() {
+      const statusDot = document.getElementById('statusDot');
+      const statusText = document.getElementById('statusText');
+      const demoBanner = document.getElementById('demoBanner');
+
+      try {
+        const res = await fetch('/.netlify/functions/cluster-status');
+        const data = await res.json();
+
+        // Update status indicator
+        if (data.demo) {
+          statusDot.className = 'status-dot demo';
+          statusText.textContent = 'Demo Mode';
+          demoBanner.classList.add('visible');
+        } else {
+          statusDot.className = 'status-dot live';
+          statusText.textContent = 'Live';
+          demoBanner.classList.remove('visible');
+        }
+
+        // Update summary cards
+        const summary = data.summary || {};
+        document.getElementById('nodesReady').textContent = summary.nodesReady || 0;
+        document.getElementById('nodesTotal').textContent = summary.nodesTotal || 0;
+        document.getElementById('podsRunning').textContent = summary.podsRunning || 0;
+        document.getElementById('podsTotal').textContent = summary.podsTotal || 0;
+
+        // Color the ready count
+        const readyEl = document.getElementById('nodesReady');
+        const total = summary.nodesTotal || 0;
+        const ready = summary.nodesReady || 0;
+        if (ready === total && total > 0) {
+          readyEl.className = 'card-value green';
+        } else if (ready > total / 2) {
+          readyEl.className = 'card-value yellow';
+        } else {
+          readyEl.className = 'card-value red';
+        }
+
+        // Update node grid
+        const nodeGrid = document.getElementById('nodeGrid');
+        const nodes = data.nodes || [];
+        nodeGrid.innerHTML = nodes.map(node => {
+          const isReady = node.status === 'Ready';
+          const isControlPlane = node.role === 'control-plane';
+          let classes = 'node';
+          if (isControlPlane) classes += ' control-plane';
+          else if (isReady) classes += ' ready';
+          else classes += ' notready';
+
+          const icon = isControlPlane ? 'fa-crown' : (isReady ? 'fa-circle-check' : 'fa-circle-xmark');
+
+          return `
+            <div class="${classes}">
+              <div class="node-name">
+                <i class="fa-solid ${icon}"></i>
+                ${node.name}
+              </div>
+              <div class="node-info">${node.ip || 'Unknown'}</div>
+              <span class="node-status">${node.status || 'Unknown'}</span>
+            </div>
+          `;
+        }).join('');
+
+        // Update last update time
+        const lastUpdate = document.getElementById('lastUpdate');
+        if (data.lastUpdate) {
+          const date = new Date(data.lastUpdate);
+          lastUpdate.textContent = date.toLocaleString();
+        } else {
+          lastUpdate.textContent = 'Never';
+        }
+
+      } catch (error) {
+        console.error('Failed to load cluster status:', error);
+        statusDot.className = 'status-dot offline';
+        statusText.textContent = 'Offline';
+      }
+    }
+
+    // Load on page load
+    loadClusterStatus();
+
+    // Auto-refresh every 30 seconds
+    setInterval(loadClusterStatus, 30000);
+  </script>
+
+  <div class="footer">
+    <p><a href="/"><i class="fa-solid fa-arrow-left"></i> Back to Home</a></p>
+    <p>&copy; 2026 Curtis Bragdon. All rights reserved.</p>
+  </div>
+</body>
+</html>
