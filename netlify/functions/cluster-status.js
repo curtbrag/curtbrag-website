@@ -16,6 +16,51 @@ let clusterStatus = {
   }
 };
 
+// Demo data for when no live data is available
+const DEMO_DATA = {
+  nodes: [
+    { name: 'node1', status: 'Ready', role: 'control-plane', ip: '192.168.1.206' },
+    { name: 'node2', status: 'Ready', role: 'worker', ip: '192.168.1.207' },
+    { name: 'node3', status: 'Ready', role: 'worker', ip: '192.168.1.208' },
+    { name: 'node4', status: 'Ready', role: 'worker', ip: '192.168.1.209' },
+    { name: 'node5', status: 'Ready', role: 'worker', ip: '192.168.1.210' },
+    { name: 'node6', status: 'Ready', role: 'worker', ip: '192.168.1.211' },
+    { name: 'node7', status: 'Ready', role: 'worker', ip: '192.168.1.212' },
+    { name: 'node8', status: 'NotReady', role: 'worker', ip: '192.168.1.213' },
+    { name: 'node9', status: 'NotReady', role: 'worker', ip: '192.168.1.214' },
+    { name: 'node10', status: 'NotReady', role: 'worker', ip: '192.168.1.215' }
+  ],
+  pods: [
+    { name: 'nginx-deployment-7c5b4f9d8-x2k9m', namespace: 'default', status: 'Running', node: 'node2' },
+    { name: 'nginx-deployment-7c5b4f9d8-h7n3p', namespace: 'default', status: 'Running', node: 'node3' },
+    { name: 'nginx-deployment-7c5b4f9d8-q4w8r', namespace: 'default', status: 'Running', node: 'node4' },
+    { name: 'redis-master-0', namespace: 'default', status: 'Running', node: 'node5' },
+    { name: 'redis-replica-5d8c7b6f4-m2k8n', namespace: 'default', status: 'Running', node: 'node6' },
+    { name: 'redis-replica-5d8c7b6f4-p9x3v', namespace: 'default', status: 'Running', node: 'node7' },
+    { name: 'coredns-5dd5756b68-4z7wp', namespace: 'kube-system', status: 'Running', node: 'node1' },
+    { name: 'coredns-5dd5756b68-8m2nq', namespace: 'kube-system', status: 'Running', node: 'node2' },
+    { name: 'local-path-provisioner-957fdf8bc-v7k2m', namespace: 'kube-system', status: 'Running', node: 'node1' },
+    { name: 'metrics-server-648b5df564-x9p3k', namespace: 'kube-system', status: 'Running', node: 'node3' },
+    { name: 'traefik-97b44b794-h8m2n', namespace: 'kube-system', status: 'Running', node: 'node4' },
+    { name: 'svclb-traefik-2k8m9', namespace: 'kube-system', status: 'Running', node: 'node5' }
+  ],
+  services: [
+    { name: 'kubernetes', namespace: 'default', type: 'ClusterIP', clusterIP: '10.43.0.1', ports: ['443:6443'] },
+    { name: 'nginx-service', namespace: 'default', type: 'NodePort', clusterIP: '10.43.128.45', ports: ['80:30080'] },
+    { name: 'redis-master', namespace: 'default', type: 'ClusterIP', clusterIP: '10.43.89.12', ports: ['6379:6379'] },
+    { name: 'redis-replica', namespace: 'default', type: 'ClusterIP', clusterIP: '10.43.156.78', ports: ['6379:6379'] },
+    { name: 'kube-dns', namespace: 'kube-system', type: 'ClusterIP', clusterIP: '10.43.0.10', ports: ['53:53', '9153:9153'] },
+    { name: 'metrics-server', namespace: 'kube-system', type: 'ClusterIP', clusterIP: '10.43.45.67', ports: ['443:443'] },
+    { name: 'traefik', namespace: 'kube-system', type: 'LoadBalancer', clusterIP: '10.43.200.100', ports: ['80:80', '443:443'] }
+  ],
+  summary: {
+    nodesReady: 7,
+    nodesTotal: 10,
+    podsRunning: 12,
+    podsTotal: 12
+  }
+};
+
 exports.handler = async function(event, context) {
   const headers = {
     'Content-Type': 'application/json',
@@ -83,24 +128,7 @@ exports.handler = async function(event, context) {
           lastUpdate: null,
           message: 'No cluster data received yet. Waiting for first update from node1.',
           demo: true,
-          nodes: [
-            { name: 'node1', status: 'Ready', role: 'control-plane', ip: '192.168.1.206' },
-            { name: 'node2', status: 'Ready', role: 'worker', ip: '192.168.1.207' },
-            { name: 'node3', status: 'Ready', role: 'worker', ip: '192.168.1.208' },
-            { name: 'node4', status: 'Ready', role: 'worker', ip: '192.168.1.209' },
-            { name: 'node5', status: 'Ready', role: 'worker', ip: '192.168.1.210' },
-            { name: 'node6', status: 'Ready', role: 'worker', ip: '192.168.1.211' },
-            { name: 'node7', status: 'Ready', role: 'worker', ip: '192.168.1.212' },
-            { name: 'node8', status: 'NotReady', role: 'worker', ip: '192.168.1.213' },
-            { name: 'node9', status: 'NotReady', role: 'worker', ip: '192.168.1.214' },
-            { name: 'node10', status: 'NotReady', role: 'worker', ip: '192.168.1.215' }
-          ],
-          summary: {
-            nodesReady: 7,
-            nodesTotal: 10,
-            podsRunning: 10,
-            podsTotal: 12
-          }
+          ...DEMO_DATA
         })
       };
     }

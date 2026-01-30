@@ -15,126 +15,285 @@
   <link rel="apple-touch-icon" href="/assets/truck_favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/css/all.min.css" rel="stylesheet">
   <style>
     :root {
       --brand: #ed232a;
-      --bg: #0e0f10;
+      --brand-glow: rgba(237, 35, 42, 0.3);
+      --bg: #0a0b0c;
+      --bg-elevated: #101113;
       --panel: #141517;
+      --panel-hover: #1a1b1e;
       --text: #f5f5f5;
-      --muted: #a7a7a7;
+      --muted: #8a8a8a;
       --border: #2a2b2e;
       --green: #22c55e;
+      --green-glow: rgba(34, 197, 94, 0.2);
       --yellow: #eab308;
+      --yellow-glow: rgba(234, 179, 8, 0.2);
       --red: #ef4444;
+      --red-glow: rgba(239, 68, 68, 0.2);
+      --blue: #3b82f6;
+      --purple: #a855f7;
     }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      margin: 0;
-      font-family: Montserrat, Arial, sans-serif;
+      font-family: Montserrat, -apple-system, sans-serif;
       color: var(--text);
       background: var(--bg);
       min-height: 100vh;
+      line-height: 1.5;
     }
+
+    /* Header */
     .header {
-      background: linear-gradient(135deg, #1a1b1e, #0e0f10);
+      background: linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg) 100%);
       border-bottom: 1px solid var(--border);
-      padding: 1.5rem;
+      padding: 2rem 1.5rem;
       text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .header::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, var(--brand-glow) 0%, transparent 70%);
+      opacity: 0.4;
+      pointer-events: none;
+    }
+    .header-content {
+      position: relative;
+      z-index: 1;
     }
     .header h1 {
-      margin: 0 0 0.5rem;
-      font-size: 1.6rem;
+      font-size: 1.8rem;
+      font-weight: 700;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 0.75rem;
+      margin-bottom: 0.5rem;
     }
     .header h1 i { color: var(--brand); }
-    .header p {
-      margin: 0;
+    .header .subtitle {
       color: var(--muted);
-      font-size: 0.9rem;
+      font-size: 0.95rem;
+      font-weight: 500;
     }
+    .header .subtitle span {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* Navigation */
     .nav {
       display: flex;
       justify-content: center;
-      gap: 0.75rem;
-      padding: 1rem;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
       background: var(--panel);
       border-bottom: 1px solid var(--border);
       flex-wrap: wrap;
     }
     .nav a {
-      color: var(--text);
+      color: var(--muted);
       text-decoration: none;
       padding: 0.5rem 1rem;
       border-radius: 8px;
-      border: 1px solid var(--border);
       transition: all 0.2s;
-      font-size: 0.9rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
     }
-    .nav a:hover, .nav a.active {
+    .nav a:hover { color: var(--text); background: var(--panel-hover); }
+    .nav a.active {
+      color: var(--text);
       background: var(--brand);
-      border-color: var(--brand);
     }
+
+    /* Main Container */
     .container {
-      max-width: 1200px;
+      max-width: 1400px;
       margin: 0 auto;
       padding: 1.5rem;
     }
 
+    /* Status Bar */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    .status-left {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .status-dot.live {
+      background: var(--green);
+      box-shadow: 0 0 10px var(--green-glow);
+      animation: pulse 2s infinite;
+    }
+    .status-dot.demo { background: var(--yellow); box-shadow: 0 0 10px var(--yellow-glow); }
+    .status-dot.offline { background: var(--red); }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.7; transform: scale(0.9); }
+    }
+    .refresh-btn {
+      background: var(--panel-hover);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .refresh-btn:hover {
+      border-color: var(--brand);
+      background: rgba(237, 35, 42, 0.1);
+    }
+    .refresh-btn.spinning i { animation: spin 1s linear infinite; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+
+    /* Demo Banner */
+    .demo-banner {
+      background: linear-gradient(135deg, rgba(234, 179, 8, 0.1), rgba(234, 179, 8, 0.05));
+      border: 1px solid rgba(234, 179, 8, 0.3);
+      border-radius: 10px;
+      padding: 0.875rem 1.25rem;
+      margin-bottom: 1.25rem;
+      font-size: 0.9rem;
+      color: var(--yellow);
+      display: none;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .demo-banner.visible { display: flex; }
+
     /* Summary Cards */
     .summary {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      grid-template-columns: repeat(4, 1fr);
       gap: 1rem;
       margin-bottom: 1.5rem;
     }
+    @media (max-width: 900px) { .summary { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 500px) { .summary { grid-template-columns: 1fr; } }
     .card {
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 1.25rem;
       text-align: center;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .card:hover { border-color: var(--brand); transform: translateY(-2px); }
+    .card-icon {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+      opacity: 0.6;
     }
     .card-value {
-      font-size: 2.5rem;
+      font-size: 2.75rem;
       font-weight: 700;
       font-family: 'JetBrains Mono', monospace;
+      line-height: 1;
     }
     .card-value.green { color: var(--green); }
     .card-value.yellow { color: var(--yellow); }
     .card-value.red { color: var(--red); }
     .card-label {
       color: var(--muted);
-      font-size: 0.85rem;
-      margin-top: 0.25rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+      margin-top: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Section Titles */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 2rem 0 1rem;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .section-title i { color: var(--brand); font-size: 1rem; }
+    .section-badge {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      padding: 0.3rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
     }
 
     /* Node Grid */
-    .section-title {
-      font-size: 1.1rem;
-      color: var(--text);
-      margin: 1.5rem 0 1rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .section-title i { color: var(--brand); }
     .node-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 0.75rem;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 0.875rem;
     }
     .node {
       background: var(--panel);
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: 12px;
       padding: 1rem;
       position: relative;
-      overflow: hidden;
+      transition: all 0.2s;
+      cursor: default;
+    }
+    .node:hover {
+      border-color: var(--border);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
     }
     .node::before {
       content: '';
@@ -143,256 +302,524 @@
       left: 0;
       right: 0;
       height: 3px;
-      background: var(--border);
+      border-radius: 12px 12px 0 0;
     }
     .node.ready::before { background: var(--green); }
+    .node.ready:hover { border-color: var(--green); }
     .node.notready::before { background: var(--red); }
-    .node.control-plane::before { background: var(--brand); }
+    .node.notready:hover { border-color: var(--red); }
+    .node.control-plane::before { background: linear-gradient(90deg, var(--brand), var(--purple)); }
+    .node.control-plane:hover { border-color: var(--brand); }
+    .node-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
     .node-name {
       font-weight: 600;
       font-size: 1rem;
-      margin-bottom: 0.5rem;
       display: flex;
       align-items: center;
       gap: 0.5rem;
     }
-    .node-name i {
-      font-size: 0.9rem;
-    }
+    .node-name i { font-size: 0.85rem; }
     .node.ready .node-name i { color: var(--green); }
     .node.notready .node-name i { color: var(--red); }
     .node.control-plane .node-name i { color: var(--brand); }
-    .node-info {
-      font-size: 0.8rem;
-      color: var(--muted);
-      font-family: 'JetBrains Mono', monospace;
-    }
-    .node-status {
-      display: inline-block;
+    .node-role {
+      font-size: 0.65rem;
       padding: 0.2rem 0.5rem;
       border-radius: 4px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .node.control-plane .node-role {
+      background: rgba(237, 35, 42, 0.15);
+      color: var(--brand);
+    }
+    .node.ready .node-role, .node.notready .node-role {
+      background: rgba(138, 138, 138, 0.15);
+      color: var(--muted);
+    }
+    .node-details {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .node-detail {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .node-detail i { width: 14px; text-align: center; font-size: 0.75rem; }
+    .node-detail code {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text);
+      font-size: 0.75rem;
+    }
+    .node-status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
       font-size: 0.7rem;
       font-weight: 600;
       margin-top: 0.5rem;
     }
-    .node.ready .node-status {
-      background: rgba(34, 197, 94, 0.15);
+    .node.ready .node-status-badge {
+      background: rgba(34, 197, 94, 0.12);
       color: var(--green);
     }
-    .node.notready .node-status {
-      background: rgba(239, 68, 68, 0.15);
+    .node.notready .node-status-badge {
+      background: rgba(239, 68, 68, 0.12);
       color: var(--red);
     }
+    .node.control-plane .node-status-badge {
+      background: rgba(34, 197, 94, 0.12);
+      color: var(--green);
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .tab {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .tab:hover { color: var(--text); border-color: var(--text); }
+    .tab.active {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: var(--text);
+    }
+    .tab .count {
+      background: rgba(255,255,255,0.15);
+      padding: 0.15rem 0.5rem;
+      border-radius: 10px;
+      font-size: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Pod/Service Tables */
+    .table-container {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .table-scroll {
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    th {
+      text-align: left;
+      padding: 0.875rem 1rem;
+      background: var(--bg-elevated);
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--panel-hover); }
+    .pod-name { font-weight: 500; }
+    .pod-namespace {
+      background: var(--bg-elevated);
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--blue);
+    }
+    .pod-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .pod-status.running { background: rgba(34, 197, 94, 0.12); color: var(--green); }
+    .pod-status.pending { background: rgba(234, 179, 8, 0.12); color: var(--yellow); }
+    .pod-status.failed { background: rgba(239, 68, 68, 0.12); color: var(--red); }
+    .pod-status.succeeded { background: rgba(59, 130, 246, 0.12); color: var(--blue); }
+    .pod-node {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .svc-type {
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .svc-type.clusterip { background: rgba(138, 138, 138, 0.15); color: var(--muted); }
+    .svc-type.nodeport { background: rgba(168, 85, 247, 0.15); color: var(--purple); }
+    .svc-type.loadbalancer { background: rgba(59, 130, 246, 0.15); color: var(--blue); }
+    .svc-ports {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--text);
+    }
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: var(--muted);
+    }
+    .empty-state i { font-size: 2.5rem; margin-bottom: 1rem; opacity: 0.5; }
 
     /* Cluster Info */
-    .cluster-info {
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .info-card {
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 1.25rem;
-      margin-top: 1.5rem;
     }
-    .cluster-info h3 {
-      margin: 0 0 1rem;
-      font-size: 1rem;
-      color: var(--text);
+    .info-card h3 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
     }
-    .info-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 1rem;
+    .info-card h3 i { color: var(--brand); }
+    .info-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
     }
     .info-item {
       display: flex;
       align-items: center;
       gap: 0.75rem;
+      font-size: 0.875rem;
     }
     .info-item i {
-      color: var(--brand);
-      width: 20px;
+      color: var(--muted);
+      width: 18px;
       text-align: center;
     }
-    .info-item span {
-      color: var(--muted);
-      font-size: 0.9rem;
-    }
-    .info-item strong {
-      color: var(--text);
-    }
+    .info-item .label { color: var(--muted); }
+    .info-item .value { color: var(--text); font-weight: 500; }
 
-    /* Status indicator */
-    .status-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0.75rem 1rem;
-      background: var(--panel);
+    /* About Section */
+    .about-section {
+      background: linear-gradient(135deg, var(--panel) 0%, var(--bg-elevated) 100%);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      margin-bottom: 1rem;
-      font-size: 0.85rem;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-top: 1.5rem;
     }
-    .status-bar .status {
+    .about-section h3 {
+      font-size: 1rem;
+      margin-bottom: 1rem;
       display: flex;
       align-items: center;
       gap: 0.5rem;
     }
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--muted);
+    .about-section h3 i { color: var(--brand); }
+    .about-section p {
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 0.9rem;
     }
-    .status-dot.live { background: var(--green); animation: pulse 2s infinite; }
-    .status-dot.demo { background: var(--yellow); }
-    .status-dot.offline { background: var(--red); }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
+    .about-section strong { color: var(--text); }
+    .tech-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 1rem;
     }
-    .refresh-btn {
-      background: none;
+    .tech-tag {
+      background: var(--bg);
       border: 1px solid var(--border);
-      color: var(--text);
-      padding: 0.4rem 0.8rem;
+      padding: 0.35rem 0.75rem;
       border-radius: 6px;
-      cursor: pointer;
-      font-family: inherit;
       font-size: 0.8rem;
-      transition: all 0.2s;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
     }
-    .refresh-btn:hover {
-      border-color: var(--brand);
-      color: var(--brand);
-    }
+    .tech-tag i { font-size: 0.9rem; }
+    .tech-tag.k8s i { color: #326ce5; }
+    .tech-tag.linux i { color: #f0c674; }
+    .tech-tag.arm i { color: #0091bd; }
 
+    /* Footer */
     .footer {
       text-align: center;
-      padding: 2rem;
+      padding: 2.5rem 1rem;
       color: var(--muted);
       font-size: 0.85rem;
+      border-top: 1px solid var(--border);
+      margin-top: 2rem;
     }
     .footer a {
       color: var(--brand);
       text-decoration: none;
+      font-weight: 500;
     }
-
-    /* Demo banner */
-    .demo-banner {
-      background: rgba(234, 179, 8, 0.1);
-      border: 1px solid rgba(234, 179, 8, 0.3);
-      border-radius: 8px;
-      padding: 0.75rem 1rem;
-      margin-bottom: 1rem;
-      font-size: 0.85rem;
-      color: var(--yellow);
-      display: none;
-    }
-    .demo-banner.visible { display: block; }
+    .footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <div class="header">
-    <h1><i class="fa-solid fa-mobile-screen"></i> Phone Cluster Dashboard</h1>
-    <p>10x OnePlus 6T • postmarketOS • K3s v1.34</p>
+    <div class="header-content">
+      <h1><i class="fa-solid fa-mobile-screen-button"></i> Phone Cluster Dashboard</h1>
+      <p class="subtitle"><span>10x OnePlus 6T</span> &bull; postmarketOS &bull; K3s v1.34</p>
+    </div>
   </div>
 
   <nav class="nav">
-    <a href="/"><i class="fa-solid fa-home"></i> Home</a>
+    <a href="/"><i class="fa-solid fa-house"></i> Home</a>
     <a href="/cluster" class="active"><i class="fa-solid fa-server"></i> Cluster</a>
-    <a href="/shop"><i class="fa-solid fa-shopping-cart"></i> Shop</a>
-    <a href="/gallery"><i class="fa-solid fa-image"></i> Gallery</a>
+    <a href="/shop"><i class="fa-solid fa-cart-shopping"></i> Shop</a>
+    <a href="/gallery"><i class="fa-solid fa-images"></i> Gallery</a>
   </nav>
 
   <div class="container">
+    <!-- Status Bar -->
     <div class="status-bar">
-      <div class="status">
-        <span class="status-dot" id="statusDot"></span>
-        <span id="statusText">Connecting...</span>
+      <div class="status-left">
+        <div class="status-item">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Connecting...</span>
+        </div>
+        <div class="status-item" style="color: var(--muted);">
+          <i class="fa-regular fa-clock"></i>
+          <span>Updated: <span id="lastUpdate">--</span></span>
+        </div>
       </div>
-      <button class="refresh-btn" onclick="loadClusterStatus()">
-        <i class="fa-solid fa-sync"></i> Refresh
+      <button class="refresh-btn" onclick="loadClusterStatus()" id="refreshBtn">
+        <i class="fa-solid fa-arrows-rotate"></i> Refresh
       </button>
     </div>
 
+    <!-- Demo Banner -->
     <div class="demo-banner" id="demoBanner">
-      <i class="fa-solid fa-info-circle"></i> Showing demo data. Live updates will appear when cluster pushes status.
+      <i class="fa-solid fa-flask"></i>
+      <span>Demo Mode — Showing sample data. Live updates appear when cluster pushes status.</span>
     </div>
 
     <!-- Summary Cards -->
     <div class="summary">
       <div class="card">
+        <div class="card-icon"><i class="fa-solid fa-server"></i></div>
         <div class="card-value green" id="nodesReady">-</div>
         <div class="card-label">Nodes Ready</div>
       </div>
       <div class="card">
+        <div class="card-icon"><i class="fa-solid fa-mobile-screen"></i></div>
         <div class="card-value" id="nodesTotal">-</div>
         <div class="card-label">Total Nodes</div>
       </div>
       <div class="card">
+        <div class="card-icon"><i class="fa-solid fa-cubes"></i></div>
         <div class="card-value green" id="podsRunning">-</div>
         <div class="card-label">Pods Running</div>
       </div>
       <div class="card">
+        <div class="card-icon"><i class="fa-solid fa-cube"></i></div>
         <div class="card-value" id="podsTotal">-</div>
         <div class="card-label">Total Pods</div>
       </div>
     </div>
 
     <!-- Node Grid -->
-    <h2 class="section-title"><i class="fa-solid fa-microchip"></i> Cluster Nodes</h2>
+    <div class="section-header">
+      <h2 class="section-title"><i class="fa-solid fa-microchip"></i> Cluster Nodes</h2>
+      <span class="section-badge" id="nodeBadge">10 phones</span>
+    </div>
     <div class="node-grid" id="nodeGrid">
-      <!-- Nodes will be populated by JavaScript -->
+      <!-- Nodes populated by JS -->
+    </div>
+
+    <!-- Pods Section -->
+    <div class="section-header">
+      <h2 class="section-title"><i class="fa-solid fa-cubes"></i> Workloads</h2>
+    </div>
+    <div class="tabs" id="podTabs">
+      <button class="tab active" data-ns="all"><i class="fa-solid fa-layer-group"></i> All <span class="count" id="podCountAll">0</span></button>
+    </div>
+    <div class="table-container">
+      <div class="table-scroll">
+        <table id="podTable">
+          <thead>
+            <tr>
+              <th>Pod Name</th>
+              <th>Namespace</th>
+              <th>Status</th>
+              <th>Node</th>
+            </tr>
+          </thead>
+          <tbody id="podTableBody">
+            <tr><td colspan="4" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Services Section -->
+    <div class="section-header">
+      <h2 class="section-title"><i class="fa-solid fa-network-wired"></i> Services</h2>
+      <span class="section-badge" id="svcBadge">0 services</span>
+    </div>
+    <div class="table-container">
+      <div class="table-scroll">
+        <table id="svcTable">
+          <thead>
+            <tr>
+              <th>Service Name</th>
+              <th>Namespace</th>
+              <th>Type</th>
+              <th>Cluster IP</th>
+              <th>Ports</th>
+            </tr>
+          </thead>
+          <tbody id="svcTableBody">
+            <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-plug"></i><br>No services found</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- Cluster Info -->
-    <div class="cluster-info">
-      <h3><i class="fa-solid fa-circle-info"></i> Cluster Details</h3>
-      <div class="info-grid">
-        <div class="info-item">
-          <i class="fa-solid fa-microchip"></i>
-          <span><strong>CPU:</strong> Snapdragon 845 ARM64</span>
+    <div class="section-header">
+      <h2 class="section-title"><i class="fa-solid fa-circle-info"></i> Cluster Specs</h2>
+    </div>
+    <div class="info-grid">
+      <div class="info-card">
+        <h3><i class="fa-solid fa-microchip"></i> Hardware</h3>
+        <div class="info-list">
+          <div class="info-item">
+            <i class="fa-solid fa-mobile"></i>
+            <span class="label">Device:</span>
+            <span class="value">OnePlus 6T (fajita)</span>
+          </div>
+          <div class="info-item">
+            <i class="fa-solid fa-bolt"></i>
+            <span class="label">CPU:</span>
+            <span class="value">Snapdragon 845 (8-core ARM64)</span>
+          </div>
+          <div class="info-item">
+            <i class="fa-solid fa-memory"></i>
+            <span class="label">RAM:</span>
+            <span class="value">6-8GB per node</span>
+          </div>
+          <div class="info-item">
+            <i class="fa-solid fa-hard-drive"></i>
+            <span class="label">Storage:</span>
+            <span class="value">128GB UFS 2.1</span>
+          </div>
         </div>
-        <div class="info-item">
-          <i class="fa-solid fa-memory"></i>
-          <span><strong>RAM:</strong> 6-8GB per node</span>
-        </div>
-        <div class="info-item">
-          <i class="fa-brands fa-linux"></i>
-          <span><strong>OS:</strong> postmarketOS v25.12</span>
-        </div>
-        <div class="info-item">
-          <i class="fa-solid fa-dharmachakra"></i>
-          <span><strong>K8s:</strong> K3s v1.34.3+k3s1</span>
-        </div>
-        <div class="info-item">
-          <i class="fa-solid fa-network-wired"></i>
-          <span><strong>CNI:</strong> Flannel VXLAN</span>
-        </div>
-        <div class="info-item">
-          <i class="fa-solid fa-clock"></i>
-          <span><strong>Updated:</strong> <span id="lastUpdate">Never</span></span>
+      </div>
+      <div class="info-card">
+        <h3><i class="fa-solid fa-code"></i> Software Stack</h3>
+        <div class="info-list">
+          <div class="info-item">
+            <i class="fa-brands fa-linux"></i>
+            <span class="label">OS:</span>
+            <span class="value">postmarketOS v25.12</span>
+          </div>
+          <div class="info-item">
+            <i class="fa-solid fa-dharmachakra"></i>
+            <span class="label">K8s:</span>
+            <span class="value">K3s v1.34.3+k3s1</span>
+          </div>
+          <div class="info-item">
+            <i class="fa-solid fa-network-wired"></i>
+            <span class="label">CNI:</span>
+            <span class="value">Flannel VXLAN</span>
+          </div>
+          <div class="info-item">
+            <i class="fa-solid fa-database"></i>
+            <span class="label">Storage:</span>
+            <span class="value">Local Path Provisioner</span>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- About Section -->
-    <div class="cluster-info" style="margin-top: 1rem;">
+    <div class="about-section">
       <h3><i class="fa-solid fa-lightbulb"></i> About This Project</h3>
-      <p style="color: var(--muted); line-height: 1.6; margin: 0;">
-        This cluster repurposes 10 retired OnePlus 6T smartphones as a fully functional Kubernetes cluster.
-        Each phone runs <strong>postmarketOS</strong> (a real Linux distro) with <strong>K3s</strong> (lightweight Kubernetes).
-        The phones communicate over WiFi and run production workloads like nginx, with automatic load balancing across all nodes.
-        Built by Curtis Bragdon as a proof-of-concept for edge computing and sustainable tech reuse.
+      <p>
+        This cluster repurposes <strong>10 retired OnePlus 6T smartphones</strong> as a fully functional
+        Kubernetes cluster. Each phone runs <strong>postmarketOS</strong> (a real Linux distribution for phones)
+        with <strong>K3s</strong> (lightweight Kubernetes). The phones communicate over WiFi and run production
+        workloads with automatic load balancing across all nodes. Built as a proof-of-concept for
+        <strong>edge computing</strong> and <strong>sustainable tech reuse</strong> — giving old phones a second life
+        as servers instead of e-waste.
       </p>
+      <div class="tech-tags">
+        <span class="tech-tag k8s"><i class="fa-solid fa-dharmachakra"></i> Kubernetes</span>
+        <span class="tech-tag linux"><i class="fa-brands fa-linux"></i> Linux</span>
+        <span class="tech-tag arm"><i class="fa-solid fa-microchip"></i> ARM64</span>
+        <span class="tech-tag"><i class="fa-solid fa-recycle"></i> E-Waste Reduction</span>
+        <span class="tech-tag"><i class="fa-solid fa-wifi"></i> Mesh Network</span>
+      </div>
     </div>
   </div>
 
+  <footer class="footer">
+    <p><a href="/"><i class="fa-solid fa-arrow-left"></i> Back to Home</a></p>
+    <p style="margin-top: 0.5rem;">&copy; 2026 Curtis Bragdon. All rights reserved.</p>
+  </footer>
+
   <script>
+    let allPods = [];
+    let allServices = [];
+    let currentNamespace = 'all';
+
     async function loadClusterStatus() {
       const statusDot = document.getElementById('statusDot');
       const statusText = document.getElementById('statusText');
       const demoBanner = document.getElementById('demoBanner');
+      const refreshBtn = document.getElementById('refreshBtn');
+
+      refreshBtn.classList.add('spinning');
 
       try {
         const res = await fetch('/.netlify/functions/cluster-status');
@@ -411,10 +838,10 @@
 
         // Update summary cards
         const summary = data.summary || {};
-        document.getElementById('nodesReady').textContent = summary.nodesReady || 0;
-        document.getElementById('nodesTotal').textContent = summary.nodesTotal || 0;
-        document.getElementById('podsRunning').textContent = summary.podsRunning || 0;
-        document.getElementById('podsTotal').textContent = summary.podsTotal || 0;
+        document.getElementById('nodesReady').textContent = summary.nodesReady ?? '-';
+        document.getElementById('nodesTotal').textContent = summary.nodesTotal ?? '-';
+        document.getElementById('podsRunning').textContent = summary.podsRunning ?? '-';
+        document.getElementById('podsTotal').textContent = summary.podsTotal ?? '-';
 
         // Color the ready count
         const readyEl = document.getElementById('nodesReady');
@@ -422,42 +849,32 @@
         const ready = summary.nodesReady || 0;
         if (ready === total && total > 0) {
           readyEl.className = 'card-value green';
-        } else if (ready > total / 2) {
+        } else if (ready >= total * 0.7) {
           readyEl.className = 'card-value yellow';
         } else {
           readyEl.className = 'card-value red';
         }
 
         // Update node grid
-        const nodeGrid = document.getElementById('nodeGrid');
         const nodes = data.nodes || [];
-        nodeGrid.innerHTML = nodes.map(node => {
-          const isReady = node.status === 'Ready';
-          const isControlPlane = node.role === 'control-plane';
-          let classes = 'node';
-          if (isControlPlane) classes += ' control-plane';
-          else if (isReady) classes += ' ready';
-          else classes += ' notready';
+        document.getElementById('nodeBadge').textContent = `${nodes.length} phones`;
+        renderNodes(nodes);
 
-          const icon = isControlPlane ? 'fa-crown' : (isReady ? 'fa-circle-check' : 'fa-circle-xmark');
+        // Store and render pods
+        allPods = data.pods || [];
+        buildPodTabs();
+        renderPods();
 
-          return `
-            <div class="${classes}">
-              <div class="node-name">
-                <i class="fa-solid ${icon}"></i>
-                ${node.name}
-              </div>
-              <div class="node-info">${node.ip || 'Unknown'}</div>
-              <span class="node-status">${node.status || 'Unknown'}</span>
-            </div>
-          `;
-        }).join('');
+        // Store and render services
+        allServices = data.services || [];
+        document.getElementById('svcBadge').textContent = `${allServices.length} services`;
+        renderServices();
 
         // Update last update time
         const lastUpdate = document.getElementById('lastUpdate');
         if (data.lastUpdate) {
           const date = new Date(data.lastUpdate);
-          lastUpdate.textContent = date.toLocaleString();
+          lastUpdate.textContent = date.toLocaleTimeString();
         } else {
           lastUpdate.textContent = 'Never';
         }
@@ -466,7 +883,134 @@
         console.error('Failed to load cluster status:', error);
         statusDot.className = 'status-dot offline';
         statusText.textContent = 'Offline';
+      } finally {
+        refreshBtn.classList.remove('spinning');
       }
+    }
+
+    function renderNodes(nodes) {
+      const nodeGrid = document.getElementById('nodeGrid');
+      if (nodes.length === 0) {
+        nodeGrid.innerHTML = '<div class="empty-state"><i class="fa-solid fa-server"></i><br>No nodes found</div>';
+        return;
+      }
+
+      nodeGrid.innerHTML = nodes.map(node => {
+        const isReady = node.status === 'Ready';
+        const isControlPlane = node.role === 'control-plane';
+        let classes = 'node';
+        if (isControlPlane) classes += ' control-plane ready';
+        else if (isReady) classes += ' ready';
+        else classes += ' notready';
+
+        const icon = isControlPlane ? 'fa-crown' : (isReady ? 'fa-circle-check' : 'fa-circle-xmark');
+        const roleLabel = isControlPlane ? 'Control Plane' : 'Worker';
+
+        return `
+          <div class="${classes}">
+            <div class="node-header">
+              <div class="node-name">
+                <i class="fa-solid ${icon}"></i>
+                ${node.name}
+              </div>
+              <span class="node-role">${roleLabel}</span>
+            </div>
+            <div class="node-details">
+              <div class="node-detail">
+                <i class="fa-solid fa-network-wired"></i>
+                <code>${node.ip || 'Unknown'}</code>
+              </div>
+            </div>
+            <span class="node-status-badge">
+              <i class="fa-solid ${isReady ? 'fa-check' : 'fa-xmark'}"></i>
+              ${node.status || 'Unknown'}
+            </span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function buildPodTabs() {
+      const namespaces = [...new Set(allPods.map(p => p.namespace))].sort();
+      const tabsContainer = document.getElementById('podTabs');
+
+      let tabsHtml = `<button class="tab ${currentNamespace === 'all' ? 'active' : ''}" data-ns="all">
+        <i class="fa-solid fa-layer-group"></i> All <span class="count">${allPods.length}</span>
+      </button>`;
+
+      namespaces.forEach(ns => {
+        const count = allPods.filter(p => p.namespace === ns).length;
+        tabsHtml += `<button class="tab ${currentNamespace === ns ? 'active' : ''}" data-ns="${ns}">
+          ${ns} <span class="count">${count}</span>
+        </button>`;
+      });
+
+      tabsContainer.innerHTML = tabsHtml;
+
+      // Add click handlers
+      tabsContainer.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          currentNamespace = tab.dataset.ns;
+          tabsContainer.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          renderPods();
+        });
+      });
+    }
+
+    function renderPods() {
+      const tbody = document.getElementById('podTableBody');
+      const filteredPods = currentNamespace === 'all'
+        ? allPods
+        : allPods.filter(p => p.namespace === currentNamespace);
+
+      if (filteredPods.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filteredPods.map(pod => {
+        const statusClass = pod.status?.toLowerCase() || 'pending';
+        const statusIcon = {
+          'running': 'fa-circle-check',
+          'pending': 'fa-clock',
+          'failed': 'fa-circle-xmark',
+          'succeeded': 'fa-flag-checkered'
+        }[statusClass] || 'fa-question';
+
+        return `
+          <tr>
+            <td class="pod-name">${pod.name}</td>
+            <td><span class="pod-namespace">${pod.namespace}</span></td>
+            <td><span class="pod-status ${statusClass}"><i class="fa-solid ${statusIcon}"></i> ${pod.status}</span></td>
+            <td class="pod-node">${pod.node || '-'}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderServices() {
+      const tbody = document.getElementById('svcTableBody');
+
+      if (allServices.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-plug"></i><br>No services found</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = allServices.map(svc => {
+        const typeClass = svc.type?.toLowerCase().replace(/\s/g, '') || 'clusterip';
+        const ports = (svc.ports || []).join(', ') || '-';
+
+        return `
+          <tr>
+            <td class="pod-name">${svc.name}</td>
+            <td><span class="pod-namespace">${svc.namespace}</span></td>
+            <td><span class="svc-type ${typeClass}">${svc.type}</span></td>
+            <td><code>${svc.clusterIP || '-'}</code></td>
+            <td class="svc-ports">${ports}</td>
+          </tr>
+        `;
+      }).join('');
     }
 
     // Load on page load
@@ -475,10 +1019,5 @@
     // Auto-refresh every 30 seconds
     setInterval(loadClusterStatus, 30000);
   </script>
-
-  <div class="footer">
-    <p><a href="/"><i class="fa-solid fa-arrow-left"></i> Back to Home</a></p>
-    <p>&copy; 2026 Curtis Bragdon. All rights reserved.</p>
-  </div>
 </body>
 </html>
