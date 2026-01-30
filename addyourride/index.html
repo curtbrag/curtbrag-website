@@ -183,20 +183,6 @@
       opacity: 0.7;
       cursor: not-allowed;
     }
-    .submit-btn .spinner {
-      display: none;
-      animation: spin 1s linear infinite;
-    }
-    .submit-btn.loading .spinner {
-      display: inline-block;
-    }
-    .submit-btn.loading .btn-text {
-      display: none;
-    }
-    @keyframes spin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
   </style>
 </head>
 <body>
@@ -251,8 +237,7 @@
         </div>
 
         <button type="submit" class="submit-btn" id="submitBtn">
-          <i class="fa-solid fa-spinner spinner"></i>
-          <span class="btn-text"><i class="fa-solid fa-paper-plane"></i> Submit Your Ride</span>
+          <i class="fa-solid fa-paper-plane"></i> Submit Your Ride
         </button>
       </form>
     </div>
@@ -293,14 +278,6 @@
       } else {
         previewContainer.classList.remove('active');
       }
-    });
-
-    // Form submit loading state
-    const form = document.querySelector('form');
-    const submitBtn = document.getElementById('submitBtn');
-    form.addEventListener('submit', function() {
-      submitBtn.classList.add('loading');
-      submitBtn.disabled = true;
     });
   </script>
 
