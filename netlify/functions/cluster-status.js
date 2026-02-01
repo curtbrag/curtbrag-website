@@ -9,6 +9,7 @@ let clusterStatus = {
   pods: [],
   services: [],
   network: null,
+  mining: null,
   summary: {
     nodesReady: 0,
     nodesTotal: 0,
@@ -83,6 +84,21 @@ const DEMO_DATA = {
     nodesTotal: 10,
     podsRunning: 12,
     podsTotal: 12
+  },
+  mining: {
+    enabled: true,
+    minersRunning: 3,
+    minersTotal: 10,
+    totalHashrate: '~1.5 KH/s',
+    coin: 'XMR',
+    pool: 'supportxmr.com',
+    estimatedDaily: '$0.05',
+    estimatedMonthly: '$1.50',
+    workers: [
+      { name: 'aorus-node', hashrate: '950 H/s', status: 'mining' },
+      { name: 'vikixii', hashrate: '535 H/s', status: 'mining' },
+      { name: 'steamdeck', hashrate: '320 H/s', status: 'mining' }
+    ]
   }
 };
 
@@ -121,6 +137,7 @@ exports.handler = async function(event, context) {
         pods: data.pods || [],
         services: data.services || [],
         network: data.network || null,
+        mining: data.mining || null,
         summary: data.summary || {
           nodesReady: 0,
           nodesTotal: 0,

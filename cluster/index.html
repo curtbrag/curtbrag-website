@@ -467,6 +467,127 @@
     .tech-tag.k8s i { color: #326ce5; }
     .tech-tag.linux i { color: #f0c674; }
     .tech-tag.arm i { color: #0091bd; }
+
+    /* Mining Section */
+    .mining-panel {
+      background: linear-gradient(135deg, var(--panel) 0%, rgba(234, 179, 8, 0.05) 100%);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .mining-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    .mining-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .mining-title i { color: var(--yellow); }
+    .mining-status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      padding: 0.4rem 0.8rem;
+      border-radius: 20px;
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--green);
+    }
+    .mining-status.stopped { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+    .mining-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .mining-stat {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.875rem;
+      text-align: center;
+    }
+    .mining-stat-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--yellow);
+    }
+    .mining-stat-label {
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 0.25rem;
+    }
+    .mining-controls {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .mining-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.6rem 1.25rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .mining-btn:hover { border-color: var(--yellow); }
+    .mining-btn.start { border-color: var(--green); color: var(--green); }
+    .mining-btn.start:hover { background: rgba(34, 197, 94, 0.1); }
+    .mining-btn.stop { border-color: var(--red); color: var(--red); }
+    .mining-btn.stop:hover { background: rgba(239, 68, 68, 0.1); }
+    .mining-workers {
+      margin-top: 1rem;
+      border-top: 1px solid var(--border);
+      padding-top: 1rem;
+    }
+    .mining-workers h4 {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+    .worker-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .worker-chip {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 0.4rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .worker-chip .rate { color: var(--yellow); font-family: 'JetBrains Mono', monospace; }
+    .worker-chip.offline { opacity: 0.5; }
+    .mining-message {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.75rem;
+    }
+    .mining-message.success { color: var(--green); }
+    .mining-message.error { color: var(--red); }
     .footer { text-align: center; padding: 2.5rem 1rem; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--border); margin-top: 2rem; }
     .footer a { color: var(--brand); text-decoration: none; font-weight: 500; }
     .footer a:hover { text-decoration: underline; }
@@ -476,7 +597,7 @@
   <div class="header">
     <div class="header-content">
       <h1><i class="fa-solid fa-mobile-screen-button"></i> Phone Cluster Dashboard</h1>
-      <p class="subtitle"><span>10x OnePlus 6T</span> &bull; postmarketOS &bull; K3s v1.34</p>
+      <p class="subtitle"><span>15+ Nodes</span> &bull; Phones + PCs + Steam Deck &bull; K3s v1.34</p>
     </div>
   </div>
 
@@ -511,17 +632,29 @@
         <div class="control-title"><i class="fa-solid fa-sliders"></i> Cluster Control</div>
         <select id="targetSelect" style="background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.4rem 0.75rem; border-radius: 6px; font-family: inherit; font-size: 0.8rem;">
           <option value="all">All Nodes</option>
-          <option value="phones">Phones Only</option>
-          <option value="node1">node1 (control)</option>
-          <option value="node2">node2</option>
-          <option value="node3">node3</option>
-          <option value="node4">node4</option>
-          <option value="node5">node5</option>
-          <option value="node6">node6</option>
-          <option value="node7">node7</option>
-          <option value="node8">node8</option>
-          <option value="node9">node9</option>
-          <option value="node10">node10</option>
+          <option value="phones">Phones Only (node1-10)</option>
+          <option value="pcs">PCs Only (neo, vikixii, aorus)</option>
+          <optgroup label="Phones">
+            <option value="node1">node1 (control plane)</option>
+            <option value="node2">node2</option>
+            <option value="node3">node3</option>
+            <option value="node4">node4</option>
+            <option value="node5">node5</option>
+            <option value="node6">node6</option>
+            <option value="node7">node7</option>
+            <option value="node8">node8</option>
+            <option value="node9">node9</option>
+            <option value="node10">node10</option>
+          </optgroup>
+          <optgroup label="PCs / Laptops">
+            <option value="neo">neo (Desktop)</option>
+            <option value="vikixii">vikixii (Laptop)</option>
+            <option value="aorus-node">aorus-node (Desktop)</option>
+            <option value="steamdeck">steamdeck</option>
+          </optgroup>
+          <optgroup label="Other">
+            <option value="pikvm-main">pikvm-main</option>
+          </optgroup>
         </select>
       </div>
       <div class="control-buttons">
@@ -538,6 +671,49 @@
     <div class="demo-banner" id="demoBanner">
       <i class="fa-solid fa-flask"></i>
       <span>Demo Mode — Showing sample data. Live updates appear when cluster pushes status.</span>
+    </div>
+
+    <!-- Mining Panel -->
+    <div class="mining-panel" id="miningPanel">
+      <div class="mining-header">
+        <h2 class="mining-title"><i class="fa-solid fa-coins"></i> Monero Mining</h2>
+        <div class="mining-status" id="miningStatus">
+          <i class="fa-solid fa-circle-check"></i> <span>Mining Active</span>
+        </div>
+      </div>
+      <div class="mining-stats">
+        <div class="mining-stat">
+          <div class="mining-stat-value" id="miningHashrate">--</div>
+          <div class="mining-stat-label">Total Hashrate</div>
+        </div>
+        <div class="mining-stat">
+          <div class="mining-stat-value" id="miningWorkers">--</div>
+          <div class="mining-stat-label">Active Miners</div>
+        </div>
+        <div class="mining-stat">
+          <div class="mining-stat-value" id="miningDaily">--</div>
+          <div class="mining-stat-label">Est. Daily</div>
+        </div>
+        <div class="mining-stat">
+          <div class="mining-stat-value" id="miningMonthly">--</div>
+          <div class="mining-stat-label">Est. Monthly</div>
+        </div>
+      </div>
+      <div class="mining-controls">
+        <button class="mining-btn start" onclick="sendMiningCommand('mining-start')">
+          <i class="fa-solid fa-play"></i> Start All Miners
+        </button>
+        <button class="mining-btn stop" onclick="sendMiningCommand('mining-stop')">
+          <i class="fa-solid fa-stop"></i> Stop All Miners
+        </button>
+      </div>
+      <div class="mining-workers" id="miningWorkersSection">
+        <h4><i class="fa-solid fa-microchip"></i> Active Workers</h4>
+        <div class="worker-list" id="workerList">
+          <span class="worker-chip"><span>Loading...</span></span>
+        </div>
+      </div>
+      <div class="mining-message" id="miningMessage"></div>
     </div>
 
     <!-- Summary Cards -->
@@ -636,10 +812,10 @@
       <div class="info-card">
         <h3><i class="fa-solid fa-microchip"></i> Hardware</h3>
         <div class="info-list">
-          <div class="info-item"><i class="fa-solid fa-mobile"></i><span class="label">Device:</span><span class="value">OnePlus 6T (fajita)</span></div>
-          <div class="info-item"><i class="fa-solid fa-bolt"></i><span class="label">CPU:</span><span class="value">Snapdragon 845 (8-core ARM64)</span></div>
-          <div class="info-item"><i class="fa-solid fa-memory"></i><span class="label">RAM:</span><span class="value">6-8GB per node</span></div>
-          <div class="info-item"><i class="fa-solid fa-hard-drive"></i><span class="label">Storage:</span><span class="value">128GB UFS 2.1</span></div>
+          <div class="info-item"><i class="fa-solid fa-mobile"></i><span class="label">Phones:</span><span class="value">10x OnePlus 6T (ARM64)</span></div>
+          <div class="info-item"><i class="fa-solid fa-desktop"></i><span class="label">PCs:</span><span class="value">3x WSL2 (neo, vikixii, aorus)</span></div>
+          <div class="info-item"><i class="fa-solid fa-gamepad"></i><span class="label">Gaming:</span><span class="value">Steam Deck (x86)</span></div>
+          <div class="info-item"><i class="fa-solid fa-video"></i><span class="label">KVM:</span><span class="value">PiKVM (ARM64)</span></div>
         </div>
       </div>
       <div class="info-card">
@@ -657,15 +833,17 @@
     <div class="about-section">
       <h3><i class="fa-solid fa-lightbulb"></i> About This Project</h3>
       <p>
-        This cluster repurposes <strong>10 retired OnePlus 6T smartphones</strong> as a fully functional
-        Kubernetes cluster. Each phone runs <strong>postmarketOS</strong> with <strong>K3s</strong>.
-        The phones communicate over WiFi and run production workloads with automatic load balancing.
-        Built for <strong>edge computing</strong> and <strong>sustainable tech reuse</strong>.
+        This hybrid cluster combines <strong>10 OnePlus 6T smartphones</strong> running postmarketOS,
+        <strong>Windows PCs with WSL2</strong>, a <strong>Steam Deck</strong>, and <strong>PiKVM devices</strong>
+        into a unified Kubernetes cluster. It runs <strong>K3s</strong> for container orchestration,
+        <strong>Monero mining</strong> for passive income, and various home automation services.
+        Built for <strong>edge computing</strong>, <strong>sustainable tech reuse</strong>, and learning.
       </p>
       <div class="tech-tags">
         <span class="tech-tag k8s"><i class="fa-solid fa-dharmachakra"></i> Kubernetes</span>
         <span class="tech-tag linux"><i class="fa-brands fa-linux"></i> Linux</span>
-        <span class="tech-tag arm"><i class="fa-solid fa-microchip"></i> ARM64</span>
+        <span class="tech-tag arm"><i class="fa-solid fa-microchip"></i> ARM64 + x86</span>
+        <span class="tech-tag"><i class="fa-solid fa-coins"></i> XMR Mining</span>
         <span class="tech-tag"><i class="fa-solid fa-recycle"></i> E-Waste Reduction</span>
       </div>
     </div>
@@ -739,6 +917,7 @@
         renderServices();
 
         renderNetwork(data.network);
+        renderMining(data.mining);
 
         const lastUpdate = document.getElementById('lastUpdate');
         lastUpdate.textContent = data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : 'Never';
@@ -904,6 +1083,81 @@
       } catch (e) {
         status.textContent = `Error: ${e.message}`;
         status.className = 'control-status visible error';
+      }
+    }
+
+    // Mining functions
+    function renderMining(mining) {
+      const panel = document.getElementById('miningPanel');
+      const statusEl = document.getElementById('miningStatus');
+
+      if (!mining) {
+        statusEl.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> <span>No Data</span>';
+        statusEl.className = 'mining-status stopped';
+        return;
+      }
+
+      const isActive = mining.enabled && mining.minersRunning > 0;
+      statusEl.innerHTML = isActive
+        ? '<i class="fa-solid fa-circle-check"></i> <span>Mining Active</span>'
+        : '<i class="fa-solid fa-circle-pause"></i> <span>Mining Paused</span>';
+      statusEl.className = isActive ? 'mining-status' : 'mining-status stopped';
+
+      document.getElementById('miningHashrate').textContent = mining.totalHashrate || '--';
+      document.getElementById('miningWorkers').textContent = `${mining.minersRunning || 0}/${mining.minersTotal || 0}`;
+      document.getElementById('miningDaily').textContent = mining.estimatedDaily || '--';
+      document.getElementById('miningMonthly').textContent = mining.estimatedMonthly || '--';
+
+      // Render workers
+      const workerList = document.getElementById('workerList');
+      if (mining.workers && mining.workers.length > 0) {
+        workerList.innerHTML = mining.workers.map(w => {
+          const isOnline = w.status === 'mining';
+          return `<div class="worker-chip ${isOnline ? '' : 'offline'}">
+            <i class="fa-solid ${isOnline ? 'fa-circle-check' : 'fa-circle-xmark'}" style="color: var(--${isOnline ? 'green' : 'red'})"></i>
+            <span>${w.name}</span>
+            <span class="rate">${w.hashrate}</span>
+          </div>`;
+        }).join('');
+      } else {
+        workerList.innerHTML = '<span class="worker-chip"><span>No workers</span></span>';
+      }
+    }
+
+    async function sendMiningCommand(cmd) {
+      if (!savedPassword) {
+        pendingCommand = cmd;
+        document.getElementById('passwordModal').classList.add('visible');
+        document.getElementById('passwordInput').focus();
+        return;
+      }
+
+      const msgEl = document.getElementById('miningMessage');
+      msgEl.textContent = `Sending ${cmd}...`;
+      msgEl.className = 'mining-message';
+
+      try {
+        const res = await fetch('/.netlify/functions/cluster-control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: cmd, target: 'all', password: savedPassword })
+        });
+        const data = await res.json();
+        if (data.success) {
+          msgEl.textContent = `${data.message} - Status will update shortly.`;
+          msgEl.className = 'mining-message success';
+          setTimeout(loadClusterStatus, 5000);
+        } else {
+          msgEl.textContent = `Error: ${data.error}`;
+          msgEl.className = 'mining-message error';
+          if (data.error === 'Invalid password') {
+            savedPassword = '';
+            localStorage.removeItem('clusterPassword');
+          }
+        }
+      } catch (e) {
+        msgEl.textContent = `Error: ${e.message}`;
+        msgEl.className = 'mining-message error';
       }
     }
 
