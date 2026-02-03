@@ -1,1 +1,0 @@
-{"id":"/assets/sports.js","path":"/assets/sports.js","sha":"7cda40cb5a6032cdb8d997f775b25e1a0f4f01bb","mime_type":"application/javascript","size":2038,"site_id":"f72cbb6e-d6de-4acc-969e-27b0cf4b1c23","deploy_id":"68ba10a00492880008ed7a8f"}
