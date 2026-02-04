@@ -588,6 +588,7 @@
     }
     .mining-message.success { color: var(--green); }
     .mining-message.error { color: var(--red); }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
     .footer { text-align: center; padding: 2.5rem 1rem; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--border); margin-top: 2rem; }
     .footer a { color: var(--brand); text-decoration: none; font-weight: 500; }
     .footer a:hover { text-decoration: underline; }
@@ -621,8 +622,8 @@
           <span>Updated: <span id="lastUpdate">--</span></span>
         </div>
       </div>
-      <button class="refresh-btn" onclick="loadClusterStatus()" id="refreshBtn">
-        <i class="fa-solid fa-arrows-rotate"></i> Refresh
+      <button class="refresh-btn" onclick="loadClusterStatus()" id="refreshBtn" aria-label="Refresh cluster status">
+        <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Refresh
       </button>
     </div>
 
@@ -630,7 +631,7 @@
     <div class="control-panel">
       <div class="control-header">
         <div class="control-title"><i class="fa-solid fa-sliders"></i> Cluster Control</div>
-        <select id="targetSelect" style="background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.4rem 0.75rem; border-radius: 6px; font-family: inherit; font-size: 0.8rem;">
+        <select id="targetSelect" aria-label="Select target nodes" style="background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.4rem 0.75rem; border-radius: 6px; font-family: inherit; font-size: 0.8rem;">
           <option value="all">All Nodes</option>
           <option value="phones">Phones Only (node1-10)</option>
           <option value="pcs">PCs Only (neo, vikixii, aorus)</option>
@@ -658,11 +659,11 @@
         </select>
       </div>
       <div class="control-buttons">
-        <button class="ctrl-btn start" onclick="sendCommand('start')"><i class="fa-solid fa-play"></i> Start</button>
-        <button class="ctrl-btn stop" onclick="sendCommand('stop')"><i class="fa-solid fa-stop"></i> Stop</button>
-        <button class="ctrl-btn restart" onclick="sendCommand('restart')"><i class="fa-solid fa-rotate"></i> Restart</button>
-        <button class="ctrl-btn wake" onclick="sendCommand('wake')"><i class="fa-solid fa-sun"></i> Wake</button>
-        <button class="ctrl-btn sleep" onclick="sendCommand('sleep')"><i class="fa-solid fa-moon"></i> Sleep</button>
+        <button class="ctrl-btn start" onclick="sendCommand('start')" aria-label="Start selected nodes"><i class="fa-solid fa-play" aria-hidden="true"></i> Start</button>
+        <button class="ctrl-btn stop" onclick="sendCommand('stop')" aria-label="Stop selected nodes"><i class="fa-solid fa-stop" aria-hidden="true"></i> Stop</button>
+        <button class="ctrl-btn restart" onclick="sendCommand('restart')" aria-label="Restart selected nodes"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Restart</button>
+        <button class="ctrl-btn wake" onclick="sendCommand('wake')" aria-label="Wake selected nodes"><i class="fa-solid fa-sun" aria-hidden="true"></i> Wake</button>
+        <button class="ctrl-btn sleep" onclick="sendCommand('sleep')" aria-label="Put selected nodes to sleep"><i class="fa-solid fa-moon" aria-hidden="true"></i> Sleep</button>
       </div>
       <div class="control-status" id="controlStatus"></div>
     </div>
@@ -700,11 +701,11 @@
         </div>
       </div>
       <div class="mining-controls">
-        <button class="mining-btn start" onclick="sendMiningCommand('mining-start')">
-          <i class="fa-solid fa-play"></i> Start All Miners
+        <button class="mining-btn start" onclick="sendMiningCommand('mining-start')" aria-label="Start all mining workers">
+          <i class="fa-solid fa-play" aria-hidden="true"></i> Start All Miners
         </button>
-        <button class="mining-btn stop" onclick="sendMiningCommand('mining-stop')">
-          <i class="fa-solid fa-stop"></i> Stop All Miners
+        <button class="mining-btn stop" onclick="sendMiningCommand('mining-stop')" aria-label="Stop all mining workers">
+          <i class="fa-solid fa-stop" aria-hidden="true"></i> Stop All Miners
         </button>
       </div>
       <div class="mining-workers" id="miningWorkersSection">
@@ -850,13 +851,14 @@
   </div>
 
   <!-- Password Modal -->
-  <div class="modal-overlay" id="passwordModal">
+  <div class="modal-overlay" id="passwordModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal">
-      <h3><i class="fa-solid fa-lock"></i> Enter Password</h3>
-      <input type="password" id="passwordInput" placeholder="Cluster password" onkeypress="if(event.key==='Enter')submitPassword()">
+      <h3 id="modalTitle"><i class="fa-solid fa-lock" aria-hidden="true"></i> Enter Password</h3>
+      <label for="passwordInput" class="visually-hidden">Cluster password</label>
+      <input type="password" id="passwordInput" placeholder="Cluster password" onkeydown="if(event.key==='Enter')submitPassword()" autocomplete="current-password">
       <div class="modal-buttons">
-        <button class="modal-btn" onclick="closeModal()">Cancel</button>
-        <button class="modal-btn primary" onclick="submitPassword()">Submit</button>
+        <button class="modal-btn" onclick="closeModal()" aria-label="Cancel password entry">Cancel</button>
+        <button class="modal-btn primary" onclick="submitPassword()" aria-label="Submit password">Submit</button>
       </div>
     </div>
   </div>
