@@ -120,7 +120,16 @@ exports.handler = async function(event, context) {
     try {
       // Simple API key check (set in Netlify env vars)
       const apiKey = event.headers['x-cluster-key'];
-      const expectedKey = process.env.CLUSTER_API_KEY || 'curtbrag-cluster-2024';
+      const expectedKey = process.env.CLUSTER_API_KEY;
+
+      if (!expectedKey) {
+        console.error('CLUSTER_API_KEY environment variable not set');
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Server configuration error' })
+        };
+      }
 
       if (apiKey !== expectedKey) {
         return {

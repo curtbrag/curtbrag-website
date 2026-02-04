@@ -18,7 +18,13 @@ exports.handler = async (event) => {
   }
 
   const apiKey = event.headers['x-cluster-key'];
-  const validKey = process.env.CLUSTER_API_KEY || 'curtbrag-cluster-2024';
+  const validKey = process.env.CLUSTER_API_KEY;
+
+  // Require environment variable to be set
+  if (!validKey) {
+    console.error('CLUSTER_API_KEY environment variable not set');
+    return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server configuration error' }) };
+  }
 
   // GET - Poll for commands (from node1) or get status (from dashboard)
   if (event.httpMethod === 'GET') {
@@ -81,7 +87,11 @@ exports.handler = async (event) => {
     const { command, target, password } = body;
 
     // Simple password protection for web commands
-    const webPassword = process.env.CLUSTER_WEB_PASSWORD || 'phonecluster';
+    const webPassword = process.env.CLUSTER_WEB_PASSWORD;
+    if (!webPassword) {
+      console.error('CLUSTER_WEB_PASSWORD environment variable not set');
+      return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server configuration error' }) };
+    }
     if (password !== webPassword) {
       return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
     }
