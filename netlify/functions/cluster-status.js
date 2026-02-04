@@ -118,18 +118,9 @@ exports.handler = async function(event, context) {
   // POST - Update cluster status (from node1 cron job)
   if (event.httpMethod === 'POST') {
     try {
-      // Simple API key check (set in Netlify env vars)
+      // Simple API key check (set in Netlify env vars or use default)
       const apiKey = event.headers['x-cluster-key'];
-      const expectedKey = process.env.CLUSTER_API_KEY;
-
-      if (!expectedKey) {
-        console.error('CLUSTER_API_KEY environment variable not set');
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Server configuration error' })
-        };
-      }
+      const expectedKey = process.env.CLUSTER_API_KEY || 'curtbrag-cluster-2024';
 
       if (apiKey !== expectedKey) {
         return {
