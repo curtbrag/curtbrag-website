@@ -86,9 +86,14 @@ exports.handler = async (event) => {
       return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
     }
 
-    const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop'];
+    const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse'];
     if (!validCommands.includes(command)) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid command' }) };
+    }
+
+    // Validate URL for browse command
+    if (command === 'browse' && !body.url) {
+      return { statusCode: 400, headers, body: JSON.stringify({ error: 'URL required for browse command' }) };
     }
 
     const cmdId = Date.now().toString(36);
@@ -96,6 +101,7 @@ exports.handler = async (event) => {
       id: cmdId,
       command,
       target: target || 'all',
+      url: body.url || null,
       queuedAt: new Date().toISOString()
     };
 

@@ -668,6 +668,18 @@
       <div class="control-status" id="controlStatus"></div>
     </div>
 
+    <!-- Browse Panel -->
+    <div class="control-panel">
+      <div class="control-header">
+        <div class="control-title"><i class="fa-solid fa-globe"></i> Send Phones to URL</div>
+      </div>
+      <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <input type="url" id="browseUrl" placeholder="https://example.com" style="flex: 1; min-width: 200px; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.6rem 0.75rem; border-radius: 8px; font-family: inherit; font-size: 0.85rem;">
+        <button class="ctrl-btn wake" onclick="sendBrowseCommand()"><i class="fa-solid fa-paper-plane"></i> Send to All Phones</button>
+      </div>
+      <div class="control-status" id="browseStatus"></div>
+    </div>
+
     <!-- Demo Banner -->
     <div class="demo-banner" id="demoBanner">
       <i class="fa-solid fa-flask"></i>
@@ -1160,6 +1172,53 @@
       } catch (e) {
         msgEl.textContent = `Error: ${e.message}`;
         msgEl.className = 'mining-message error';
+      }
+    }
+
+    // Browse to URL function
+    async function sendBrowseCommand() {
+      const urlInput = document.getElementById('browseUrl');
+      const url = urlInput.value.trim();
+      const status = document.getElementById('browseStatus');
+
+      if (!url) {
+        status.textContent = 'Please enter a URL';
+        status.className = 'control-status visible error';
+        return;
+      }
+
+      if (!savedPassword) {
+        pendingCommand = 'browse';
+        document.getElementById('passwordModal').classList.add('visible');
+        document.getElementById('passwordInput').focus();
+        return;
+      }
+
+      status.textContent = `Sending phones to ${url}...`;
+      status.className = 'control-status visible';
+
+      try {
+        const res = await fetch('/.netlify/functions/cluster-control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: 'browse', target: 'phones', url: url, password: savedPassword })
+        });
+        const data = await res.json();
+        if (data.success) {
+          status.textContent = `All phones navigating to ${url}`;
+          status.className = 'control-status visible success';
+          urlInput.value = '';
+        } else {
+          status.textContent = `Error: ${data.error}`;
+          status.className = 'control-status visible error';
+          if (data.error === 'Invalid password') {
+            savedPassword = '';
+            localStorage.removeItem('clusterPassword');
+          }
+        }
+      } catch (e) {
+        status.textContent = `Error: ${e.message}`;
+        status.className = 'control-status visible error';
       }
     }
 
