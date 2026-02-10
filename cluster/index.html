@@ -588,6 +588,35 @@
     }
     .mining-message.success { color: var(--green); }
     .mining-message.error { color: var(--red); }
+
+    /* API Config Bar */
+    .api-config {
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 0.5rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      font-size: 0.8rem;
+    }
+    .api-config label { color: var(--muted); font-weight: 500; white-space: nowrap; display: flex; align-items: center; gap: 0.4rem; }
+    .api-config label i { color: var(--brand); font-size: 0.85rem; }
+    .api-config input {
+      flex: 1; min-width: 180px; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      padding: 0.4rem 0.6rem; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;
+    }
+    .api-config input:focus { outline: none; border-color: var(--brand); }
+    .api-config .api-btn {
+      background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; font-family: inherit;
+      font-size: 0.75rem; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; gap: 0.35rem;
+    }
+    .api-config .api-btn:hover { border-color: var(--brand); color: var(--brand); }
+    .api-mode-badge {
+      font-size: 0.7rem; padding: 0.2rem 0.6rem; border-radius: 12px; font-weight: 600; white-space: nowrap;
+    }
+
     .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
     .footer { text-align: center; padding: 2.5rem 1rem; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--border); margin-top: 2rem; }
     .footer a { color: var(--brand); text-decoration: none; font-weight: 500; }
@@ -608,6 +637,16 @@
     <a href="/shop"><i class="fa-solid fa-cart-shopping"></i> Shop</a>
     <a href="/gallery"><i class="fa-solid fa-images"></i> Gallery</a>
   </nav>
+
+  <!-- API Config Bar -->
+  <div class="api-config">
+    <label><i class="fa-solid fa-satellite-dish"></i> API:</label>
+    <input type="url" id="apiEndpoint" placeholder="https://your-tunnel.trycloudflare.com (leave empty for default)">
+    <input type="password" id="apiToken" placeholder="Token" style="max-width: 120px; min-width: 80px;">
+    <button class="api-btn" onclick="saveApiConfig()"><i class="fa-solid fa-check"></i> Save</button>
+    <button class="api-btn" onclick="clearApiConfig()"><i class="fa-solid fa-xmark"></i> Clear</button>
+    <span class="api-mode-badge" id="apiModeBadge"></span>
+  </div>
 
   <div class="container">
     <!-- Status Bar -->
@@ -887,6 +926,72 @@
     let pendingCommand = null;
     let savedPassword = localStorage.getItem('clusterPassword') || '';
 
+    // Direct API config (for Cloudflare tunnel or custom API)
+    let apiEndpoint = localStorage.getItem('clusterApiEndpoint') || '';
+    let apiToken = localStorage.getItem('clusterApiToken') || '';
+
+    function initApiConfig() {
+      const epInput = document.getElementById('apiEndpoint');
+      const tokenInput = document.getElementById('apiToken');
+      if (epInput) epInput.value = apiEndpoint;
+      if (tokenInput) tokenInput.value = apiToken;
+      updateApiModeBadge();
+    }
+
+    function saveApiConfig() {
+      apiEndpoint = (document.getElementById('apiEndpoint').value || '').trim().replace(/\/+$/, '');
+      apiToken = (document.getElementById('apiToken').value || '').trim();
+      localStorage.setItem('clusterApiEndpoint', apiEndpoint);
+      localStorage.setItem('clusterApiToken', apiToken);
+      updateApiModeBadge();
+      loadClusterStatus();
+    }
+
+    function clearApiConfig() {
+      apiEndpoint = '';
+      apiToken = '';
+      localStorage.removeItem('clusterApiEndpoint');
+      localStorage.removeItem('clusterApiToken');
+      document.getElementById('apiEndpoint').value = '';
+      document.getElementById('apiToken').value = '';
+      updateApiModeBadge();
+      loadClusterStatus();
+    }
+
+    function updateApiModeBadge() {
+      const badge = document.getElementById('apiModeBadge');
+      if (!badge) return;
+      if (apiEndpoint) {
+        badge.textContent = 'Direct API';
+        badge.style.background = 'rgba(59, 130, 246, 0.15)';
+        badge.style.color = 'var(--blue)';
+      } else {
+        badge.textContent = 'Netlify';
+        badge.style.background = 'rgba(138, 138, 138, 0.15)';
+        badge.style.color = 'var(--muted)';
+      }
+    }
+
+    // Helper: send command to appropriate backend
+    async function sendToBackend(payload) {
+      if (apiEndpoint) {
+        const headers = { 'Content-Type': 'application/json' };
+        if (apiToken) headers['Authorization'] = 'Bearer ' + apiToken;
+        const res = await fetch(apiEndpoint + '/api/command', {
+          method: 'POST', headers,
+          body: JSON.stringify(payload)
+        });
+        return await res.json();
+      } else {
+        const res = await fetch('/.netlify/functions/cluster-control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        return await res.json();
+      }
+    }
+
     async function loadClusterStatus() {
       const statusDot = document.getElementById('statusDot');
       const statusText = document.getElementById('statusText');
@@ -895,16 +1000,40 @@
       refreshBtn.classList.add('spinning');
 
       try {
-        const res = await fetch('/.netlify/functions/cluster-status');
-        const data = await res.json();
+        let data;
+        let isDirectApi = false;
 
-        if (data.demo) {
+        // Try direct API first if configured
+        if (apiEndpoint) {
+          try {
+            const headers = {};
+            if (apiToken) headers['Authorization'] = 'Bearer ' + apiToken;
+            const apiRes = await fetch(apiEndpoint + '/api/status', {
+              headers,
+              signal: AbortSignal.timeout(8000)
+            });
+            if (apiRes.ok) {
+              data = await apiRes.json();
+              isDirectApi = true;
+            }
+          } catch (e) {
+            console.warn('Direct API failed, falling back to Netlify:', e.message);
+          }
+        }
+
+        // Fall back to Netlify functions
+        if (!data) {
+          const res = await fetch('/.netlify/functions/cluster-status');
+          data = await res.json();
+        }
+
+        if (data.demo && !isDirectApi) {
           statusDot.className = 'status-dot demo';
           statusText.textContent = 'Demo Mode';
           demoBanner.classList.add('visible');
         } else {
           statusDot.className = 'status-dot live';
-          statusText.textContent = 'Live';
+          statusText.textContent = isDirectApi ? 'Live (Direct)' : 'Live';
           demoBanner.classList.remove('visible');
         }
 
@@ -1072,16 +1201,11 @@
     async function executeCommand(cmd, password) {
       const target = document.getElementById('targetSelect').value;
       const status = document.getElementById('controlStatus');
-      status.textContent = `Sending ${cmd} to ${target}...`;
+      status.textContent = 'Sending ' + cmd + ' to ' + target + '...';
       status.className = 'control-status visible';
 
       try {
-        const res = await fetch('/.netlify/functions/cluster-control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: cmd, target, password })
-        });
-        const data = await res.json();
+        const data = await sendToBackend({ command: cmd, target, password });
         if (data.success) {
           status.textContent = `${data.message} - updating in ~60s`;
           status.className = 'control-status visible success';
@@ -1151,12 +1275,7 @@
       msgEl.className = 'mining-message';
 
       try {
-        const res = await fetch('/.netlify/functions/cluster-control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: cmd, target: 'all', password: savedPassword })
-        });
-        const data = await res.json();
+        const data = await sendToBackend({ command: cmd, target: 'all', password: savedPassword });
         if (data.success) {
           msgEl.textContent = `${data.message} - Status will update shortly.`;
           msgEl.className = 'mining-message success';
@@ -1198,12 +1317,7 @@
       status.className = 'control-status visible';
 
       try {
-        const res = await fetch('/.netlify/functions/cluster-control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: 'browse', target: 'phones', url: url, password: savedPassword })
-        });
-        const data = await res.json();
+        const data = await sendToBackend({ command: 'browse', target: 'phones', url: url, password: savedPassword });
         if (data.success) {
           status.textContent = `All phones navigating to ${url}`;
           status.className = 'control-status visible success';
@@ -1222,8 +1336,9 @@
       }
     }
 
+    initApiConfig();
     loadClusterStatus();
-    setInterval(loadClusterStatus, 30000);
+    setInterval(loadClusterStatus, 15000);
   </script>
 </body>
 </html>
