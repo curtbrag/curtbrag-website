@@ -59,7 +59,7 @@ if [ "$MISSING" -eq 1 ]; then
 fi
 
 # Check Node version
-NODE_VER=$(node -v | grep -oP '\d+' | head -1)
+NODE_VER=$(node -v | sed 's/v\([0-9]*\).*/\1/')
 if [ "$NODE_VER" -lt 18 ]; then
   echo -e "${RED}Node.js >= 18 required (found: $(node -v))${NC}"
   exit 1
@@ -102,14 +102,21 @@ fi
 echo -e "${GREEN}✓${NC} API server found at $API_DIR/server.js"
 echo ""
 
-# ─── Create systemd service ──────────────────────────────────────────────────
+# ─── Start API Server ─────────────────────────────────────────────────────────
 
-echo -e "${YELLOW}Creating systemd service...${NC}"
+export CLUSTER_WEB_PASSWORD="$PASSWORD"
+export CLUSTER_API_TOKEN="$TOKEN"
+export XMR_WALLET="$WALLET"
+export CLUSTER_API_PORT="$PORT"
 
-SERVICE_FILE="/etc/systemd/system/cluster-api.service"
-CURRENT_USER=$(whoami)
+# Check if systemd is available (Linux) or not (Windows Git Bash / WSL without systemd)
+if command -v systemctl &>/dev/null && systemctl --version &>/dev/null 2>&1; then
+  echo -e "${YELLOW}Creating systemd service...${NC}"
 
-sudo tee "$SERVICE_FILE" > /dev/null << EOF
+  SERVICE_FILE="/etc/systemd/system/cluster-api.service"
+  CURRENT_USER=$(whoami)
+
+  sudo tee "$SERVICE_FILE" > /dev/null << EOF
 [Unit]
 Description=CurtBrag Cluster API Server
 After=network.target
@@ -130,21 +137,36 @@ Environment=CLUSTER_API_PORT=${PORT}
 WantedBy=multi-user.target
 EOF
 
-sudo systemctl daemon-reload
-sudo systemctl enable cluster-api
-sudo systemctl restart cluster-api
+  sudo systemctl daemon-reload
+  sudo systemctl enable cluster-api
+  sudo systemctl restart cluster-api
+  echo -e "  ${GREEN}✓${NC} cluster-api.service created and started"
+  sleep 2
 
-echo -e "  ${GREEN}✓${NC} cluster-api.service created and started"
-
-# Wait for it to start
-sleep 2
-
-if systemctl is-active --quiet cluster-api; then
-  echo -e "  ${GREEN}✓${NC} Service is running"
+  if systemctl is-active --quiet cluster-api; then
+    echo -e "  ${GREEN}✓${NC} Service is running"
+  else
+    echo -e "  ${RED}✗${NC} Service failed to start"
+    sudo journalctl -u cluster-api --no-pager -n 20
+    exit 1
+  fi
+  USE_SYSTEMD=1
 else
-  echo -e "  ${RED}✗${NC} Service failed to start"
-  sudo journalctl -u cluster-api --no-pager -n 20
-  exit 1
+  echo -e "${YELLOW}No systemd found (Windows/Git Bash). Starting server directly...${NC}"
+  # Start API server in background
+  cd "$API_DIR"
+  node server.js &
+  SERVER_PID=$!
+  cd - > /dev/null
+  sleep 2
+
+  if kill -0 "$SERVER_PID" 2>/dev/null; then
+    echo -e "  ${GREEN}✓${NC} Server started (PID: $SERVER_PID)"
+  else
+    echo -e "  ${RED}✗${NC} Server failed to start"
+    exit 1
+  fi
+  USE_SYSTEMD=0
 fi
 
 echo ""
@@ -174,24 +196,27 @@ echo ""
 echo -e "${YELLOW}Setting up Cloudflare tunnel...${NC}"
 
 if ! command -v cloudflared &>/dev/null; then
-  echo -e "  ${YELLOW}⚠${NC} cloudflared not installed. Installing..."
-  # Try to install
+  echo -e "  ${YELLOW}⚠${NC} cloudflared not installed."
+  echo ""
+  echo -e "  Install it:"
   if command -v apt &>/dev/null; then
-    curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
-    echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
-    sudo apt update && sudo apt install -y cloudflared
-  elif command -v pacman &>/dev/null; then
-    sudo pacman -S --noconfirm cloudflared
+    echo "    sudo apt install cloudflared"
+  elif command -v winget &>/dev/null || [[ "$(uname -s)" == *MINGW* ]] || [[ "$(uname -s)" == *MSYS* ]]; then
+    echo "    winget install Cloudflare.cloudflared"
   else
-    echo -e "  ${RED}✗${NC} Cannot auto-install cloudflared. Install manually:"
     echo "    https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
-    echo ""
-    echo -e "${YELLOW}Without cloudflared, start a tunnel manually:${NC}"
-    echo "  cloudflared tunnel --url http://localhost:${PORT}"
-    echo ""
-    echo -e "${GREEN}API server is running on port ${PORT}${NC}"
-    exit 0
   fi
+  echo ""
+  echo -e "  Then run:  ${GREEN}cloudflared tunnel --url http://localhost:${PORT}${NC}"
+  echo ""
+  echo -e "${GREEN}API server is running on port ${PORT}. Paste tunnel URL into curtbrag.com/cluster${NC}"
+  # Keep running if no systemd (foreground mode)
+  if [ "${USE_SYSTEMD:-0}" = "0" ] && [ -n "$SERVER_PID" ]; then
+    echo -e "${YELLOW}Server running in foreground. Press Ctrl+C to stop.${NC}"
+    trap "kill $SERVER_PID 2>/dev/null; exit" INT TERM
+    wait "$SERVER_PID"
+  fi
+  exit 0
 fi
 
 echo -e "  ${GREEN}✓${NC} cloudflared available"
@@ -201,13 +226,20 @@ echo -e "\n${BLUE}Starting Cloudflare tunnel...${NC}"
 echo -e "The tunnel URL will appear below. Paste it into the dashboard's API config bar."
 echo -e "${YELLOW}Press Ctrl+C to stop the tunnel.${NC}\n"
 
+# Keep server alive if no systemd
+if [ "${USE_SYSTEMD:-0}" = "0" ] && [ -n "$SERVER_PID" ]; then
+  trap "kill $SERVER_PID 2>/dev/null; exit" INT TERM
+fi
+
 cloudflared tunnel --url "http://localhost:${PORT}" 2>&1 | while read -r line; do
   if echo "$line" | grep -q "https://.*trycloudflare.com"; then
-    TUNNEL_URL=$(echo "$line" | grep -oP 'https://[a-z0-9-]+\.trycloudflare\.com')
-    echo -e "\n${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    TUNNEL_URL=$(echo "$line" | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com')
+    echo ""
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${GREEN}  Tunnel URL: ${TUNNEL_URL}${NC}"
     echo -e "${GREEN}  Paste this into your dashboard at curtbrag.com/cluster${NC}"
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
   fi
   echo "$line"
 done
