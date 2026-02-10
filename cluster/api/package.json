@@ -1,0 +1,9 @@
+{
+  "name": "curtbrag-cluster-api",
+  "version": "1.0.0",
+  "description": "Live API server for K3s phone cluster dashboard",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

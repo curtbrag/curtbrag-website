@@ -722,7 +722,7 @@
     <!-- Demo Banner -->
     <div class="demo-banner" id="demoBanner">
       <i class="fa-solid fa-flask"></i>
-      <span>Demo Mode — Showing sample data. Live updates appear when cluster pushes status.</span>
+      <span>Not Connected — Enter your Cloudflare tunnel URL above to connect to the live cluster.</span>
     </div>
 
     <!-- Mining Panel -->
@@ -901,18 +901,7 @@
     </div>
   </div>
 
-  <!-- Password Modal -->
-  <div class="modal-overlay" id="passwordModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-    <div class="modal">
-      <h3 id="modalTitle"><i class="fa-solid fa-lock" aria-hidden="true"></i> Enter Password</h3>
-      <label for="passwordInput" class="visually-hidden">Cluster password</label>
-      <input type="password" id="passwordInput" placeholder="Cluster password" onkeydown="if(event.key==='Enter')submitPassword()" autocomplete="current-password">
-      <div class="modal-buttons">
-        <button class="modal-btn" onclick="closeModal()" aria-label="Cancel password entry">Cancel</button>
-        <button class="modal-btn primary" onclick="submitPassword()" aria-label="Submit password">Submit</button>
-      </div>
-    </div>
-  </div>
+  <!-- Password modal removed — auth via API token in config bar -->
 
   <footer class="footer">
     <p><a href="/"><i class="fa-solid fa-arrow-left"></i> Back to Home</a></p>
@@ -923,10 +912,8 @@
     let allPods = [];
     let allServices = [];
     let currentNamespace = 'all';
-    let pendingCommand = null;
-    let savedPassword = localStorage.getItem('clusterPassword') || '';
 
-    // Direct API config (for Cloudflare tunnel or custom API)
+    // API config — Cloudflare tunnel to cluster
     let apiEndpoint = localStorage.getItem('clusterApiEndpoint') || '';
     let apiToken = localStorage.getItem('clusterApiToken') || '';
 
@@ -962,34 +949,28 @@
       const badge = document.getElementById('apiModeBadge');
       if (!badge) return;
       if (apiEndpoint) {
-        badge.textContent = 'Direct API';
-        badge.style.background = 'rgba(59, 130, 246, 0.15)';
-        badge.style.color = 'var(--blue)';
+        badge.textContent = 'Connected';
+        badge.style.background = 'rgba(34, 197, 94, 0.15)';
+        badge.style.color = 'var(--green)';
       } else {
-        badge.textContent = 'Netlify';
-        badge.style.background = 'rgba(138, 138, 138, 0.15)';
-        badge.style.color = 'var(--muted)';
+        badge.textContent = 'Not Set';
+        badge.style.background = 'rgba(239, 68, 68, 0.15)';
+        badge.style.color = 'var(--red)';
       }
     }
 
-    // Helper: send command to appropriate backend
+    // Send command to cluster API
     async function sendToBackend(payload) {
-      if (apiEndpoint) {
-        const headers = { 'Content-Type': 'application/json' };
-        if (apiToken) headers['Authorization'] = 'Bearer ' + apiToken;
-        const res = await fetch(apiEndpoint + '/api/command', {
-          method: 'POST', headers,
-          body: JSON.stringify(payload)
-        });
-        return await res.json();
-      } else {
-        const res = await fetch('/.netlify/functions/cluster-control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        return await res.json();
-      }
+      if (!apiEndpoint) throw new Error('API endpoint not configured — set it in the bar above');
+      const headers = { 'Content-Type': 'application/json' };
+      if (apiToken) headers['Authorization'] = 'Bearer ' + apiToken;
+      const res = await fetch(apiEndpoint + '/api/phone/command', {
+        method: 'POST', headers,
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'API returned ' + res.status);
+      return data;
     }
 
     async function loadClusterStatus() {
@@ -1000,42 +981,26 @@
       refreshBtn.classList.add('spinning');
 
       try {
-        let data;
-        let isDirectApi = false;
-
-        // Try direct API first if configured
-        if (apiEndpoint) {
-          try {
-            const headers = {};
-            if (apiToken) headers['Authorization'] = 'Bearer ' + apiToken;
-            const apiRes = await fetch(apiEndpoint + '/api/status', {
-              headers,
-              signal: AbortSignal.timeout(8000)
-            });
-            if (apiRes.ok) {
-              data = await apiRes.json();
-              isDirectApi = true;
-            }
-          } catch (e) {
-            console.warn('Direct API failed, falling back to Netlify:', e.message);
-          }
-        }
-
-        // Fall back to Netlify functions
-        if (!data) {
-          const res = await fetch('/.netlify/functions/cluster-status');
-          data = await res.json();
-        }
-
-        if (data.demo && !isDirectApi) {
+        if (!apiEndpoint) {
           statusDot.className = 'status-dot demo';
-          statusText.textContent = 'Demo Mode';
+          statusText.textContent = 'Not Configured';
           demoBanner.classList.add('visible');
-        } else {
-          statusDot.className = 'status-dot live';
-          statusText.textContent = isDirectApi ? 'Live (Direct)' : 'Live';
-          demoBanner.classList.remove('visible');
+          refreshBtn.classList.remove('spinning');
+          return;
         }
+
+        const headers = {};
+        if (apiToken) headers['Authorization'] = 'Bearer ' + apiToken;
+        const res = await fetch(apiEndpoint + '/api/status', {
+          headers,
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!res.ok) throw new Error('API returned ' + res.status);
+        const data = await res.json();
+
+        statusDot.className = 'status-dot live';
+        statusText.textContent = 'Live';
+        demoBanner.classList.remove('visible');
 
         const summary = data.summary || {};
         document.getElementById('nodesReady').textContent = summary.nodesReady ?? '-';
@@ -1172,54 +1137,24 @@
       }
     }
 
-    // Control functions
+    // Control functions — auth via API token in config bar
     function sendCommand(cmd) {
-      pendingCommand = cmd;
-      if (savedPassword) {
-        executeCommand(cmd, savedPassword);
-      } else {
-        document.getElementById('passwordModal').classList.add('visible');
-        document.getElementById('passwordInput').focus();
-      }
+      executeCommand(cmd);
     }
 
-    function closeModal() {
-      document.getElementById('passwordModal').classList.remove('visible');
-      document.getElementById('passwordInput').value = '';
-    }
-
-    function submitPassword() {
-      const pw = document.getElementById('passwordInput').value;
-      if (pw) {
-        savedPassword = pw;
-        localStorage.setItem('clusterPassword', pw);
-        closeModal();
-        executeCommand(pendingCommand, pw);
-      }
-    }
-
-    async function executeCommand(cmd, password) {
+    async function executeCommand(cmd) {
       const target = document.getElementById('targetSelect').value;
       const status = document.getElementById('controlStatus');
       status.textContent = 'Sending ' + cmd + ' to ' + target + '...';
       status.className = 'control-status visible';
 
       try {
-        const data = await sendToBackend({ command: cmd, target, password });
-        if (data.success) {
-          status.textContent = `${data.message} - updating in ~60s`;
-          status.className = 'control-status visible success';
-          setTimeout(loadClusterStatus, 60000);
-        } else {
-          status.textContent = `Error: ${data.error}`;
-          status.className = 'control-status visible error';
-          if (data.error === 'Invalid password') {
-            savedPassword = '';
-            localStorage.removeItem('clusterPassword');
-          }
-        }
+        const data = await sendToBackend({ command: cmd, target });
+        status.textContent = data.message + ' — refreshing in 5s';
+        status.className = 'control-status visible success';
+        setTimeout(loadClusterStatus, 5000);
       } catch (e) {
-        status.textContent = `Error: ${e.message}`;
+        status.textContent = 'Error: ' + e.message;
         status.className = 'control-status visible error';
       }
     }
@@ -1263,33 +1198,17 @@
     }
 
     async function sendMiningCommand(cmd) {
-      if (!savedPassword) {
-        pendingCommand = cmd;
-        document.getElementById('passwordModal').classList.add('visible');
-        document.getElementById('passwordInput').focus();
-        return;
-      }
-
       const msgEl = document.getElementById('miningMessage');
-      msgEl.textContent = `Sending ${cmd}...`;
+      msgEl.textContent = 'Sending ' + cmd + '...';
       msgEl.className = 'mining-message';
 
       try {
-        const data = await sendToBackend({ command: cmd, target: 'all', password: savedPassword });
-        if (data.success) {
-          msgEl.textContent = `${data.message} - Status will update shortly.`;
-          msgEl.className = 'mining-message success';
-          setTimeout(loadClusterStatus, 5000);
-        } else {
-          msgEl.textContent = `Error: ${data.error}`;
-          msgEl.className = 'mining-message error';
-          if (data.error === 'Invalid password') {
-            savedPassword = '';
-            localStorage.removeItem('clusterPassword');
-          }
-        }
+        const data = await sendToBackend({ command: cmd, target: 'all' });
+        msgEl.textContent = data.message + ' — refreshing shortly.';
+        msgEl.className = 'mining-message success';
+        setTimeout(loadClusterStatus, 5000);
       } catch (e) {
-        msgEl.textContent = `Error: ${e.message}`;
+        msgEl.textContent = 'Error: ' + e.message;
         msgEl.className = 'mining-message error';
       }
     }
@@ -1306,32 +1225,16 @@
         return;
       }
 
-      if (!savedPassword) {
-        pendingCommand = 'browse';
-        document.getElementById('passwordModal').classList.add('visible');
-        document.getElementById('passwordInput').focus();
-        return;
-      }
-
-      status.textContent = `Sending phones to ${url}...`;
+      status.textContent = 'Sending phones to ' + url + '...';
       status.className = 'control-status visible';
 
       try {
-        const data = await sendToBackend({ command: 'browse', target: 'phones', url: url, password: savedPassword });
-        if (data.success) {
-          status.textContent = `All phones navigating to ${url}`;
-          status.className = 'control-status visible success';
-          urlInput.value = '';
-        } else {
-          status.textContent = `Error: ${data.error}`;
-          status.className = 'control-status visible error';
-          if (data.error === 'Invalid password') {
-            savedPassword = '';
-            localStorage.removeItem('clusterPassword');
-          }
-        }
+        const data = await sendToBackend({ command: 'browse', target: 'phones', url: url });
+        status.textContent = 'All phones navigating to ' + url;
+        status.className = 'control-status visible success';
+        urlInput.value = '';
       } catch (e) {
-        status.textContent = `Error: ${e.message}`;
+        status.textContent = 'Error: ' + e.message;
         status.className = 'control-status visible error';
       }
     }
