@@ -700,6 +700,103 @@
     .footer { text-align: center; padding: 2.5rem 1rem; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--border); margin-top: 2rem; }
     .footer a { color: var(--brand); text-decoration: none; font-weight: 500; }
     .footer a:hover { text-decoration: underline; }
+
+    /* Health Score Bar */
+    .health-bar { display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1rem; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 1.25rem; }
+    .health-label { font-size: 0.85rem; font-weight: 600; white-space: nowrap; display: flex; align-items: center; gap: 0.5rem; }
+    .health-track { flex: 1; height: 12px; background: var(--bg); border-radius: 6px; overflow: hidden; position: relative; }
+    .health-fill { height: 100%; border-radius: 6px; transition: width 0.8s ease, background 0.5s; }
+    .health-fill.good { background: linear-gradient(90deg, var(--green), #4ade80); }
+    .health-fill.warn { background: linear-gradient(90deg, var(--yellow), #facc15); }
+    .health-fill.bad { background: linear-gradient(90deg, var(--red), #f87171); }
+    .health-pct { font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 700; min-width: 48px; text-align: right; }
+
+    /* Node metrics in cards */
+    .node-metrics { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.5rem; }
+    .node-metric { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.65rem; padding: 0.15rem 0.4rem; border-radius: 4px; background: var(--bg); font-family: 'JetBrains Mono', monospace; }
+    .node-metric i { font-size: 0.6rem; }
+    .node-metric.hot { color: var(--red); }
+    .node-metric.warm { color: var(--yellow); }
+    .node-metric.cool { color: var(--green); }
+    .node-metric.batt-low { color: var(--red); }
+    .node-metric.batt-mid { color: var(--yellow); }
+    .node-metric.batt-ok { color: var(--green); }
+
+    /* Alerts Panel */
+    .alerts-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
+    .alerts-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; cursor: pointer; }
+    .alerts-title { font-size: 0.9rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+    .alerts-title i { color: var(--red); }
+    .alert-count-badge { background: var(--red); color: white; font-size: 0.7rem; padding: 0.1rem 0.5rem; border-radius: 10px; font-weight: 700; }
+    .alerts-body { max-height: 200px; overflow-y: auto; }
+    .alerts-body.collapsed { display: none; }
+    .alert-item { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+    .alert-item:last-child { border-bottom: none; }
+    .alert-severity { width: 8px; height: 8px; border-radius: 50%; margin-top: 0.35rem; flex-shrink: 0; }
+    .alert-severity.critical { background: var(--red); box-shadow: 0 0 6px var(--red-glow); }
+    .alert-severity.warning { background: var(--yellow); box-shadow: 0 0 6px var(--yellow-glow); }
+    .alert-severity.info { background: var(--blue); }
+    .alert-content { flex: 1; }
+    .alert-content strong { font-weight: 600; }
+    .alert-content .alert-time { color: var(--muted); font-size: 0.7rem; }
+    .alert-ack { background: none; border: 1px solid var(--border); color: var(--muted); padding: 0.2rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.7rem; }
+    .alert-ack:hover { border-color: var(--text); color: var(--text); }
+
+    /* Command History */
+    .cmd-history { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
+    .cmd-history-header { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+    .cmd-history-title { font-size: 0.9rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+    .cmd-history-title i { color: var(--brand); }
+    .cmd-history-body { max-height: 250px; overflow-y: auto; margin-top: 0.5rem; }
+    .cmd-history-body.collapsed { display: none; }
+    .cmd-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.4rem 0; border-bottom: 1px solid var(--border); font-size: 0.78rem; }
+    .cmd-item:last-child { border-bottom: none; }
+    .cmd-badge { padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; }
+    .cmd-badge.success { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+    .cmd-badge.failed { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+    .cmd-badge.denied { background: rgba(234, 179, 8, 0.15); color: var(--yellow); }
+    .cmd-time { color: var(--muted); font-size: 0.7rem; font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
+
+    /* Pod Search */
+    .pod-search { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; }
+    .pod-search input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.5rem 0.75rem; border-radius: 8px; font-family: inherit; font-size: 0.85rem; }
+    .pod-search input:focus { outline: none; border-color: var(--brand); }
+    .pod-search input::placeholder { color: var(--muted); }
+
+    /* Pod action buttons */
+    .pod-actions { display: flex; gap: 0.3rem; }
+    .pod-action-btn { background: none; border: 1px solid var(--border); color: var(--muted); padding: 0.2rem 0.4rem; border-radius: 4px; cursor: pointer; font-size: 0.7rem; transition: all 0.2s; }
+    .pod-action-btn:hover { border-color: var(--text); color: var(--text); }
+    .pod-action-btn.danger:hover { border-color: var(--red); color: var(--red); }
+    .pod-action-btn.info:hover { border-color: var(--blue); color: var(--blue); }
+
+    /* Log Viewer Modal */
+    .log-modal-content { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; max-width: 800px; width: 95%; max-height: 80vh; display: flex; flex-direction: column; }
+    .log-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+    .log-modal-header h3 { font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
+    .log-modal-header h3 i { color: var(--brand); }
+    .log-body { flex: 1; overflow: auto; padding: 1rem; background: var(--bg); font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: var(--muted); }
+    .log-body .log-line { padding: 0.05rem 0; }
+    .log-body .log-line:hover { background: var(--panel-hover); color: var(--text); }
+
+    /* Mining Chart */
+    .mining-chart-container { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+    .mining-chart-title { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
+    .mining-chart { width: 100%; height: 80px; background: var(--bg); border-radius: 8px; overflow: hidden; position: relative; }
+    .mining-chart svg { width: 100%; height: 100%; }
+
+    /* Toolbar (keyboard shortcuts hint, export, settings) */
+    .toolbar { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    .toolbar-btn { background: var(--panel-hover); border: 1px solid var(--border); color: var(--muted); padding: 0.4rem 0.75rem; border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 0.78rem; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; gap: 0.4rem; }
+    .toolbar-btn:hover { border-color: var(--brand); color: var(--text); }
+    .toolbar-btn kbd { background: var(--bg); padding: 0.1rem 0.35rem; border-radius: 3px; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; border: 1px solid var(--border); }
+
+    /* Toast notification */
+    .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 1.25rem; font-size: 0.85rem; z-index: 2000; transform: translateY(100px); opacity: 0; transition: all 0.3s ease; display: flex; align-items: center; gap: 0.5rem; }
+    .toast.visible { transform: translateY(0); opacity: 1; }
+    .toast.success { border-color: var(--green); }
+    .toast.error { border-color: var(--red); }
+    .toast.info { border-color: var(--blue); }
   </style>
 </head>
 <body>
@@ -740,9 +837,13 @@
           <span>Updated: <span id="lastUpdate">--</span></span>
         </div>
       </div>
-      <button class="refresh-btn" onclick="loadClusterStatus()" id="refreshBtn" aria-label="Refresh cluster status">
-        <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Refresh
-      </button>
+      <div class="toolbar">
+        <button class="toolbar-btn" onclick="exportClusterState()" title="Export cluster snapshot"><i class="fa-solid fa-download"></i> Export</button>
+        <button class="toolbar-btn" onclick="showShortcuts()" title="Keyboard shortcuts"><i class="fa-solid fa-keyboard"></i> <kbd>?</kbd></button>
+        <button class="refresh-btn" onclick="loadClusterStatus()" id="refreshBtn" aria-label="Refresh cluster status">
+          <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Refresh
+        </button>
+      </div>
     </div>
 
     <!-- Control Panel -->
@@ -799,6 +900,31 @@
       <div class="control-status" id="browseStatus"></div>
     </div>
 
+    <!-- Health Score Bar -->
+    <div class="health-bar" id="healthBar">
+      <div class="health-label"><i class="fa-solid fa-heart-pulse"></i> Cluster Health</div>
+      <div class="health-track"><div class="health-fill good" id="healthFill" style="width: 0%"></div></div>
+      <div class="health-pct" id="healthPct">--%</div>
+    </div>
+
+    <!-- Alerts Panel -->
+    <div class="alerts-panel" id="alertsPanel" style="display:none">
+      <div class="alerts-header" onclick="toggleAlerts()">
+        <div class="alerts-title"><i class="fa-solid fa-bell"></i> Alerts <span class="alert-count-badge" id="alertCount">0</span></div>
+        <i class="fa-solid fa-chevron-down" id="alertsChevron"></i>
+      </div>
+      <div class="alerts-body" id="alertsBody"></div>
+    </div>
+
+    <!-- Command History -->
+    <div class="cmd-history" id="cmdHistory" style="display:none">
+      <div class="cmd-history-header" onclick="toggleCmdHistory()">
+        <div class="cmd-history-title"><i class="fa-solid fa-clock-rotate-left"></i> Command History</div>
+        <i class="fa-solid fa-chevron-down" id="cmdChevron"></i>
+      </div>
+      <div class="cmd-history-body collapsed" id="cmdHistoryBody"></div>
+    </div>
+
     <!-- Demo Banner -->
     <div class="demo-banner" id="demoBanner">
       <i class="fa-solid fa-flask"></i>
@@ -846,6 +972,10 @@
         </div>
       </div>
       <div class="mining-pool-info" id="miningPoolInfo" style="display:none"></div>
+      <div class="mining-chart-container" id="miningChartContainer" style="display:none">
+        <div class="mining-chart-title"><i class="fa-solid fa-chart-line"></i> Hashrate History</div>
+        <div class="mining-chart" id="miningChart"></div>
+      </div>
       <div class="mining-message" id="miningMessage"></div>
     </div>
 
@@ -914,6 +1044,9 @@
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-cubes"></i> Workloads</h2>
     </div>
+    <div class="pod-search">
+      <input type="text" id="podSearchInput" placeholder="Search pods by name, namespace, or node..." oninput="renderPods()">
+    </div>
     <div class="tabs" id="podTabs">
       <button class="tab active" data-ns="all"><i class="fa-solid fa-layer-group"></i> All <span class="count">0</span></button>
     </div>
@@ -921,10 +1054,10 @@
       <div class="table-scroll">
         <table>
           <thead>
-            <tr><th>Pod Name</th><th>Namespace</th><th>Status</th><th>Node</th></tr>
+            <tr><th>Pod Name</th><th>Namespace</th><th>Status</th><th>Restarts</th><th>Node</th><th>Actions</th></tr>
           </thead>
           <tbody id="podTableBody">
-            <tr><td colspan="4" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>
+            <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>
           </tbody>
         </table>
       </div>
@@ -1025,6 +1158,20 @@
     </div>
   </div>
 
+  <!-- Log Viewer Modal -->
+  <div class="modal-overlay" id="logModal">
+    <div class="log-modal-content">
+      <div class="log-modal-header">
+        <h3><i class="fa-solid fa-scroll"></i> <span id="logModalTitle">Pod Logs</span></h3>
+        <button style="background:none;border:none;color:var(--text);cursor:pointer;font-size:1.2rem;" onclick="closeLogModal()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="log-body" id="logBody">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast"><i class="fa-solid fa-circle-info"></i> <span id="toastMsg"></span></div>
+
   <footer class="footer">
     <p><a href="/"><i class="fa-solid fa-arrow-left"></i> Back to Home</a></p>
     <p style="margin-top: 0.5rem;">&copy; 2026 Curtis Bragdon. All rights reserved.</p>
@@ -1037,10 +1184,23 @@
     let pendingCommand = null;
     let savedPassword = localStorage.getItem('clusterPassword') || '';
     let currentScreenDevice = null;
+    let lastMetrics = {};
+    let alertsExpanded = true;
+    let cmdHistoryExpanded = false;
 
-    // Direct API config (for Cloudflare tunnel or custom API)
+    // Direct API config
     let apiEndpoint = localStorage.getItem('clusterApiEndpoint') || '';
     let apiToken = localStorage.getItem('clusterApiToken') || '';
+
+    // ─── Toast ───────────────────────────────────────────────────────────
+    function showToast(msg, type = 'info') {
+      const t = document.getElementById('toast');
+      const m = document.getElementById('toastMsg');
+      m.textContent = msg;
+      t.className = 'toast visible ' + type;
+      clearTimeout(t._timer);
+      t._timer = setTimeout(() => t.classList.remove('visible'), 3500);
+    }
 
     function initApiConfig() {
       const epInput = document.getElementById('apiEndpoint');
@@ -1056,6 +1216,7 @@
       localStorage.setItem('clusterApiEndpoint', apiEndpoint);
       localStorage.setItem('clusterApiToken', apiToken);
       updateApiModeBadge();
+      showToast('API config saved', 'success');
       loadClusterStatus();
     }
 
@@ -1084,16 +1245,35 @@
       }
     }
 
-    // Helper: send command to appropriate backend
+    function apiHeaders() {
+      const h = {};
+      if (apiToken) h['Authorization'] = 'Bearer ' + apiToken;
+      return h;
+    }
+
+    async function apiFetch(path, opts = {}) {
+      if (!apiEndpoint) throw new Error('No API endpoint');
+      const res = await fetch(apiEndpoint + path, { ...opts, headers: { ...apiHeaders(), ...(opts.headers || {}) } });
+      return await res.json();
+    }
+
+    async function apiPost(path, body) {
+      if (!apiEndpoint) throw new Error('No API endpoint');
+      const res = await fetch(apiEndpoint + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...apiHeaders() },
+        body: JSON.stringify(body)
+      });
+      return await res.json();
+    }
+
     async function sendToBackend(payload) {
       if (apiEndpoint) {
-        const headers = { 'Content-Type': 'application/json' };
-        if (apiToken) headers['Authorization'] = 'Bearer ' + apiToken;
-        const res = await fetch(apiEndpoint + '/api/command', {
-          method: 'POST', headers,
+        return apiFetch('/api/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        return await res.json();
       } else {
         const res = await fetch('/.netlify/functions/cluster-control', {
           method: 'POST',
@@ -1102,6 +1282,16 @@
         });
         return await res.json();
       }
+    }
+
+    // ─── Health Score ────────────────────────────────────────────────────
+    function renderHealthScore(score) {
+      const fill = document.getElementById('healthFill');
+      const pct = document.getElementById('healthPct');
+      fill.style.width = score + '%';
+      fill.className = 'health-fill ' + (score >= 80 ? 'good' : score >= 50 ? 'warn' : 'bad');
+      pct.textContent = score + '%';
+      pct.style.color = score >= 80 ? 'var(--green)' : score >= 50 ? 'var(--yellow)' : 'var(--red)';
     }
 
     async function loadClusterStatus() {
@@ -1115,13 +1305,10 @@
         let data;
         let isDirectApi = false;
 
-        // Try direct API first if configured
         if (apiEndpoint) {
           try {
-            const headers = {};
-            if (apiToken) headers['Authorization'] = 'Bearer ' + apiToken;
             const apiRes = await fetch(apiEndpoint + '/api/status', {
-              headers,
+              headers: apiHeaders(),
               signal: AbortSignal.timeout(8000)
             });
             if (apiRes.ok) {
@@ -1133,7 +1320,6 @@
           }
         }
 
-        // Fall back to Netlify functions
         if (!data) {
           const res = await fetch('/.netlify/functions/cluster-status');
           data = await res.json();
@@ -1160,6 +1346,9 @@
         const ready = summary.nodesReady || 0;
         readyEl.className = 'card-value ' + (ready === total && total > 0 ? 'green' : ready >= total * 0.7 ? 'yellow' : 'red');
 
+        renderHealthScore(summary.healthScore || 0);
+        lastMetrics = data.metrics || {};
+
         renderNodes(data.nodes || []);
         document.getElementById('nodeBadge').textContent = `${(data.nodes || []).length} nodes`;
 
@@ -1174,13 +1363,14 @@
         renderNetwork(data.network);
         renderMining(data.mining);
 
-        // Load screens if direct API is active
         if (apiEndpoint && isDirectApi) {
           loadScreens();
+          loadAlerts();
+          loadCommandLog();
+          loadMiningHistory();
         }
 
-        const lastUpdate = document.getElementById('lastUpdate');
-        lastUpdate.textContent = data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : 'Never';
+        document.getElementById('lastUpdate').textContent = data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : 'Never';
       } catch (error) {
         console.error('Failed to load:', error);
         statusDot.className = 'status-dot offline';
@@ -1201,6 +1391,33 @@
         const isCP = node.role === 'control-plane';
         const cls = 'node' + (isCP ? ' control-plane ready' : isReady ? ' ready' : ' notready');
         const icon = isCP ? 'fa-crown' : isReady ? 'fa-circle-check' : 'fa-circle-xmark';
+        const m = lastMetrics[node.name] || {};
+
+        let metricsHtml = '<div class="node-metrics">';
+        if (m.battery) {
+          const bl = m.battery.level;
+          const bc = bl > 50 ? 'batt-ok' : bl > 20 ? 'batt-mid' : 'batt-low';
+          const bi = m.battery.charging ? 'fa-bolt' : 'fa-battery-' + (bl > 75 ? 'full' : bl > 50 ? 'three-quarters' : bl > 25 ? 'half' : bl > 10 ? 'quarter' : 'empty');
+          metricsHtml += `<span class="node-metric ${bc}" title="Battery"><i class="fa-solid ${bi}"></i>${bl}%</span>`;
+        }
+        if (m.cpu) {
+          const cc = m.cpu.usage > 80 ? 'hot' : m.cpu.usage > 50 ? 'warm' : 'cool';
+          metricsHtml += `<span class="node-metric ${cc}" title="CPU"><i class="fa-solid fa-microchip"></i>${m.cpu.usage}%</span>`;
+        }
+        if (m.memory) {
+          const mc = m.memory.percent > 85 ? 'hot' : m.memory.percent > 60 ? 'warm' : 'cool';
+          metricsHtml += `<span class="node-metric ${mc}" title="Memory"><i class="fa-solid fa-memory"></i>${m.memory.percent}%</span>`;
+        }
+        if (m.temp) {
+          const tc = m.temp.celsius > 60 ? 'hot' : m.temp.celsius > 45 ? 'warm' : 'cool';
+          metricsHtml += `<span class="node-metric ${tc}" title="Temperature"><i class="fa-solid fa-temperature-half"></i>${m.temp.celsius}&deg;</span>`;
+        }
+        if (m.storage) {
+          const sc = m.storage.percent > 85 ? 'hot' : m.storage.percent > 60 ? 'warm' : 'cool';
+          metricsHtml += `<span class="node-metric ${sc}" title="Disk"><i class="fa-solid fa-hard-drive"></i>${m.storage.percent}%</span>`;
+        }
+        metricsHtml += '</div>';
+
         return `<div class="${cls}">
           <div class="node-header">
             <div class="node-name"><i class="fa-solid ${icon}"></i>${node.name}</div>
@@ -1209,6 +1426,7 @@
           <div class="node-details">
             <div class="node-detail"><i class="fa-solid fa-network-wired"></i><code>${node.ip || 'Unknown'}</code></div>
           </div>
+          ${metricsHtml}
           <span class="node-status-badge"><i class="fa-solid ${isReady ? 'fa-check' : 'fa-xmark'}"></i>${node.status || 'Unknown'}</span>
         </div>`;
       }).join('');
@@ -1235,17 +1453,92 @@
 
     function renderPods() {
       const tbody = document.getElementById('podTableBody');
-      const filtered = currentNamespace === 'all' ? allPods : allPods.filter(p => p.namespace === currentNamespace);
+      const search = (document.getElementById('podSearchInput')?.value || '').toLowerCase();
+      let filtered = currentNamespace === 'all' ? allPods : allPods.filter(p => p.namespace === currentNamespace);
+      if (search) {
+        filtered = filtered.filter(p =>
+          p.name.toLowerCase().includes(search) ||
+          p.namespace.toLowerCase().includes(search) ||
+          (p.node || '').toLowerCase().includes(search)
+        );
+      }
       if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>';
         return;
       }
       tbody.innerHTML = filtered.map(pod => {
         const st = pod.status?.toLowerCase() || 'pending';
         const icon = {running:'fa-circle-check',pending:'fa-clock',failed:'fa-circle-xmark',succeeded:'fa-flag-checkered'}[st] || 'fa-question';
-        return `<tr><td class="pod-name">${pod.name}</td><td><span class="pod-namespace">${pod.namespace}</span></td><td><span class="pod-status ${st}"><i class="fa-solid ${icon}"></i> ${pod.status}</span></td><td class="pod-node">${pod.node || '-'}</td></tr>`;
+        const ns = pod.namespace.replace(/[^a-zA-Z0-9._-]/g, '');
+        const pn = pod.name.replace(/[^a-zA-Z0-9._-]/g, '');
+        const restartClass = pod.restarts > 10 ? 'style="color:var(--red);font-weight:700"' : pod.restarts > 0 ? 'style="color:var(--yellow)"' : '';
+        return `<tr>
+          <td class="pod-name">${pod.name}</td>
+          <td><span class="pod-namespace">${pod.namespace}</span></td>
+          <td><span class="pod-status ${st}"><i class="fa-solid ${icon}"></i> ${pod.status}</span></td>
+          <td ${restartClass}>${pod.restarts || 0}</td>
+          <td class="pod-node">${pod.node || '-'}</td>
+          <td class="pod-actions">
+            <button class="pod-action-btn info" onclick="viewPodLogs('${ns}','${pn}')" title="View logs"><i class="fa-solid fa-scroll"></i></button>
+            <button class="pod-action-btn" onclick="describePod('${ns}','${pn}')" title="Describe"><i class="fa-solid fa-circle-info"></i></button>
+            <button class="pod-action-btn danger" onclick="deletePod('${ns}','${pn}')" title="Delete pod"><i class="fa-solid fa-trash"></i></button>
+          </td>
+        </tr>`;
       }).join('');
     }
+
+    // ─── Pod Actions ─────────────────────────────────────────────────────
+    async function viewPodLogs(ns, pod) {
+      if (!apiEndpoint) { showToast('Direct API required for pod logs', 'error'); return; }
+      document.getElementById('logModalTitle').textContent = 'Logs: ' + pod;
+      document.getElementById('logBody').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+      document.getElementById('logModal').classList.add('visible');
+      try {
+        const data = await apiFetch('/api/pods/' + ns + '/' + pod + '/logs?tail=200');
+        if (data.lines) {
+          document.getElementById('logBody').innerHTML = data.lines.map(function(l) {
+            return '<div class="log-line">' + l.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
+          }).join('');
+          var body = document.getElementById('logBody');
+          body.scrollTop = body.scrollHeight;
+        } else {
+          document.getElementById('logBody').textContent = data.error || 'No logs available';
+        }
+      } catch (e) {
+        document.getElementById('logBody').textContent = 'Error: ' + e.message;
+      }
+    }
+
+    async function describePod(ns, pod) {
+      if (!apiEndpoint) { showToast('Direct API required', 'error'); return; }
+      document.getElementById('logModalTitle').textContent = 'Describe: ' + pod;
+      document.getElementById('logBody').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+      document.getElementById('logModal').classList.add('visible');
+      try {
+        const data = await apiFetch('/api/pods/' + ns + '/' + pod + '/describe');
+        document.getElementById('logBody').textContent = data.describe || data.error || 'No data';
+      } catch (e) {
+        document.getElementById('logBody').textContent = 'Error: ' + e.message;
+      }
+    }
+
+    async function deletePod(ns, pod) {
+      if (!confirm('Delete pod ' + pod + ' in ' + ns + '?')) return;
+      if (!savedPassword) { showToast('Enter password first', 'error'); return; }
+      try {
+        const data = await apiPost('/api/pods/delete', { namespace: ns, pod: pod, password: savedPassword });
+        if (data.success) {
+          showToast('Pod ' + pod + ' deleted', 'success');
+          setTimeout(loadClusterStatus, 3000);
+        } else {
+          showToast(data.error || 'Failed', 'error');
+          if (data.error === 'Invalid password') { savedPassword = ''; localStorage.removeItem('clusterPassword'); }
+        }
+      } catch (e) { showToast('Error: ' + e.message, 'error'); }
+    }
+
+    function closeLogModal() { document.getElementById('logModal').classList.remove('visible'); }
+    document.getElementById('logModal').addEventListener('click', function(e) { if (e.target === this) closeLogModal(); });
 
     function renderServices() {
       const tbody = document.getElementById('svcTableBody');
@@ -1311,7 +1604,9 @@
         savedPassword = pw;
         localStorage.setItem('clusterPassword', pw);
         closeModal();
-        executeCommand(pendingCommand, pw);
+        if (pendingCommand === 'browse') sendBrowseCommand();
+        else if (pendingCommand && pendingCommand.startsWith('mining-')) sendMiningCommand(pendingCommand);
+        else executeCommand(pendingCommand, pw);
       }
     }
 
@@ -1343,15 +1638,12 @@
 
     // Mining functions
     function renderMining(mining) {
-      const panel = document.getElementById('miningPanel');
       const statusEl = document.getElementById('miningStatus');
-
       if (!mining) {
         statusEl.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> <span>No Data</span>';
         statusEl.className = 'mining-status stopped';
         return;
       }
-
       const isActive = mining.enabled && mining.minersRunning > 0;
       statusEl.innerHTML = isActive
         ? '<i class="fa-solid fa-circle-check"></i> <span>Mining Active</span>'
@@ -1359,33 +1651,68 @@
       statusEl.className = isActive ? 'mining-status' : 'mining-status stopped';
 
       document.getElementById('miningHashrate').textContent = mining.totalHashrate || '--';
-      document.getElementById('miningWorkers').textContent = `${mining.minersRunning || 0}/${mining.minersTotal || 0}`;
+      document.getElementById('miningWorkers').textContent = (mining.minersRunning || 0) + '/' + (mining.minersTotal || 0);
       document.getElementById('miningDaily').textContent = mining.estimatedDaily || '--';
       document.getElementById('miningMonthly').textContent = mining.estimatedMonthly || '--';
 
-      // Render workers
       const workerList = document.getElementById('workerList');
       if (mining.workers && mining.workers.length > 0) {
-        workerList.innerHTML = mining.workers.map(w => {
+        workerList.innerHTML = mining.workers.map(function(w) {
           const isOnline = w.status === 'mining';
-          return `<div class="worker-chip ${isOnline ? '' : 'offline'}">
-            <i class="fa-solid ${isOnline ? 'fa-circle-check' : 'fa-circle-xmark'}" style="color: var(--${isOnline ? 'green' : 'red'})"></i>
-            <span>${w.name}</span>
-            <span class="rate">${w.hashrate}</span>
-          </div>`;
+          const uptimeStr = w.uptime ? ' | ' + w.uptime : '';
+          return '<div class="worker-chip ' + (isOnline ? '' : 'offline') + '">' +
+            '<i class="fa-solid ' + (isOnline ? 'fa-circle-check' : 'fa-circle-xmark') + '" style="color: var(--' + (isOnline ? 'green' : 'red') + ')"></i>' +
+            '<span>' + w.name + '</span>' +
+            '<span class="rate">' + w.hashrate + uptimeStr + '</span></div>';
         }).join('');
       } else {
         workerList.innerHTML = '<span class="worker-chip"><span>No workers</span></span>';
       }
 
-      // Pool balance info
       const poolInfoEl = document.getElementById('miningPoolInfo');
       if (poolInfoEl && (mining.poolBalance || mining.totalPaid)) {
-        poolInfoEl.innerHTML = `<i class="fa-solid fa-vault"></i> Pending: <span>${mining.poolBalance || '--'}</span> &nbsp;|&nbsp; Total Paid: <span>${mining.totalPaid || '--'}</span>`;
+        var html = '<i class="fa-solid fa-vault"></i> Pending: <span>' + (mining.poolBalance || '--') + '</span> &nbsp;|&nbsp; Total Paid: <span>' + (mining.totalPaid || '--') + '</span>';
+        if (mining.totalAccepted) html += ' &nbsp;|&nbsp; Shares: <span>' + mining.totalAccepted + '</span> accepted';
+        if (mining.totalRejected) html += ', <span style="color:var(--red)">' + mining.totalRejected + '</span> rejected';
+        poolInfoEl.innerHTML = html;
         poolInfoEl.style.display = 'block';
       } else if (poolInfoEl) {
         poolInfoEl.style.display = 'none';
       }
+    }
+
+    // ─── Mining History Chart ────────────────────────────────────────────
+    async function loadMiningHistory() {
+      if (!apiEndpoint) return;
+      try {
+        const data = await apiFetch('/api/mining/history');
+        renderMiningChart(data.history || []);
+      } catch (e) { /* silent */ }
+    }
+
+    function renderMiningChart(history) {
+      const container = document.getElementById('miningChartContainer');
+      const chart = document.getElementById('miningChart');
+      if (!history || history.length < 2) { container.style.display = 'none'; return; }
+      container.style.display = 'block';
+      var pts = history.slice(-120);
+      var maxH = Math.max.apply(null, pts.map(function(p) { return p.totalHashrate; }));
+      if (maxH < 1) maxH = 1;
+      var w = 100, h = 80;
+      var stepX = w / (pts.length - 1);
+      var pathD = '', areaD = 'M0,' + h + ' ';
+      pts.forEach(function(p, i) {
+        var x = (i * stepX).toFixed(2);
+        var y = (h - (p.totalHashrate / maxH) * (h - 8)).toFixed(2);
+        if (i === 0) pathD += 'M' + x + ',' + y + ' ';
+        else pathD += 'L' + x + ',' + y + ' ';
+        areaD += 'L' + x + ',' + y + ' ';
+      });
+      areaD += 'L' + w + ',' + h + ' Z';
+      chart.innerHTML = '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none">' +
+        '<defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--yellow)" stop-opacity="0.3"/><stop offset="100%" stop-color="var(--yellow)" stop-opacity="0.02"/></linearGradient></defs>' +
+        '<path d="' + areaD + '" fill="url(#hg)"/>' +
+        '<path d="' + pathD + '" fill="none" stroke="var(--yellow)" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>';
     }
 
     async function sendMiningCommand(cmd) {
@@ -1461,6 +1788,128 @@
         status.className = 'control-status visible error';
       }
     }
+
+    // ─── Alerts ──────────────────────────────────────────────────────────
+    async function loadAlerts() {
+      if (!apiEndpoint) return;
+      try {
+        var data = await apiFetch('/api/alerts');
+        renderAlerts(data.alerts || []);
+      } catch (e) { /* silent */ }
+    }
+
+    function renderAlerts(alertList) {
+      var panel = document.getElementById('alertsPanel');
+      var body = document.getElementById('alertsBody');
+      var countBadge = document.getElementById('alertCount');
+      var unacked = alertList.filter(function(a) { return !a.acknowledged; });
+      countBadge.textContent = unacked.length;
+      if (alertList.length === 0) { panel.style.display = 'none'; return; }
+      panel.style.display = 'block';
+      body.innerHTML = alertList.slice(0, 20).map(function(a) {
+        var time = new Date(a.timestamp).toLocaleTimeString();
+        var acked = a.acknowledged ? ' style="opacity:0.5"' : '';
+        return '<div class="alert-item"' + acked + '>' +
+          '<span class="alert-severity ' + a.severity + '"></span>' +
+          '<div class="alert-content"><strong>' + a.title + '</strong> ' + a.message +
+          '<div class="alert-time">' + time + (a.node ? ' | ' + a.node : '') + '</div></div>' +
+          (!a.acknowledged ? '<button class="alert-ack" onclick="ackAlert(\'' + a.id + '\')">Ack</button>' : '') +
+          '</div>';
+      }).join('');
+    }
+
+    async function ackAlert(id) {
+      try { await apiPost('/api/alerts/ack', { id: id }); loadAlerts(); } catch (e) { /* silent */ }
+    }
+
+    function toggleAlerts() {
+      alertsExpanded = !alertsExpanded;
+      document.getElementById('alertsBody').classList.toggle('collapsed', !alertsExpanded);
+      document.getElementById('alertsChevron').style.transform = alertsExpanded ? '' : 'rotate(-90deg)';
+    }
+
+    // ─── Command History ─────────────────────────────────────────────────
+    async function loadCommandLog() {
+      if (!apiEndpoint) return;
+      try {
+        var data = await apiFetch('/api/commands/log');
+        renderCommandLog(data.commands || []);
+      } catch (e) { /* silent */ }
+    }
+
+    function renderCommandLog(commands) {
+      var panel = document.getElementById('cmdHistory');
+      var body = document.getElementById('cmdHistoryBody');
+      if (commands.length === 0) { panel.style.display = 'none'; return; }
+      panel.style.display = 'block';
+      body.innerHTML = commands.slice(0, 30).map(function(c) {
+        var time = new Date(c.timestamp).toLocaleTimeString();
+        var urlStr = c.url ? ' (' + c.url.substring(0, 30) + ')' : '';
+        return '<div class="cmd-item">' +
+          '<span class="cmd-badge ' + c.status + '">' + c.status + '</span>' +
+          '<span style="flex:1"><strong>' + c.command + '</strong> &rarr; ' + (c.target || '') + urlStr + '</span>' +
+          '<span class="cmd-time">' + time + '</span></div>';
+      }).join('');
+    }
+
+    function toggleCmdHistory() {
+      cmdHistoryExpanded = !cmdHistoryExpanded;
+      document.getElementById('cmdHistoryBody').classList.toggle('collapsed', !cmdHistoryExpanded);
+      document.getElementById('cmdChevron').style.transform = cmdHistoryExpanded ? '' : 'rotate(-90deg)';
+    }
+
+    // ─── Export ──────────────────────────────────────────────────────────
+    async function exportClusterState() {
+      try {
+        var data;
+        if (apiEndpoint) {
+          data = await apiFetch('/api/export');
+        } else {
+          data = { exportedAt: new Date().toISOString(), note: 'Connect to Direct API for full export' };
+        }
+        var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'cluster-export-' + new Date().toISOString().slice(0,10) + '.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('Cluster state exported', 'success');
+      } catch (e) { showToast('Export failed: ' + e.message, 'error'); }
+    }
+
+    // ─── Keyboard Shortcuts ──────────────────────────────────────────────
+    function showShortcuts() {
+      document.getElementById('logModalTitle').textContent = 'Keyboard Shortcuts';
+      document.getElementById('logBody').innerHTML =
+        '<div style="font-size:0.9rem;color:var(--text);line-height:2.2">' +
+        '<strong>R</strong> &mdash; Refresh cluster status<br>' +
+        '<strong>S</strong> &mdash; Capture phone screens<br>' +
+        '<strong>E</strong> &mdash; Export cluster snapshot<br>' +
+        '<strong>W</strong> &mdash; Wake all phones<br>' +
+        '<strong>F</strong> &mdash; Focus pod search<br>' +
+        '<strong>H</strong> &mdash; Toggle command history<br>' +
+        '<strong>A</strong> &mdash; Toggle alerts<br>' +
+        '<strong>Esc</strong> &mdash; Close modals<br>' +
+        '<strong>?</strong> &mdash; Show this help</div>';
+      document.getElementById('logModal').classList.add('visible');
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+      var key = e.key.toLowerCase();
+      if (key === 'r') loadClusterStatus();
+      else if (key === 's') loadScreens();
+      else if (key === 'e') exportClusterState();
+      else if (key === 'w') {
+        if (savedPassword) sendToBackend({ command: 'wake', target: 'phones', password: savedPassword }).then(function() { showToast('Wake sent to all phones', 'success'); });
+      }
+      else if (key === 'f') { e.preventDefault(); var si = document.getElementById('podSearchInput'); if (si) si.focus(); }
+      else if (key === 'h') toggleCmdHistory();
+      else if (key === 'a') toggleAlerts();
+      else if (key === '?') showShortcuts();
+      else if (key === 'escape') { closeLogModal(); closeScreenModal(); closeModal(); }
+    });
 
     // ─── Screen Viewer Functions ──────────────────────────────────────────
 
@@ -1556,6 +2005,7 @@
     loadClusterStatus();
     setInterval(loadClusterStatus, 10000);
     setInterval(function() { if (apiEndpoint) loadScreens(); }, 30000);
+    setInterval(function() { if (apiEndpoint) { loadAlerts(); loadCommandLog(); } }, 15000);
   </script>
 </body>
 </html>
