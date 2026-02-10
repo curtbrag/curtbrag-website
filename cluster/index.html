@@ -792,7 +792,7 @@
         <div class="control-title"><i class="fa-solid fa-globe"></i> Send Phones to URL</div>
       </div>
       <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-        <input type="url" id="browseUrl" placeholder="https://example.com" style="flex: 1; min-width: 200px; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.6rem 0.75rem; border-radius: 8px; font-family: inherit; font-size: 0.85rem;">
+        <input type="url" id="browseUrl" placeholder="https://example.com" onkeydown="if(event.key==='Enter')sendBrowseCommand()" style="flex: 1; min-width: 200px; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.6rem 0.75rem; border-radius: 8px; font-family: inherit; font-size: 0.85rem;">
         <button class="ctrl-btn wake" onclick="sendBrowseCommand()"><i class="fa-solid fa-paper-plane"></i> Send to All Phones</button>
       </div>
       <div class="control-status" id="browseStatus"></div>
@@ -1503,10 +1503,11 @@
 
       grid.innerHTML = screens.map(s => {
         const imgSrc = s.image || placeholder;
-        return `<div class="screen-card ${s.status !== 'ok' ? 'offline' : ''}" onclick="openScreenModal('${s.device}')">
-          <img src="${imgSrc}" alt="${s.device}" loading="lazy">
+        const dn = (s.device || '').replace(/[^a-zA-Z0-9_-]/g, '');
+        return `<div class="screen-card ${s.status !== 'ok' ? 'offline' : ''}" onclick="openScreenModal('${dn}')">
+          <img src="${imgSrc}" alt="${dn}" loading="lazy">
           <div class="screen-label">
-            <span>${s.device}</span>
+            <span>${dn}</span>
             <span class="screen-dot ${s.status === 'ok' ? 'on' : 'off'}"></span>
           </div>
         </div>`;
@@ -1529,7 +1530,7 @@
       if (!currentScreenDevice || !apiEndpoint) return;
       const img = document.getElementById('screenModalImg');
       const tokenParam = apiToken ? '&token=' + encodeURIComponent(apiToken) : '';
-      img.src = apiEndpoint + '/api/screen/' + currentScreenDevice + '?t=' + Date.now() + tokenParam;
+      img.src = apiEndpoint + '/api/screen/' + encodeURIComponent(currentScreenDevice) + '?t=' + Date.now() + tokenParam;
     }
 
     async function wakeScreen() {
