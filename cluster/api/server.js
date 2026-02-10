@@ -460,6 +460,7 @@ async function handleStatus(req, res) {
           kubeletVersion: (n.status.nodeInfo || {}).kubeletVersion || '',
           osImage: (n.status.nodeInfo || {}).osImage || '',
           arch: (n.status.nodeInfo || {}).architecture || '',
+          age: n.metadata.creationTimestamp || null,
         };
       });
     } catch (e) { errors.push('Failed to parse nodes: ' + e.message); }
@@ -467,8 +468,9 @@ async function handleStatus(req, res) {
     errors.push('kubectl get nodes failed: ' + nodesResult.stderr);
   }
 
-  // Track node uptime
+  // Track node uptime and pod restarts
   updateNodeTracking(nodes);
+  trackPodRestarts(pods);
 
   // Kubectl: pods
   const podsResult = run('kubectl get pods -A -o json', 15000);
@@ -1009,6 +1011,42 @@ function handleNodeHistory(req, res) {
   sendJson(res, 200, { nodes: summary });
 }
 
+// ─── Pod Restart Tracking ────────────────────────────────────────────────────
+
+const podRestartHistory = {};  // { podKey: [{ timestamp, restarts }] }
+
+function trackPodRestarts(pods) {
+  const now = new Date().toISOString();
+  for (const pod of pods) {
+    const key = pod.namespace + '/' + pod.name;
+    if (!podRestartHistory[key]) podRestartHistory[key] = [];
+    const h = podRestartHistory[key];
+    const lastEntry = h.length > 0 ? h[h.length - 1] : null;
+    if (!lastEntry || lastEntry.restarts !== (pod.restarts || 0)) {
+      h.push({ timestamp: now, restarts: pod.restarts || 0 });
+      if (h.length > 50) h.shift();
+    }
+  }
+}
+
+function handlePodRestartTrends(req, res) {
+  const trends = {};
+  for (const [key, history] of Object.entries(podRestartHistory)) {
+    if (history.length < 2) continue;
+    const recent = history[history.length - 1].restarts;
+    const earlier = history[0].restarts;
+    if (recent > 0) {
+      trends[key] = {
+        current: recent,
+        delta: recent - earlier,
+        trend: recent > earlier ? 'up' : recent < earlier ? 'down' : 'flat',
+        history: history.slice(-20),
+      };
+    }
+  }
+  sendJson(res, 200, { trends });
+}
+
 // ─── Ping / Connectivity Test ────────────────────────────────────────────────
 
 async function handlePing(req, res) {
@@ -1298,6 +1336,7 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/commands/log') return handleCommandLog(req, res);
       if (path === '/api/alerts') return handleAlerts(req, res);
       if (path === '/api/nodes/history') return handleNodeHistory(req, res);
+      if (path === '/api/pods/restart-trends') return handlePodRestartTrends(req, res);
       if (path === '/api/ping') return await handlePing(req, res);
       if (path === '/api/deployments') return await handleDeployments(req, res);
       if (path === '/api/export') return await handleExport(req, res);
@@ -1344,5 +1383,5 @@ server.listen(CONFIG.port, () => {
   console.log(`[CLUSTER-API] XMR wallet: ${CONFIG.xmrWallet || 'not configured'}`);
   const mapped = CONFIG.phoneNodeNames.filter(n => CONFIG.phoneNodes[n].adb);
   console.log(`[CLUSTER-API] ADB devices: ${mapped.length}/${CONFIG.phoneNodeNames.length}`);
-  console.log('[CLUSTER-API] New endpoints: /api/metrics, /api/commands/log, /api/alerts, /api/mining/history, /api/nodes/history, /api/pods/:ns/:pod/logs, /api/pods/delete, /api/scale, /api/nodes/drain, /api/export');
+  console.log('[CLUSTER-API] Endpoints: /api/status, /api/screens, /api/mining/stats, /api/mining/history, /api/metrics, /api/commands/log, /api/alerts, /api/nodes/history, /api/pods/restart-trends, /api/pods/:ns/:pod/logs, /api/pods/delete, /api/scale, /api/nodes/drain, /api/nodes/uncordon, /api/ping, /api/deployments, /api/nodes/:name/detail, /api/export');
 });

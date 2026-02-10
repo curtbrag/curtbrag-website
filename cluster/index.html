@@ -849,6 +849,53 @@
     .log-toolbar button:hover { border-color: var(--brand); }
     .log-toolbar button.active { background: var(--brand); border-color: var(--brand); }
     .log-toolbar .log-info { font-size: 0.7rem; color: var(--muted); margin-left: auto; }
+
+    /* Cluster Resource Summary */
+    .resource-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem; }
+    .resource-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.875rem; }
+    .resource-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+    .resource-card-title { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 0.4rem; }
+    .resource-card-title i { font-size: 0.7rem; }
+    .resource-card-value { font-family: 'JetBrains Mono', monospace; font-size: 1.3rem; font-weight: 700; }
+    .resource-card-bar { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; margin-top: 0.4rem; }
+    .resource-card-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+    .resource-card-detail { font-size: 0.7rem; color: var(--muted); margin-top: 0.3rem; font-family: 'JetBrains Mono', monospace; }
+
+    /* Command history search */
+    .cmd-search { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .cmd-search input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.35rem 0.6rem; border-radius: 6px; font-family: inherit; font-size: 0.78rem; }
+    .cmd-search input:focus { outline: none; border-color: var(--brand); }
+
+    /* Sparkline in node cards */
+    .node-sparkline { margin-top: 0.4rem; height: 20px; }
+    .node-sparkline svg { width: 100%; height: 100%; }
+
+    /* Notification sound toggle */
+    .sound-toggle { background: none; border: 1px solid var(--border); color: var(--muted); padding: 0.2rem 0.5rem; border-radius: 6px; cursor: pointer; font-size: 0.75rem; margin-left: 0.5rem; }
+    .sound-toggle:hover { border-color: var(--brand); color: var(--text); }
+    .sound-toggle.active { color: var(--brand); border-color: var(--brand); }
+
+    /* Restart trend indicator */
+    .restart-trend { display: inline-flex; align-items: center; gap: 0.2rem; font-size: 0.65rem; margin-left: 0.3rem; }
+    .restart-trend.up { color: var(--red); }
+    .restart-trend.down { color: var(--green); }
+    .restart-trend.flat { color: var(--muted); }
+
+    /* Bulk selection */
+    .bulk-bar { display: none; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; background: rgba(237, 35, 42, 0.08); border: 1px solid rgba(237, 35, 42, 0.2); border-radius: 10px; margin-bottom: 0.75rem; font-size: 0.85rem; }
+    .bulk-bar.visible { display: flex; }
+    .bulk-bar .bulk-count { font-weight: 600; color: var(--brand); }
+    .bulk-bar button { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.3rem 0.7rem; border-radius: 6px; cursor: pointer; font-size: 0.78rem; font-family: inherit; transition: all 0.2s; }
+    .bulk-bar button:hover { border-color: var(--brand); }
+    .node-checkbox { position: absolute; top: 0.5rem; right: 0.5rem; width: 18px; height: 18px; cursor: pointer; accent-color: var(--brand); z-index: 2; }
+
+    /* Uptime badge */
+    .uptime-badge { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.65rem; padding: 0.1rem 0.4rem; border-radius: 4px; background: var(--bg); color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 0.3rem; }
+    .uptime-badge i { font-size: 0.55rem; }
+
+    /* Fullscreen mode */
+    body.fullscreen-mode .header, body.fullscreen-mode .nav, body.fullscreen-mode .api-config, body.fullscreen-mode .footer, body.fullscreen-mode .about-section { display: none; }
+    body.fullscreen-mode .container { max-width: 100%; padding: 0.75rem; }
   </style>
 </head>
 <body>
@@ -893,6 +940,7 @@
         <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" id="themeBtn"><i class="fa-solid fa-circle-half-stroke"></i></button>
         <button class="toolbar-btn" onclick="runPingTest()" title="Ping all nodes"><i class="fa-solid fa-satellite-dish"></i> Ping</button>
         <button class="toolbar-btn" onclick="exportClusterState()" title="Export cluster snapshot"><i class="fa-solid fa-download"></i> Export</button>
+        <button class="toolbar-btn" onclick="toggleFullscreen()" title="Toggle fullscreen" id="fullscreenBtn"><i class="fa-solid fa-expand"></i></button>
         <button class="toolbar-btn" onclick="showShortcuts()" title="Keyboard shortcuts"><i class="fa-solid fa-keyboard"></i> <kbd>?</kbd></button>
         <button class="refresh-btn" onclick="loadClusterStatus()" id="refreshBtn" aria-label="Refresh cluster status">
           <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Refresh
@@ -971,10 +1019,48 @@
       <div class="health-pct" id="healthPct">--%</div>
     </div>
 
+    <!-- Cluster Resource Summary -->
+    <div class="resource-summary" id="resourceSummary" style="display:none">
+      <div class="resource-card">
+        <div class="resource-card-header">
+          <span class="resource-card-title"><i class="fa-solid fa-microchip"></i> Total CPU</span>
+        </div>
+        <div class="resource-card-value" id="totalCpuVal">--%</div>
+        <div class="resource-card-bar"><div class="resource-card-fill" id="totalCpuBar" style="width:0%;background:var(--green)"></div></div>
+        <div class="resource-card-detail" id="totalCpuDetail"></div>
+      </div>
+      <div class="resource-card">
+        <div class="resource-card-header">
+          <span class="resource-card-title"><i class="fa-solid fa-memory"></i> Total RAM</span>
+        </div>
+        <div class="resource-card-value" id="totalRamVal">--%</div>
+        <div class="resource-card-bar"><div class="resource-card-fill" id="totalRamBar" style="width:0%;background:var(--blue)"></div></div>
+        <div class="resource-card-detail" id="totalRamDetail"></div>
+      </div>
+      <div class="resource-card">
+        <div class="resource-card-header">
+          <span class="resource-card-title"><i class="fa-solid fa-hard-drive"></i> Total Storage</span>
+        </div>
+        <div class="resource-card-value" id="totalStorVal">--%</div>
+        <div class="resource-card-bar"><div class="resource-card-fill" id="totalStorBar" style="width:0%;background:var(--purple)"></div></div>
+        <div class="resource-card-detail" id="totalStorDetail"></div>
+      </div>
+      <div class="resource-card">
+        <div class="resource-card-header">
+          <span class="resource-card-title"><i class="fa-solid fa-battery-three-quarters"></i> Avg Battery</span>
+        </div>
+        <div class="resource-card-value" id="avgBattVal">--%</div>
+        <div class="resource-card-bar"><div class="resource-card-fill" id="avgBattBar" style="width:0%;background:var(--yellow)"></div></div>
+        <div class="resource-card-detail" id="avgBattDetail"></div>
+      </div>
+    </div>
+
     <!-- Alerts Panel -->
     <div class="alerts-panel" id="alertsPanel" style="display:none">
       <div class="alerts-header" onclick="toggleAlerts()">
-        <div class="alerts-title"><i class="fa-solid fa-bell"></i> Alerts <span class="alert-count-badge" id="alertCount">0</span></div>
+        <div class="alerts-title"><i class="fa-solid fa-bell"></i> Alerts <span class="alert-count-badge" id="alertCount">0</span>
+          <button class="sound-toggle" id="soundToggle" onclick="event.stopPropagation();toggleAlertSound()" title="Toggle alert sound"><i class="fa-solid fa-volume-high"></i></button>
+        </div>
         <i class="fa-solid fa-chevron-down" id="alertsChevron"></i>
       </div>
       <div class="alerts-body" id="alertsBody"></div>
@@ -985,6 +1071,9 @@
       <div class="cmd-history-header" onclick="toggleCmdHistory()">
         <div class="cmd-history-title"><i class="fa-solid fa-clock-rotate-left"></i> Command History</div>
         <i class="fa-solid fa-chevron-down" id="cmdChevron"></i>
+      </div>
+      <div class="cmd-search" id="cmdSearchBox" style="display:none">
+        <input type="text" id="cmdSearchInput" placeholder="Search commands..." oninput="filterCommandLog()">
       </div>
       <div class="cmd-history-body collapsed" id="cmdHistoryBody"></div>
     </div>
@@ -1100,7 +1189,19 @@
     <!-- Node Grid -->
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-microchip"></i> Cluster Nodes</h2>
-      <span class="section-badge" id="nodeBadge">10 phones</span>
+      <div style="display:flex;gap:0.5rem;align-items:center">
+        <button class="toolbar-btn" id="bulkSelectBtn" onclick="toggleBulkSelect()" title="Select multiple nodes"><i class="fa-solid fa-check-double"></i> Select</button>
+        <span class="section-badge" id="nodeBadge">10 phones</span>
+      </div>
+    </div>
+    <div class="bulk-bar" id="bulkBar">
+      <span><span class="bulk-count" id="bulkCount">0</span> nodes selected</span>
+      <button onclick="bulkCommand('wake')"><i class="fa-solid fa-sun"></i> Wake</button>
+      <button onclick="bulkCommand('sleep')"><i class="fa-solid fa-moon"></i> Sleep</button>
+      <button onclick="bulkCommand('restart')"><i class="fa-solid fa-rotate"></i> Restart</button>
+      <button onclick="bulkCommand('start')"><i class="fa-solid fa-play"></i> Start</button>
+      <button onclick="bulkCommand('stop')"><i class="fa-solid fa-stop"></i> Stop</button>
+      <button onclick="clearBulkSelect()" style="margin-left:auto"><i class="fa-solid fa-xmark"></i> Clear</button>
     </div>
     <div class="node-grid" id="nodeGrid"></div>
 
@@ -1445,6 +1546,7 @@
 
         renderHealthScore(summary.healthScore || 0);
         lastMetrics = data.metrics || {};
+        renderResourceSummary(lastMetrics);
 
         renderNodes(data.nodes || []);
         document.getElementById('nodeBadge').textContent = `${(data.nodes || []).length} nodes`;
@@ -1466,6 +1568,7 @@
           loadCommandLog();
           loadMiningHistory();
           loadDeployments();
+          loadRestartTrends();
         }
 
         document.getElementById('lastUpdate').textContent = data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : 'Never';
@@ -1478,7 +1581,10 @@
       }
     }
 
+    var lastRenderedNodes = null;
+
     function renderNodes(nodes) {
+      lastRenderedNodes = nodes;
       const grid = document.getElementById('nodeGrid');
       if (nodes.length === 0) {
         grid.innerHTML = '<div class="empty-state"><i class="fa-solid fa-server"></i><br>No nodes found</div>';
@@ -1517,7 +1623,21 @@
         metricsHtml += '</div>';
 
         const safeName = node.name.replace(/[^a-zA-Z0-9._-]/g, '');
-        return `<div class="${cls}" onclick="openNodeDetail('${safeName}')" style="cursor:pointer">
+
+        // Uptime badge
+        let uptimeHtml = '';
+        if (isReady && node.age) {
+          const ageMs = Date.now() - new Date(node.age).getTime();
+          const days = Math.floor(ageMs / 86400000);
+          const hours = Math.floor((ageMs % 86400000) / 3600000);
+          uptimeHtml = `<div class="uptime-badge"><i class="fa-solid fa-clock"></i>${days > 0 ? days + 'd ' : ''}${hours}h</div>`;
+        }
+
+        // Bulk select checkbox
+        const checkboxHtml = bulkMode ? `<input type="checkbox" class="node-checkbox" onclick="toggleNodeSelect('${safeName}',event)" ${selectedNodes.has(safeName)?'checked':''}>` : '';
+
+        return `<div class="${cls}" onclick="${bulkMode ? '' : "openNodeDetail('" + safeName + "')"}" style="cursor:pointer;position:relative">
+          ${checkboxHtml}
           <div class="node-header">
             <div class="node-name"><i class="fa-solid ${icon}"></i>${node.name}</div>
             <span class="node-role">${isCP ? 'Control Plane' : 'Worker'}</span>
@@ -1526,6 +1646,7 @@
             <div class="node-detail"><i class="fa-solid fa-network-wired"></i><code>${node.ip || 'Unknown'}</code></div>
           </div>
           ${metricsHtml}
+          ${uptimeHtml}
           <span class="node-status-badge"><i class="fa-solid ${isReady ? 'fa-check' : 'fa-xmark'}"></i>${node.status || 'Unknown'}</span>
         </div>`;
       }).join('');
@@ -1571,11 +1692,12 @@
         const ns = pod.namespace.replace(/[^a-zA-Z0-9._-]/g, '');
         const pn = pod.name.replace(/[^a-zA-Z0-9._-]/g, '');
         const restartClass = pod.restarts > 10 ? 'style="color:var(--red);font-weight:700"' : pod.restarts > 0 ? 'style="color:var(--yellow)"' : '';
+        const trendHtml = restartTrendHtml(pod.namespace, pod.name);
         return `<tr>
           <td class="pod-name">${pod.name}</td>
           <td><span class="pod-namespace">${pod.namespace}</span></td>
           <td><span class="pod-status ${st}"><i class="fa-solid ${icon}"></i> ${pod.status}</span></td>
-          <td ${restartClass}>${pod.restarts || 0}</td>
+          <td ${restartClass}>${pod.restarts || 0}${trendHtml}</td>
           <td class="pod-node">${pod.node || '-'}</td>
           <td class="pod-actions">
             <button class="pod-action-btn info" onclick="viewPodLogs('${ns}','${pn}')" title="View logs"><i class="fa-solid fa-scroll"></i></button>
@@ -1584,6 +1706,26 @@
           </td>
         </tr>`;
       }).join('');
+    }
+
+    // ─── Pod Restart Trends ──────────────────────────────────────────────
+    var podRestartTrends = {};
+
+    async function loadRestartTrends() {
+      if (!apiEndpoint) return;
+      try {
+        var data = await apiFetch('/api/pods/restart-trends');
+        podRestartTrends = data.trends || {};
+      } catch (e) { /* silent */ }
+    }
+
+    function restartTrendHtml(ns, pod) {
+      var key = ns + '/' + pod;
+      var t = podRestartTrends[key];
+      if (!t || t.delta === 0) return '';
+      var cls = t.trend === 'up' ? 'up' : t.trend === 'down' ? 'down' : 'flat';
+      var icon = t.trend === 'up' ? 'fa-arrow-trend-up' : t.trend === 'down' ? 'fa-arrow-trend-down' : 'fa-minus';
+      return '<span class="restart-trend ' + cls + '"><i class="fa-solid ' + icon + '"></i>' + (t.delta > 0 ? '+' : '') + t.delta + '</span>';
     }
 
     // ─── Pod Actions ─────────────────────────────────────────────────────
@@ -1903,6 +2045,8 @@
       var body = document.getElementById('alertsBody');
       var countBadge = document.getElementById('alertCount');
       var unacked = alertList.filter(function(a) { return !a.acknowledged; });
+      if (unacked.length > lastAlertCount && lastAlertCount >= 0) playAlertSound();
+      lastAlertCount = unacked.length;
       countBadge.textContent = unacked.length;
       if (alertList.length === 0) { panel.style.display = 'none'; return; }
       panel.style.display = 'block';
@@ -1939,23 +2083,18 @@
 
     function renderCommandLog(commands) {
       var panel = document.getElementById('cmdHistory');
-      var body = document.getElementById('cmdHistoryBody');
       if (commands.length === 0) { panel.style.display = 'none'; return; }
       panel.style.display = 'block';
-      body.innerHTML = commands.slice(0, 30).map(function(c) {
-        var time = new Date(c.timestamp).toLocaleTimeString();
-        var urlStr = c.url ? ' (' + c.url.substring(0, 30) + ')' : '';
-        return '<div class="cmd-item">' +
-          '<span class="cmd-badge ' + c.status + '">' + c.status + '</span>' +
-          '<span style="flex:1"><strong>' + c.command + '</strong> &rarr; ' + (c.target || '') + urlStr + '</span>' +
-          '<span class="cmd-time">' + time + '</span></div>';
-      }).join('');
+      allCommands = commands;
+      document.getElementById('cmdSearchBox').style.display = cmdHistoryExpanded ? '' : 'none';
+      renderCommandLogItems(commands);
     }
 
     function toggleCmdHistory() {
       cmdHistoryExpanded = !cmdHistoryExpanded;
       document.getElementById('cmdHistoryBody').classList.toggle('collapsed', !cmdHistoryExpanded);
       document.getElementById('cmdChevron').style.transform = cmdHistoryExpanded ? '' : 'rotate(-90deg)';
+      document.getElementById('cmdSearchBox').style.display = cmdHistoryExpanded ? '' : 'none';
     }
 
     // ─── Export ──────────────────────────────────────────────────────────
@@ -1990,6 +2129,10 @@
         '<strong>F</strong> &mdash; Focus pod search<br>' +
         '<strong>H</strong> &mdash; Toggle command history<br>' +
         '<strong>A</strong> &mdash; Toggle alerts<br>' +
+        '<strong>T</strong> &mdash; Toggle theme (dark/light)<br>' +
+        '<strong>G</strong> &mdash; Toggle fullscreen mode<br>' +
+        '<strong>B</strong> &mdash; Toggle bulk node selection<br>' +
+        '<strong>P</strong> &mdash; Run ping test<br>' +
         '<strong>Esc</strong> &mdash; Close modals<br>' +
         '<strong>?</strong> &mdash; Show this help</div>';
       document.getElementById('logModal').classList.add('visible');
@@ -2007,8 +2150,12 @@
       else if (key === 'f') { e.preventDefault(); var si = document.getElementById('podSearchInput'); if (si) si.focus(); }
       else if (key === 'h') toggleCmdHistory();
       else if (key === 'a') toggleAlerts();
+      else if (key === 't') toggleTheme();
+      else if (key === 'g') toggleFullscreen();
+      else if (key === 'b') toggleBulkSelect();
+      else if (key === 'p') runPingTest();
       else if (key === '?') showShortcuts();
-      else if (key === 'escape') { closeLogModal(); closeScreenModal(); closeModal(); }
+      else if (key === 'escape') { closeLogModal(); closeScreenModal(); closeModal(); closeNodeDetail(); }
     });
 
     // ─── Screen Viewer Functions ──────────────────────────────────────────
@@ -2268,14 +2415,181 @@
       if (currentLogNs && currentLogPod) viewPodLogs(currentLogNs, currentLogPod);
     }
 
+    // ─── Cluster Resource Summary ──────────────────────────────────────
+    function renderResourceSummary(metrics) {
+      if (!metrics || Object.keys(metrics).length === 0) return;
+      document.getElementById('resourceSummary').style.display = '';
+
+      var cpuVals = [], memUsed = 0, memTotal = 0, storUsed = 0, storTotal = 0, battVals = [];
+      for (var n in metrics) {
+        var m = metrics[n];
+        if (m.cpu && m.cpu.usage != null) cpuVals.push(m.cpu.usage);
+        if (m.memory) { memUsed += m.memory.usedMB || 0; memTotal += m.memory.totalMB || 0; }
+        if (m.storage) { storUsed += m.storage.usedMB || 0; storTotal += m.storage.totalMB || 0; }
+        if (m.battery) battVals.push(m.battery.level);
+      }
+
+      var avgCpu = cpuVals.length > 0 ? Math.round(cpuVals.reduce(function(a,b){return a+b},0)/cpuVals.length) : 0;
+      var memPct = memTotal > 0 ? Math.round((memUsed/memTotal)*100) : 0;
+      var storPct = storTotal > 0 ? Math.round((storUsed/storTotal)*100) : 0;
+      var avgBatt = battVals.length > 0 ? Math.round(battVals.reduce(function(a,b){return a+b},0)/battVals.length) : 0;
+
+      function barColor(pct) { return pct > 85 ? 'var(--red)' : pct > 60 ? 'var(--yellow)' : 'var(--green)'; }
+
+      document.getElementById('totalCpuVal').textContent = avgCpu + '%';
+      document.getElementById('totalCpuVal').style.color = barColor(avgCpu);
+      document.getElementById('totalCpuBar').style.width = avgCpu + '%';
+      document.getElementById('totalCpuBar').style.background = barColor(avgCpu);
+      document.getElementById('totalCpuDetail').textContent = cpuVals.length + ' nodes reporting';
+
+      document.getElementById('totalRamVal').textContent = memPct + '%';
+      document.getElementById('totalRamVal').style.color = barColor(memPct);
+      document.getElementById('totalRamBar').style.width = memPct + '%';
+      document.getElementById('totalRamBar').style.background = barColor(memPct);
+      document.getElementById('totalRamDetail').textContent = (memUsed/1024).toFixed(1) + ' / ' + (memTotal/1024).toFixed(1) + ' GB';
+
+      document.getElementById('totalStorVal').textContent = storPct + '%';
+      document.getElementById('totalStorVal').style.color = barColor(storPct);
+      document.getElementById('totalStorBar').style.width = storPct + '%';
+      document.getElementById('totalStorBar').style.background = barColor(storPct);
+      document.getElementById('totalStorDetail').textContent = (storUsed/1024).toFixed(1) + ' / ' + (storTotal/1024).toFixed(1) + ' GB';
+
+      document.getElementById('avgBattVal').textContent = battVals.length > 0 ? avgBatt + '%' : 'N/A';
+      document.getElementById('avgBattVal').style.color = avgBatt > 50 ? 'var(--green)' : avgBatt > 20 ? 'var(--yellow)' : 'var(--red)';
+      document.getElementById('avgBattBar').style.width = avgBatt + '%';
+      document.getElementById('avgBattBar').style.background = avgBatt > 50 ? 'var(--green)' : avgBatt > 20 ? 'var(--yellow)' : 'var(--red)';
+      document.getElementById('avgBattDetail').textContent = battVals.length + ' phones | min ' + (battVals.length > 0 ? Math.min.apply(null,battVals) : 0) + '% max ' + (battVals.length > 0 ? Math.max.apply(null,battVals) : 0) + '%';
+    }
+
+    // ─── Command History Search ─────────────────────────────────────────
+    var allCommands = [];
+
+    function filterCommandLog() {
+      var q = (document.getElementById('cmdSearchInput')?.value || '').toLowerCase();
+      if (!q) { renderCommandLogItems(allCommands); return; }
+      var filtered = allCommands.filter(function(c) {
+        return (c.command || '').toLowerCase().includes(q) ||
+          (c.target || '').toLowerCase().includes(q) ||
+          (c.status || '').toLowerCase().includes(q) ||
+          (c.message || '').toLowerCase().includes(q);
+      });
+      renderCommandLogItems(filtered);
+    }
+
+    function renderCommandLogItems(commands) {
+      var body = document.getElementById('cmdHistoryBody');
+      if (commands.length === 0) { body.innerHTML = '<div style="text-align:center;padding:0.5rem;color:var(--muted);font-size:0.8rem">No commands found</div>'; return; }
+      body.innerHTML = commands.slice(0, 30).map(function(c) {
+        var time = new Date(c.timestamp).toLocaleTimeString();
+        var urlStr = c.url ? ' (' + c.url.substring(0, 30) + ')' : '';
+        return '<div class="cmd-item">' +
+          '<span class="cmd-badge ' + c.status + '">' + c.status + '</span>' +
+          '<span style="flex:1"><strong>' + c.command + '</strong> &rarr; ' + (c.target || '') + urlStr + '</span>' +
+          '<span class="cmd-time">' + time + '</span></div>';
+      }).join('');
+    }
+
+    // ─── Alert Sound ─────────────────────────────────────────────────────
+    var alertSoundEnabled = localStorage.getItem('clusterAlertSound') === 'true';
+    var lastAlertCount = 0;
+
+    function toggleAlertSound() {
+      alertSoundEnabled = !alertSoundEnabled;
+      localStorage.setItem('clusterAlertSound', alertSoundEnabled);
+      updateSoundToggle();
+      showToast(alertSoundEnabled ? 'Alert sound enabled' : 'Alert sound disabled', 'info');
+    }
+
+    function updateSoundToggle() {
+      var btn = document.getElementById('soundToggle');
+      if (btn) {
+        btn.className = 'sound-toggle' + (alertSoundEnabled ? ' active' : '');
+        btn.innerHTML = '<i class="fa-solid ' + (alertSoundEnabled ? 'fa-volume-high' : 'fa-volume-xmark') + '"></i>';
+      }
+    }
+
+    function playAlertSound() {
+      if (!alertSoundEnabled) return;
+      try {
+        var ctx = new (window.AudioContext || window.webkitAudioContext)();
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 880;
+        osc.type = 'sine';
+        gain.gain.value = 0.15;
+        osc.start();
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+        osc.stop(ctx.currentTime + 0.3);
+      } catch (e) { /* silent */ }
+    }
+
+    // ─── Bulk Node Selection ─────────────────────────────────────────────
+    var bulkMode = false;
+    var selectedNodes = new Set();
+
+    function toggleBulkSelect() {
+      bulkMode = !bulkMode;
+      document.getElementById('bulkSelectBtn').style.background = bulkMode ? 'var(--brand)' : '';
+      document.getElementById('bulkSelectBtn').style.color = bulkMode ? 'var(--text)' : '';
+      document.getElementById('bulkBar').classList.toggle('visible', bulkMode);
+      if (!bulkMode) { selectedNodes.clear(); updateBulkCount(); }
+      // Re-render nodes to show/hide checkboxes
+      if (typeof lastRenderedNodes !== 'undefined' && lastRenderedNodes) renderNodes(lastRenderedNodes);
+    }
+
+    function toggleNodeSelect(name, event) {
+      event.stopPropagation();
+      if (selectedNodes.has(name)) selectedNodes.delete(name);
+      else selectedNodes.add(name);
+      updateBulkCount();
+      var cb = event.target;
+      cb.checked = selectedNodes.has(name);
+    }
+
+    function updateBulkCount() {
+      document.getElementById('bulkCount').textContent = selectedNodes.size;
+    }
+
+    function clearBulkSelect() {
+      selectedNodes.clear();
+      updateBulkCount();
+      document.querySelectorAll('.node-checkbox').forEach(function(cb) { cb.checked = false; });
+    }
+
+    async function bulkCommand(cmd) {
+      if (selectedNodes.size === 0) { showToast('No nodes selected', 'error'); return; }
+      if (!savedPassword) { pendingCommand = cmd; document.getElementById('passwordModal').classList.add('visible'); document.getElementById('passwordInput').focus(); return; }
+      showToast('Sending ' + cmd + ' to ' + selectedNodes.size + ' nodes...', 'info');
+      var targets = Array.from(selectedNodes);
+      try {
+        var promises = targets.map(function(n) {
+          return sendToBackend({ command: cmd, target: n, password: savedPassword });
+        });
+        var results = await Promise.all(promises);
+        var ok = results.filter(function(r) { return r.success; }).length;
+        showToast(cmd + ': ' + ok + '/' + targets.length + ' succeeded', ok > 0 ? 'success' : 'error');
+        setTimeout(loadClusterStatus, 3000);
+      } catch (e) { showToast('Error: ' + e.message, 'error'); }
+    }
+
+    // ─── Fullscreen Mode ─────────────────────────────────────────────────
+    function toggleFullscreen() {
+      document.body.classList.toggle('fullscreen-mode');
+      var isFs = document.body.classList.contains('fullscreen-mode');
+      document.getElementById('fullscreenBtn').innerHTML = '<i class="fa-solid ' + (isFs ? 'fa-compress' : 'fa-expand') + '"></i>';
+    }
+
     // ─── Init ──────────────────────────────────────────────────────────────
 
+    updateSoundToggle();
     initTheme();
     initApiConfig();
     loadClusterStatus();
     setInterval(loadClusterStatus, 10000);
     setInterval(function() { if (apiEndpoint) loadScreens(); }, 30000);
-    setInterval(function() { if (apiEndpoint) { loadAlerts(); loadCommandLog(); loadDeployments(); } }, 15000);
+    setInterval(function() { if (apiEndpoint) { loadAlerts(); loadCommandLog(); loadDeployments(); loadRestartTrends(); } }, 15000);
   </script>
 </body>
 </html>
