@@ -7,6 +7,7 @@ const http = require('http');
 const https = require('https');
 const { execSync, exec } = require('child_process');
 const url = require('url');
+const os = require('os');
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -61,7 +62,7 @@ function runBinary(cmd, timeoutMs = 10000) {
 
 function runAsync(cmd, timeoutMs = 10000) {
   return new Promise(resolve => {
-    const child = exec(cmd, { timeout: timeoutMs, encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
+    exec(cmd, { timeout: timeoutMs, encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) resolve({ ok: false, stdout: (stdout || '').trim(), stderr: (stderr || err.message || '').trim() });
       else resolve({ ok: true, stdout: (stdout || '').trim(), stderr: (stderr || '').trim() });
     });
@@ -70,7 +71,7 @@ function runAsync(cmd, timeoutMs = 10000) {
 
 function runAsyncBinary(cmd, timeoutMs = 10000) {
   return new Promise(resolve => {
-    const child = exec(cmd, { timeout: timeoutMs, maxBuffer: 50 * 1024 * 1024, encoding: 'buffer' }, (err, stdout, stderr) => {
+    exec(cmd, { timeout: timeoutMs, maxBuffer: 50 * 1024 * 1024, encoding: 'buffer' }, (err, stdout, stderr) => {
       if (err) resolve({ ok: false, data: null, stderr: (stderr || err.message || '').toString().trim() });
       else resolve({ ok: true, data: stdout });
     });
@@ -78,7 +79,6 @@ function runAsyncBinary(cmd, timeoutMs = 10000) {
 }
 
 function shellEscape(s) {
-  // Use single quotes and escape any embedded single quotes
   return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
@@ -98,7 +98,6 @@ function adbExec(nodeKey, cmd) {
   const node = CONFIG.phoneNodes[nodeKey];
   if (!node) return { ok: false, stderr: 'Unknown node' };
   if (node.adb) return run(`adb -s ${node.adb} ${cmd}`, 10000);
-  // Fallback: try TCP ADB
   return run(`adb -s ${node.ip}:5555 ${cmd}`, 10000);
 }
 
@@ -165,18 +164,273 @@ function initAdbDevices() {
   console.log(`[ADB] Mapped ${mapped.length}/${CONFIG.phoneNodeNames.length} phone nodes`);
 }
 
-// ─── Status Cache ────────────────────────────────────────────────────────────
+// ─── Data Stores (In-Memory) ────────────────────────────────────────────────
 
+// Status cache
 let statusCache = { data: null, timestamp: 0 };
-const STATUS_CACHE_TTL = 5000; // 5 seconds
+const STATUS_CACHE_TTL = 5000;
 
 let screensCache = { data: null, timestamp: 0 };
-const SCREENS_CACHE_TTL = 15000; // 15 seconds
+const SCREENS_CACHE_TTL = 15000;
+
+// Command history log (ring buffer, last 100 commands)
+const MAX_COMMAND_LOG = 100;
+const commandLog = [];
+
+function logCommand(entry) {
+  commandLog.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    timestamp: new Date().toISOString(),
+    ...entry,
+  });
+  if (commandLog.length > MAX_COMMAND_LOG) commandLog.shift();
+}
+
+// Node uptime tracking
+const nodeHistory = {};  // { nodeName: { lastSeen, uptimeStart, downtimeEvents: [{start, end}], totalUptime } }
+
+function updateNodeTracking(nodes) {
+  const now = Date.now();
+  for (const node of nodes) {
+    if (!nodeHistory[node.name]) {
+      nodeHistory[node.name] = {
+        lastSeen: now,
+        lastStatus: node.status,
+        uptimeStart: node.status === 'Ready' ? now : null,
+        downtimeEvents: [],
+        statusChanges: [],
+      };
+    }
+    const h = nodeHistory[node.name];
+    // Detect status change
+    if (h.lastStatus !== node.status) {
+      h.statusChanges.push({ from: h.lastStatus, to: node.status, at: new Date().toISOString() });
+      if (h.statusChanges.length > 50) h.statusChanges.shift();
+
+      if (node.status === 'Ready') {
+        // Node came back up
+        h.uptimeStart = now;
+        if (h.downtimeEvents.length > 0) {
+          const last = h.downtimeEvents[h.downtimeEvents.length - 1];
+          if (!last.end) last.end = new Date().toISOString();
+        }
+      } else {
+        // Node went down
+        h.uptimeStart = null;
+        h.downtimeEvents.push({ start: new Date().toISOString(), end: null });
+        if (h.downtimeEvents.length > 20) h.downtimeEvents.shift();
+      }
+    }
+    h.lastSeen = now;
+    h.lastStatus = node.status;
+  }
+}
+
+// Mining hashrate history (ring buffer, stores every poll for 24h at 30s intervals = ~2880 entries)
+const MAX_MINING_HISTORY = 2880;
+const miningHistory = [];
+
+function recordMiningSnapshot(stats) {
+  miningHistory.push({
+    timestamp: new Date().toISOString(),
+    totalHashrate: stats.totalHashrateRaw || 0,
+    minersRunning: stats.minersRunning || 0,
+    workers: (stats.workers || []).map(w => ({ name: w.name, hashrate: w.hashrateRaw, status: w.status })),
+  });
+  if (miningHistory.length > MAX_MINING_HISTORY) miningHistory.shift();
+}
+
+// Alert system
+const MAX_ALERTS = 50;
+const alerts = [];
+let lastAlertCheck = {};
+
+function addAlert(severity, title, message, nodeOrPod) {
+  const key = `${title}:${nodeOrPod || ''}`;
+  const now = Date.now();
+  // Deduplicate: don't fire the same alert within 5 minutes
+  if (lastAlertCheck[key] && (now - lastAlertCheck[key]) < 300000) return;
+  lastAlertCheck[key] = now;
+
+  alerts.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    timestamp: new Date().toISOString(),
+    severity, // 'critical', 'warning', 'info'
+    title,
+    message,
+    node: nodeOrPod || null,
+    acknowledged: false,
+  });
+  if (alerts.length > MAX_ALERTS) alerts.shift();
+}
+
+function checkAlerts(data) {
+  // Node down alerts
+  for (const node of (data.nodes || [])) {
+    if (node.status !== 'Ready') {
+      addAlert('critical', 'Node Down', `${node.name} is ${node.status}`, node.name);
+    }
+  }
+
+  // Pod crash loop detection
+  for (const pod of (data.pods || [])) {
+    if (pod.restarts > 10) {
+      addAlert('warning', 'Pod CrashLoop', `${pod.name} has ${pod.restarts} restarts`, pod.name);
+    }
+    if (pod.status === 'Failed') {
+      addAlert('warning', 'Pod Failed', `${pod.name} in ${pod.namespace} is Failed`, pod.name);
+    }
+  }
+
+  // Mining alerts
+  if (data.mining) {
+    if (data.mining.minersRunning === 0 && data.mining.minersTotal > 0) {
+      addAlert('warning', 'Mining Stopped', 'All miners are offline');
+    }
+    // Hashrate drop detection
+    if (miningHistory.length > 10) {
+      const recent = miningHistory[miningHistory.length - 1];
+      const earlier = miningHistory[miningHistory.length - 10];
+      if (earlier && earlier.totalHashrate > 0 && recent.totalHashrate < earlier.totalHashrate * 0.5) {
+        addAlert('warning', 'Hashrate Drop', `Hashrate dropped >50%: ${formatHashrate(earlier.totalHashrate)} -> ${formatHashrate(recent.totalHashrate)}`);
+      }
+    }
+  }
+}
+
+// ─── Resource Metrics ────────────────────────────────────────────────────────
+
+let metricsCache = { data: null, timestamp: 0 };
+const METRICS_CACHE_TTL = 10000;
+
+async function gatherNodeMetrics() {
+  const now = Date.now();
+  if (metricsCache.data && (now - metricsCache.timestamp) < METRICS_CACHE_TTL) {
+    return metricsCache.data;
+  }
+
+  const metrics = {};
+
+  // Gather metrics from all phone nodes in parallel
+  const phoneMetrics = await Promise.all(
+    CONFIG.phoneNodeNames.map(async name => {
+      const m = { cpu: null, memory: null, temp: null, battery: null, storage: null };
+
+      // CPU + Memory + Temp via SSH (single command for efficiency)
+      const sshResult = await sshExecAsync(name,
+        'echo "CPU:$(top -bn1 2>/dev/null | head -3 | grep -i cpu | head -1)"; ' +
+        'echo "MEM:$(free -m 2>/dev/null | grep Mem)"; ' +
+        'echo "TEMP:$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0)"; ' +
+        'echo "DISK:$(df -m / 2>/dev/null | tail -1)"'
+      );
+
+      if (sshResult.ok) {
+        const lines = sshResult.stdout.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('CPU:')) {
+            // Parse top output for CPU usage
+            const cpuMatch = line.match(/(\d+)%\s*(idle|id)/i);
+            if (cpuMatch) m.cpu = { usage: 100 - parseInt(cpuMatch[1]), cores: null };
+            else {
+              const usrMatch = line.match(/(\d+)%\s*usr/i);
+              const sysMatch = line.match(/(\d+)%\s*sys/i);
+              if (usrMatch || sysMatch) {
+                m.cpu = { usage: (parseInt(usrMatch?.[1] || 0)) + (parseInt(sysMatch?.[1] || 0)), cores: null };
+              }
+            }
+          }
+          if (line.startsWith('MEM:')) {
+            const parts = line.replace('MEM:', '').trim().split(/\s+/);
+            if (parts.length >= 3) {
+              m.memory = { totalMB: parseInt(parts[1]) || 0, usedMB: parseInt(parts[2]) || 0 };
+              if (m.memory.totalMB > 0) m.memory.percent = Math.round((m.memory.usedMB / m.memory.totalMB) * 100);
+            }
+          }
+          if (line.startsWith('TEMP:')) {
+            const rawTemp = parseInt(line.replace('TEMP:', '').trim());
+            if (rawTemp > 0) m.temp = { celsius: rawTemp > 1000 ? Math.round(rawTemp / 1000) : rawTemp };
+          }
+          if (line.startsWith('DISK:')) {
+            const parts = line.replace('DISK:', '').trim().split(/\s+/);
+            if (parts.length >= 4) {
+              m.storage = {
+                totalMB: parseInt(parts[1]) || 0,
+                usedMB: parseInt(parts[2]) || 0,
+                availMB: parseInt(parts[3]) || 0,
+                percent: parseInt(parts[4]) || 0,
+              };
+            }
+          }
+        }
+      }
+
+      // Battery via ADB (phones only)
+      const battResult = await adbExecAsync(name, 'shell dumpsys battery 2>/dev/null');
+      if (battResult.ok && battResult.stdout) {
+        const levelMatch = battResult.stdout.match(/level:\s*(\d+)/);
+        const statusMatch = battResult.stdout.match(/status:\s*(\d+)/);
+        const tempMatch = battResult.stdout.match(/temperature:\s*(\d+)/);
+        if (levelMatch) {
+          const statusCode = parseInt(statusMatch?.[1] || 0);
+          m.battery = {
+            level: parseInt(levelMatch[1]),
+            charging: statusCode === 2 || statusCode === 5, // 2=Charging, 5=Full
+            temperature: tempMatch ? Math.round(parseInt(tempMatch[1]) / 10) : null,
+          };
+        }
+      }
+
+      return { name, metrics: m };
+    })
+  );
+
+  for (const pm of phoneMetrics) {
+    metrics[pm.name] = pm.metrics;
+  }
+
+  // AORUS (local) metrics
+  const localCpu = run("top -bn1 | head -3 | grep -i cpu | head -1", 5000);
+  const localMem = run("free -m | grep Mem", 3000);
+  const localTemp = run("cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0", 3000);
+  const localDisk = run("df -m / | tail -1", 3000);
+
+  const aorus = { cpu: null, memory: null, temp: null, storage: null };
+  if (localCpu.ok) {
+    const cpuMatch = localCpu.stdout.match(/(\d+[\.,]\d+)\s*(idle|id)/i);
+    if (cpuMatch) aorus.cpu = { usage: Math.round(100 - parseFloat(cpuMatch[1].replace(',', '.'))), cores: os.cpus().length };
+  }
+  if (localMem.ok) {
+    const parts = localMem.stdout.split(/\s+/);
+    if (parts.length >= 3) {
+      aorus.memory = { totalMB: parseInt(parts[1]) || 0, usedMB: parseInt(parts[2]) || 0 };
+      if (aorus.memory.totalMB > 0) aorus.memory.percent = Math.round((aorus.memory.usedMB / aorus.memory.totalMB) * 100);
+    }
+  }
+  if (localTemp.ok) {
+    const rawTemp = parseInt(localTemp.stdout);
+    if (rawTemp > 0) aorus.temp = { celsius: rawTemp > 1000 ? Math.round(rawTemp / 1000) : rawTemp };
+  }
+  if (localDisk.ok) {
+    const parts = localDisk.stdout.split(/\s+/);
+    if (parts.length >= 4) {
+      aorus.storage = { totalMB: parseInt(parts[1]) || 0, usedMB: parseInt(parts[2]) || 0, availMB: parseInt(parts[3]) || 0, percent: parseInt(parts[4]) || 0 };
+    }
+  }
+  metrics['aorus-node'] = aorus;
+
+  metricsCache = { data: metrics, timestamp: now };
+  return metrics;
+}
 
 // ─── Endpoint Handlers ──────────────────────────────────────────────────────
 
 async function handleHealth(req, res) {
-  sendJson(res, 200, { status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+  sendJson(res, 200, {
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    memoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+  });
 }
 
 async function handleStatus(req, res) {
@@ -213,6 +467,9 @@ async function handleStatus(req, res) {
     errors.push('kubectl get nodes failed: ' + nodesResult.stderr);
   }
 
+  // Track node uptime
+  updateNodeTracking(nodes);
+
   // Kubectl: pods
   const podsResult = run('kubectl get pods -A -o json', 15000);
   if (podsResult.ok) {
@@ -225,6 +482,8 @@ async function handleStatus(req, res) {
         node: (p.spec.nodeName || ''),
         restarts: ((p.status.containerStatuses || [])[0] || {}).restartCount || 0,
         ready: (p.status.containerStatuses || []).every(c => c.ready) ? 'True' : 'False',
+        containers: (p.spec.containers || []).map(c => c.name),
+        age: p.metadata.creationTimestamp || null,
       }));
     } catch (e) { errors.push('Failed to parse pods: ' + e.message); }
   } else {
@@ -290,10 +549,36 @@ async function handleStatus(req, res) {
 
   // Mining stats
   const mining = await gatherMiningStats();
+  recordMiningSnapshot(mining);
+
+  // Resource metrics (gathered async in background, use cached or fetch)
+  const metrics = await gatherNodeMetrics();
 
   // Summary
   const nodesReady = nodes.filter(n => n.status === 'Ready').length;
   const podsRunning = pods.filter(p => p.status === 'Running').length;
+  const podsFailed = pods.filter(p => p.status === 'Failed').length;
+  const podsPending = pods.filter(p => p.status === 'Pending').length;
+  const totalRestarts = pods.reduce((sum, p) => sum + (p.restarts || 0), 0);
+
+  // Calculate health score (0-100)
+  let healthScore = 100;
+  if (nodes.length > 0) {
+    const nodeHealth = (nodesReady / nodes.length) * 40; // 40% weight
+    healthScore = nodeHealth;
+  }
+  if (pods.length > 0) {
+    const podHealth = (podsRunning / pods.length) * 30; // 30% weight
+    healthScore += podHealth;
+  } else {
+    healthScore += 30;
+  }
+  if (podsFailed === 0) healthScore += 15; // 15% for no failures
+  else healthScore += Math.max(0, 15 - (podsFailed * 3));
+  if (totalRestarts < 10) healthScore += 15; // 15% for low restarts
+  else if (totalRestarts < 50) healthScore += 8;
+  else healthScore += 2;
+  healthScore = Math.min(100, Math.max(0, Math.round(healthScore)));
 
   const data = {
     lastUpdate: new Date().toISOString(),
@@ -302,14 +587,22 @@ async function handleStatus(req, res) {
     services,
     network: { tailscale, wifi, localIP },
     mining,
+    metrics,
     summary: {
       nodesReady,
       nodesTotal: nodes.length,
       podsRunning,
       podsTotal: pods.length,
+      podsFailed,
+      podsPending,
+      totalRestarts,
+      healthScore,
     },
     errors: errors.length > 0 ? errors : undefined,
   };
+
+  // Check for alerts
+  checkAlerts(data);
 
   statusCache = { data, timestamp: now };
   sendJson(res, 200, data);
@@ -349,7 +642,6 @@ async function handleScreen(req, res, deviceName) {
     return;
   }
 
-  // Return error
   sendJson(res, 503, { error: 'Could not capture screen', device: deviceName, status: 'offline' });
 }
 
@@ -364,7 +656,6 @@ async function handleScreens(req, res) {
       const node = CONFIG.phoneNodes[name];
       const serial = node.adb || `${node.ip}:5555`;
 
-      // Try ADB
       const result = await runAsyncBinary(`adb -s ${serial} exec-out screencap -p`, 8000);
       if (result.ok && result.data && result.data.length > 100) {
         return {
@@ -375,7 +666,6 @@ async function handleScreens(req, res) {
         };
       }
 
-      // Fallback: SSH fbgrab
       const fbResult = await runAsyncBinary(
         `ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes ${node.ssh} 'fbgrab -' 2>/dev/null`, 8000
       );
@@ -400,8 +690,8 @@ async function handleScreens(req, res) {
 async function handleCommand(req, res, body) {
   const { command, target, password: pwd, url: browseUrl } = body;
 
-  // Validate password
   if (pwd !== CONFIG.password) {
+    logCommand({ command, target, status: 'denied', reason: 'Invalid password' });
     return sendJson(res, 401, { error: 'Invalid password' });
   }
 
@@ -418,6 +708,7 @@ async function handleCommand(req, res, body) {
   if (command === 'refresh-adb') {
     initAdbDevices();
     const mapped = CONFIG.phoneNodeNames.filter(n => CONFIG.phoneNodes[n].adb);
+    logCommand({ command, target: 'adb', status: 'success', message: `${mapped.length} devices found` });
     return sendJson(res, 200, { success: true, message: `ADB refreshed: ${mapped.length} devices found`, devices: mapped });
   }
 
@@ -435,15 +726,26 @@ async function handleCommand(req, res, body) {
   }));
 
   const succeeded = Object.values(results).filter(r => r.ok).length;
+  const msg = `${command} executed on ${succeeded}/${targets.length} nodes`;
+
+  logCommand({
+    command,
+    target: target || 'all',
+    url: browseUrl || undefined,
+    status: succeeded > 0 ? 'success' : 'failed',
+    message: msg,
+    succeeded,
+    total: targets.length,
+  });
+
   sendJson(res, 200, {
     success: succeeded > 0,
-    message: `${command} executed on ${succeeded}/${targets.length} nodes`,
+    message: msg,
     results,
   });
 }
 
 function resolveTargets(target, command) {
-  // Mining and browse commands only apply to phone nodes
   const miningBrowseCommands = ['mining-start', 'mining-stop', 'browse', 'wake', 'sleep'];
 
   if (target === 'all') {
@@ -496,13 +798,10 @@ async function executeOnNode(name, command, browseUrl) {
     }
     case 'browse': {
       if (!isPhone) return { ok: false, error: 'Not a phone node' };
-      // Validate URL to prevent injection
       try { new URL(browseUrl); } catch { return { ok: false, error: 'Invalid URL' }; }
       const safeUrl = browseUrl.replace(/[^a-zA-Z0-9:/.?&=%#@+~_-]/g, '');
-      // Try ADB intent first
       let r = await adbExecAsync(name, `shell am start -a android.intent.action.VIEW -d '${safeUrl}'`);
       if (r.ok) return { ok: true, output: r.stdout };
-      // Fallback: SSH launch browser
       r = await sshExecAsync(name, `DISPLAY=:0 xdg-open '${safeUrl}' 2>/dev/null || firefox '${safeUrl}' 2>/dev/null &`);
       return { ok: r.ok, output: r.stdout || r.stderr };
     }
@@ -511,17 +810,237 @@ async function executeOnNode(name, command, browseUrl) {
   }
 }
 
+// ─── Pod Management ──────────────────────────────────────────────────────────
+
+async function handlePodLogs(req, res, namespace, podName, query) {
+  // Validate names to prevent injection
+  if (!/^[a-zA-Z0-9._-]+$/.test(namespace) || !/^[a-zA-Z0-9._-]+$/.test(podName)) {
+    return sendJson(res, 400, { error: 'Invalid pod or namespace name' });
+  }
+
+  const tail = Math.min(parseInt(query.tail) || 100, 500);
+  const container = query.container || '';
+  const containerArg = container && /^[a-zA-Z0-9._-]+$/.test(container) ? `-c ${container}` : '';
+
+  const result = await runAsync(`kubectl logs ${podName} -n ${namespace} --tail=${tail} ${containerArg}`, 15000);
+
+  if (result.ok) {
+    sendJson(res, 200, {
+      pod: podName,
+      namespace,
+      container: container || 'default',
+      lines: result.stdout.split('\n'),
+      tail,
+    });
+  } else {
+    sendJson(res, 500, { error: 'Failed to get logs', details: result.stderr });
+  }
+}
+
+async function handlePodDescribe(req, res, namespace, podName) {
+  if (!/^[a-zA-Z0-9._-]+$/.test(namespace) || !/^[a-zA-Z0-9._-]+$/.test(podName)) {
+    return sendJson(res, 400, { error: 'Invalid pod or namespace name' });
+  }
+
+  const result = await runAsync(`kubectl describe pod ${podName} -n ${namespace}`, 15000);
+  if (result.ok) {
+    sendJson(res, 200, { pod: podName, namespace, describe: result.stdout });
+  } else {
+    sendJson(res, 500, { error: 'Failed to describe pod', details: result.stderr });
+  }
+}
+
+async function handlePodDelete(req, res, body) {
+  const { namespace, pod, password: pwd, gracePeriod } = body;
+
+  if (pwd !== CONFIG.password) {
+    logCommand({ command: 'pod-delete', target: `${namespace}/${pod}`, status: 'denied' });
+    return sendJson(res, 401, { error: 'Invalid password' });
+  }
+
+  if (!namespace || !pod) {
+    return sendJson(res, 400, { error: 'Namespace and pod name required' });
+  }
+
+  if (!/^[a-zA-Z0-9._-]+$/.test(namespace) || !/^[a-zA-Z0-9._-]+$/.test(pod)) {
+    return sendJson(res, 400, { error: 'Invalid pod or namespace name' });
+  }
+
+  const grace = Math.min(Math.max(parseInt(gracePeriod) || 30, 0), 300);
+  const result = await runAsync(`kubectl delete pod ${pod} -n ${namespace} --grace-period=${grace}`, 30000);
+
+  logCommand({
+    command: 'pod-delete',
+    target: `${namespace}/${pod}`,
+    status: result.ok ? 'success' : 'failed',
+    message: result.ok ? 'Pod deleted' : result.stderr,
+  });
+
+  if (result.ok) {
+    sendJson(res, 200, { success: true, message: `Pod ${pod} deleted`, output: result.stdout });
+  } else {
+    sendJson(res, 500, { error: 'Failed to delete pod', details: result.stderr });
+  }
+}
+
+// ─── Deployment Scaling ─────────────────────────────────────────────────────
+
+async function handleScale(req, res, body) {
+  const { namespace, deployment, replicas, password: pwd } = body;
+
+  if (pwd !== CONFIG.password) {
+    return sendJson(res, 401, { error: 'Invalid password' });
+  }
+
+  if (!namespace || !deployment || replicas === undefined) {
+    return sendJson(res, 400, { error: 'Namespace, deployment, and replicas required' });
+  }
+
+  if (!/^[a-zA-Z0-9._-]+$/.test(namespace) || !/^[a-zA-Z0-9._-]+$/.test(deployment)) {
+    return sendJson(res, 400, { error: 'Invalid deployment or namespace name' });
+  }
+
+  const replicaCount = Math.min(Math.max(parseInt(replicas) || 0, 0), 50);
+  const result = await runAsync(`kubectl scale deployment ${deployment} -n ${namespace} --replicas=${replicaCount}`, 15000);
+
+  logCommand({
+    command: 'scale',
+    target: `${namespace}/${deployment}`,
+    status: result.ok ? 'success' : 'failed',
+    message: `Scaled to ${replicaCount} replicas`,
+  });
+
+  if (result.ok) {
+    sendJson(res, 200, { success: true, message: `Scaled ${deployment} to ${replicaCount} replicas` });
+  } else {
+    sendJson(res, 500, { error: 'Failed to scale', details: result.stderr });
+  }
+}
+
+// ─── Node Operations ────────────────────────────────────────────────────────
+
+async function handleNodeDrain(req, res, body) {
+  const { node, password: pwd } = body;
+
+  if (pwd !== CONFIG.password) {
+    return sendJson(res, 401, { error: 'Invalid password' });
+  }
+
+  if (!node || !/^[a-zA-Z0-9._-]+$/.test(node)) {
+    return sendJson(res, 400, { error: 'Invalid node name' });
+  }
+
+  const result = await runAsync(`kubectl drain ${node} --ignore-daemonsets --delete-emptydir-data --timeout=60s`, 90000);
+
+  logCommand({
+    command: 'node-drain',
+    target: node,
+    status: result.ok ? 'success' : 'failed',
+    message: result.ok ? 'Node drained' : result.stderr,
+  });
+
+  sendJson(res, result.ok ? 200 : 500, {
+    success: result.ok,
+    message: result.ok ? `Node ${node} drained` : 'Failed to drain node',
+    output: result.stdout || result.stderr,
+  });
+}
+
+async function handleNodeUncordon(req, res, body) {
+  const { node, password: pwd } = body;
+
+  if (pwd !== CONFIG.password) {
+    return sendJson(res, 401, { error: 'Invalid password' });
+  }
+
+  if (!node || !/^[a-zA-Z0-9._-]+$/.test(node)) {
+    return sendJson(res, 400, { error: 'Invalid node name' });
+  }
+
+  const result = await runAsync(`kubectl uncordon ${node}`, 15000);
+
+  logCommand({
+    command: 'node-uncordon',
+    target: node,
+    status: result.ok ? 'success' : 'failed',
+  });
+
+  sendJson(res, result.ok ? 200 : 500, {
+    success: result.ok,
+    message: result.ok ? `Node ${node} uncordoned` : 'Failed to uncordon node',
+  });
+}
+
+// ─── History & Alerts Endpoints ─────────────────────────────────────────────
+
+function handleCommandLog(req, res) {
+  sendJson(res, 200, { commands: [...commandLog].reverse() });
+}
+
+function handleAlerts(req, res) {
+  sendJson(res, 200, { alerts: [...alerts].reverse() });
+}
+
+function handleAlertAck(req, res, body) {
+  const { id } = body;
+  const alert = alerts.find(a => a.id === id);
+  if (alert) {
+    alert.acknowledged = true;
+    sendJson(res, 200, { success: true });
+  } else {
+    sendJson(res, 404, { error: 'Alert not found' });
+  }
+}
+
+function handleMiningHistory(req, res) {
+  sendJson(res, 200, { history: miningHistory });
+}
+
+function handleNodeHistory(req, res) {
+  const summary = {};
+  for (const [name, h] of Object.entries(nodeHistory)) {
+    summary[name] = {
+      lastStatus: h.lastStatus,
+      lastSeen: new Date(h.lastSeen).toISOString(),
+      statusChanges: h.statusChanges,
+      downtimeEvents: h.downtimeEvents,
+    };
+  }
+  sendJson(res, 200, { nodes: summary });
+}
+
+// ─── Export ──────────────────────────────────────────────────────────────────
+
+async function handleExport(req, res) {
+  const data = statusCache.data || {};
+  const exportData = {
+    exportedAt: new Date().toISOString(),
+    cluster: data,
+    commandLog: [...commandLog].reverse().slice(0, 50),
+    alerts: [...alerts].reverse(),
+    miningHistory: miningHistory.slice(-100),
+    nodeHistory: {},
+  };
+  for (const [name, h] of Object.entries(nodeHistory)) {
+    exportData.nodeHistory[name] = {
+      lastStatus: h.lastStatus,
+      statusChanges: h.statusChanges,
+    };
+  }
+  sendJson(res, 200, exportData);
+}
+
+// ─── Mining Stats ────────────────────────────────────────────────────────────
+
 async function handleMiningStats(req, res) {
   const stats = await gatherMiningStats();
   sendJson(res, 200, stats);
 }
 
 async function gatherMiningStats() {
-  // Query xmrig HTTP API on each phone node
   const workers = await Promise.all(
     CONFIG.phoneNodeNames.map(async name => {
       const node = CONFIG.phoneNodes[name];
-      const headers = CONFIG.xmrigToken ? { 'Authorization': 'Bearer ' + CONFIG.xmrigToken } : {};
       const result = await httpGetJson(node.ip, CONFIG.xmrigPort, '/1/summary', 3000);
 
       if (result.ok && result.data) {
@@ -534,6 +1053,9 @@ async function gatherMiningStats() {
           status: 'mining',
           uptime: d.uptime ? formatUptime(d.uptime) : null,
           accepted: d.results ? d.results.shares_good || 0 : 0,
+          rejected: d.results ? d.results.shares_total - d.results.shares_good || 0 : 0,
+          algo: d.algo || null,
+          threads: d.cpu ? d.cpu.threads || null : null,
         };
       }
 
@@ -543,20 +1065,23 @@ async function gatherMiningStats() {
 
   const minersRunning = workers.filter(w => w.status === 'mining').length;
   const totalHashrate = workers.reduce((sum, w) => sum + w.hashrateRaw, 0);
+  const totalAccepted = workers.reduce((sum, w) => sum + (w.accepted || 0), 0);
+  const totalRejected = workers.reduce((sum, w) => sum + (w.rejected || 0), 0);
 
   // Query pool API for earnings
   let poolBalance = null;
   let totalPaid = null;
+  let poolHashrate = null;
   if (CONFIG.xmrWallet) {
     const poolResult = await httpGetJson('supportxmr.com', 443, `/api/miner/${CONFIG.xmrWallet}/stats`, 5000);
     if (poolResult.ok && poolResult.data) {
       const pd = poolResult.data;
       poolBalance = pd.amtDue ? (pd.amtDue / 1e12).toFixed(6) + ' XMR' : null;
       totalPaid = pd.amtPaid ? (pd.amtPaid / 1e12).toFixed(6) + ' XMR' : null;
+      poolHashrate = pd.hash ? formatHashrate(pd.hash) : null;
     }
   }
 
-  // Estimate earnings (rough: ~$0.00005 per H/s per day at typical difficulty)
   const dailyUsd = totalHashrate * 0.00005;
   const monthlyUsd = dailyUsd * 30;
 
@@ -566,8 +1091,11 @@ async function gatherMiningStats() {
     minersTotal: CONFIG.phoneNodeNames.length,
     totalHashrate: formatHashrate(totalHashrate),
     totalHashrateRaw: totalHashrate,
+    totalAccepted,
+    totalRejected,
     coin: 'XMR',
     pool: CONFIG.xmrPool,
+    poolHashrate,
     estimatedDaily: '$' + dailyUsd.toFixed(2),
     estimatedMonthly: '$' + monthlyUsd.toFixed(2),
     poolBalance,
@@ -583,8 +1111,10 @@ function formatHashrate(h) {
 }
 
 function formatUptime(seconds) {
-  const h = Math.floor(seconds / 3600);
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
   const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
@@ -601,18 +1131,17 @@ function setCors(req, res) {
   if (CONFIG.allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Max-Age', '86400');
 }
 
 function checkAuth(req) {
-  if (!CONFIG.apiToken) return true; // No token configured = auth disabled
+  if (!CONFIG.apiToken) return true;
   const authHeader = req.headers.authorization || '';
   if (authHeader.startsWith('Bearer ')) {
     return authHeader.slice(7) === CONFIG.apiToken;
   }
-  // Also check query param
   const parsed = url.parse(req.url, true);
   return parsed.query.token === CONFIG.apiToken;
 }
@@ -657,26 +1186,43 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 401, { error: 'Invalid or missing API token' });
     }
 
-    if (req.method === 'GET' && path === '/api/status') {
-      return await handleStatus(req, res);
+    // ─── GET endpoints ───
+    if (req.method === 'GET') {
+      if (path === '/api/status') return await handleStatus(req, res);
+      if (path.startsWith('/api/screen/')) {
+        const device = path.split('/api/screen/')[1];
+        return await handleScreen(req, res, device);
+      }
+      if (path === '/api/screens') return await handleScreens(req, res);
+      if (path === '/api/mining/stats') return await handleMiningStats(req, res);
+      if (path === '/api/mining/history') return handleMiningHistory(req, res);
+      if (path === '/api/metrics') {
+        const metrics = await gatherNodeMetrics();
+        return sendJson(res, 200, { metrics });
+      }
+      if (path === '/api/commands/log') return handleCommandLog(req, res);
+      if (path === '/api/alerts') return handleAlerts(req, res);
+      if (path === '/api/nodes/history') return handleNodeHistory(req, res);
+      if (path === '/api/export') return await handleExport(req, res);
+
+      // Pod logs: /api/pods/:namespace/:pod/logs?tail=100&container=name
+      const logMatch = path.match(/^\/api\/pods\/([^/]+)\/([^/]+)\/logs$/);
+      if (logMatch) return await handlePodLogs(req, res, logMatch[1], logMatch[2], parsed.query);
+
+      // Pod describe: /api/pods/:namespace/:pod/describe
+      const descMatch = path.match(/^\/api\/pods\/([^/]+)\/([^/]+)\/describe$/);
+      if (descMatch) return await handlePodDescribe(req, res, descMatch[1], descMatch[2]);
     }
 
-    if (req.method === 'GET' && path.startsWith('/api/screen/')) {
-      const device = path.split('/api/screen/')[1];
-      return await handleScreen(req, res, device);
-    }
-
-    if (req.method === 'GET' && path === '/api/screens') {
-      return await handleScreens(req, res);
-    }
-
-    if (req.method === 'GET' && path === '/api/mining/stats') {
-      return await handleMiningStats(req, res);
-    }
-
-    if (req.method === 'POST' && path === '/api/command') {
+    // ─── POST endpoints ───
+    if (req.method === 'POST') {
       const body = await readBody(req);
-      return await handleCommand(req, res, body);
+      if (path === '/api/command') return await handleCommand(req, res, body);
+      if (path === '/api/pods/delete') return await handlePodDelete(req, res, body);
+      if (path === '/api/scale') return await handleScale(req, res, body);
+      if (path === '/api/nodes/drain') return await handleNodeDrain(req, res, body);
+      if (path === '/api/nodes/uncordon') return await handleNodeUncordon(req, res, body);
+      if (path === '/api/alerts/ack') return handleAlertAck(req, res, body);
     }
 
     sendJson(res, 404, { error: 'Not found' });
@@ -697,4 +1243,5 @@ server.listen(CONFIG.port, () => {
   console.log(`[CLUSTER-API] XMR wallet: ${CONFIG.xmrWallet || 'not configured'}`);
   const mapped = CONFIG.phoneNodeNames.filter(n => CONFIG.phoneNodes[n].adb);
   console.log(`[CLUSTER-API] ADB devices: ${mapped.length}/${CONFIG.phoneNodeNames.length}`);
+  console.log('[CLUSTER-API] New endpoints: /api/metrics, /api/commands/log, /api/alerts, /api/mining/history, /api/nodes/history, /api/pods/:ns/:pod/logs, /api/pods/delete, /api/scale, /api/nodes/drain, /api/export');
 });
