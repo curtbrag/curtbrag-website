@@ -1142,6 +1142,53 @@ async function handleNodeDetail(req, res, nodeName) {
   });
 }
 
+// ─── Cluster Events ─────────────────────────────────────────────────────────
+
+async function handleEvents(req, res) {
+  const result = await runAsync('kubectl get events -A --sort-by=.lastTimestamp -o json', 15000);
+  if (!result.ok) return sendJson(res, 500, { error: 'Failed to get events', details: result.stderr });
+  try {
+    const parsed = JSON.parse(result.stdout);
+    const events = parsed.items.slice(-50).reverse().map(e => ({
+      type: e.type || 'Normal',
+      reason: e.reason || '',
+      message: (e.message || '').substring(0, 200),
+      namespace: (e.involvedObject || {}).namespace || '',
+      object: ((e.involvedObject || {}).kind || '') + '/' + ((e.involvedObject || {}).name || ''),
+      count: e.count || 1,
+      firstSeen: e.firstTimestamp || e.metadata.creationTimestamp,
+      lastSeen: e.lastTimestamp || e.metadata.creationTimestamp,
+      source: ((e.source || {}).component || '') + (e.source?.host ? ' on ' + e.source.host : ''),
+    }));
+    sendJson(res, 200, { events });
+  } catch (e) {
+    sendJson(res, 500, { error: 'Failed to parse events', details: e.message });
+  }
+}
+
+// ─── Namespace Resource Usage ────────────────────────────────────────────────
+
+async function handleNamespaceUsage(req, res) {
+  // Get pods with resource info grouped by namespace
+  const result = await runAsync('kubectl get pods -A -o json', 15000);
+  if (!result.ok) return sendJson(res, 500, { error: 'Failed to get pods' });
+  try {
+    const parsed = JSON.parse(result.stdout);
+    const nsUsage = {};
+    for (const pod of parsed.items) {
+      const ns = pod.metadata.namespace;
+      if (!nsUsage[ns]) nsUsage[ns] = { pods: 0, running: 0, containers: 0, restarts: 0 };
+      nsUsage[ns].pods++;
+      if (pod.status.phase === 'Running') nsUsage[ns].running++;
+      nsUsage[ns].containers += (pod.spec.containers || []).length;
+      nsUsage[ns].restarts += ((pod.status.containerStatuses || [])[0] || {}).restartCount || 0;
+    }
+    sendJson(res, 200, { namespaces: nsUsage });
+  } catch (e) {
+    sendJson(res, 500, { error: 'Failed to parse', details: e.message });
+  }
+}
+
 // ─── Export ──────────────────────────────────────────────────────────────────
 
 async function handleExport(req, res) {
@@ -1339,6 +1386,8 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/pods/restart-trends') return handlePodRestartTrends(req, res);
       if (path === '/api/ping') return await handlePing(req, res);
       if (path === '/api/deployments') return await handleDeployments(req, res);
+      if (path === '/api/events') return await handleEvents(req, res);
+      if (path === '/api/namespaces/usage') return await handleNamespaceUsage(req, res);
       if (path === '/api/export') return await handleExport(req, res);
 
       // Node detail: /api/nodes/:name/detail

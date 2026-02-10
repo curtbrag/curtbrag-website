@@ -896,6 +896,46 @@
     /* Fullscreen mode */
     body.fullscreen-mode .header, body.fullscreen-mode .nav, body.fullscreen-mode .api-config, body.fullscreen-mode .footer, body.fullscreen-mode .about-section { display: none; }
     body.fullscreen-mode .container { max-width: 100%; padding: 0.75rem; }
+
+    /* Auto-refresh countdown */
+    .refresh-countdown { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--muted); min-width: 28px; text-align: center; }
+
+    /* Node sort controls */
+    .node-sort select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.3rem 0.5rem; border-radius: 6px; font-family: inherit; font-size: 0.75rem; cursor: pointer; }
+
+    /* Log search */
+    .log-search { display: flex; gap: 0.5rem; padding: 0 1rem 0.5rem; }
+    .log-search input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.3rem 0.6rem; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
+    .log-search input:focus { outline: none; border-color: var(--brand); }
+    .log-line.highlight { background: rgba(234, 179, 8, 0.15) !important; color: var(--text) !important; }
+
+    /* Events timeline */
+    .events-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
+    .events-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; cursor: pointer; }
+    .events-title { font-size: 0.9rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+    .events-title i { color: var(--yellow); }
+    .events-body { max-height: 300px; overflow-y: auto; }
+    .events-body.collapsed { display: none; }
+    .event-item { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.4rem 0; border-bottom: 1px solid var(--border); font-size: 0.78rem; }
+    .event-item:last-child { border-bottom: none; }
+    .event-type { font-size: 0.65rem; padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: 600; text-transform: uppercase; white-space: nowrap; }
+    .event-type.Normal { background: rgba(34, 197, 94, 0.12); color: var(--green); }
+    .event-type.Warning { background: rgba(234, 179, 8, 0.12); color: var(--yellow); }
+    .event-content { flex: 1; min-width: 0; }
+    .event-content .event-reason { font-weight: 600; }
+    .event-content .event-msg { color: var(--muted); word-break: break-word; }
+    .event-content .event-meta { font-size: 0.68rem; color: var(--muted); margin-top: 0.15rem; }
+
+    /* Connection status */
+    .conn-indicator { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 0.3rem; }
+    .conn-indicator.connected { background: var(--green); }
+    .conn-indicator.disconnected { background: var(--red); animation: pulse 1s infinite; }
+
+    /* Namespace usage chips */
+    .ns-usage { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+    .ns-chip { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.75rem; font-size: 0.78rem; }
+    .ns-chip-name { font-weight: 600; margin-bottom: 0.15rem; }
+    .ns-chip-stats { color: var(--muted); font-size: 0.7rem; font-family: 'JetBrains Mono', monospace; }
   </style>
 </head>
 <body>
@@ -942,6 +982,7 @@
         <button class="toolbar-btn" onclick="exportClusterState()" title="Export cluster snapshot"><i class="fa-solid fa-download"></i> Export</button>
         <button class="toolbar-btn" onclick="toggleFullscreen()" title="Toggle fullscreen" id="fullscreenBtn"><i class="fa-solid fa-expand"></i></button>
         <button class="toolbar-btn" onclick="showShortcuts()" title="Keyboard shortcuts"><i class="fa-solid fa-keyboard"></i> <kbd>?</kbd></button>
+        <span class="refresh-countdown" id="refreshCountdown" title="Auto-refresh countdown">10s</span>
         <button class="refresh-btn" onclick="loadClusterStatus()" id="refreshBtn" aria-label="Refresh cluster status">
           <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Refresh
         </button>
@@ -1078,6 +1119,15 @@
       <div class="cmd-history-body collapsed" id="cmdHistoryBody"></div>
     </div>
 
+    <!-- Cluster Events -->
+    <div class="events-panel" id="eventsPanel" style="display:none">
+      <div class="events-header" onclick="toggleEvents()">
+        <div class="events-title"><i class="fa-solid fa-timeline"></i> Cluster Events <span class="alert-count-badge" id="eventCount" style="background:var(--yellow)">0</span></div>
+        <i class="fa-solid fa-chevron-down" id="eventsChevron"></i>
+      </div>
+      <div class="events-body collapsed" id="eventsBody"></div>
+    </div>
+
     <!-- Demo Banner -->
     <div class="demo-banner" id="demoBanner">
       <i class="fa-solid fa-flask"></i>
@@ -1190,6 +1240,14 @@
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-microchip"></i> Cluster Nodes</h2>
       <div style="display:flex;gap:0.5rem;align-items:center">
+        <select class="node-sort" id="nodeSortSelect" onchange="sortAndRenderNodes()" title="Sort nodes">
+          <option value="name">Name</option>
+          <option value="status">Status</option>
+          <option value="cpu">CPU %</option>
+          <option value="memory">Memory %</option>
+          <option value="battery">Battery %</option>
+          <option value="temp">Temperature</option>
+        </select>
         <button class="toolbar-btn" id="bulkSelectBtn" onclick="toggleBulkSelect()" title="Select multiple nodes"><i class="fa-solid fa-check-double"></i> Select</button>
         <span class="section-badge" id="nodeBadge">10 phones</span>
       </div>
@@ -1281,6 +1339,15 @@
       </div>
     </div>
 
+    <!-- Namespace Usage -->
+    <div class="section-header">
+      <h2 class="section-title"><i class="fa-solid fa-folder-tree"></i> Namespace Usage</h2>
+      <span class="section-badge" id="nsBadge">0 namespaces</span>
+    </div>
+    <div class="ns-usage" id="nsUsage">
+      <div class="empty-state" style="padding:1rem"><i class="fa-solid fa-folder-open"></i><br>Connect API for namespace data</div>
+    </div>
+
     <!-- Cluster Specs -->
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-circle-info"></i> Cluster Specs</h2>
@@ -1362,6 +1429,9 @@
         <button onclick="refreshCurrentLogs()" title="Refresh"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
         <button id="autoScrollBtn" onclick="toggleAutoScroll()" title="Auto-scroll">Auto-scroll</button>
         <span class="log-info" id="logInfo"></span>
+      </div>
+      <div class="log-search">
+        <input type="text" id="logSearchInput" placeholder="Search logs..." oninput="filterLogContent()">
       </div>
       <div class="log-body" id="logBody">Loading...</div>
     </div>
@@ -1498,6 +1568,7 @@
       const demoBanner = document.getElementById('demoBanner');
       const refreshBtn = document.getElementById('refreshBtn');
       refreshBtn.classList.add('spinning');
+      refreshCountdownVal = refreshInterval;
 
       try {
         let data;
@@ -1569,13 +1640,17 @@
           loadMiningHistory();
           loadDeployments();
           loadRestartTrends();
+          loadEvents();
+          loadNamespaceUsage();
         }
 
+        consecutiveFailures = 0;
         document.getElementById('lastUpdate').textContent = data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : 'Never';
       } catch (error) {
         console.error('Failed to load:', error);
+        consecutiveFailures++;
         statusDot.className = 'status-dot offline';
-        statusText.textContent = 'Offline';
+        statusText.textContent = 'Offline' + (consecutiveFailures > 1 ? ' (' + consecutiveFailures + ' failures)' : '');
       } finally {
         refreshBtn.classList.remove('spinning');
       }
@@ -1735,14 +1810,17 @@
       document.getElementById('logModalTitle').textContent = 'Logs: ' + pod;
       document.getElementById('logBody').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
       document.getElementById('logModal').classList.add('visible');
+      var searchInput = document.getElementById('logSearchInput');
+      if (searchInput) searchInput.value = '';
       try {
         const data = await apiFetch('/api/pods/' + ns + '/' + pod + '/logs?tail=200');
         if (data.lines) {
           document.getElementById('logBody').innerHTML = data.lines.map(function(l) {
             return '<div class="log-line">' + l.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
           }).join('');
+          document.getElementById('logInfo').textContent = data.lines.length + ' lines';
           var body = document.getElementById('logBody');
-          body.scrollTop = body.scrollHeight;
+          if (logAutoScroll) body.scrollTop = body.scrollHeight;
         } else {
           document.getElementById('logBody').textContent = data.error || 'No logs available';
         }
@@ -2581,6 +2659,121 @@
       document.getElementById('fullscreenBtn').innerHTML = '<i class="fa-solid ' + (isFs ? 'fa-compress' : 'fa-expand') + '"></i>';
     }
 
+    // ─── Auto-Refresh Countdown ─────────────────────────────────────────
+    var refreshInterval = 10;
+    var refreshCountdownVal = refreshInterval;
+    var connStatus = 'connected';
+
+    function updateRefreshCountdown() {
+      refreshCountdownVal--;
+      if (refreshCountdownVal < 0) refreshCountdownVal = refreshInterval;
+      var el = document.getElementById('refreshCountdown');
+      if (el) el.textContent = refreshCountdownVal + 's';
+    }
+    setInterval(updateRefreshCountdown, 1000);
+
+    // ─── Node Sorting ────────────────────────────────────────────────────
+    function sortAndRenderNodes() {
+      if (!lastRenderedNodes) return;
+      var sortBy = document.getElementById('nodeSortSelect').value;
+      var sorted = lastRenderedNodes.slice().sort(function(a, b) {
+        var ma = lastMetrics[a.name] || {};
+        var mb = lastMetrics[b.name] || {};
+        switch (sortBy) {
+          case 'status': return (a.status === 'Ready' ? 0 : 1) - (b.status === 'Ready' ? 0 : 1);
+          case 'cpu': return ((mb.cpu || {}).usage || 0) - ((ma.cpu || {}).usage || 0);
+          case 'memory': return ((mb.memory || {}).percent || 0) - ((ma.memory || {}).percent || 0);
+          case 'battery': return ((mb.battery || {}).level || 0) - ((ma.battery || {}).level || 0);
+          case 'temp': return ((mb.temp || {}).celsius || 0) - ((ma.temp || {}).celsius || 0);
+          default: return a.name.localeCompare(b.name);
+        }
+      });
+      renderNodes(sorted);
+    }
+
+    // ─── Log Search/Filter ───────────────────────────────────────────────
+    function filterLogContent() {
+      var q = (document.getElementById('logSearchInput')?.value || '').toLowerCase();
+      var lines = document.querySelectorAll('#logBody .log-line');
+      var matchCount = 0;
+      lines.forEach(function(line) {
+        if (q && line.textContent.toLowerCase().includes(q)) {
+          line.classList.add('highlight');
+          matchCount++;
+        } else {
+          line.classList.remove('highlight');
+        }
+      });
+      var info = document.getElementById('logInfo');
+      if (info && q) info.textContent = matchCount + ' matches';
+      else if (info) info.textContent = lines.length + ' lines';
+    }
+
+    // ─── Cluster Events ─────────────────────────────────────────────────
+    var eventsExpanded = false;
+
+    async function loadEvents() {
+      if (!apiEndpoint) return;
+      try {
+        var data = await apiFetch('/api/events');
+        renderEvents(data.events || []);
+      } catch (e) { /* silent */ }
+    }
+
+    function renderEvents(events) {
+      var panel = document.getElementById('eventsPanel');
+      var body = document.getElementById('eventsBody');
+      var badge = document.getElementById('eventCount');
+      var warnings = events.filter(function(e) { return e.type === 'Warning'; });
+      badge.textContent = warnings.length;
+      if (events.length === 0) { panel.style.display = 'none'; return; }
+      panel.style.display = 'block';
+      body.innerHTML = events.slice(0, 30).map(function(ev) {
+        var time = ev.lastSeen ? new Date(ev.lastSeen).toLocaleTimeString() : '';
+        return '<div class="event-item">' +
+          '<span class="event-type ' + ev.type + '">' + ev.type + '</span>' +
+          '<div class="event-content"><span class="event-reason">' + ev.reason + '</span> ' +
+          '<span class="event-msg">' + ev.message + '</span>' +
+          '<div class="event-meta">' + ev.object + ' | ' + ev.namespace + ' | ' + time + (ev.count > 1 ? ' (x' + ev.count + ')' : '') + '</div></div></div>';
+      }).join('');
+    }
+
+    function toggleEvents() {
+      eventsExpanded = !eventsExpanded;
+      document.getElementById('eventsBody').classList.toggle('collapsed', !eventsExpanded);
+      document.getElementById('eventsChevron').style.transform = eventsExpanded ? '' : 'rotate(-90deg)';
+    }
+
+    // ─── Namespace Usage ─────────────────────────────────────────────────
+    async function loadNamespaceUsage() {
+      if (!apiEndpoint) return;
+      try {
+        var data = await apiFetch('/api/namespaces/usage');
+        renderNamespaceUsage(data.namespaces || {});
+      } catch (e) { /* silent */ }
+    }
+
+    function renderNamespaceUsage(namespaces) {
+      var container = document.getElementById('nsUsage');
+      var badge = document.getElementById('nsBadge');
+      var nsNames = Object.keys(namespaces).sort();
+      badge.textContent = nsNames.length + ' namespaces';
+      if (nsNames.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding:1rem">No namespace data</div>';
+        return;
+      }
+      container.innerHTML = nsNames.map(function(ns) {
+        var u = namespaces[ns];
+        var color = u.running === u.pods ? 'green' : u.running > 0 ? 'yellow' : 'red';
+        return '<div class="ns-chip"><div class="ns-chip-name" style="color:var(--' + color + ')">' + ns + '</div>' +
+          '<div class="ns-chip-stats">' + u.running + '/' + u.pods + ' pods | ' + u.containers + ' containers' +
+          (u.restarts > 0 ? ' | ' + u.restarts + ' restarts' : '') + '</div></div>';
+      }).join('');
+    }
+
+    // ─── Connection Status ───────────────────────────────────────────────
+    var consecutiveFailures = 0;
+
     // ─── Init ──────────────────────────────────────────────────────────────
 
     updateSoundToggle();
@@ -2589,7 +2782,7 @@
     loadClusterStatus();
     setInterval(loadClusterStatus, 10000);
     setInterval(function() { if (apiEndpoint) loadScreens(); }, 30000);
-    setInterval(function() { if (apiEndpoint) { loadAlerts(); loadCommandLog(); loadDeployments(); loadRestartTrends(); } }, 15000);
+    setInterval(function() { if (apiEndpoint) { loadAlerts(); loadCommandLog(); loadDeployments(); loadRestartTrends(); loadEvents(); loadNamespaceUsage(); } }, 15000);
   </script>
 </body>
 </html>
