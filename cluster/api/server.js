@@ -77,16 +77,21 @@ function runAsyncBinary(cmd, timeoutMs = 10000) {
   });
 }
 
+function shellEscape(s) {
+  // Use single quotes and escape any embedded single quotes
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
 function sshExec(nodeKey, cmd) {
   const node = CONFIG.phoneNodes[nodeKey];
   if (!node) return { ok: false, stderr: 'Unknown node: ' + nodeKey };
-  return run(`ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes ${node.ssh} "${cmd.replace(/"/g, '\\"')}"`, 15000);
+  return run(`ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes ${node.ssh} ${shellEscape(cmd)}`, 15000);
 }
 
 function sshExecAsync(nodeKey, cmd) {
   const node = CONFIG.phoneNodes[nodeKey];
   if (!node) return Promise.resolve({ ok: false, stderr: 'Unknown node: ' + nodeKey });
-  return runAsync(`ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes ${node.ssh} "${cmd.replace(/"/g, '\\"')}"`, 15000);
+  return runAsync(`ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes ${node.ssh} ${shellEscape(cmd)}`, 15000);
 }
 
 function adbExec(nodeKey, cmd) {
@@ -491,11 +496,14 @@ async function executeOnNode(name, command, browseUrl) {
     }
     case 'browse': {
       if (!isPhone) return { ok: false, error: 'Not a phone node' };
+      // Validate URL to prevent injection
+      try { new URL(browseUrl); } catch { return { ok: false, error: 'Invalid URL' }; }
+      const safeUrl = browseUrl.replace(/[^a-zA-Z0-9:/.?&=%#@+~_-]/g, '');
       // Try ADB intent first
-      let r = await adbExecAsync(name, `shell am start -a android.intent.action.VIEW -d "${browseUrl}"`);
+      let r = await adbExecAsync(name, `shell am start -a android.intent.action.VIEW -d '${safeUrl}'`);
       if (r.ok) return { ok: true, output: r.stdout };
       // Fallback: SSH launch browser
-      r = await sshExecAsync(name, `DISPLAY=:0 xdg-open "${browseUrl}" 2>/dev/null || firefox "${browseUrl}" 2>/dev/null &`);
+      r = await sshExecAsync(name, `DISPLAY=:0 xdg-open '${safeUrl}' 2>/dev/null || firefox '${safeUrl}' 2>/dev/null &`);
       return { ok: r.ok, output: r.stdout || r.stderr };
     }
     default:
@@ -590,10 +598,8 @@ function sendJson(res, code, data) {
 
 function setCors(req, res) {
   const origin = req.headers.origin || '';
-  if (CONFIG.allowedOrigins.some(o => origin.startsWith(o))) {
+  if (CONFIG.allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', '*');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -611,11 +617,17 @@ function checkAuth(req) {
   return parsed.query.token === CONFIG.apiToken;
 }
 
-function readBody(req) {
+function readBody(req, maxBytes = 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', chunk => data += chunk);
+    let size = 0;
+    req.on('data', chunk => {
+      size += chunk.length;
+      if (size > maxBytes) { req.destroy(); reject(new Error('Body too large')); return; }
+      data += chunk;
+    });
     req.on('end', () => {
+      if (!data.trim()) return reject(new Error('Empty body'));
       try { resolve(JSON.parse(data)); }
       catch { reject(new Error('Invalid JSON')); }
     });
