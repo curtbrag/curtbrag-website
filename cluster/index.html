@@ -936,6 +936,51 @@
     .ns-chip { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.75rem; font-size: 0.78rem; }
     .ns-chip-name { font-weight: 600; margin-bottom: 0.15rem; }
     .ns-chip-stats { color: var(--muted); font-size: 0.7rem; font-family: 'JetBrains Mono', monospace; }
+
+    /* Node list view */
+    .node-grid.list-view { display: flex; flex-direction: column; gap: 0.4rem; }
+    .node-grid.list-view .node { display: flex; align-items: center; gap: 1rem; padding: 0.6rem 1rem; border-radius: 8px; }
+    .node-grid.list-view .node-header { margin-bottom: 0; flex-shrink: 0; min-width: 120px; }
+    .node-grid.list-view .node-details { flex-direction: row; gap: 1rem; }
+    .node-grid.list-view .node-metrics { margin-top: 0; }
+    .node-grid.list-view .uptime-badge { margin-top: 0; }
+    .node-grid.list-view .node-status-badge { margin-top: 0; }
+    .node-grid.list-view .node::before { height: 100%; width: 3px; right: auto; bottom: 0; border-radius: 12px 0 0 12px; }
+
+    /* Custom command input */
+    .custom-cmd { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+    .custom-cmd input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.5rem 0.75rem; border-radius: 8px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
+    .custom-cmd input:focus { outline: none; border-color: var(--brand); }
+
+    /* Pod age column */
+    .pod-age { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--muted); }
+
+    /* Mobile responsive improvements */
+    @media (max-width: 768px) {
+      .header h1 { font-size: 1.3rem; }
+      .container { padding: 0.75rem; }
+      .status-bar { flex-direction: column; align-items: stretch; }
+      .toolbar { justify-content: center; }
+      .control-panel { padding: 0.75rem; }
+      .control-buttons { justify-content: center; }
+      .favorites-bar { justify-content: center; }
+      .node-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+      .resource-summary { grid-template-columns: repeat(2, 1fr); }
+      .mining-stats { grid-template-columns: repeat(2, 1fr); }
+      .info-grid { grid-template-columns: 1fr; }
+      .bulk-bar { flex-wrap: wrap; font-size: 0.78rem; }
+      .section-header { flex-direction: column; align-items: flex-start; }
+      table { font-size: 0.75rem; }
+      th, td { padding: 0.5rem 0.6rem; }
+      .api-config { padding: 0.4rem 0.75rem; }
+      .api-config input { min-width: 120px; }
+    }
+    @media (max-width: 500px) {
+      .node-grid { grid-template-columns: 1fr; }
+      .resource-summary { grid-template-columns: 1fr; }
+      .mining-stats { grid-template-columns: 1fr; }
+      .screen-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+    }
   </style>
 </head>
 <body>
@@ -1027,6 +1072,10 @@
         <button class="ctrl-btn restart" onclick="sendCommand('restart')" aria-label="Restart selected nodes"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Restart</button>
         <button class="ctrl-btn wake" onclick="sendCommand('wake')" aria-label="Wake selected nodes"><i class="fa-solid fa-sun" aria-hidden="true"></i> Wake</button>
         <button class="ctrl-btn sleep" onclick="sendCommand('sleep')" aria-label="Put selected nodes to sleep"><i class="fa-solid fa-moon" aria-hidden="true"></i> Sleep</button>
+      </div>
+      <div class="custom-cmd">
+        <input type="text" id="customCmdInput" placeholder="Custom SSH command (e.g. uptime, free -m, df -h)" onkeydown="if(event.key==='Enter')runCustomCommand()">
+        <button class="ctrl-btn" onclick="runCustomCommand()"><i class="fa-solid fa-terminal"></i> Run</button>
       </div>
       <div class="control-status" id="controlStatus"></div>
     </div>
@@ -1240,6 +1289,7 @@
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-microchip"></i> Cluster Nodes</h2>
       <div style="display:flex;gap:0.5rem;align-items:center">
+        <button class="toolbar-btn" onclick="toggleNodeView()" id="nodeViewBtn" title="Toggle grid/list view"><i class="fa-solid fa-grip"></i></button>
         <select class="node-sort" id="nodeSortSelect" onchange="sortAndRenderNodes()" title="Sort nodes">
           <option value="name">Name</option>
           <option value="status">Status</option>
@@ -1277,10 +1327,10 @@
       <div class="table-scroll">
         <table>
           <thead>
-            <tr><th>Pod Name</th><th>Namespace</th><th>Status</th><th>Restarts</th><th>Node</th><th>Actions</th></tr>
+            <tr><th>Pod Name</th><th>Namespace</th><th>Status</th><th>Restarts</th><th>Age</th><th>Node</th><th>Actions</th></tr>
           </thead>
           <tbody id="podTableBody">
-            <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>
+            <tr><td colspan="7" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>
           </tbody>
         </table>
       </div>
@@ -1758,7 +1808,7 @@
         );
       }
       if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>';
         return;
       }
       tbody.innerHTML = filtered.map(pod => {
@@ -1773,6 +1823,7 @@
           <td><span class="pod-namespace">${pod.namespace}</span></td>
           <td><span class="pod-status ${st}"><i class="fa-solid ${icon}"></i> ${pod.status}</span></td>
           <td ${restartClass}>${pod.restarts || 0}${trendHtml}</td>
+          <td class="pod-age">${formatAge(pod.age)}</td>
           <td class="pod-node">${pod.node || '-'}</td>
           <td class="pod-actions">
             <button class="pod-action-btn info" onclick="viewPodLogs('${ns}','${pn}')" title="View logs"><i class="fa-solid fa-scroll"></i></button>
@@ -1925,6 +1976,7 @@
         localStorage.setItem('clusterPassword', pw);
         closeModal();
         if (pendingCommand === 'browse') sendBrowseCommand();
+        else if (pendingCommand === 'custom') runCustomCommand();
         else if (pendingCommand && pendingCommand.startsWith('mining-')) sendMiningCommand(pendingCommand);
         else executeCommand(pendingCommand, pw);
       }
@@ -2774,11 +2826,109 @@
     // ─── Connection Status ───────────────────────────────────────────────
     var consecutiveFailures = 0;
 
+    // ─── Format Age ──────────────────────────────────────────────────────
+    function formatAge(isoDate) {
+      if (!isoDate) return '-';
+      var ms = Date.now() - new Date(isoDate).getTime();
+      if (ms < 0) return '-';
+      var seconds = Math.floor(ms / 1000);
+      if (seconds < 60) return seconds + 's';
+      var minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return minutes + 'm';
+      var hours = Math.floor(minutes / 60);
+      if (hours < 24) return hours + 'h';
+      var days = Math.floor(hours / 24);
+      return days + 'd';
+    }
+
+    // ─── Custom Command ─────────────────────────────────────────────────
+    async function runCustomCommand() {
+      var cmd = document.getElementById('customCmdInput').value.trim();
+      if (!cmd) { showToast('Enter a command', 'error'); return; }
+      if (!savedPassword) {
+        pendingCommand = 'custom';
+        document.getElementById('passwordModal').classList.add('visible');
+        document.getElementById('passwordInput').focus();
+        return;
+      }
+      if (!apiEndpoint) { showToast('Direct API required', 'error'); return; }
+      var target = document.getElementById('targetSelect').value;
+      var status = document.getElementById('controlStatus');
+      status.textContent = 'Running command on ' + target + '...';
+      status.className = 'control-status visible';
+      try {
+        var data = await apiPost('/api/command/custom', { cmd: cmd, target: target, password: savedPassword });
+        if (data.results) {
+          var outputLines = [];
+          for (var n in data.results) {
+            outputLines.push('=== ' + n + ' ===');
+            outputLines.push(data.results[n].stdout || data.results[n].stderr || data.results[n].error || '(no output)');
+          }
+          document.getElementById('logModalTitle').textContent = 'Command: ' + cmd;
+          document.getElementById('logBody').innerHTML = outputLines.map(function(l) {
+            return '<div class="log-line">' + l.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
+          }).join('');
+          document.getElementById('logModal').classList.add('visible');
+          status.textContent = 'Command completed';
+          status.className = 'control-status visible success';
+        } else {
+          status.textContent = data.error || 'Failed';
+          status.className = 'control-status visible error';
+        }
+      } catch (e) {
+        status.textContent = 'Error: ' + e.message;
+        status.className = 'control-status visible error';
+      }
+    }
+
+    // ─── Node View Toggle ───────────────────────────────────────────────
+    var nodeListView = localStorage.getItem('clusterNodeView') === 'list';
+
+    function toggleNodeView() {
+      nodeListView = !nodeListView;
+      localStorage.setItem('clusterNodeView', nodeListView ? 'list' : 'grid');
+      applyNodeView();
+    }
+
+    function applyNodeView() {
+      var grid = document.getElementById('nodeGrid');
+      grid.classList.toggle('list-view', nodeListView);
+      document.getElementById('nodeViewBtn').innerHTML = '<i class="fa-solid ' + (nodeListView ? 'fa-grip' : 'fa-list') + '"></i>';
+    }
+
+    // ─── Session State Persistence ──────────────────────────────────────
+    function saveSessionState() {
+      var state = {
+        alertsExpanded: alertsExpanded,
+        cmdHistoryExpanded: cmdHistoryExpanded,
+        eventsExpanded: eventsExpanded,
+        nodeSort: document.getElementById('nodeSortSelect')?.value || 'name',
+        nodeListView: nodeListView,
+      };
+      localStorage.setItem('clusterSessionState', JSON.stringify(state));
+    }
+
+    function restoreSessionState() {
+      try {
+        var state = JSON.parse(localStorage.getItem('clusterSessionState') || '{}');
+        if (state.alertsExpanded !== undefined) alertsExpanded = state.alertsExpanded;
+        if (state.cmdHistoryExpanded !== undefined) cmdHistoryExpanded = state.cmdHistoryExpanded;
+        if (state.eventsExpanded !== undefined) eventsExpanded = state.eventsExpanded;
+        if (state.nodeSort) { var sel = document.getElementById('nodeSortSelect'); if (sel) sel.value = state.nodeSort; }
+        if (state.nodeListView !== undefined) nodeListView = state.nodeListView;
+      } catch (e) { /* ignore */ }
+    }
+
+    // Save session state periodically
+    setInterval(saveSessionState, 5000);
+
     // ─── Init ──────────────────────────────────────────────────────────────
 
+    restoreSessionState();
     updateSoundToggle();
     initTheme();
     initApiConfig();
+    applyNodeView();
     loadClusterStatus();
     setInterval(loadClusterStatus, 10000);
     setInterval(function() { if (apiEndpoint) loadScreens(); }, 30000);

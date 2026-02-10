@@ -1142,6 +1142,59 @@ async function handleNodeDetail(req, res, nodeName) {
   });
 }
 
+// ─── Custom Command ─────────────────────────────────────────────────────────
+
+async function handleCustomCommand(req, res, body) {
+  const { cmd, target, password: pwd } = body;
+
+  if (pwd !== CONFIG.password) {
+    logCommand({ command: 'custom', target, status: 'denied' });
+    return sendJson(res, 401, { error: 'Invalid password' });
+  }
+
+  if (!cmd || typeof cmd !== 'string' || cmd.length > 500) {
+    return sendJson(res, 400, { error: 'Invalid command (max 500 chars)' });
+  }
+
+  // Block dangerous commands
+  const blocked = ['rm -rf', 'mkfs', 'dd if=', ':(){', 'fork', '> /dev/sd', 'shutdown', 'reboot', 'init 0', 'init 6'];
+  const cmdLower = cmd.toLowerCase();
+  for (const b of blocked) {
+    if (cmdLower.includes(b)) {
+      logCommand({ command: 'custom', target, status: 'denied', reason: 'Blocked command: ' + b });
+      return sendJson(res, 403, { error: 'Command blocked for safety: ' + b });
+    }
+  }
+
+  const targets = resolveTargets(target || 'all', 'custom');
+  const isReadOnly = /^(uptime|free|df|top|cat|hostname|uname|whoami|date|id|ps|ls|ip addr|ip route|w|who)\b/.test(cmd.trim());
+
+  const results = {};
+  await Promise.all(targets.map(async name => {
+    const isPhone = CONFIG.phoneNodeNames.includes(name);
+    if (isPhone) {
+      const r = await sshExecAsync(name, cmd);
+      results[name] = { ok: r.ok, stdout: r.stdout, stderr: r.stderr };
+    } else {
+      results[name] = { ok: false, error: 'Custom commands only supported on phone nodes' };
+    }
+  }));
+
+  const succeeded = Object.values(results).filter(r => r.ok).length;
+  logCommand({
+    command: 'custom',
+    target: target || 'all',
+    status: succeeded > 0 ? 'success' : 'failed',
+    message: `"${cmd.substring(0, 50)}" on ${succeeded}/${targets.length} nodes`,
+  });
+
+  sendJson(res, 200, {
+    success: succeeded > 0,
+    message: `Command ran on ${succeeded}/${targets.length} nodes`,
+    results,
+  });
+}
+
 // ─── Cluster Events ─────────────────────────────────────────────────────────
 
 async function handleEvents(req, res) {
@@ -1407,6 +1460,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST') {
       const body = await readBody(req);
       if (path === '/api/command') return await handleCommand(req, res, body);
+      if (path === '/api/command/custom') return await handleCustomCommand(req, res, body);
       if (path === '/api/pods/delete') return await handlePodDelete(req, res, body);
       if (path === '/api/scale') return await handleScale(req, res, body);
       if (path === '/api/nodes/drain') return await handleNodeDrain(req, res, body);
