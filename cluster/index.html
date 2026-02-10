@@ -981,6 +981,46 @@
       .mining-stats { grid-template-columns: 1fr; }
       .screen-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
     }
+
+    /* Loading shimmer */
+    @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+    .skeleton { background: linear-gradient(90deg, var(--bg) 25%, var(--panel-hover) 50%, var(--bg) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 6px; height: 1em; }
+    .skeleton-card { height: 100px; border-radius: 12px; }
+    .skeleton-row { height: 2rem; margin-bottom: 0.5rem; }
+
+    /* Scroll to top */
+    .scroll-top { position: fixed; bottom: 1.5rem; left: 1.5rem; background: var(--panel); border: 1px solid var(--border); color: var(--text); width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 1rem; display: none; align-items: center; justify-content: center; z-index: 1500; transition: all 0.3s; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    .scroll-top:hover { border-color: var(--brand); transform: translateY(-2px); }
+    .scroll-top.visible { display: flex; }
+
+    /* Stats ticker */
+    .stats-ticker { overflow: hidden; white-space: nowrap; padding: 0.4rem 0; border-top: 1px solid var(--border); margin-top: 1rem; }
+    .stats-ticker-inner { display: inline-block; animation: ticker 30s linear infinite; }
+    @keyframes ticker { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+    .stats-ticker-item { display: inline-flex; align-items: center; gap: 0.4rem; margin-right: 2rem; font-size: 0.75rem; color: var(--muted); }
+    .stats-ticker-item i { color: var(--brand); font-size: 0.7rem; }
+    .stats-ticker-item .ticker-val { color: var(--text); font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+
+    /* Print styles */
+    @media print {
+      body { background: white; color: black; }
+      .header, .nav, .api-config, .control-panel, .favorites-bar, .toolbar, .refresh-btn, .theme-toggle, .mining-controls,
+      .modal-overlay, .toast, .scroll-top, .mining-btn, .ctrl-btn, .pod-action-btn, .bulk-bar { display: none !important; }
+      .container { max-width: 100%; padding: 0; }
+      .panel, .card, .node, .info-card, .mining-panel, .table-container { border: 1px solid #ddd; break-inside: avoid; }
+      .footer { border-top: 1px solid #ddd; }
+    }
+
+    /* Node comparison modal */
+    .compare-modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; max-width: 900px; width: 95%; max-height: 80vh; display: flex; flex-direction: column; }
+    .compare-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+    .compare-header h3 { font-size: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+    .compare-header h3 i { color: var(--brand); }
+    .compare-body { flex: 1; overflow: auto; padding: 1rem; }
+    .compare-grid { display: grid; gap: 1rem; }
+    .compare-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; border-bottom: 1px solid var(--border); padding: 0.4rem 0; }
+    .compare-label { min-width: 80px; color: var(--muted); font-weight: 600; }
+    .compare-val { flex: 1; text-align: center; font-family: 'JetBrains Mono', monospace; }
   </style>
 </head>
 <body>
@@ -1309,6 +1349,7 @@
       <button onclick="bulkCommand('restart')"><i class="fa-solid fa-rotate"></i> Restart</button>
       <button onclick="bulkCommand('start')"><i class="fa-solid fa-play"></i> Start</button>
       <button onclick="bulkCommand('stop')"><i class="fa-solid fa-stop"></i> Stop</button>
+      <button onclick="compareSelectedNodes()"><i class="fa-solid fa-code-compare"></i> Compare</button>
       <button onclick="clearBulkSelect()" style="margin-left:auto"><i class="fa-solid fa-xmark"></i> Clear</button>
     </div>
     <div class="node-grid" id="nodeGrid"></div>
@@ -1487,10 +1528,25 @@
     </div>
   </div>
 
+  <!-- Node Comparison Modal -->
+  <div class="modal-overlay" id="compareModal">
+    <div class="compare-modal">
+      <div class="compare-header">
+        <h3><i class="fa-solid fa-code-compare"></i> <span id="compareTitle">Compare Nodes</span></h3>
+        <button style="background:none;border:none;color:var(--text);cursor:pointer;font-size:1.2rem;" onclick="closeCompare()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="compare-body" id="compareBody"><p style="color:var(--muted)">Select nodes to compare</p></div>
+    </div>
+  </div>
+
+  <!-- Scroll to top -->
+  <button class="scroll-top" id="scrollTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})"><i class="fa-solid fa-arrow-up"></i></button>
+
   <!-- Toast Notification -->
   <div class="toast" id="toast"><i class="fa-solid fa-circle-info"></i> <span id="toastMsg"></span></div>
 
   <footer class="footer">
+    <div class="stats-ticker"><div class="stats-ticker-inner"></div></div>
     <p><a href="/"><i class="fa-solid fa-arrow-left"></i> Back to Home</a></p>
     <p style="margin-top: 0.5rem;">&copy; 2026 Curtis Bragdon. All rights reserved.</p>
   </footer>
@@ -1682,6 +1738,14 @@
 
         renderNetwork(data.network);
         renderMining(data.mining);
+
+        // Update ticker
+        tickerData.nodesReady = summary.nodesReady || 0;
+        tickerData.nodesTotal = summary.nodesTotal || 0;
+        tickerData.podsRunning = summary.podsRunning || 0;
+        tickerData.podsTotal = summary.podsTotal || 0;
+        if (data.mining) tickerData.hashrate = data.mining.totalHashrate || '0 H/s';
+        updateStatsTicker();
 
         if (apiEndpoint && isDirectApi) {
           loadScreens();
@@ -2921,6 +2985,75 @@
 
     // Save session state periodically
     setInterval(saveSessionState, 5000);
+
+    // ─── Init ──────────────────────────────────────────────────────────────
+
+    // ─── Scroll to Top ────────────────────────────────────────────────────
+    window.addEventListener('scroll', function() {
+      var btn = document.getElementById('scrollTopBtn');
+      if (btn) btn.classList.toggle('visible', window.scrollY > 400);
+    });
+
+    // ─── Stats Ticker ────────────────────────────────────────────────────
+    var tickerData = {};
+
+    function updateStatsTicker() {
+      var items = [];
+      if (tickerData.nodesReady !== undefined) items.push({ icon: 'fa-server', label: 'Nodes', val: tickerData.nodesReady + '/' + tickerData.nodesTotal });
+      if (tickerData.podsRunning !== undefined) items.push({ icon: 'fa-cubes', label: 'Pods', val: tickerData.podsRunning + '/' + tickerData.podsTotal });
+      if (tickerData.hashrate) items.push({ icon: 'fa-coins', label: 'Hashrate', val: tickerData.hashrate });
+      if (tickerData.avgCpu !== undefined) items.push({ icon: 'fa-microchip', label: 'CPU', val: tickerData.avgCpu + '%' });
+      if (tickerData.avgBatt !== undefined) items.push({ icon: 'fa-battery-three-quarters', label: 'Battery', val: tickerData.avgBatt + '%' });
+      if (tickerData.alerts !== undefined) items.push({ icon: 'fa-bell', label: 'Alerts', val: tickerData.alerts });
+      if (tickerData.uptime) items.push({ icon: 'fa-clock', label: 'API Uptime', val: tickerData.uptime });
+
+      var el = document.querySelector('.stats-ticker-inner');
+      if (el && items.length > 0) {
+        el.innerHTML = items.map(function(i) {
+          return '<span class="stats-ticker-item"><i class="fa-solid ' + i.icon + '"></i>' + i.label + ': <span class="ticker-val">' + i.val + '</span></span>';
+        }).join('');
+      }
+    }
+
+    // ─── Node Comparison ─────────────────────────────────────────────────
+    function compareSelectedNodes() {
+      if (selectedNodes.size < 2) { showToast('Select at least 2 nodes to compare', 'error'); return; }
+      var nodes = Array.from(selectedNodes);
+      var html = '<div class="compare-grid">';
+
+      // Header row
+      html += '<div class="compare-row"><div class="compare-label">Node</div>';
+      nodes.forEach(function(n) { html += '<div class="compare-val" style="font-weight:700">' + n + '</div>'; });
+      html += '</div>';
+
+      // Metric rows
+      var metricRows = [
+        { key: 'cpu', label: 'CPU', fn: function(m) { return m.cpu ? m.cpu.usage + '%' : '-'; } },
+        { key: 'memory', label: 'RAM', fn: function(m) { return m.memory ? m.memory.percent + '% (' + m.memory.usedMB + 'MB)' : '-'; } },
+        { key: 'temp', label: 'Temp', fn: function(m) { return m.temp ? m.temp.celsius + '°C' : '-'; } },
+        { key: 'battery', label: 'Battery', fn: function(m) { return m.battery ? m.battery.level + '%' + (m.battery.charging ? ' ⚡' : '') : '-'; } },
+        { key: 'storage', label: 'Disk', fn: function(m) { return m.storage ? m.storage.percent + '% (' + m.storage.availMB + 'MB free)' : '-'; } },
+      ];
+
+      metricRows.forEach(function(row) {
+        html += '<div class="compare-row"><div class="compare-label">' + row.label + '</div>';
+        nodes.forEach(function(n) {
+          var m = lastMetrics[n] || {};
+          var val = row.fn(m);
+          html += '<div class="compare-val">' + val + '</div>';
+        });
+        html += '</div>';
+      });
+
+      html += '</div>';
+
+      document.getElementById('compareTitle').textContent = 'Compare ' + nodes.length + ' Nodes';
+      document.getElementById('compareBody').innerHTML = html;
+      document.getElementById('compareModal').classList.add('visible');
+    }
+
+    function closeCompare() { document.getElementById('compareModal').classList.remove('visible'); }
+    document.getElementById('compareModal').addEventListener('click', function(e) { if (e.target === this) closeCompare(); });
 
     // ─── Init ──────────────────────────────────────────────────────────────
 
