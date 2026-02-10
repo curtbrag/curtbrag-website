@@ -588,6 +588,85 @@
     }
     .mining-message.success { color: var(--green); }
     .mining-message.error { color: var(--red); }
+    .mining-pool-info {
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .mining-pool-info span { color: var(--yellow); font-family: 'JetBrains Mono', monospace; }
+
+    /* Phone Screen Viewer */
+    .screen-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 0.875rem;
+    }
+    .screen-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .screen-card:hover { transform: translateY(-2px); border-color: var(--brand); }
+    .screen-card img {
+      width: 100%;
+      aspect-ratio: 9/19;
+      object-fit: cover;
+      display: block;
+      background: var(--bg);
+    }
+    .screen-card.offline img { filter: grayscale(1) brightness(0.3); }
+    .screen-label {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .screen-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .screen-dot.on { background: var(--green); }
+    .screen-dot.off { background: var(--red); }
+    .screen-modal-content {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      max-width: 420px;
+      width: 95%;
+      overflow: hidden;
+    }
+    .screen-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+    }
+    .screen-modal-content img { width: 100%; display: block; }
+    .screen-modal-actions {
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+      border-top: 1px solid var(--border);
+    }
+    .screen-modal-actions button {
+      flex: 1;
+      padding: 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+    }
+    .screen-modal-actions button:hover { border-color: var(--brand); }
 
     /* API Config Bar */
     .api-config {
@@ -765,7 +844,38 @@
           <span class="worker-chip"><span>Loading...</span></span>
         </div>
       </div>
+      <div class="mining-pool-info" id="miningPoolInfo" style="display:none"></div>
       <div class="mining-message" id="miningMessage"></div>
+    </div>
+
+    <!-- Phone Screens -->
+    <div class="section-header">
+      <h2 class="section-title"><i class="fa-solid fa-display"></i> Phone Screens</h2>
+      <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <span class="section-badge" id="screenBadge">0 screens</span>
+        <button class="refresh-btn" onclick="loadScreens()" id="screenRefreshBtn" title="Capture all screens">
+          <i class="fa-solid fa-camera"></i> Capture
+        </button>
+      </div>
+    </div>
+    <div class="screen-grid" id="screenGrid">
+      <div class="empty-state"><i class="fa-solid fa-display"></i><br>Configure API endpoint to view phone screens</div>
+    </div>
+
+    <!-- Screen Modal -->
+    <div class="modal-overlay" id="screenModal">
+      <div class="screen-modal-content">
+        <div class="screen-modal-header">
+          <span id="screenModalTitle">node1</span>
+          <button style="background:none;border:none;color:var(--text);cursor:pointer;font-size:1.2rem;" onclick="closeScreenModal()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <img id="screenModalImg" src="" alt="Phone screen">
+        <div class="screen-modal-actions">
+          <button onclick="refreshSingleScreen()"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+          <button onclick="wakeScreen()"><i class="fa-solid fa-sun"></i> Wake</button>
+          <button onclick="sleepScreen()"><i class="fa-solid fa-moon"></i> Sleep</button>
+        </div>
+      </div>
     </div>
 
     <!-- Summary Cards -->
@@ -925,6 +1035,7 @@
     let currentNamespace = 'all';
     let pendingCommand = null;
     let savedPassword = localStorage.getItem('clusterPassword') || '';
+    let currentScreenDevice = null;
 
     // Direct API config (for Cloudflare tunnel or custom API)
     let apiEndpoint = localStorage.getItem('clusterApiEndpoint') || '';
@@ -1061,6 +1172,11 @@
 
         renderNetwork(data.network);
         renderMining(data.mining);
+
+        // Load screens if direct API is active
+        if (apiEndpoint && isDirectApi) {
+          loadScreens();
+        }
 
         const lastUpdate = document.getElementById('lastUpdate');
         lastUpdate.textContent = data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : 'Never';
@@ -1207,9 +1323,9 @@
       try {
         const data = await sendToBackend({ command: cmd, target, password });
         if (data.success) {
-          status.textContent = `${data.message} - updating in ~60s`;
+          status.textContent = data.message;
           status.className = 'control-status visible success';
-          setTimeout(loadClusterStatus, 60000);
+          setTimeout(loadClusterStatus, 5000);
         } else {
           status.textContent = `Error: ${data.error}`;
           status.className = 'control-status visible error';
@@ -1259,6 +1375,15 @@
         }).join('');
       } else {
         workerList.innerHTML = '<span class="worker-chip"><span>No workers</span></span>';
+      }
+
+      // Pool balance info
+      const poolInfoEl = document.getElementById('miningPoolInfo');
+      if (poolInfoEl && (mining.poolBalance || mining.totalPaid)) {
+        poolInfoEl.innerHTML = `<i class="fa-solid fa-vault"></i> Pending: <span>${mining.poolBalance || '--'}</span> &nbsp;|&nbsp; Total Paid: <span>${mining.totalPaid || '--'}</span>`;
+        poolInfoEl.style.display = 'block';
+      } else if (poolInfoEl) {
+        poolInfoEl.style.display = 'none';
       }
     }
 
@@ -1336,9 +1461,99 @@
       }
     }
 
+    // ─── Screen Viewer Functions ──────────────────────────────────────────
+
+    async function loadScreens() {
+      if (!apiEndpoint) {
+        document.getElementById('screenGrid').innerHTML =
+          '<div class="empty-state"><i class="fa-solid fa-display"></i><br>Configure API endpoint above to view phone screens</div>';
+        return;
+      }
+
+      const btn = document.getElementById('screenRefreshBtn');
+      btn.disabled = true;
+
+      try {
+        const headers = {};
+        if (apiToken) headers['Authorization'] = 'Bearer ' + apiToken;
+        const res = await fetch(apiEndpoint + '/api/screens', { headers, signal: AbortSignal.timeout(30000) });
+        const data = await res.json();
+        renderScreens(data.screens || []);
+      } catch (e) {
+        console.error('Screen load failed:', e);
+        document.getElementById('screenGrid').innerHTML =
+          '<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><br>Failed to load screens</div>';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function renderScreens(screens) {
+      const grid = document.getElementById('screenGrid');
+      const badge = document.getElementById('screenBadge');
+      const online = screens.filter(s => s.status === 'ok').length;
+      badge.textContent = `${online}/${screens.length} screens`;
+
+      if (screens.length === 0) {
+        grid.innerHTML = '<div class="empty-state"><i class="fa-solid fa-display"></i><br>No screens available</div>';
+        return;
+      }
+
+      const placeholder = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='480'%3E%3Crect fill='%23222' width='240' height='480'/%3E%3Ctext x='120' y='240' text-anchor='middle' fill='%23666' font-size='14'%3EOffline%3C/text%3E%3C/svg%3E";
+
+      grid.innerHTML = screens.map(s => {
+        const imgSrc = s.image || placeholder;
+        return `<div class="screen-card ${s.status !== 'ok' ? 'offline' : ''}" onclick="openScreenModal('${s.device}')">
+          <img src="${imgSrc}" alt="${s.device}" loading="lazy">
+          <div class="screen-label">
+            <span>${s.device}</span>
+            <span class="screen-dot ${s.status === 'ok' ? 'on' : 'off'}"></span>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function openScreenModal(device) {
+      currentScreenDevice = device;
+      document.getElementById('screenModalTitle').textContent = device;
+      document.getElementById('screenModal').classList.add('visible');
+      refreshSingleScreen();
+    }
+
+    function closeScreenModal() {
+      document.getElementById('screenModal').classList.remove('visible');
+      currentScreenDevice = null;
+    }
+
+    function refreshSingleScreen() {
+      if (!currentScreenDevice || !apiEndpoint) return;
+      const img = document.getElementById('screenModalImg');
+      const tokenParam = apiToken ? '&token=' + encodeURIComponent(apiToken) : '';
+      img.src = apiEndpoint + '/api/screen/' + currentScreenDevice + '?t=' + Date.now() + tokenParam;
+    }
+
+    async function wakeScreen() {
+      if (!currentScreenDevice || !savedPassword) return;
+      await sendToBackend({ command: 'wake', target: currentScreenDevice, password: savedPassword });
+      setTimeout(refreshSingleScreen, 2000);
+    }
+
+    async function sleepScreen() {
+      if (!currentScreenDevice || !savedPassword) return;
+      await sendToBackend({ command: 'sleep', target: currentScreenDevice, password: savedPassword });
+    }
+
+    // Close screen modal on backdrop click
+    document.getElementById('screenModal').addEventListener('click', function(e) {
+      if (e.target === this) closeScreenModal();
+    });
+
+    // ─── Init ──────────────────────────────────────────────────────────────
+
     initApiConfig();
     loadClusterStatus();
-    setInterval(loadClusterStatus, 15000);
+    setInterval(loadClusterStatus, 10000);
+    setInterval(function() { if (apiEndpoint) loadScreens(); }, 30000);
   </script>
 </body>
 </html>
