@@ -36,7 +36,7 @@ const CONFIG = {
     node10: { ip: '192.168.1.215', ssh: 'user@192.168.1.215', role: 'worker', adb: null },
   },
   phoneNodeNames: ['node1','node2','node3','node4','node5','node6','node7','node8','node9','node10'],
-  otherNodes: ['neo', 'vikixii', 'aorus-node', 'steamdeck', 'pikvm-main'],
+  otherNodes: ['neo', 'vikixii', 'aorus-node', 'steamdeck', 'pikvm-main', 'pikvm-2'],
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
