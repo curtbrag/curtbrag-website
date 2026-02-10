@@ -1009,6 +1009,101 @@ function handleNodeHistory(req, res) {
   sendJson(res, 200, { nodes: summary });
 }
 
+// ─── Ping / Connectivity Test ────────────────────────────────────────────────
+
+async function handlePing(req, res) {
+  const allNodes = [...CONFIG.phoneNodeNames, ...CONFIG.otherNodes];
+  const results = await Promise.all(
+    allNodes.map(async name => {
+      const start = Date.now();
+      const isPhone = CONFIG.phoneNodeNames.includes(name);
+      let ok = false;
+      let latency = null;
+
+      if (isPhone) {
+        const node = CONFIG.phoneNodes[name];
+        const r = await runAsync(`ping -c 1 -W 2 ${node.ip}`, 5000);
+        ok = r.ok;
+        latency = Date.now() - start;
+        if (r.ok) {
+          const match = r.stdout.match(/time[=<](\d+\.?\d*)/);
+          if (match) latency = parseFloat(match[1]);
+        }
+      } else {
+        const r = await runAsync(`ping -c 1 -W 2 ${name} 2>/dev/null || echo unreachable`, 5000);
+        ok = r.ok && !r.stdout.includes('unreachable');
+        latency = Date.now() - start;
+      }
+
+      return { name, reachable: ok, latencyMs: ok ? Math.round(latency) : null };
+    })
+  );
+
+  sendJson(res, 200, {
+    timestamp: new Date().toISOString(),
+    results,
+    summary: { total: results.length, reachable: results.filter(r => r.reachable).length, unreachable: results.filter(r => !r.reachable).length },
+  });
+}
+
+// ─── Deployments ─────────────────────────────────────────────────────────────
+
+async function handleDeployments(req, res) {
+  const result = await runAsync('kubectl get deployments -A -o json', 15000);
+  if (!result.ok) return sendJson(res, 500, { error: 'Failed to get deployments', details: result.stderr });
+  try {
+    const parsed = JSON.parse(result.stdout);
+    const deployments = parsed.items.map(d => ({
+      name: d.metadata.name,
+      namespace: d.metadata.namespace,
+      replicas: d.spec.replicas || 0,
+      ready: d.status.readyReplicas || 0,
+      available: d.status.availableReplicas || 0,
+      updated: d.status.updatedReplicas || 0,
+      age: d.metadata.creationTimestamp || null,
+      strategy: (d.spec.strategy || {}).type || 'RollingUpdate',
+    }));
+    sendJson(res, 200, { deployments });
+  } catch (e) {
+    sendJson(res, 500, { error: 'Failed to parse deployments', details: e.message });
+  }
+}
+
+// ─── Node Detail ─────────────────────────────────────────────────────────────
+
+async function handleNodeDetail(req, res, nodeName) {
+  if (!/^[a-zA-Z0-9._-]+$/.test(nodeName)) return sendJson(res, 400, { error: 'Invalid node name' });
+
+  const [descResult, podsResult] = await Promise.all([
+    runAsync(`kubectl describe node ${nodeName}`, 15000),
+    runAsync(`kubectl get pods -A --field-selector spec.nodeName=${nodeName} -o json`, 15000),
+  ]);
+
+  let pods = [];
+  if (podsResult.ok) {
+    try {
+      const parsed = JSON.parse(podsResult.stdout);
+      pods = parsed.items.map(p => ({
+        name: p.metadata.name, namespace: p.metadata.namespace,
+        status: p.status.phase || 'Unknown',
+        restarts: ((p.status.containerStatuses || [])[0] || {}).restartCount || 0,
+      }));
+    } catch { /* ignore */ }
+  }
+
+  sendJson(res, 200, {
+    node: nodeName,
+    describe: descResult.ok ? descResult.stdout : null,
+    pods,
+    metrics: (metricsCache.data || {})[nodeName] || null,
+    history: nodeHistory[nodeName] ? {
+      lastStatus: nodeHistory[nodeName].lastStatus,
+      statusChanges: nodeHistory[nodeName].statusChanges,
+      downtimeEvents: nodeHistory[nodeName].downtimeEvents,
+    } : null,
+  });
+}
+
 // ─── Export ──────────────────────────────────────────────────────────────────
 
 async function handleExport(req, res) {
@@ -1203,7 +1298,13 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/commands/log') return handleCommandLog(req, res);
       if (path === '/api/alerts') return handleAlerts(req, res);
       if (path === '/api/nodes/history') return handleNodeHistory(req, res);
+      if (path === '/api/ping') return await handlePing(req, res);
+      if (path === '/api/deployments') return await handleDeployments(req, res);
       if (path === '/api/export') return await handleExport(req, res);
+
+      // Node detail: /api/nodes/:name/detail
+      const nodeDetailMatch = path.match(/^\/api\/nodes\/([^/]+)\/detail$/);
+      if (nodeDetailMatch) return await handleNodeDetail(req, res, nodeDetailMatch[1]);
 
       // Pod logs: /api/pods/:namespace/:pod/logs?tail=100&container=name
       const logMatch = path.match(/^\/api\/pods\/([^/]+)\/([^/]+)\/logs$/);

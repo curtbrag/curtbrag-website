@@ -797,6 +797,58 @@
     .toast.success { border-color: var(--green); }
     .toast.error { border-color: var(--red); }
     .toast.info { border-color: var(--blue); }
+
+    /* Theme toggle */
+    .theme-toggle { background: none; border: 1px solid var(--border); color: var(--muted); padding: 0.4rem 0.6rem; border-radius: 8px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
+    .theme-toggle:hover { border-color: var(--brand); color: var(--text); }
+    body.light-theme { --bg: #f5f5f5; --bg-elevated: #ffffff; --panel: #ffffff; --panel-hover: #f0f0f0; --text: #1a1a1a; --muted: #666; --border: #ddd; }
+    body.light-theme .header { background: linear-gradient(180deg, #fff 0%, #f5f5f5 100%); }
+
+    /* Ping results */
+    .ping-grid { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+    .ping-chip { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; background: var(--bg); border: 1px solid var(--border); }
+    .ping-chip.ok { border-color: rgba(34, 197, 94, 0.3); }
+    .ping-chip.fail { border-color: rgba(239, 68, 68, 0.3); opacity: 0.6; }
+    .ping-chip .ping-ms { color: var(--green); }
+    .ping-chip.fail .ping-ms { color: var(--red); }
+
+    /* Node detail modal */
+    .node-detail-modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; max-width: 700px; width: 95%; max-height: 80vh; display: flex; flex-direction: column; }
+    .node-detail-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+    .node-detail-header h3 { font-size: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+    .node-detail-header h3 i { color: var(--brand); }
+    .node-detail-body { flex: 1; overflow-y: auto; padding: 1rem; }
+    .node-detail-section { margin-bottom: 1rem; }
+    .node-detail-section h4 { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
+    .node-detail-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 0.5rem; }
+    .nd-metric { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem; text-align: center; }
+    .nd-metric-val { font-size: 1.3rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .nd-metric-label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .node-detail-pods { max-height: 200px; overflow-y: auto; }
+    .node-detail-actions { display: flex; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--border); }
+    .node-detail-actions button { flex: 1; padding: 0.5rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); cursor: pointer; font-size: 0.8rem; font-family: inherit; transition: all 0.2s; }
+    .node-detail-actions button:hover { border-color: var(--brand); }
+    .node-detail-actions button.danger { border-color: var(--red); color: var(--red); }
+    .node-detail-actions button.danger:hover { background: rgba(239, 68, 68, 0.1); }
+
+    /* Deployments */
+    .deploy-scale { display: inline-flex; align-items: center; gap: 0.3rem; }
+    .deploy-scale button { background: var(--bg); border: 1px solid var(--border); color: var(--text); width: 22px; height: 22px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; display: flex; align-items: center; justify-content: center; }
+    .deploy-scale button:hover { border-color: var(--brand); }
+    .deploy-scale span { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; min-width: 20px; text-align: center; }
+
+    /* Favorites bar */
+    .favorites-bar { display: flex; gap: 0.4rem; padding: 0.5rem 0; flex-wrap: wrap; margin-bottom: 0.5rem; }
+    .fav-btn { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.4rem 0.75rem; border-radius: 20px; cursor: pointer; font-family: inherit; font-size: 0.78rem; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; gap: 0.4rem; }
+    .fav-btn:hover { border-color: var(--brand); background: rgba(237, 35, 42, 0.05); }
+    .fav-btn i { font-size: 0.7rem; }
+
+    /* Log viewer enhancements */
+    .log-toolbar { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); }
+    .log-toolbar button { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.3rem 0.6rem; border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-family: inherit; }
+    .log-toolbar button:hover { border-color: var(--brand); }
+    .log-toolbar button.active { background: var(--brand); border-color: var(--brand); }
+    .log-toolbar .log-info { font-size: 0.7rem; color: var(--muted); margin-left: auto; }
   </style>
 </head>
 <body>
@@ -838,6 +890,8 @@
         </div>
       </div>
       <div class="toolbar">
+        <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" id="themeBtn"><i class="fa-solid fa-circle-half-stroke"></i></button>
+        <button class="toolbar-btn" onclick="runPingTest()" title="Ping all nodes"><i class="fa-solid fa-satellite-dish"></i> Ping</button>
         <button class="toolbar-btn" onclick="exportClusterState()" title="Export cluster snapshot"><i class="fa-solid fa-download"></i> Export</button>
         <button class="toolbar-btn" onclick="showShortcuts()" title="Keyboard shortcuts"><i class="fa-solid fa-keyboard"></i> <kbd>?</kbd></button>
         <button class="refresh-btn" onclick="loadClusterStatus()" id="refreshBtn" aria-label="Refresh cluster status">
@@ -886,6 +940,16 @@
         <button class="ctrl-btn sleep" onclick="sendCommand('sleep')" aria-label="Put selected nodes to sleep"><i class="fa-solid fa-moon" aria-hidden="true"></i> Sleep</button>
       </div>
       <div class="control-status" id="controlStatus"></div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="favorites-bar" id="favoritesBar">
+      <button class="fav-btn" onclick="quickAction('wake','phones')"><i class="fa-solid fa-sun"></i> Wake All Phones</button>
+      <button class="fav-btn" onclick="quickAction('sleep','phones')"><i class="fa-solid fa-moon"></i> Sleep All Phones</button>
+      <button class="fav-btn" onclick="quickAction('restart','phones')"><i class="fa-solid fa-rotate"></i> Restart Phones</button>
+      <button class="fav-btn" onclick="quickAction('mining-start','all')"><i class="fa-solid fa-play"></i> Start Mining</button>
+      <button class="fav-btn" onclick="quickAction('mining-stop','all')"><i class="fa-solid fa-stop"></i> Stop Mining</button>
+      <button class="fav-btn" onclick="quickAction('refresh-adb','all')"><i class="fa-solid fa-usb"></i> Refresh ADB</button>
     </div>
 
     <!-- Browse Panel -->
@@ -1081,6 +1145,22 @@
       </div>
     </div>
 
+    <!-- Deployments Section -->
+    <div class="section-header">
+      <h2 class="section-title"><i class="fa-solid fa-rocket"></i> Deployments</h2>
+      <span class="section-badge" id="deployBadge">0 deployments</span>
+    </div>
+    <div class="table-container">
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Name</th><th>Namespace</th><th>Ready</th><th>Strategy</th><th>Scale</th></tr></thead>
+          <tbody id="deployTableBody">
+            <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-rocket"></i><br>No deployments</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- Network Section -->
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-wifi"></i> Network</h2>
@@ -1158,12 +1238,29 @@
     </div>
   </div>
 
+  <!-- Node Detail Modal -->
+  <div class="modal-overlay" id="nodeDetailModal">
+    <div class="node-detail-modal">
+      <div class="node-detail-header">
+        <h3><i class="fa-solid fa-server"></i> <span id="nodeDetailTitle">Node</span></h3>
+        <button style="background:none;border:none;color:var(--text);cursor:pointer;font-size:1.2rem;" onclick="closeNodeDetail()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="node-detail-body" id="nodeDetailBody"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</div>
+      <div class="node-detail-actions" id="nodeDetailActions"></div>
+    </div>
+  </div>
+
   <!-- Log Viewer Modal -->
   <div class="modal-overlay" id="logModal">
     <div class="log-modal-content">
       <div class="log-modal-header">
         <h3><i class="fa-solid fa-scroll"></i> <span id="logModalTitle">Pod Logs</span></h3>
         <button style="background:none;border:none;color:var(--text);cursor:pointer;font-size:1.2rem;" onclick="closeLogModal()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="log-toolbar">
+        <button onclick="refreshCurrentLogs()" title="Refresh"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+        <button id="autoScrollBtn" onclick="toggleAutoScroll()" title="Auto-scroll">Auto-scroll</button>
+        <span class="log-info" id="logInfo"></span>
       </div>
       <div class="log-body" id="logBody">Loading...</div>
     </div>
@@ -1368,6 +1465,7 @@
           loadAlerts();
           loadCommandLog();
           loadMiningHistory();
+          loadDeployments();
         }
 
         document.getElementById('lastUpdate').textContent = data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : 'Never';
@@ -1418,7 +1516,8 @@
         }
         metricsHtml += '</div>';
 
-        return `<div class="${cls}">
+        const safeName = node.name.replace(/[^a-zA-Z0-9._-]/g, '');
+        return `<div class="${cls}" onclick="openNodeDetail('${safeName}')" style="cursor:pointer">
           <div class="node-header">
             <div class="node-name"><i class="fa-solid ${icon}"></i>${node.name}</div>
             <span class="node-role">${isCP ? 'Control Plane' : 'Worker'}</span>
@@ -1490,6 +1589,7 @@
     // ─── Pod Actions ─────────────────────────────────────────────────────
     async function viewPodLogs(ns, pod) {
       if (!apiEndpoint) { showToast('Direct API required for pod logs', 'error'); return; }
+      currentLogNs = ns; currentLogPod = pod;
       document.getElementById('logModalTitle').textContent = 'Logs: ' + pod;
       document.getElementById('logBody').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
       document.getElementById('logModal').classList.add('visible');
@@ -1999,13 +2099,183 @@
       if (e.target === this) closeScreenModal();
     });
 
+    // ─── Theme Toggle ────────────────────────────────────────────────────
+    function toggleTheme() {
+      document.body.classList.toggle('light-theme');
+      var isLight = document.body.classList.contains('light-theme');
+      localStorage.setItem('clusterTheme', isLight ? 'light' : 'dark');
+      document.getElementById('themeBtn').innerHTML = isLight ? '<i class="fa-solid fa-moon"></i>' : '<i class="fa-solid fa-circle-half-stroke"></i>';
+    }
+    function initTheme() {
+      if (localStorage.getItem('clusterTheme') === 'light') {
+        document.body.classList.add('light-theme');
+        document.getElementById('themeBtn').innerHTML = '<i class="fa-solid fa-moon"></i>';
+      }
+    }
+
+    // ─── Ping Test ───────────────────────────────────────────────────────
+    async function runPingTest() {
+      if (!apiEndpoint) { showToast('Direct API required for ping test', 'error'); return; }
+      showToast('Pinging all nodes...', 'info');
+      try {
+        var data = await apiFetch('/api/ping');
+        var results = data.results || [];
+        var html = '<h3 style="margin-bottom:0.75rem"><i class="fa-solid fa-satellite-dish" style="color:var(--brand)"></i> Connectivity Test</h3>';
+        html += '<p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.75rem">' + data.summary.reachable + '/' + data.summary.total + ' nodes reachable</p>';
+        html += '<div class="ping-grid">';
+        results.forEach(function(r) {
+          html += '<span class="ping-chip ' + (r.reachable ? 'ok' : 'fail') + '">';
+          html += '<i class="fa-solid ' + (r.reachable ? 'fa-circle-check' : 'fa-circle-xmark') + '" style="color:var(--' + (r.reachable ? 'green' : 'red') + ')"></i>';
+          html += r.name + ' <span class="ping-ms">' + (r.reachable ? r.latencyMs + 'ms' : 'timeout') + '</span></span>';
+        });
+        html += '</div>';
+        document.getElementById('logModalTitle').textContent = 'Ping Results';
+        document.getElementById('logBody').innerHTML = html;
+        document.getElementById('logModal').classList.add('visible');
+      } catch (e) { showToast('Ping failed: ' + e.message, 'error'); }
+    }
+
+    // ─── Quick Actions ───────────────────────────────────────────────────
+    async function quickAction(cmd, target) {
+      if (!savedPassword) {
+        pendingCommand = cmd;
+        document.getElementById('passwordModal').classList.add('visible');
+        document.getElementById('passwordInput').focus();
+        return;
+      }
+      showToast('Sending ' + cmd + ' to ' + target + '...', 'info');
+      try {
+        var data = await sendToBackend({ command: cmd, target: target, password: savedPassword });
+        if (data.success) { showToast(data.message, 'success'); setTimeout(loadClusterStatus, 3000); }
+        else { showToast(data.error || 'Failed', 'error'); if (data.error === 'Invalid password') { savedPassword = ''; localStorage.removeItem('clusterPassword'); } }
+      } catch (e) { showToast('Error: ' + e.message, 'error'); }
+    }
+
+    // ─── Node Detail Modal ───────────────────────────────────────────────
+    var currentDetailNode = null;
+
+    function openNodeDetail(nodeName) {
+      currentDetailNode = nodeName;
+      document.getElementById('nodeDetailTitle').textContent = nodeName;
+      document.getElementById('nodeDetailBody').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+      document.getElementById('nodeDetailActions').innerHTML = '';
+      document.getElementById('nodeDetailModal').classList.add('visible');
+      if (apiEndpoint) loadNodeDetail(nodeName);
+      else document.getElementById('nodeDetailBody').innerHTML = '<p style="color:var(--muted)">Connect Direct API for details</p>';
+    }
+
+    async function loadNodeDetail(nodeName) {
+      try {
+        var data = await apiFetch('/api/nodes/' + nodeName + '/detail');
+        var html = '';
+        if (data.metrics) {
+          var m = data.metrics;
+          html += '<div class="node-detail-section"><h4>Resources</h4><div class="node-detail-metrics">';
+          if (m.cpu) html += '<div class="nd-metric"><div class="nd-metric-val" style="color:' + (m.cpu.usage > 80 ? 'var(--red)' : m.cpu.usage > 50 ? 'var(--yellow)' : 'var(--green)') + '">' + m.cpu.usage + '%</div><div class="nd-metric-label">CPU</div></div>';
+          if (m.memory) html += '<div class="nd-metric"><div class="nd-metric-val" style="color:' + (m.memory.percent > 85 ? 'var(--red)' : 'var(--green)') + '">' + m.memory.percent + '%</div><div class="nd-metric-label">RAM (' + m.memory.usedMB + '/' + m.memory.totalMB + 'MB)</div></div>';
+          if (m.temp) html += '<div class="nd-metric"><div class="nd-metric-val" style="color:' + (m.temp.celsius > 60 ? 'var(--red)' : 'var(--green)') + '">' + m.temp.celsius + '&deg;C</div><div class="nd-metric-label">Temp</div></div>';
+          if (m.battery) html += '<div class="nd-metric"><div class="nd-metric-val" style="color:' + (m.battery.level > 50 ? 'var(--green)' : 'var(--red)') + '">' + m.battery.level + '%</div><div class="nd-metric-label">Battery' + (m.battery.charging ? ' (Charging)' : '') + '</div></div>';
+          if (m.storage) html += '<div class="nd-metric"><div class="nd-metric-val">' + m.storage.percent + '%</div><div class="nd-metric-label">Disk (' + m.storage.availMB + 'MB free)</div></div>';
+          html += '</div></div>';
+        }
+        if (data.history && data.history.statusChanges && data.history.statusChanges.length > 0) {
+          html += '<div class="node-detail-section"><h4>Status History</h4>';
+          data.history.statusChanges.slice(-10).reverse().forEach(function(sc) {
+            html += '<div style="font-size:0.78rem;padding:0.2rem 0;color:var(--muted)">' + new Date(sc.at).toLocaleString() + ': ' + sc.from + ' &rarr; <strong style="color:var(--' + (sc.to === 'Ready' ? 'green' : 'red') + ')">' + sc.to + '</strong></div>';
+          });
+          html += '</div>';
+        }
+        if (data.pods && data.pods.length > 0) {
+          html += '<div class="node-detail-section"><h4>Pods (' + data.pods.length + ')</h4><div class="node-detail-pods">';
+          data.pods.forEach(function(p) {
+            var c = p.status === 'Running' ? 'green' : p.status === 'Failed' ? 'red' : 'yellow';
+            html += '<div style="display:flex;align-items:center;gap:0.5rem;padding:0.2rem 0;font-size:0.78rem"><span style="color:var(--' + c + ')"><i class="fa-solid fa-circle" style="font-size:0.4rem"></i></span><span style="flex:1">' + p.name + '</span><span class="pod-namespace">' + p.namespace + '</span></div>';
+          });
+          html += '</div></div>';
+        }
+        document.getElementById('nodeDetailBody').innerHTML = html || '<p style="color:var(--muted)">No data</p>';
+        var isPhone = ['node1','node2','node3','node4','node5','node6','node7','node8','node9','node10'].indexOf(nodeName) !== -1;
+        var acts = '<button onclick="drainNode(\'' + nodeName + '\')"><i class="fa-solid fa-arrow-right-from-bracket"></i> Drain</button>';
+        acts += '<button onclick="uncordonNode(\'' + nodeName + '\')"><i class="fa-solid fa-arrow-right-to-bracket"></i> Uncordon</button>';
+        if (isPhone) acts += '<button onclick="quickAction(\'wake\',\'' + nodeName + '\')"><i class="fa-solid fa-sun"></i> Wake</button><button onclick="quickAction(\'sleep\',\'' + nodeName + '\')"><i class="fa-solid fa-moon"></i> Sleep</button>';
+        document.getElementById('nodeDetailActions').innerHTML = acts;
+      } catch (e) { document.getElementById('nodeDetailBody').innerHTML = '<p style="color:var(--red)">Error: ' + e.message + '</p>'; }
+    }
+
+    function closeNodeDetail() { document.getElementById('nodeDetailModal').classList.remove('visible'); }
+    document.getElementById('nodeDetailModal').addEventListener('click', function(e) { if (e.target === this) closeNodeDetail(); });
+
+    async function drainNode(name) {
+      if (!confirm('Drain node ' + name + '? This will evict all pods.')) return;
+      if (!savedPassword) { showToast('Enter password first', 'error'); return; }
+      showToast('Draining ' + name + '...', 'info');
+      try {
+        var data = await apiPost('/api/nodes/drain', { node: name, password: savedPassword });
+        showToast(data.success ? 'Node drained' : (data.message || 'Failed'), data.success ? 'success' : 'error');
+        if (data.success) setTimeout(loadClusterStatus, 3000);
+      } catch (e) { showToast('Error: ' + e.message, 'error'); }
+    }
+
+    async function uncordonNode(name) {
+      if (!savedPassword) { showToast('Enter password first', 'error'); return; }
+      try {
+        var data = await apiPost('/api/nodes/uncordon', { node: name, password: savedPassword });
+        showToast(data.success ? 'Node uncordoned' : 'Failed', data.success ? 'success' : 'error');
+        if (data.success) setTimeout(loadClusterStatus, 3000);
+      } catch (e) { showToast('Error: ' + e.message, 'error'); }
+    }
+
+    // ─── Deployments ─────────────────────────────────────────────────────
+    async function loadDeployments() {
+      if (!apiEndpoint) return;
+      try {
+        var data = await apiFetch('/api/deployments');
+        renderDeployments(data.deployments || []);
+      } catch (e) { /* silent */ }
+    }
+
+    function renderDeployments(deployments) {
+      document.getElementById('deployBadge').textContent = deployments.length + ' deployments';
+      var tbody = document.getElementById('deployTableBody');
+      if (deployments.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-rocket"></i><br>No deployments</td></tr>'; return; }
+      tbody.innerHTML = deployments.map(function(d) {
+        var rc = d.ready === d.replicas ? 'green' : d.ready > 0 ? 'yellow' : 'red';
+        var ns = d.namespace.replace(/[^a-zA-Z0-9._-]/g, '');
+        var dn = d.name.replace(/[^a-zA-Z0-9._-]/g, '');
+        return '<tr><td class="pod-name">' + d.name + '</td><td><span class="pod-namespace">' + d.namespace + '</span></td><td style="color:var(--' + rc + ')">' + d.ready + '/' + d.replicas + '</td><td style="font-size:0.75rem;color:var(--muted)">' + d.strategy + '</td><td><div class="deploy-scale"><button onclick="scaleDeployment(\'' + ns + '\',\'' + dn + '\',' + Math.max(0, d.replicas - 1) + ')"><i class="fa-solid fa-minus"></i></button><span>' + d.replicas + '</span><button onclick="scaleDeployment(\'' + ns + '\',\'' + dn + '\',' + (d.replicas + 1) + ')"><i class="fa-solid fa-plus"></i></button></div></td></tr>';
+      }).join('');
+    }
+
+    async function scaleDeployment(ns, name, replicas) {
+      if (!savedPassword) { showToast('Enter password first', 'error'); return; }
+      try {
+        var data = await apiPost('/api/scale', { namespace: ns, deployment: name, replicas: replicas, password: savedPassword });
+        if (data.success) { showToast(data.message, 'success'); setTimeout(function() { loadDeployments(); loadClusterStatus(); }, 2000); }
+        else showToast(data.error || 'Failed', 'error');
+      } catch (e) { showToast('Error: ' + e.message, 'error'); }
+    }
+
+    // ─── Log Viewer Enhancements ─────────────────────────────────────────
+    var logAutoScroll = true;
+    var currentLogNs = null;
+    var currentLogPod = null;
+
+    function toggleAutoScroll() {
+      logAutoScroll = !logAutoScroll;
+      document.getElementById('autoScrollBtn').className = logAutoScroll ? 'active' : '';
+    }
+    function refreshCurrentLogs() {
+      if (currentLogNs && currentLogPod) viewPodLogs(currentLogNs, currentLogPod);
+    }
+
     // ─── Init ──────────────────────────────────────────────────────────────
 
+    initTheme();
     initApiConfig();
     loadClusterStatus();
     setInterval(loadClusterStatus, 10000);
     setInterval(function() { if (apiEndpoint) loadScreens(); }, 30000);
-    setInterval(function() { if (apiEndpoint) { loadAlerts(); loadCommandLog(); } }, 15000);
+    setInterval(function() { if (apiEndpoint) { loadAlerts(); loadCommandLog(); loadDeployments(); } }, 15000);
   </script>
 </body>
 </html>
