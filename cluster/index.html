@@ -1081,6 +1081,32 @@
     .pod-age { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--muted); }
 
     /* Mobile responsive improvements */
+    /* Donut chart */
+    .donut-chart-container { display: flex; align-items: center; justify-content: center; gap: 1.5rem; flex-wrap: wrap; padding: 0.5rem 0; }
+    .donut-chart { position: relative; width: 120px; height: 120px; }
+    .donut-chart svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .donut-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+    .donut-center-val { font-size: 1.3rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .donut-center-label { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; }
+    .donut-legend { display: flex; flex-direction: column; gap: 0.3rem; }
+    .donut-legend-item { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; }
+    .donut-legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .donut-legend-val { font-family: 'JetBrains Mono', monospace; color: var(--muted); font-size: 0.7rem; }
+
+    /* ConfigMap/Secret viewer */
+    .config-list { max-height: 200px; overflow-y: auto; }
+    .config-item { display: flex; align-items: center; justify-content: space-between; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.78rem; }
+    .config-item:last-child { border-bottom: none; }
+    .config-item-name { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; }
+    .config-item-type { font-size: 0.6rem; padding: 0.1rem 0.3rem; border-radius: 4px; text-transform: uppercase; font-weight: 600; }
+    .config-item-type.configmap { background: rgba(59,130,246,0.1); color: #3b82f6; }
+    .config-item-type.secret { background: rgba(234,179,8,0.1); color: var(--yellow); }
+    .config-item-keys { color: var(--muted); font-size: 0.65rem; }
+
+    /* Node sort/order */
+    .node-sort { display: flex; gap: 0.3rem; align-items: center; }
+    .node-sort select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.25rem 0.4rem; border-radius: 6px; font-size: 0.72rem; font-family: inherit; }
+
     @media (max-width: 768px) {
       .header h1 { font-size: 1.3rem; }
       .container { padding: 0.75rem; }
@@ -1105,6 +1131,18 @@
       .resource-summary { grid-template-columns: 1fr; }
       .mining-stats { grid-template-columns: 1fr; }
       .screen-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+      .donut-chart-container { flex-direction: column; }
+      .toolbar { flex-wrap: wrap; gap: 0.3rem; }
+      .toolbar-btn { font-size: 0.7rem; padding: 0.3rem 0.5rem; }
+      .toolbar-btn kbd { display: none; }
+      .battery-heatmap, .thermal-panel { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); }
+      .quota-grid { grid-template-columns: 1fr; }
+      .group-actions { grid-template-columns: 1fr; }
+      .conn-quality, .notif-bell { display: none; }
+      .cmd-palette { width: 95%; }
+      .shortcuts-modal { width: 95%; }
+      .pod-resource-bar { width: 35px; }
+      .pod-actions { white-space: nowrap; }
     }
 
     /* Loading shimmer */
@@ -1610,6 +1648,21 @@
         <div class="resource-card-bar"><div class="resource-card-fill" id="avgBattBar" style="width:0%;background:var(--yellow)"></div></div>
         <div class="resource-card-detail" id="avgBattDetail"></div>
       </div>
+    </div>
+
+    <!-- Resource Donut Charts -->
+    <div id="donutChartSection" style="display:none; margin-bottom: 1.25rem;">
+      <div class="donut-chart-container" id="donutCharts"></div>
+    </div>
+
+    <!-- ConfigMaps & Secrets -->
+    <div class="section-header" onclick="toggleSection('configPanel',this)" id="configHeader" style="display:none">
+      <h2 class="section-title"><i class="fa-solid fa-file-code"></i> ConfigMaps & Secrets</h2>
+      <span class="section-badge" id="configBadge">0 items</span>
+      <i class="fa-solid fa-chevron-down section-collapse"></i>
+    </div>
+    <div class="section-body" id="configPanel" style="display:none">
+      <div class="config-list" id="configList"></div>
     </div>
 
     <!-- Alerts Panel -->
@@ -2315,6 +2368,7 @@
         recordLocalHealth(summary.healthScore || 0);
         lastMetrics = data.metrics || {};
         renderResourceSummary(lastMetrics);
+        renderDonutCharts(lastMetrics);
         renderThermalGrid(lastMetrics);
         renderTopologyMap(data.nodes || []);
 
@@ -2362,6 +2416,7 @@
           loadNodeMetricsHistory();
           loadNodeScheduling();
           loadResourceQuotas();
+          loadConfigMaps();
         }
 
         consecutiveFailures = 0;
@@ -3358,6 +3413,72 @@
       document.getElementById('avgBattBar').style.width = avgBatt + '%';
       document.getElementById('avgBattBar').style.background = avgBatt > 50 ? 'var(--green)' : avgBatt > 20 ? 'var(--yellow)' : 'var(--red)';
       document.getElementById('avgBattDetail').textContent = battVals.length + ' phones | min ' + (battVals.length > 0 ? Math.min.apply(null,battVals) : 0) + '% max ' + (battVals.length > 0 ? Math.max.apply(null,battVals) : 0) + '%';
+    }
+
+    // ─── Donut Charts ─────────────────────────────────────────────────
+    function renderDonutCharts(metrics) {
+      if (!metrics || Object.keys(metrics).length === 0) return;
+      document.getElementById('donutChartSection').style.display = '';
+
+      var cpuVals = [], memUsed = 0, memTotal = 0, storUsed = 0, storTotal = 0;
+      for (var n in metrics) {
+        var m = metrics[n];
+        if (m.cpu && m.cpu.usage != null) cpuVals.push(m.cpu.usage);
+        if (m.memory) { memUsed += m.memory.usedMB || 0; memTotal += m.memory.totalMB || 0; }
+        if (m.storage) { storUsed += m.storage.usedMB || 0; storTotal += m.storage.totalMB || 0; }
+      }
+
+      var avgCpu = cpuVals.length > 0 ? Math.round(cpuVals.reduce(function(a,b){return a+b},0)/cpuVals.length) : 0;
+      var memPct = memTotal > 0 ? Math.round((memUsed/memTotal)*100) : 0;
+      var storPct = storTotal > 0 ? Math.round((storUsed/storTotal)*100) : 0;
+
+      function donut(label, pct, color, detail) {
+        var r = 45, cx = 55, cy = 55;
+        var circ = 2 * Math.PI * r;
+        var offset = circ - (pct / 100) * circ;
+        var valColor = pct > 85 ? 'var(--red)' : pct > 60 ? 'var(--yellow)' : color;
+        return '<div style="text-align:center"><div class="donut-chart">' +
+          '<svg viewBox="0 0 110 110"><circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="var(--border)" stroke-width="10"/>' +
+          '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + valColor + '" stroke-width="10" stroke-dasharray="' + circ + '" stroke-dashoffset="' + offset + '" stroke-linecap="round" style="transition:stroke-dashoffset 0.8s ease"/></svg>' +
+          '<div class="donut-center"><div class="donut-center-val" style="color:' + valColor + '">' + pct + '%</div><div class="donut-center-label">' + label + '</div></div></div>' +
+          '<div style="font-size:0.65rem;color:var(--muted);margin-top:0.3rem">' + detail + '</div></div>';
+      }
+
+      document.getElementById('donutCharts').innerHTML =
+        donut('CPU', avgCpu, 'var(--brand)', cpuVals.length + ' nodes') +
+        donut('RAM', memPct, '#3b82f6', (memUsed/1024).toFixed(1) + '/' + (memTotal/1024).toFixed(1) + ' GB') +
+        donut('Disk', storPct, '#a855f7', (storUsed/1024).toFixed(1) + '/' + (storTotal/1024).toFixed(1) + ' GB');
+    }
+
+    // ─── ConfigMaps & Secrets ───────────────────────────────────────────
+    async function loadConfigMaps() {
+      if (!apiEndpoint) return;
+      try {
+        var data = await apiFetch('/api/configmaps');
+        renderConfigMaps(data.items || []);
+      } catch (e) { /* silent */ }
+    }
+
+    function renderConfigMaps(items) {
+      if (!items || items.length === 0) return;
+      document.getElementById('configHeader').style.display = '';
+      document.getElementById('configPanel').style.display = '';
+      document.getElementById('configBadge').textContent = items.length + ' items';
+
+      // Group by namespace
+      var sorted = items.sort(function(a, b) { return a.namespace.localeCompare(b.namespace) || a.name.localeCompare(b.name); });
+
+      document.getElementById('configList').innerHTML = sorted.slice(0, 50).map(function(item) {
+        var typeCls = item.type === 'configmap' ? 'configmap' : 'secret';
+        var keys = (item.keys || []).slice(0, 5).join(', ');
+        if (item.keys && item.keys.length > 5) keys += ' (+' + (item.keys.length - 5) + ')';
+        return '<div class="config-item">' +
+          '<span class="config-item-name">' + item.name + '</span>' +
+          '<span class="pod-namespace">' + item.namespace + '</span>' +
+          '<span class="config-item-type ' + typeCls + '">' + item.type + '</span>' +
+          '<span class="config-item-keys">' + (keys || 'empty') + '</span>' +
+          '</div>';
+      }).join('');
     }
 
     // ─── Command History Search ─────────────────────────────────────────

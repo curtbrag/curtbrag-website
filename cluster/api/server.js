@@ -1682,6 +1682,48 @@ async function handleResourceQuotas(req, res) {
   sendJson(res, 200, { quotas });
 }
 
+// ─── ConfigMaps & Secrets ────────────────────────────────────────────────────
+
+async function handleConfigMaps(req, res) {
+  const [cmResult, secResult] = await Promise.all([
+    runAsync('kubectl get configmap -A -o json 2>/dev/null', 10000),
+    runAsync('kubectl get secret -A -o json 2>/dev/null', 10000),
+  ]);
+
+  const items = [];
+  if (cmResult.ok) {
+    try {
+      const parsed = JSON.parse(cmResult.stdout);
+      (parsed.items || []).forEach(cm => {
+        items.push({
+          name: cm.metadata.name,
+          namespace: cm.metadata.namespace,
+          type: 'configmap',
+          keys: Object.keys(cm.data || {}),
+          dataSize: JSON.stringify(cm.data || {}).length,
+        });
+      });
+    } catch { /* ignore */ }
+  }
+  if (secResult.ok) {
+    try {
+      const parsed = JSON.parse(secResult.stdout);
+      (parsed.items || []).forEach(sec => {
+        items.push({
+          name: sec.metadata.name,
+          namespace: sec.metadata.namespace,
+          type: 'secret',
+          secretType: sec.type || 'Opaque',
+          keys: Object.keys(sec.data || {}),
+          dataSize: Object.keys(sec.data || {}).length,
+        });
+      });
+    } catch { /* ignore */ }
+  }
+
+  sendJson(res, 200, { items });
+}
+
 // ─── HTTP Server ─────────────────────────────────────────────────────────────
 
 function sendJson(res, code, data) {
@@ -1784,6 +1826,7 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/metrics/history') return handleMetricsHistory(req, res);
       if (path === '/api/nodes/scheduling') return await handleNodeScheduling(req, res);
       if (path === '/api/resourcequotas') return await handleResourceQuotas(req, res);
+      if (path === '/api/configmaps') return await handleConfigMaps(req, res);
 
       // Node annotations: /api/nodes/:name/annotations
       const annotMatch = path.match(/^\/api\/nodes\/([^/]+)\/annotations$/);
