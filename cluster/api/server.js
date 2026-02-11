@@ -487,8 +487,9 @@ async function handleStatus(req, res) {
     errors.push('kubectl get nodes failed: ' + nodesResult.stderr);
   }
 
-  // Track node uptime
+  // Track node uptime and pod restarts
   updateNodeTracking(nodes);
+  trackPodRestarts(pods);
 
   // Kubectl: pods
   const podsResult = run('kubectl get pods -A -o json', 15000);
