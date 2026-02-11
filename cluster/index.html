@@ -801,8 +801,34 @@
     /* Theme toggle */
     .theme-toggle { background: none; border: 1px solid var(--border); color: var(--muted); padding: 0.4rem 0.6rem; border-radius: 8px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
     .theme-toggle:hover { border-color: var(--brand); color: var(--text); }
-    body.light-theme { --bg: #f5f5f5; --bg-elevated: #ffffff; --panel: #ffffff; --panel-hover: #f0f0f0; --text: #1a1a1a; --muted: #666; --border: #ddd; }
+    body.light-theme { --bg: #f5f5f5; --bg-elevated: #ffffff; --panel: #ffffff; --panel-hover: #f0f0f0; --text: #1a1a1a; --muted: #666; --border: #ddd; --brand-glow: rgba(237, 35, 42, 0.15); --green-glow: rgba(34, 197, 94, 0.1); }
     body.light-theme .header { background: linear-gradient(180deg, #fff 0%, #f5f5f5 100%); }
+    body.light-theme .node { box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    body.light-theme .card { box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    body.light-theme .toast { box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+    body.light-theme .notif-dropdown { box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+    body.light-theme code { background: #e8e8e8; }
+
+    /* Tooltip */
+    .node-tooltip { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.75rem; font-size: 0.72rem; white-space: nowrap; z-index: 1500; box-shadow: 0 4px 16px rgba(0,0,0,0.3); pointer-events: none; opacity: 0; transition: opacity 0.2s; }
+    .node:hover .node-tooltip { opacity: 1; }
+    .node-tooltip::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: var(--border); }
+    .tooltip-row { display: flex; justify-content: space-between; gap: 1rem; }
+    .tooltip-key { color: var(--muted); }
+    .tooltip-val { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+
+    /* Copy button */
+    .copy-btn { background: none; border: 1px solid var(--border); color: var(--muted); padding: 0.1rem 0.3rem; border-radius: 4px; cursor: pointer; font-size: 0.6rem; transition: all 0.2s; vertical-align: middle; margin-left: 0.25rem; }
+    .copy-btn:hover { border-color: var(--brand); color: var(--text); }
+    .copy-btn.copied { border-color: var(--green); color: var(--green); }
+
+    /* Auto-detect connection */
+    .api-detect { display: flex; align-items: center; gap: 0.3rem; }
+    .api-detect-btn { background: none; border: 1px solid var(--border); color: var(--muted); padding: 0.25rem 0.5rem; border-radius: 6px; cursor: pointer; font-size: 0.72rem; font-family: inherit; transition: all 0.2s; }
+    .api-detect-btn:hover { border-color: var(--brand); color: var(--text); }
+
+    /* Dashboard import/export */
+    .dash-io-btns { display: flex; gap: 0.3rem; }
 
     /* Ping results */
     .ping-grid { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
@@ -1249,6 +1275,7 @@
     <input type="password" id="apiToken" placeholder="Token" style="max-width: 120px; min-width: 80px;">
     <button class="api-btn" onclick="saveApiConfig()"><i class="fa-solid fa-check"></i> Save</button>
     <button class="api-btn" onclick="clearApiConfig()"><i class="fa-solid fa-xmark"></i> Clear</button>
+    <button class="api-detect-btn" onclick="autoDetectApi()" title="Auto-detect API server"><i class="fa-solid fa-magnifying-glass"></i> Detect</button>
     <span class="api-mode-badge" id="apiModeBadge"></span>
   </div>
 
@@ -1270,6 +1297,8 @@
         <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" id="themeBtn"><i class="fa-solid fa-circle-half-stroke"></i></button>
         <button class="toolbar-btn" onclick="runPingTest()" title="Ping all nodes"><i class="fa-solid fa-satellite-dish"></i> Ping</button>
         <button class="toolbar-btn" onclick="exportClusterState()" title="Export cluster snapshot"><i class="fa-solid fa-download"></i> Export</button>
+        <button class="toolbar-btn" onclick="exportDashboardConfig()" title="Export dashboard settings"><i class="fa-solid fa-file-export"></i></button>
+        <label class="toolbar-btn" title="Import dashboard settings" style="cursor:pointer"><i class="fa-solid fa-file-import"></i><input type="file" accept=".json" onchange="importDashboardConfig(event)" style="display:none"></label>
         <button class="toolbar-btn" onclick="toggleFullscreen()" title="Toggle fullscreen" id="fullscreenBtn"><i class="fa-solid fa-expand"></i></button>
         <button class="toolbar-btn" onclick="showShortcuts()" title="Keyboard shortcuts"><i class="fa-solid fa-keyboard"></i> <kbd>?</kbd></button>
         <div class="conn-quality" id="connQuality" title="API connection quality" style="display:none">
@@ -2225,8 +2254,15 @@
             <div class="node-name"><i class="fa-solid ${icon}"></i>${node.name}</div>
             <span class="node-role">${isCP ? 'Control Plane' : 'Worker'}</span>
           </div>
+          <div class="node-tooltip">
+            <div class="tooltip-row"><span class="tooltip-key">IP:</span><span class="tooltip-val">${node.ip || '--'}</span></div>
+            ${m.cpu ? '<div class="tooltip-row"><span class="tooltip-key">CPU:</span><span class="tooltip-val">' + m.cpu.usage + '%</span></div>' : ''}
+            ${m.memory ? '<div class="tooltip-row"><span class="tooltip-key">RAM:</span><span class="tooltip-val">' + m.memory.percent + '% (' + (m.memory.usedMB || '--') + 'MB)</span></div>' : ''}
+            ${m.battery ? '<div class="tooltip-row"><span class="tooltip-key">Battery:</span><span class="tooltip-val">' + m.battery.level + '%' + (m.battery.charging ? ' charging' : '') + '</span></div>' : ''}
+            ${m.temp ? '<div class="tooltip-row"><span class="tooltip-key">Temp:</span><span class="tooltip-val">' + m.temp.celsius + '°C</span></div>' : ''}
+          </div>
           <div class="node-details">
-            <div class="node-detail"><i class="fa-solid fa-network-wired"></i><code>${node.ip || 'Unknown'}</code></div>
+            <div class="node-detail"><i class="fa-solid fa-network-wired"></i><code>${node.ip || 'Unknown'}</code><button class="copy-btn" onclick="event.stopPropagation();copyToClipboard('${node.ip || ''}',this)" title="Copy IP"><i class="fa-solid fa-copy"></i></button></div>
           </div>
           ${metricsHtml}
           ${uptimeHtml}
@@ -3582,6 +3618,123 @@
         dd.classList.remove('visible');
       }
     });
+
+    // ─── Clipboard Copy ──────────────────────────────────────────────
+    function copyToClipboard(text, btn) {
+      navigator.clipboard.writeText(text).then(function() {
+        if (btn) {
+          btn.classList.add('copied');
+          btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+          setTimeout(function() {
+            btn.classList.remove('copied');
+            btn.innerHTML = '<i class="fa-solid fa-copy"></i>';
+          }, 1500);
+        }
+        showToast('Copied: ' + text, 'success');
+      }).catch(function() {
+        showToast('Copy failed', 'error');
+      });
+    }
+
+    // ─── API Auto-Detect ─────────────────────────────────────────────
+    async function autoDetectApi() {
+      showToast('Scanning for API server...', 'info');
+      var candidates = [
+        'http://localhost:3847',
+        'http://127.0.0.1:3847',
+        'http://192.168.1.206:3847',
+        'http://aorus:3847',
+        'http://aorus.local:3847',
+      ];
+
+      // Also check if there's a saved Tailscale URL
+      var tsUrl = localStorage.getItem('clusterTailscaleUrl');
+      if (tsUrl) candidates.unshift(tsUrl);
+
+      for (var i = 0; i < candidates.length; i++) {
+        try {
+          var res = await fetch(candidates[i] + '/api/health', { signal: AbortSignal.timeout(3000) });
+          if (res.ok) {
+            var data = await res.json();
+            if (data.status === 'ok') {
+              document.getElementById('apiEndpoint').value = candidates[i];
+              saveApiConfig();
+              showToast('Found API at ' + candidates[i], 'success');
+              return;
+            }
+          }
+        } catch (e) { /* continue */ }
+      }
+      showToast('Could not find API server. Start it on AORUS first.', 'error');
+    }
+
+    // ─── Dashboard Config Import/Export ──────────────────────────────
+    function exportDashboardConfig() {
+      var config = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        apiEndpoint: apiEndpoint,
+        theme: localStorage.getItem('clusterTheme') || 'dark',
+        nodeTags: nodeTags,
+        schedules: schedules,
+        sectionStates: sectionStates,
+        favorites: localStorage.getItem('clusterFavorites') || '',
+        nodeView: localStorage.getItem('clusterNodeView') || 'grid',
+      };
+      var blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'cluster-dashboard-config-' + new Date().toISOString().slice(0, 10) + '.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Dashboard config exported', 'success');
+    }
+
+    function importDashboardConfig(event) {
+      var file = event.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          var config = JSON.parse(e.target.result);
+          if (config.version !== 1) { showToast('Unknown config format', 'error'); return; }
+          if (config.apiEndpoint) {
+            document.getElementById('apiEndpoint').value = config.apiEndpoint;
+            saveApiConfig();
+          }
+          if (config.theme) {
+            localStorage.setItem('clusterTheme', config.theme);
+            initTheme();
+          }
+          if (config.nodeTags) {
+            nodeTags = config.nodeTags;
+            localStorage.setItem('clusterNodeTags', JSON.stringify(nodeTags));
+          }
+          if (config.schedules) {
+            schedules = config.schedules;
+            localStorage.setItem('clusterSchedules', JSON.stringify(schedules));
+            renderSchedules();
+          }
+          if (config.sectionStates) {
+            sectionStates = config.sectionStates;
+            localStorage.setItem('clusterSectionStates', JSON.stringify(sectionStates));
+            restoreSectionStates();
+          }
+          if (config.nodeView) {
+            localStorage.setItem('clusterNodeView', config.nodeView);
+            nodeListView = config.nodeView === 'list';
+            applyNodeView();
+          }
+          showToast('Dashboard config imported', 'success');
+          loadClusterStatus();
+        } catch (err) {
+          showToast('Failed to parse config: ' + err.message, 'error');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = ''; // Reset file input
+    }
 
     // ─── Server-Sent Events (SSE) ──────────────────────────────────
     var sseConnection = null;
