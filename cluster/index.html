@@ -1092,6 +1092,54 @@
     .uptime-segment.unknown { background: var(--border); }
     .uptime-pct { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--muted); min-width: 40px; }
 
+    /* Node group actions */
+    .group-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .group-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 1rem; flex: 1; min-width: 200px; }
+    .group-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+    .group-card-title { font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 0.4rem; }
+    .group-card-title i { color: var(--brand); font-size: 0.8rem; }
+    .group-card-count { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; background: var(--bg); padding: 0.15rem 0.4rem; border-radius: 4px; color: var(--muted); }
+    .group-card-btns { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+    .group-btn { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.25rem 0.5rem; border-radius: 6px; cursor: pointer; font-size: 0.72rem; font-family: inherit; transition: all 0.2s; display: flex; align-items: center; gap: 0.25rem; }
+    .group-btn:hover { border-color: var(--brand); }
+    .group-btn i { font-size: 0.65rem; }
+
+    /* Cost calculator */
+    .cost-calc { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.5rem; }
+    .cost-item { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem; text-align: center; }
+    .cost-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 0.2rem; }
+    .cost-value { font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 700; }
+    .cost-value.positive { color: var(--green); }
+    .cost-value.negative { color: var(--red); }
+    .cost-detail { font-size: 0.65rem; color: var(--muted); margin-top: 0.15rem; font-family: 'JetBrains Mono', monospace; }
+
+    /* Pod scheduling heatmap */
+    .pod-heatmap { overflow-x: auto; }
+    .pod-heatmap table { border-collapse: collapse; width: 100%; }
+    .pod-heatmap th, .pod-heatmap td { padding: 0.3rem 0.5rem; font-size: 0.7rem; border: 1px solid var(--border); text-align: center; }
+    .pod-heatmap th { background: var(--bg); font-weight: 600; color: var(--muted); position: sticky; top: 0; }
+    .pod-heatmap td.has-pods { cursor: default; }
+    .pod-heatmap .hm-0 { background: var(--bg); }
+    .pod-heatmap .hm-1 { background: rgba(34, 197, 94, 0.1); }
+    .pod-heatmap .hm-2 { background: rgba(34, 197, 94, 0.2); }
+    .pod-heatmap .hm-3 { background: rgba(34, 197, 94, 0.3); }
+    .pod-heatmap .hm-4 { background: rgba(234, 179, 8, 0.2); }
+    .pod-heatmap .hm-5 { background: rgba(239, 68, 68, 0.2); }
+
+    /* System info widget */
+    .sysinfo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; }
+    .sysinfo-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.75rem; }
+    .sysinfo-card-name { font-weight: 600; font-size: 0.8rem; margin-bottom: 0.3rem; display: flex; align-items: center; gap: 0.3rem; }
+    .sysinfo-card-name i { color: var(--brand); font-size: 0.7rem; }
+    .sysinfo-row { display: flex; justify-content: space-between; font-size: 0.7rem; padding: 0.1rem 0; }
+    .sysinfo-key { color: var(--muted); }
+    .sysinfo-val { font-family: 'JetBrains Mono', monospace; }
+
+    /* Cluster age counter */
+    .cluster-age { display: inline-flex; align-items: center; gap: 0.4rem; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--muted); margin-top: 0.3rem; }
+    .cluster-age i { color: var(--brand); font-size: 0.7rem; }
+    .cluster-age .age-val { color: var(--text); font-weight: 600; }
+
     /* Cluster topology map */
     .topology-map { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; overflow-x: auto; }
     .topology-map svg { width: 100%; min-height: 300px; }
@@ -1159,6 +1207,7 @@
     <div class="header-content">
       <h1><i class="fa-solid fa-mobile-screen-button"></i> Phone Cluster Dashboard</h1>
       <p class="subtitle"><span>16 Nodes</span> &bull; Phones + PCs + Steam Deck + PiKVMs &bull; K3s v1.34</p>
+      <div class="cluster-age" id="clusterAge"><i class="fa-solid fa-hourglass-half"></i> Cluster uptime: <span class="age-val" id="clusterAgeVal">--</span></div>
     </div>
   </div>
 
@@ -1301,6 +1350,45 @@
       <button class="fav-btn" onclick="quickAction('mining-start','all')"><i class="fa-solid fa-play"></i> Start Mining</button>
       <button class="fav-btn" onclick="quickAction('mining-stop','all')"><i class="fa-solid fa-stop"></i> Stop Mining</button>
       <button class="fav-btn" onclick="quickAction('refresh-adb','all')"><i class="fa-solid fa-usb"></i> Refresh ADB</button>
+    </div>
+
+    <!-- Node Group Actions -->
+    <div class="group-actions" id="groupActions">
+      <div class="group-card">
+        <div class="group-card-header">
+          <span class="group-card-title"><i class="fa-solid fa-mobile-screen"></i> Phones</span>
+          <span class="group-card-count" id="phoneGroupCount">10 nodes</span>
+        </div>
+        <div class="group-card-btns">
+          <button class="group-btn" onclick="groupCmd('phones','wake')"><i class="fa-solid fa-sun"></i> Wake</button>
+          <button class="group-btn" onclick="groupCmd('phones','sleep')"><i class="fa-solid fa-moon"></i> Sleep</button>
+          <button class="group-btn" onclick="groupCmd('phones','restart')"><i class="fa-solid fa-rotate"></i> Restart</button>
+          <button class="group-btn" onclick="groupCmd('phones','mining-start')"><i class="fa-solid fa-play"></i> Mine</button>
+          <button class="group-btn" onclick="groupCmd('phones','mining-stop')"><i class="fa-solid fa-stop"></i> Stop Mine</button>
+        </div>
+      </div>
+      <div class="group-card">
+        <div class="group-card-header">
+          <span class="group-card-title"><i class="fa-solid fa-desktop"></i> PCs & Other</span>
+          <span class="group-card-count" id="pcGroupCount">6 nodes</span>
+        </div>
+        <div class="group-card-btns">
+          <button class="group-btn" onclick="groupCmd('other','restart')"><i class="fa-solid fa-rotate"></i> Restart K3s</button>
+          <button class="group-btn" onclick="groupCmd('other','start')"><i class="fa-solid fa-play"></i> Start K3s</button>
+          <button class="group-btn" onclick="groupCmd('other','stop')"><i class="fa-solid fa-stop"></i> Stop K3s</button>
+        </div>
+      </div>
+      <div class="group-card">
+        <div class="group-card-header">
+          <span class="group-card-title"><i class="fa-solid fa-globe"></i> All Nodes</span>
+          <span class="group-card-count" id="allGroupCount">16 nodes</span>
+        </div>
+        <div class="group-card-btns">
+          <button class="group-btn" onclick="groupCmd('all','restart')"><i class="fa-solid fa-rotate"></i> Restart All</button>
+          <button class="group-btn" onclick="groupCmd('all','mining-start')"><i class="fa-solid fa-play"></i> Mine All</button>
+          <button class="group-btn" onclick="groupCmd('all','mining-stop')"><i class="fa-solid fa-stop"></i> Stop All</button>
+        </div>
+      </div>
     </div>
 
     <!-- Browse Panel -->
@@ -1489,6 +1577,25 @@
       <div class="mining-message" id="miningMessage"></div>
     </div>
 
+    <!-- Cost Calculator -->
+    <div class="panel" id="costPanel" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem">
+      <div class="section-header" style="margin-bottom:0.75rem">
+        <h2 class="section-title" style="font-size:0.95rem"><i class="fa-solid fa-calculator"></i> Cost / Revenue Calculator</h2>
+      </div>
+      <div class="cost-calc" id="costCalc"></div>
+    </div>
+
+    <!-- Pod Scheduling Heatmap -->
+    <div class="panel" id="podHeatmapPanel" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem">
+      <div class="section-header" style="margin-bottom:0.5rem">
+        <h2 class="section-title" style="font-size:0.95rem"><i class="fa-solid fa-table-cells"></i> Pod Scheduling Heatmap</h2>
+        <button class="section-collapse" onclick="toggleSection('podHeatmapBody')"><i class="fa-solid fa-chevron-down"></i></button>
+      </div>
+      <div id="podHeatmapBody">
+        <div class="pod-heatmap" id="podHeatmap"></div>
+      </div>
+    </div>
+
     <!-- Phone Screens -->
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-display"></i> Phone Screens</h2>
@@ -1655,6 +1762,17 @@
     </div>
     <div class="ns-usage" id="nsUsage">
       <div class="empty-state" style="padding:1rem"><i class="fa-solid fa-folder-open"></i><br>Connect API for namespace data</div>
+    </div>
+
+    <!-- System Info Widget -->
+    <div class="panel" id="sysinfoPanel" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem">
+      <div class="section-header" style="margin-bottom:0.5rem">
+        <h2 class="section-title" style="font-size:0.95rem"><i class="fa-solid fa-circle-info"></i> System Info (Live)</h2>
+        <button class="section-collapse" onclick="toggleSection('sysinfoBody')"><i class="fa-solid fa-chevron-down"></i></button>
+      </div>
+      <div id="sysinfoBody">
+        <div class="sysinfo-grid" id="sysinfoGrid"></div>
+      </div>
     </div>
 
     <!-- Node Uptime Timeline -->
@@ -1968,6 +2086,9 @@
 
         renderNetwork(data.network);
         renderMining(data.mining);
+        renderCostCalc(data.mining);
+        renderPodHeatmap(allPods, data.nodes || []);
+        renderSystemInfo(data.nodes || [], lastMetrics);
 
         // Update ticker
         tickerData.nodesReady = summary.nodesReady || 0;
@@ -3423,6 +3544,141 @@
       }
     });
 
+    // ─── Node Group Commands ─────────────────────────────────────────
+    function groupCmd(group, cmd) {
+      var pw = localStorage.getItem('clusterPassword');
+      if (!pw) { requirePassword(function() { groupCmd(group, cmd); }); return; }
+      sendToBackend({ command: cmd, target: group, password: pw })
+        .then(function(data) {
+          showToast(data.message || 'Command sent to ' + group, data.success ? 'success' : 'error');
+          setTimeout(loadClusterStatus, 3000);
+        })
+        .catch(function(e) { showToast('Failed: ' + e.message, 'error'); });
+    }
+
+    // ─── Cost Calculator ─────────────────────────────────────────────────
+    function renderCostCalc(mining) {
+      var panel = document.getElementById('costPanel');
+      if (!mining) { panel.style.display = 'none'; return; }
+      panel.style.display = 'block';
+
+      // Each OnePlus 6T uses ~3W while mining, PCs use ~100W each
+      var phoneWatts = 3;
+      var pcWatts = 100;
+      var phonesActive = mining.minersRunning || 0;
+      var pcsActive = 0; // PCs don't mine by default
+      var totalWatts = (phonesActive * phoneWatts) + (pcsActive * pcWatts);
+      var kwhDay = (totalWatts * 24) / 1000;
+      var electricRate = 0.12; // $/kWh national avg
+      var dailyCost = kwhDay * electricRate;
+      var monthlyCost = dailyCost * 30;
+
+      var dailyRevStr = mining.estimatedDaily || '$0.00';
+      var monthlyRevStr = mining.estimatedMonthly || '$0.00';
+      var dailyRev = parseFloat(dailyRevStr.replace('$', '')) || 0;
+      var monthlyRev = parseFloat(monthlyRevStr.replace('$', '')) || 0;
+      var dailyProfit = dailyRev - dailyCost;
+      var monthlyProfit = monthlyRev - monthlyCost;
+
+      var grid = document.getElementById('costCalc');
+      grid.innerHTML =
+        '<div class="cost-item"><div class="cost-label">Power Draw</div><div class="cost-value">' + totalWatts + 'W</div><div class="cost-detail">' + phonesActive + ' phones x ' + phoneWatts + 'W</div></div>' +
+        '<div class="cost-item"><div class="cost-label">Daily Power</div><div class="cost-value negative">-$' + dailyCost.toFixed(3) + '</div><div class="cost-detail">' + kwhDay.toFixed(2) + ' kWh @ $' + electricRate + '</div></div>' +
+        '<div class="cost-item"><div class="cost-label">Daily Revenue</div><div class="cost-value positive">+' + dailyRevStr + '</div><div class="cost-detail">XMR mining</div></div>' +
+        '<div class="cost-item"><div class="cost-label">Daily Profit</div><div class="cost-value ' + (dailyProfit >= 0 ? 'positive' : 'negative') + '">$' + dailyProfit.toFixed(3) + '</div></div>' +
+        '<div class="cost-item"><div class="cost-label">Monthly Cost</div><div class="cost-value negative">-$' + monthlyCost.toFixed(2) + '</div><div class="cost-detail">' + (kwhDay * 30).toFixed(1) + ' kWh/mo</div></div>' +
+        '<div class="cost-item"><div class="cost-label">Monthly Rev</div><div class="cost-value positive">+' + monthlyRevStr + '</div></div>' +
+        '<div class="cost-item"><div class="cost-label">Monthly Profit</div><div class="cost-value ' + (monthlyProfit >= 0 ? 'positive' : 'negative') + '">$' + monthlyProfit.toFixed(2) + '</div></div>' +
+        '<div class="cost-item"><div class="cost-label">Pool Balance</div><div class="cost-value">' + (mining.poolBalance || '--') + '</div><div class="cost-detail">Total paid: ' + (mining.totalPaid || '--') + '</div></div>';
+    }
+
+    // ─── Pod Scheduling Heatmap ──────────────────────────────────────────
+    function renderPodHeatmap(pods, nodes) {
+      var panel = document.getElementById('podHeatmapPanel');
+      if (!pods || pods.length === 0 || !nodes || nodes.length === 0) { panel.style.display = 'none'; return; }
+      panel.style.display = 'block';
+
+      var nodeNames = nodes.map(function(n) { return n.name; }).sort();
+      var namespaces = [];
+      var nsCounts = {};
+      pods.forEach(function(p) {
+        var key = p.namespace + '|' + (p.node || 'unassigned');
+        nsCounts[key] = (nsCounts[key] || 0) + 1;
+        if (namespaces.indexOf(p.namespace) === -1) namespaces.push(p.namespace);
+      });
+      namespaces.sort();
+
+      var html = '<table><thead><tr><th>Namespace</th>';
+      nodeNames.forEach(function(n) { html += '<th>' + n.replace('node', 'n') + '</th>'; });
+      html += '<th>Total</th></tr></thead><tbody>';
+
+      namespaces.forEach(function(ns) {
+        html += '<tr><td style="text-align:left;font-weight:600">' + ns + '</td>';
+        var nsTotal = 0;
+        nodeNames.forEach(function(n) {
+          var count = nsCounts[ns + '|' + n] || 0;
+          nsTotal += count;
+          var hmClass = count === 0 ? 'hm-0' : count === 1 ? 'hm-1' : count === 2 ? 'hm-2' : count <= 4 ? 'hm-3' : count <= 6 ? 'hm-4' : 'hm-5';
+          html += '<td class="' + hmClass + ' has-pods" title="' + ns + ' on ' + n + ': ' + count + ' pods">' + (count || '') + '</td>';
+        });
+        html += '<td style="font-weight:600">' + nsTotal + '</td></tr>';
+      });
+
+      // Total row
+      html += '<tr style="font-weight:600"><td style="text-align:left">Total</td>';
+      nodeNames.forEach(function(n) {
+        var total = pods.filter(function(p) { return p.node === n; }).length;
+        html += '<td>' + total + '</td>';
+      });
+      html += '<td>' + pods.length + '</td></tr>';
+
+      html += '</tbody></table>';
+      document.getElementById('podHeatmap').innerHTML = html;
+    }
+
+    // ─── System Info Widget ──────────────────────────────────────────────
+    function renderSystemInfo(nodes, metrics) {
+      var panel = document.getElementById('sysinfoPanel');
+      if (!nodes || nodes.length === 0) { panel.style.display = 'none'; return; }
+      panel.style.display = 'block';
+
+      var grid = document.getElementById('sysinfoGrid');
+      grid.innerHTML = nodes.map(function(n) {
+        var m = metrics[n.name] || {};
+        var rows = [];
+        rows.push({ k: 'Status', v: n.status || '--' });
+        rows.push({ k: 'Role', v: n.role || 'worker' });
+        rows.push({ k: 'IP', v: n.ip || '--' });
+        if (m.cpu) rows.push({ k: 'CPU Cores', v: m.cpu.cores || '--' });
+        if (m.memory) rows.push({ k: 'RAM', v: (m.memory.totalMB ? Math.round(m.memory.totalMB / 1024 * 10) / 10 + ' GB' : '--') });
+        if (m.storage) rows.push({ k: 'Disk', v: (m.storage.totalMB ? Math.round(m.storage.totalMB / 1024) + ' GB' : '--') });
+        if (n.os) rows.push({ k: 'OS', v: n.os });
+        if (n.kernel) rows.push({ k: 'Kernel', v: n.kernel });
+        if (n.arch) rows.push({ k: 'Arch', v: n.arch });
+        if (n.kubeletVersion) rows.push({ k: 'Kubelet', v: n.kubeletVersion });
+
+        var isPhone = n.name.match(/^node\d+$/);
+        var icon = isPhone ? 'fa-mobile-screen' : 'fa-desktop';
+
+        return '<div class="sysinfo-card"><div class="sysinfo-card-name"><i class="fa-solid ' + icon + '"></i> ' + n.name + '</div>' +
+          rows.map(function(r) { return '<div class="sysinfo-row"><span class="sysinfo-key">' + r.k + '</span><span class="sysinfo-val">' + r.v + '</span></div>'; }).join('') +
+          '</div>';
+      }).join('');
+    }
+
+    // ─── Cluster Age Counter ─────────────────────────────────────────────
+    var clusterStartDate = new Date('2025-01-15T00:00:00Z'); // Approximate cluster start
+
+    function updateClusterAge() {
+      var now = new Date();
+      var diff = now - clusterStartDate;
+      var days = Math.floor(diff / 86400000);
+      var hours = Math.floor((diff % 86400000) / 3600000);
+      var mins = Math.floor((diff % 3600000) / 60000);
+      var el = document.getElementById('clusterAgeVal');
+      if (el) el.textContent = days + 'd ' + hours + 'h ' + mins + 'm';
+    }
+
     // ─── Cluster Topology Map ──────────────────────────────────────────
     var lastTopoNodes = [];
 
@@ -3715,6 +3971,8 @@
     initTheme();
     initApiConfig();
     applyNodeView();
+    updateClusterAge();
+    setInterval(updateClusterAge, 60000);
     loadClusterStatus();
     measureApiLatency();
     setInterval(loadClusterStatus, 10000);
