@@ -1508,6 +1508,131 @@ function handleHealthHistory(req, res) {
   sendJson(res, 200, { history: healthHistory });
 }
 
+// ─── Pod Resource Usage ─────────────────────────────────────────────────────
+
+let podResourceCache = { data: null, timestamp: 0 };
+
+async function handlePodResources(req, res) {
+  const now = Date.now();
+  if (podResourceCache.data && (now - podResourceCache.timestamp) < 15000) {
+    return sendJson(res, 200, podResourceCache.data);
+  }
+
+  const result = await runAsync('kubectl top pods -A --no-headers 2>/dev/null', 15000);
+  const resources = {};
+
+  if (result.ok && result.stdout) {
+    for (const line of result.stdout.trim().split('\n')) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length >= 4) {
+        const ns = parts[0];
+        const name = parts[1];
+        const cpuRaw = parts[2]; // e.g. "12m" or "250m"
+        const memRaw = parts[3]; // e.g. "64Mi" or "1Gi"
+
+        let cpuMillis = 0;
+        if (cpuRaw.endsWith('m')) cpuMillis = parseInt(cpuRaw);
+        else if (cpuRaw.endsWith('n')) cpuMillis = Math.round(parseInt(cpuRaw) / 1000000);
+        else cpuMillis = parseInt(cpuRaw) * 1000;
+
+        let memMi = 0;
+        if (memRaw.endsWith('Mi')) memMi = parseInt(memRaw);
+        else if (memRaw.endsWith('Gi')) memMi = Math.round(parseFloat(memRaw) * 1024);
+        else if (memRaw.endsWith('Ki')) memMi = Math.round(parseInt(memRaw) / 1024);
+
+        resources[ns + '/' + name] = { cpu: cpuMillis, mem: memMi };
+      }
+    }
+  }
+
+  const response = { resources, timestamp: new Date().toISOString() };
+  podResourceCache = { data: response, timestamp: now };
+  sendJson(res, 200, response);
+}
+
+// ─── Service Health Check ───────────────────────────────────────────────────
+
+async function handleServiceHealth(req, res) {
+  const svcResult = await runAsync('kubectl get svc -A -o json 2>/dev/null', 15000);
+  if (!svcResult.ok) return sendJson(res, 500, { error: 'Failed to get services' });
+
+  let services = [];
+  try {
+    const parsed = JSON.parse(svcResult.stdout);
+    services = parsed.items || [];
+  } catch { return sendJson(res, 500, { error: 'Parse error' }); }
+
+  const checks = await Promise.all(
+    services
+      .filter(s => s.spec.clusterIP && s.spec.clusterIP !== 'None')
+      .slice(0, 30) // limit to 30 services
+      .map(async svc => {
+        const ip = svc.spec.clusterIP;
+        const port = (svc.spec.ports || [])[0]?.port || 80;
+        const name = svc.metadata.name;
+        const ns = svc.metadata.namespace;
+        const start = Date.now();
+        const pingResult = await runAsync(`curl -sf -m 3 -o /dev/null -w '%{http_code}' http://${ip}:${port}/ 2>/dev/null || echo 'fail'`, 5000);
+        const elapsed = Date.now() - start;
+        const code = pingResult.ok ? pingResult.stdout.trim() : 'fail';
+        return {
+          name, namespace: ns, ip, port,
+          healthy: code !== 'fail' && code !== '000',
+          statusCode: code,
+          latencyMs: elapsed,
+        };
+      })
+  );
+
+  sendJson(res, 200, { services: checks, timestamp: new Date().toISOString() });
+}
+
+// ─── Node Annotations ───────────────────────────────────────────────────────
+
+async function handleNodeAnnotations(req, res, nodeName) {
+  if (!/^[a-zA-Z0-9._-]+$/.test(nodeName)) return sendJson(res, 400, { error: 'Invalid node name' });
+
+  const result = await runAsync(`kubectl get node ${nodeName} -o json 2>/dev/null`, 10000);
+  if (!result.ok) return sendJson(res, 500, { error: 'Failed to get node' });
+
+  try {
+    const node = JSON.parse(result.stdout);
+    const annotations = node.metadata?.annotations || {};
+    const labels = node.metadata?.labels || {};
+    sendJson(res, 200, { node: nodeName, annotations, labels });
+  } catch { sendJson(res, 500, { error: 'Parse error' }); }
+}
+
+// ─── Metrics History (sparklines) ───────────────────────────────────────────
+
+const metricsHistory = {}; // { nodeName: [{ ts, cpu, mem, temp }] }
+const METRICS_HISTORY_MAX = 60; // 60 data points
+
+function recordMetricsSnapshot() {
+  const data = metricsCache.data;
+  if (!data) return;
+  const ts = Date.now();
+  for (const [name, m] of Object.entries(data)) {
+    if (!metricsHistory[name]) metricsHistory[name] = [];
+    metricsHistory[name].push({
+      ts,
+      cpu: m.cpu?.usage ?? null,
+      mem: m.memory?.percent ?? null,
+      temp: m.temp?.celsius ?? null,
+    });
+    if (metricsHistory[name].length > METRICS_HISTORY_MAX) {
+      metricsHistory[name] = metricsHistory[name].slice(-METRICS_HISTORY_MAX);
+    }
+  }
+}
+
+// Record metrics every 30 seconds
+setInterval(recordMetricsSnapshot, 30000);
+
+function handleMetricsHistory(req, res) {
+  sendJson(res, 200, { history: metricsHistory });
+}
+
 // ─── HTTP Server ─────────────────────────────────────────────────────────────
 
 function sendJson(res, code, data) {
@@ -1605,6 +1730,13 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/ssh/presets') return handleSshPresets(req, res);
       if (path === '/api/stream') return handleSSE(req, res);
       if (path === '/api/health/history') return handleHealthHistory(req, res);
+      if (path === '/api/pods/resources') return await handlePodResources(req, res);
+      if (path === '/api/services/health') return await handleServiceHealth(req, res);
+      if (path === '/api/metrics/history') return handleMetricsHistory(req, res);
+
+      // Node annotations: /api/nodes/:name/annotations
+      const annotMatch = path.match(/^\/api\/nodes\/([^/]+)\/annotations$/);
+      if (annotMatch) return await handleNodeAnnotations(req, res, annotMatch[1]);
 
       // Node detail: /api/nodes/:name/detail
       const nodeDetailMatch = path.match(/^\/api\/nodes\/([^/]+)\/detail$/);

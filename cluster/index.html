@@ -840,6 +840,47 @@
     .restart-graph { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; margin-top: 0.5rem; }
     .restart-graph svg { width: 100%; height: 60px; }
 
+    /* Pod resource bars */
+    .pod-resource { display: flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; font-family: 'JetBrains Mono', monospace; }
+    .pod-resource-bar { width: 50px; height: 5px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+    .pod-resource-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+    .pod-resource-fill.cpu { background: var(--brand); }
+    .pod-resource-fill.mem { background: var(--blue, #3b82f6); }
+    .pod-resource-label { color: var(--muted); font-size: 0.65rem; min-width: 28px; }
+
+    /* Node sparklines */
+    .node-sparkline { display: flex; gap: 0.25rem; align-items: flex-end; margin-top: 0.3rem; padding-top: 0.25rem; border-top: 1px solid var(--border); }
+    .node-sparkline svg { width: 70px; height: 20px; }
+    .sparkline-label { font-size: 0.55rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; width: 22px; }
+
+    /* Service health */
+    .svc-health { display: inline-flex; align-items: center; gap: 0.25rem; }
+    .svc-health-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .svc-health-dot.healthy { background: var(--green); box-shadow: 0 0 4px rgba(34,197,94,0.4); }
+    .svc-health-dot.unhealthy { background: var(--red); box-shadow: 0 0 4px rgba(239,68,68,0.4); }
+    .svc-health-dot.unknown { background: var(--muted); }
+    .svc-health-ms { font-size: 0.65rem; font-family: 'JetBrains Mono', monospace; color: var(--muted); }
+    .svc-check-btn { background: none; border: 1px solid var(--border); color: var(--muted); padding: 0.2rem 0.5rem; border-radius: 6px; cursor: pointer; font-size: 0.7rem; font-family: inherit; transition: all 0.2s; }
+    .svc-check-btn:hover { border-color: var(--green); color: var(--green); }
+
+    /* Keyboard shortcuts modal */
+    .shortcuts-modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; width: 90%; max-width: 480px; max-height: 80vh; overflow-y: auto; }
+    .shortcuts-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+    .shortcuts-header h3 { font-size: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+    .shortcuts-body { padding: 0.75rem 1rem; }
+    .shortcut-group { margin-bottom: 0.75rem; }
+    .shortcut-group-title { font-size: 0.75rem; color: var(--brand); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.4rem; font-weight: 600; }
+    .shortcut-row { display: flex; align-items: center; justify-content: space-between; padding: 0.3rem 0; font-size: 0.82rem; }
+    .shortcut-keys { display: flex; gap: 0.2rem; }
+    .shortcut-keys kbd { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; min-width: 22px; text-align: center; }
+    .shortcut-desc { color: var(--muted); }
+
+    /* Node annotations */
+    .node-annot { font-size: 0.7rem; color: var(--muted); margin-top: 0.3rem; }
+    .annot-tag { display: inline-flex; align-items: center; gap: 0.2rem; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; margin: 0.1rem; font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .annot-tag .annot-key { color: var(--brand); }
+    .annot-tag .annot-val { color: var(--text); }
+
     /* Cluster warnings */
     .warnings-banner { background: rgba(234, 179, 8, 0.08); border: 1px solid rgba(234, 179, 8, 0.25); border-radius: 10px; padding: 0.6rem 1rem; margin-bottom: 0.75rem; display: none; }
     .warnings-banner.visible { display: block; }
@@ -1792,10 +1833,10 @@
       <div class="table-scroll">
         <table>
           <thead>
-            <tr><th>Pod Name</th><th>Namespace</th><th>Status</th><th>Restarts</th><th>Age</th><th>Node</th><th>Actions</th></tr>
+            <tr><th>Pod Name</th><th>Namespace</th><th>Status</th><th>Resources</th><th>Restarts</th><th>Age</th><th>Node</th><th>Actions</th></tr>
           </thead>
           <tbody id="podTableBody">
-            <tr><td colspan="7" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>
+            <tr><td colspan="8" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>
           </tbody>
         </table>
       </div>
@@ -1805,15 +1846,16 @@
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-network-wired"></i> Services</h2>
       <span class="section-badge" id="svcBadge">0 services</span>
+      <button class="svc-check-btn" onclick="checkServiceHealth()" title="Check endpoint health"><i class="fa-solid fa-heart-pulse"></i> Health Check</button>
     </div>
     <div class="table-container">
       <div class="table-scroll">
         <table>
           <thead>
-            <tr><th>Service Name</th><th>Namespace</th><th>Type</th><th>Cluster IP</th><th>Ports</th></tr>
+            <tr><th>Service Name</th><th>Namespace</th><th>Type</th><th>Cluster IP</th><th>Ports</th><th>Health</th></tr>
           </thead>
           <tbody id="svcTableBody">
-            <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-plug"></i><br>No services found</td></tr>
+            <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-plug"></i><br>No services found</td></tr>
           </tbody>
         </table>
       </div>
@@ -1994,6 +2036,41 @@
         <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> navigate</span>
         <span><kbd>Enter</kbd> run</span>
         <span><kbd>Esc</kbd> close</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keyboard Shortcuts Modal -->
+  <div class="modal-overlay" id="shortcutsModal" onclick="if(event.target===this)closeShortcuts()">
+    <div class="shortcuts-modal">
+      <div class="shortcuts-header">
+        <h3><i class="fa-solid fa-keyboard"></i> Keyboard Shortcuts</h3>
+        <button style="background:none;border:none;color:var(--text);cursor:pointer;font-size:1.2rem;" onclick="closeShortcuts()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="shortcuts-body">
+        <div class="shortcut-group">
+          <div class="shortcut-group-title">General</div>
+          <div class="shortcut-row"><span class="shortcut-desc">Command palette</span><span class="shortcut-keys"><kbd>Ctrl</kbd><kbd>K</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Show shortcuts</span><span class="shortcut-keys"><kbd>?</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Refresh data</span><span class="shortcut-keys"><kbd>R</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Toggle theme</span><span class="shortcut-keys"><kbd>T</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Scroll to top</span><span class="shortcut-keys"><kbd>Home</kbd></span></div>
+        </div>
+        <div class="shortcut-group">
+          <div class="shortcut-group-title">Navigation</div>
+          <div class="shortcut-row"><span class="shortcut-desc">Nodes section</span><span class="shortcut-keys"><kbd>1</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Pods section</span><span class="shortcut-keys"><kbd>2</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Services section</span><span class="shortcut-keys"><kbd>3</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Mining section</span><span class="shortcut-keys"><kbd>4</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Network section</span><span class="shortcut-keys"><kbd>5</kbd></span></div>
+        </div>
+        <div class="shortcut-group">
+          <div class="shortcut-group-title">Actions</div>
+          <div class="shortcut-row"><span class="shortcut-desc">Toggle bulk mode</span><span class="shortcut-keys"><kbd>B</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Toggle sound</span><span class="shortcut-keys"><kbd>S</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Focus pod search</span><span class="shortcut-keys"><kbd>/</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Close any modal</span><span class="shortcut-keys"><kbd>Esc</kbd></span></div>
+        </div>
       </div>
     </div>
   </div>
@@ -2226,6 +2303,8 @@
           loadEvents();
           loadNamespaceUsage();
           loadBatteryHeatmap();
+          loadPodResources();
+          loadNodeMetricsHistory();
         }
 
         consecutiveFailures = 0;
@@ -2312,6 +2391,7 @@
             <div class="node-detail"><i class="fa-solid fa-network-wired"></i><code>${node.ip || 'Unknown'}</code><button class="copy-btn" onclick="event.stopPropagation();copyToClipboard('${node.ip || ''}',this)" title="Copy IP"><i class="fa-solid fa-copy"></i></button></div>
           </div>
           ${metricsHtml}
+          ${buildNodeSparkline(node.name)}
           ${uptimeHtml}
           ${getNodeTagsHtml(safeName)}
           <span class="node-status-badge"><i class="fa-solid ${isReady ? 'fa-check' : 'fa-xmark'}"></i>${node.status || 'Unknown'}</span>
@@ -2350,7 +2430,7 @@
         );
       }
       if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fa-solid fa-box-open"></i><br>No pods found</td></tr>';
         return;
       }
       tbody.innerHTML = filtered.map(pod => {
@@ -2360,10 +2440,24 @@
         const pn = pod.name.replace(/[^a-zA-Z0-9._-]/g, '');
         const restartClass = pod.restarts > 10 ? 'style="color:var(--red);font-weight:700"' : pod.restarts > 0 ? 'style="color:var(--yellow)"' : '';
         const trendHtml = restartTrendHtml(pod.namespace, pod.name);
+        const resKey = pod.namespace + '/' + pod.name;
+        const res = podResources[resKey];
+        let resHtml = '<td class="pod-resource"><span style="color:var(--muted);font-size:0.65rem">--</span></td>';
+        if (res) {
+          const cpuPct = Math.min(100, Math.round(res.cpu / 10)); // 1000m = 100%
+          const memPct = res.mem > 0 ? Math.min(100, Math.round(res.mem / 40 * 100)) : 0; // rough scale
+          resHtml = `<td class="pod-resource">
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <div class="pod-resource" title="CPU: ${res.cpu}m"><span class="pod-resource-label">CPU</span><div class="pod-resource-bar"><div class="pod-resource-fill cpu" style="width:${cpuPct}%"></div></div><span style="font-size:0.6rem;color:var(--muted)">${res.cpu}m</span></div>
+              <div class="pod-resource" title="Memory: ${res.mem}Mi"><span class="pod-resource-label">RAM</span><div class="pod-resource-bar"><div class="pod-resource-fill mem" style="width:${memPct}%"></div></div><span style="font-size:0.6rem;color:var(--muted)">${res.mem}Mi</span></div>
+            </div>
+          </td>`;
+        }
         return `<tr>
           <td class="pod-name">${pod.name}</td>
           <td><span class="pod-namespace">${pod.namespace}</span></td>
           <td><span class="pod-status ${st}"><i class="fa-solid ${icon}"></i> ${pod.status}</span></td>
+          ${resHtml}
           <td ${restartClass}>${pod.restarts || 0}${trendHtml}</td>
           <td class="pod-age">${formatAge(pod.age)}</td>
           <td class="pod-node">${pod.node || '-'}</td>
@@ -2456,13 +2550,20 @@
     function renderServices() {
       const tbody = document.getElementById('svcTableBody');
       if (allServices.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-plug"></i><br>No services found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-plug"></i><br>No services found</td></tr>';
         return;
       }
       tbody.innerHTML = allServices.map(svc => {
         const tc = svc.type?.toLowerCase().replace(/\s/g, '') || 'clusterip';
         const ports = (svc.ports || []).map(p => typeof p === 'object' ? `${p.port}/${p.protocol || 'TCP'}` : p).join(', ') || '-';
-        return `<tr><td class="pod-name">${svc.name}</td><td><span class="pod-namespace">${svc.namespace}</span></td><td><span class="svc-type ${tc}">${svc.type}</span></td><td><code>${svc.clusterIP || '-'}</code></td><td class="svc-ports">${ports}</td></tr>`;
+        const hk = svc.namespace + '/' + svc.name;
+        const h = serviceHealthData[hk];
+        let healthHtml = '<span class="svc-health"><span class="svc-health-dot unknown"></span></span>';
+        if (h) {
+          healthHtml = '<span class="svc-health"><span class="svc-health-dot ' + (h.healthy ? 'healthy' : 'unhealthy') + '"></span>' +
+            '<span class="svc-health-ms">' + (h.healthy ? h.latencyMs + 'ms' : h.statusCode) + '</span></span>';
+        }
+        return `<tr><td class="pod-name">${svc.name}</td><td><span class="pod-namespace">${svc.namespace}</span></td><td><span class="svc-type ${tc}">${svc.type}</span></td><td><code>${svc.clusterIP || '-'}</code></td><td class="svc-ports">${ports}</td><td>${healthHtml}</td></tr>`;
       }).join('');
     }
 
@@ -3013,6 +3114,37 @@
           html += '</div></div>';
         }
         document.getElementById('nodeDetailBody').innerHTML = html || '<p style="color:var(--muted)">No data</p>';
+
+        // Load annotations asynchronously
+        loadNodeAnnotations(nodeName).then(function(annotData) {
+          if (!annotData) return;
+          var body = document.getElementById('nodeDetailBody');
+          var annotHtml = '<div class="node-detail-section"><h4>Labels & Annotations</h4>';
+          var labels = annotData.labels || {};
+          var annots = annotData.annotations || {};
+          var labelKeys = Object.keys(labels).filter(function(k) { return !k.includes('kubernetes.io/'); }).slice(0, 15);
+          var annotKeys = Object.keys(annots).filter(function(k) { return !k.includes('kubernetes.io/') && !k.includes('kubectl.'); }).slice(0, 10);
+          if (labelKeys.length > 0) {
+            annotHtml += '<div style="margin-bottom:0.3rem;font-size:0.72rem;color:var(--muted)">Labels:</div><div class="node-annot">';
+            labelKeys.forEach(function(k) {
+              annotHtml += '<span class="annot-tag"><span class="annot-key">' + k + '</span>=<span class="annot-val">' + labels[k] + '</span></span>';
+            });
+            annotHtml += '</div>';
+          }
+          if (annotKeys.length > 0) {
+            annotHtml += '<div style="margin:0.3rem 0;font-size:0.72rem;color:var(--muted)">Annotations:</div><div class="node-annot">';
+            annotKeys.forEach(function(k) {
+              var v = annots[k];
+              if (v.length > 50) v = v.substring(0, 50) + '...';
+              annotHtml += '<span class="annot-tag" title="' + k + '=' + annots[k].replace(/"/g, '&quot;') + '"><span class="annot-key">' + k.split('/').pop() + '</span>=<span class="annot-val">' + v + '</span></span>';
+            });
+            annotHtml += '</div>';
+          }
+          annotHtml += '</div>';
+          if (labelKeys.length > 0 || annotKeys.length > 0) {
+            body.insertAdjacentHTML('beforeend', annotHtml);
+          }
+        });
         var isPhone = ['node1','node2','node3','node4','node5','node6','node7','node8','node9','node10'].indexOf(nodeName) !== -1;
         var acts = '<button onclick="drainNode(\'' + nodeName + '\')"><i class="fa-solid fa-arrow-right-from-bracket"></i> Drain</button>';
         acts += '<button onclick="uncordonNode(\'' + nodeName + '\')"><i class="fa-solid fa-arrow-right-to-bracket"></i> Uncordon</button>';
@@ -3760,6 +3892,153 @@
         else openCmdPalette();
       }
     });
+
+    // ─── Pod Resources ──────────────────────────────────────────────
+    var podResources = {};
+
+    async function loadPodResources() {
+      if (!apiEndpoint) return;
+      try {
+        var data = await apiFetch('/api/pods/resources');
+        podResources = data.resources || {};
+        renderPods();
+      } catch (e) { /* silent */ }
+    }
+
+    // ─── Service Health ─────────────────────────────────────────────
+    var serviceHealthData = {};
+
+    async function checkServiceHealth() {
+      if (!apiEndpoint) { showToast('Direct API required for health checks', 'error'); return; }
+      showToast('Checking service health...', 'info');
+      try {
+        var data = await apiFetch('/api/services/health');
+        serviceHealthData = {};
+        (data.services || []).forEach(function(s) {
+          serviceHealthData[s.namespace + '/' + s.name] = s;
+        });
+        renderServices();
+        var healthy = data.services.filter(function(s) { return s.healthy; }).length;
+        showToast(healthy + '/' + data.services.length + ' services healthy', healthy === data.services.length ? 'success' : 'warning');
+      } catch (e) {
+        showToast('Health check failed: ' + e.message, 'error');
+      }
+    }
+
+    // ─── Node Sparklines ────────────────────────────────────────────
+    var nodeMetricsHistory = {};
+
+    async function loadNodeMetricsHistory() {
+      if (!apiEndpoint) return;
+      try {
+        var data = await apiFetch('/api/metrics/history');
+        nodeMetricsHistory = data.history || {};
+      } catch (e) { /* silent */ }
+    }
+
+    function buildNodeSparkline(nodeName) {
+      var hist = nodeMetricsHistory[nodeName];
+      if (!hist || hist.length < 2) return '';
+
+      function sparkSvg(values, color) {
+        var valid = values.filter(function(v) { return v !== null; });
+        if (valid.length < 2) return '';
+        var max = Math.max.apply(null, valid.concat([1]));
+        var w = 70, h = 20;
+        var step = w / (valid.length - 1);
+        var points = valid.map(function(v, i) {
+          return (i * step).toFixed(1) + ',' + (h - (v / max) * h).toFixed(1);
+        }).join(' ');
+        return '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none"><polyline fill="none" stroke="' + color + '" stroke-width="1.5" points="' + points + '"/></svg>';
+      }
+
+      var cpuVals = hist.map(function(d) { return d.cpu; });
+      var memVals = hist.map(function(d) { return d.mem; });
+      var cpuSvg = sparkSvg(cpuVals, 'var(--brand)');
+      var memSvg = sparkSvg(memVals, '#3b82f6');
+
+      if (!cpuSvg && !memSvg) return '';
+      return '<div class="node-sparkline">' +
+        (cpuSvg ? '<span class="sparkline-label">CPU</span>' + cpuSvg : '') +
+        (memSvg ? '<span class="sparkline-label">RAM</span>' + memSvg : '') +
+        '</div>';
+    }
+
+    // ─── Keyboard Shortcuts ─────────────────────────────────────────
+    function openShortcuts() {
+      document.getElementById('shortcutsModal').classList.add('visible');
+    }
+    function closeShortcuts() {
+      document.getElementById('shortcutsModal').classList.remove('visible');
+    }
+
+    document.addEventListener('keydown', function(e) {
+      // Skip if in input/textarea
+      var tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      switch (e.key) {
+        case '?':
+          e.preventDefault();
+          openShortcuts();
+          break;
+        case 'r':
+        case 'R':
+          e.preventDefault();
+          loadClusterStatus();
+          showToast('Refreshing...', 'info');
+          break;
+        case 't':
+        case 'T':
+          e.preventDefault();
+          toggleTheme();
+          break;
+        case 'b':
+        case 'B':
+          e.preventDefault();
+          if (typeof toggleBulkMode === 'function') toggleBulkMode();
+          break;
+        case 's':
+        case 'S':
+          e.preventDefault();
+          if (typeof toggleSound === 'function') toggleSound();
+          break;
+        case '/':
+          e.preventDefault();
+          var searchInput = document.getElementById('podSearchInput');
+          if (searchInput) { searchInput.focus(); searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+          break;
+        case '1':
+          document.getElementById('nodeGrid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        case '2':
+          document.getElementById('podTableBody')?.closest('.table-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        case '3':
+          document.getElementById('svcTableBody')?.closest('.table-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        case '4':
+          var miningEl = document.getElementById('miningPanel') || document.querySelector('.mining-toggle');
+          if (miningEl) miningEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        case '5':
+          var netEl = document.getElementById('tailscaleInfo')?.closest('.section-header')?.parentElement;
+          if (netEl) netEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        case 'Home':
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          break;
+      }
+    });
+
+    // ─── Node Annotations ───────────────────────────────────────────
+    async function loadNodeAnnotations(nodeName) {
+      if (!apiEndpoint) return null;
+      try {
+        return await apiFetch('/api/nodes/' + nodeName + '/annotations');
+      } catch (e) { return null; }
+    }
 
     // ─── Cluster Warnings ────────────────────────────────────────────
     function checkClusterWarnings(data) {
