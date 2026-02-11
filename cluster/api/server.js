@@ -460,6 +460,7 @@ async function handleStatus(req, res) {
           kubeletVersion: (n.status.nodeInfo || {}).kubeletVersion || '',
           osImage: (n.status.nodeInfo || {}).osImage || '',
           arch: (n.status.nodeInfo || {}).architecture || '',
+          age: n.metadata.creationTimestamp || null,
         };
       });
     } catch (e) { errors.push('Failed to parse nodes: ' + e.message); }
@@ -467,8 +468,9 @@ async function handleStatus(req, res) {
     errors.push('kubectl get nodes failed: ' + nodesResult.stderr);
   }
 
-  // Track node uptime
+  // Track node uptime and pod restarts
   updateNodeTracking(nodes);
+  trackPodRestarts(pods);
 
   // Kubectl: pods
   const podsResult = run('kubectl get pods -A -o json', 15000);
@@ -1118,6 +1120,542 @@ function formatUptime(seconds) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
+// ─── Battery Endpoint ─────────────────────────────────────────────────────────
+
+let batteryCache = { data: null, timestamp: 0 };
+const BATTERY_CACHE_TTL = 10000;
+
+async function handleBattery(req, res) {
+  const now = Date.now();
+  if (batteryCache.data && now - batteryCache.timestamp < BATTERY_CACHE_TTL) {
+    return sendJson(res, 200, batteryCache.data);
+  }
+
+  const results = await Promise.all(CONFIG.phoneNodeNames.map(async (name) => {
+    const node = CONFIG.phoneNodes[name];
+    const battResult = await sshExecAsync(name, 'cat /sys/class/power_supply/battery/capacity 2>/dev/null; echo "|"; cat /sys/class/power_supply/battery/status 2>/dev/null; echo "|"; cat /sys/class/power_supply/battery/temp 2>/dev/null; echo "|"; cat /sys/class/power_supply/battery/voltage_now 2>/dev/null; echo "|"; cat /sys/class/power_supply/battery/current_now 2>/dev/null; echo "|"; cat /sys/class/power_supply/battery/health 2>/dev/null');
+    if (!battResult.ok) return { name, online: false };
+    const parts = battResult.stdout.split('|').map(s => s.trim());
+    const level = parseInt(parts[0]) || 0;
+    const status = parts[1] || 'Unknown';
+    const tempRaw = parseInt(parts[2]) || 0;
+    const voltageRaw = parseInt(parts[3]) || 0;
+    const currentRaw = parseInt(parts[4]) || 0;
+    const health = parts[5] || 'Unknown';
+    return {
+      name, online: true, level, status,
+      charging: status === 'Charging' || status === 'Full',
+      temp: (tempRaw / 10).toFixed(1),
+      voltage: (voltageRaw / 1000000).toFixed(2),
+      current: (Math.abs(currentRaw) / 1000).toFixed(0),
+      health,
+    };
+  }));
+
+  const online = results.filter(r => r.online);
+  const avgLevel = online.length > 0 ? Math.round(online.reduce((s, r) => s + r.level, 0) / online.length) : 0;
+  const charging = online.filter(r => r.charging).length;
+  const low = online.filter(r => r.level < 20).length;
+  const critical = online.filter(r => r.level < 10).length;
+
+  const data = {
+    phones: results,
+    summary: { avgLevel, charging, low, critical, online: online.length, total: CONFIG.phoneNodeNames.length }
+  };
+  batteryCache = { data, timestamp: now };
+  sendJson(res, 200, data);
+}
+
+// ─── Connectivity Endpoint ───────────────────────────────────────────────────
+
+async function handleConnectivity(req, res) {
+  const allNodes = [...CONFIG.phoneNodeNames, ...CONFIG.otherNodes];
+  const results = await Promise.all(allNodes.map(async (name) => {
+    const node = CONFIG.phoneNodes[name];
+    if (node) {
+      const r = await runAsync(`ping -c 1 -W 2 ${node.ip}`, 5000);
+      const latencyMatch = r.stdout.match(/time=([\d.]+)/);
+      return { name, reachable: r.ok, latency: latencyMatch ? parseFloat(latencyMatch[1]) : null, ip: node.ip };
+    }
+    const r = await runAsync(`ping -c 1 -W 2 ${name}`, 5000);
+    const latencyMatch = r.stdout.match(/time=([\d.]+)/);
+    return { name, reachable: r.ok, latency: latencyMatch ? parseFloat(latencyMatch[1]) : null };
+  }));
+
+  const reachable = results.filter(r => r.reachable).length;
+  sendJson(res, 200, { nodes: results, summary: { reachable, total: allNodes.length } });
+}
+
+// ─── Latency Endpoint (lightweight for connection quality) ───────────────────
+
+async function handleLatency(req, res) {
+  const start = process.hrtime.bigint();
+  sendJson(res, 200, { ts: Date.now(), serverUptime: process.uptime(), latencyTest: true });
+}
+
+// ─── SSH Presets ──────────────────────────────────────────────────────────────
+
+function handleSshPresets(req, res) {
+  sendJson(res, 200, {
+    presets: [
+      { id: 'uptime', label: 'Uptime', icon: 'fa-clock', cmd: 'uptime' },
+      { id: 'memory', label: 'Memory', icon: 'fa-memory', cmd: 'free -m' },
+      { id: 'disk', label: 'Disk', icon: 'fa-hard-drive', cmd: 'df -h /' },
+      { id: 'top', label: 'Top Procs', icon: 'fa-list-ol', cmd: 'top -bn1 | head -15' },
+      { id: 'temp', label: 'Temperature', icon: 'fa-temperature-half', cmd: 'cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk \'{printf "%.1f°C\\n", $1/1000}\'' },
+      { id: 'network', label: 'Network', icon: 'fa-wifi', cmd: 'ip -br addr | head -5' },
+      { id: 'processes', label: 'Processes', icon: 'fa-gears', cmd: 'ps aux --sort=-%cpu | head -10' },
+      { id: 'k3s-status', label: 'K3s Status', icon: 'fa-dharmachakra', cmd: 'rc-service k3s-agent status 2>/dev/null || systemctl status k3s-agent 2>/dev/null | head -5' },
+      { id: 'battery', label: 'Battery', icon: 'fa-battery-three-quarters', cmd: 'echo "Level: $(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo N/A)% Status: $(cat /sys/class/power_supply/battery/status 2>/dev/null || echo N/A)"' },
+      { id: 'logs', label: 'Recent Logs', icon: 'fa-scroll', cmd: 'dmesg | tail -15' },
+    ]
+  });
+}
+
+// ─── Server-Sent Events (SSE) ─────────────────────────────────────────────
+
+const sseClients = new Set();
+
+function handleSSE(req, res) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write('data: {"type":"connected","ts":' + Date.now() + '}\n\n');
+  sseClients.add(res);
+  req.on('close', () => sseClients.delete(res));
+}
+
+function broadcastSSE(event, data) {
+  const msg = 'event: ' + event + '\ndata: ' + JSON.stringify(data) + '\n\n';
+  for (const client of sseClients) {
+    try { client.write(msg); } catch { sseClients.delete(client); }
+  }
+}
+
+// Broadcast status every 10s to SSE clients
+setInterval(async () => {
+  if (sseClients.size === 0) return;
+  try {
+    const status = statusCache.data || {};
+    const summary = status.summary || {};
+    broadcastSSE('status', {
+      ts: Date.now(),
+      nodesReady: summary.nodesReady || 0,
+      nodesTotal: summary.nodesTotal || 0,
+      podsRunning: summary.podsRunning || 0,
+      podsTotal: summary.podsTotal || 0,
+      healthScore: summary.healthScore || 0,
+    });
+  } catch (e) { /* ignore */ }
+}, 10000);
+
+// ─── Health History ──────────────────────────────────────────────────────────
+
+const healthHistory = [];
+const MAX_HEALTH_HISTORY = 288; // 24h at 5min intervals
+
+function recordHealthSnapshot() {
+  const status = statusCache.data || {};
+  const summary = status.summary || {};
+  healthHistory.push({
+    ts: Date.now(),
+    score: summary.healthScore || 0,
+    nodesReady: summary.nodesReady || 0,
+    nodesTotal: summary.nodesTotal || 0,
+    podsRunning: summary.podsRunning || 0,
+    podsTotal: summary.podsTotal || 0,
+  });
+  if (healthHistory.length > MAX_HEALTH_HISTORY) healthHistory.shift();
+}
+
+setInterval(recordHealthSnapshot, 300000); // Every 5 min
+
+function handleHealthHistory(req, res) {
+  sendJson(res, 200, { history: healthHistory });
+}
+
+// ─── Pod Resource Usage ─────────────────────────────────────────────────────
+
+let podResourceCache = { data: null, timestamp: 0 };
+
+async function handlePodResources(req, res) {
+  const now = Date.now();
+  if (podResourceCache.data && (now - podResourceCache.timestamp) < 15000) {
+    return sendJson(res, 200, podResourceCache.data);
+  }
+
+  const result = await runAsync('kubectl top pods -A --no-headers 2>/dev/null', 15000);
+  const resources = {};
+
+  if (result.ok && result.stdout) {
+    for (const line of result.stdout.trim().split('\n')) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length >= 4) {
+        const ns = parts[0];
+        const name = parts[1];
+        const cpuRaw = parts[2]; // e.g. "12m" or "250m"
+        const memRaw = parts[3]; // e.g. "64Mi" or "1Gi"
+
+        let cpuMillis = 0;
+        if (cpuRaw.endsWith('m')) cpuMillis = parseInt(cpuRaw);
+        else if (cpuRaw.endsWith('n')) cpuMillis = Math.round(parseInt(cpuRaw) / 1000000);
+        else cpuMillis = parseInt(cpuRaw) * 1000;
+
+        let memMi = 0;
+        if (memRaw.endsWith('Mi')) memMi = parseInt(memRaw);
+        else if (memRaw.endsWith('Gi')) memMi = Math.round(parseFloat(memRaw) * 1024);
+        else if (memRaw.endsWith('Ki')) memMi = Math.round(parseInt(memRaw) / 1024);
+
+        resources[ns + '/' + name] = { cpu: cpuMillis, mem: memMi };
+      }
+    }
+  }
+
+  const response = { resources, timestamp: new Date().toISOString() };
+  podResourceCache = { data: response, timestamp: now };
+  sendJson(res, 200, response);
+}
+
+// ─── Service Health Check ───────────────────────────────────────────────────
+
+async function handleServiceHealth(req, res) {
+  const svcResult = await runAsync('kubectl get svc -A -o json 2>/dev/null', 15000);
+  if (!svcResult.ok) return sendJson(res, 500, { error: 'Failed to get services' });
+
+  let services = [];
+  try {
+    const parsed = JSON.parse(svcResult.stdout);
+    services = parsed.items || [];
+  } catch { return sendJson(res, 500, { error: 'Parse error' }); }
+
+  const checks = await Promise.all(
+    services
+      .filter(s => s.spec.clusterIP && s.spec.clusterIP !== 'None')
+      .slice(0, 30) // limit to 30 services
+      .map(async svc => {
+        const ip = svc.spec.clusterIP;
+        const port = (svc.spec.ports || [])[0]?.port || 80;
+        const name = svc.metadata.name;
+        const ns = svc.metadata.namespace;
+        const start = Date.now();
+        const pingResult = await runAsync(`curl -sf -m 3 -o /dev/null -w '%{http_code}' http://${ip}:${port}/ 2>/dev/null || echo 'fail'`, 5000);
+        const elapsed = Date.now() - start;
+        const code = pingResult.ok ? pingResult.stdout.trim() : 'fail';
+        return {
+          name, namespace: ns, ip, port,
+          healthy: code !== 'fail' && code !== '000',
+          statusCode: code,
+          latencyMs: elapsed,
+        };
+      })
+  );
+
+  sendJson(res, 200, { services: checks, timestamp: new Date().toISOString() });
+}
+
+// ─── Node Annotations ───────────────────────────────────────────────────────
+
+async function handleNodeAnnotations(req, res, nodeName) {
+  if (!/^[a-zA-Z0-9._-]+$/.test(nodeName)) return sendJson(res, 400, { error: 'Invalid node name' });
+
+  const result = await runAsync(`kubectl get node ${nodeName} -o json 2>/dev/null`, 10000);
+  if (!result.ok) return sendJson(res, 500, { error: 'Failed to get node' });
+
+  try {
+    const node = JSON.parse(result.stdout);
+    const annotations = node.metadata?.annotations || {};
+    const labels = node.metadata?.labels || {};
+    sendJson(res, 200, { node: nodeName, annotations, labels });
+  } catch { sendJson(res, 500, { error: 'Parse error' }); }
+}
+
+// ─── Metrics History (sparklines) ───────────────────────────────────────────
+
+const metricsHistory = {}; // { nodeName: [{ ts, cpu, mem, temp }] }
+const METRICS_HISTORY_MAX = 60; // 60 data points
+
+function recordMetricsSnapshot() {
+  const data = metricsCache.data;
+  if (!data) return;
+  const ts = Date.now();
+  for (const [name, m] of Object.entries(data)) {
+    if (!metricsHistory[name]) metricsHistory[name] = [];
+    metricsHistory[name].push({
+      ts,
+      cpu: m.cpu?.usage ?? null,
+      mem: m.memory?.percent ?? null,
+      temp: m.temp?.celsius ?? null,
+    });
+    if (metricsHistory[name].length > METRICS_HISTORY_MAX) {
+      metricsHistory[name] = metricsHistory[name].slice(-METRICS_HISTORY_MAX);
+    }
+  }
+}
+
+// Record metrics every 30 seconds
+setInterval(recordMetricsSnapshot, 30000);
+
+function handleMetricsHistory(req, res) {
+  sendJson(res, 200, { history: metricsHistory });
+}
+
+// ─── Pod YAML ───────────────────────────────────────────────────────────────
+
+async function handlePodYaml(req, res, namespace, podName) {
+  if (!/^[a-zA-Z0-9._-]+$/.test(namespace) || !/^[a-zA-Z0-9._-]+$/.test(podName)) {
+    return sendJson(res, 400, { error: 'Invalid names' });
+  }
+  const result = await runAsync(`kubectl get pod ${podName} -n ${namespace} -o yaml 2>/dev/null`, 10000);
+  if (!result.ok) return sendJson(res, 500, { error: 'Failed to get pod YAML' });
+  sendJson(res, 200, { yaml: result.stdout });
+}
+
+// ─── Node Scheduling Status ─────────────────────────────────────────────────
+
+async function handleNodeScheduling(req, res) {
+  const result = await runAsync('kubectl get nodes -o json 2>/dev/null', 10000);
+  if (!result.ok) return sendJson(res, 500, { error: 'Failed' });
+  try {
+    const parsed = JSON.parse(result.stdout);
+    const nodes = (parsed.items || []).map(n => ({
+      name: n.metadata.name,
+      unschedulable: n.spec?.unschedulable || false,
+      taints: (n.spec?.taints || []).map(t => t.key + '=' + (t.value || '') + ':' + t.effect),
+      conditions: (n.status?.conditions || []).filter(c => c.type === 'Ready').map(c => ({ status: c.status, reason: c.reason })),
+    }));
+    sendJson(res, 200, { nodes });
+  } catch { sendJson(res, 500, { error: 'Parse error' }); }
+}
+
+// ─── Namespace Resource Quotas ──────────────────────────────────────────────
+
+async function handleResourceQuotas(req, res) {
+  const result = await runAsync('kubectl get resourcequota -A -o json 2>/dev/null', 10000);
+  const quotas = [];
+  if (result.ok) {
+    try {
+      const parsed = JSON.parse(result.stdout);
+      (parsed.items || []).forEach(q => {
+        quotas.push({
+          name: q.metadata.name,
+          namespace: q.metadata.namespace,
+          hard: q.status?.hard || {},
+          used: q.status?.used || {},
+        });
+      });
+    } catch { /* ignore */ }
+  }
+  sendJson(res, 200, { quotas });
+}
+
+// ─── ConfigMaps & Secrets ────────────────────────────────────────────────────
+
+async function handleConfigMaps(req, res) {
+  const [cmResult, secResult] = await Promise.all([
+    runAsync('kubectl get configmap -A -o json 2>/dev/null', 10000),
+    runAsync('kubectl get secret -A -o json 2>/dev/null', 10000),
+  ]);
+
+  const items = [];
+  if (cmResult.ok) {
+    try {
+      const parsed = JSON.parse(cmResult.stdout);
+      (parsed.items || []).forEach(cm => {
+        items.push({
+          name: cm.metadata.name,
+          namespace: cm.metadata.namespace,
+          type: 'configmap',
+          keys: Object.keys(cm.data || {}),
+          dataSize: JSON.stringify(cm.data || {}).length,
+        });
+      });
+    } catch { /* ignore */ }
+  }
+  if (secResult.ok) {
+    try {
+      const parsed = JSON.parse(secResult.stdout);
+      (parsed.items || []).forEach(sec => {
+        items.push({
+          name: sec.metadata.name,
+          namespace: sec.metadata.namespace,
+          type: 'secret',
+          secretType: sec.type || 'Opaque',
+          keys: Object.keys(sec.data || {}),
+          dataSize: Object.keys(sec.data || {}).length,
+        });
+      });
+    } catch { /* ignore */ }
+  }
+
+  sendJson(res, 200, { items });
+}
+
+// ─── CronJobs & Jobs ────────────────────────────────────────────────────────
+
+async function handleCronJobs(req, res) {
+  const [cronResult, jobResult] = await Promise.all([
+    runAsync('kubectl get cronjob -A -o json 2>/dev/null', 10000),
+    runAsync('kubectl get jobs -A -o json 2>/dev/null', 10000),
+  ]);
+
+  const cronjobs = [];
+  if (cronResult.ok) {
+    try {
+      const parsed = JSON.parse(cronResult.stdout);
+      (parsed.items || []).forEach(cj => {
+        cronjobs.push({
+          name: cj.metadata.name,
+          namespace: cj.metadata.namespace,
+          schedule: cj.spec?.schedule || '-',
+          suspend: cj.spec?.suspend || false,
+          active: (cj.status?.active || []).length,
+          lastSchedule: cj.status?.lastScheduleTime || null,
+          lastSuccessful: cj.status?.lastSuccessfulTime || null,
+        });
+      });
+    } catch { /* ignore */ }
+  }
+
+  const jobs = [];
+  if (jobResult.ok) {
+    try {
+      const parsed = JSON.parse(jobResult.stdout);
+      (parsed.items || []).forEach(j => {
+        const conditions = j.status?.conditions || [];
+        const complete = conditions.find(c => c.type === 'Complete' && c.status === 'True');
+        const failed = conditions.find(c => c.type === 'Failed' && c.status === 'True');
+        jobs.push({
+          name: j.metadata.name,
+          namespace: j.metadata.namespace,
+          status: complete ? 'Complete' : failed ? 'Failed' : 'Running',
+          completions: `${j.status?.succeeded || 0}/${j.spec?.completions || 1}`,
+          duration: j.status?.completionTime && j.status?.startTime ?
+            Math.round((new Date(j.status.completionTime) - new Date(j.status.startTime)) / 1000) + 's' : '-',
+          startTime: j.status?.startTime || null,
+        });
+      });
+    } catch { /* ignore */ }
+  }
+
+  sendJson(res, 200, { cronjobs, jobs });
+}
+
+// ─── API Latency Tracking ───────────────────────────────────────────────────
+
+const apiLatencyHistory = []; // { ts, endpoint, durationMs }
+const API_LATENCY_MAX = 100;
+
+function recordApiLatency(endpoint, durationMs) {
+  apiLatencyHistory.push({ ts: Date.now(), endpoint, durationMs: Math.round(durationMs) });
+  if (apiLatencyHistory.length > API_LATENCY_MAX) {
+    apiLatencyHistory.splice(0, apiLatencyHistory.length - API_LATENCY_MAX);
+  }
+}
+
+function handleApiLatencyHistory(req, res) {
+  sendJson(res, 200, { history: apiLatencyHistory });
+}
+
+// ─── Cluster Snapshot/Backup ────────────────────────────────────────────────
+
+async function handleClusterSnapshot(req, res, body) {
+  const { password: pwd } = body;
+  if (pwd !== CONFIG.password) return sendJson(res, 401, { error: 'Invalid password' });
+
+  // Gather a full snapshot of the cluster state
+  const [nodes, pods, svcs, deploys, cms] = await Promise.all([
+    runAsync('kubectl get nodes -o json 2>/dev/null', 15000),
+    runAsync('kubectl get pods -A -o json 2>/dev/null', 15000),
+    runAsync('kubectl get svc -A -o json 2>/dev/null', 15000),
+    runAsync('kubectl get deploy -A -o json 2>/dev/null', 15000),
+    runAsync('kubectl get configmap -A -o json 2>/dev/null', 15000),
+  ]);
+
+  const snapshot = {
+    timestamp: new Date().toISOString(),
+    nodes: nodes.ok ? nodes.stdout : null,
+    pods: pods.ok ? pods.stdout : null,
+    services: svcs.ok ? svcs.stdout : null,
+    deployments: deploys.ok ? deploys.stdout : null,
+    configmaps: cms.ok ? cms.stdout : null,
+  };
+
+  sendJson(res, 200, { snapshot, sizeBytes: JSON.stringify(snapshot).length });
+}
+
+// ─── Persistent Volume Claims ───────────────────────────────────────────────
+
+async function handlePVCs(req, res) {
+  const [pvcResult, pvResult] = await Promise.all([
+    runAsync('kubectl get pvc -A -o json 2>/dev/null', 10000),
+    runAsync('kubectl get pv -o json 2>/dev/null', 10000),
+  ]);
+
+  const pvcs = [];
+  if (pvcResult.ok) {
+    try {
+      const parsed = JSON.parse(pvcResult.stdout);
+      (parsed.items || []).forEach(pvc => {
+        pvcs.push({
+          name: pvc.metadata.name, namespace: pvc.metadata.namespace,
+          status: pvc.status?.phase || 'Unknown',
+          capacity: pvc.status?.capacity?.storage || '-',
+          accessModes: (pvc.status?.accessModes || []).join(', '),
+          storageClass: pvc.spec?.storageClassName || '-',
+          volumeName: pvc.spec?.volumeName || '-',
+        });
+      });
+    } catch { /* ignore */ }
+  }
+
+  const pvs = [];
+  if (pvResult.ok) {
+    try {
+      const parsed = JSON.parse(pvResult.stdout);
+      (parsed.items || []).forEach(pv => {
+        pvs.push({
+          name: pv.metadata.name, capacity: pv.spec?.capacity?.storage || '-',
+          status: pv.status?.phase || 'Unknown',
+          reclaimPolicy: pv.spec?.persistentVolumeReclaimPolicy || '-',
+          storageClass: pv.spec?.storageClassName || '-',
+        });
+      });
+    } catch { /* ignore */ }
+  }
+
+  sendJson(res, 200, { pvcs, pvs });
+}
+
+// ─── Ingress/Routes ─────────────────────────────────────────────────────────
+
+async function handleIngresses(req, res) {
+  const result = await runAsync('kubectl get ingress -A -o json 2>/dev/null', 10000);
+  const ingresses = [];
+  if (result.ok) {
+    try {
+      const parsed = JSON.parse(result.stdout);
+      (parsed.items || []).forEach(ing => {
+        const rules = (ing.spec?.rules || []).map(r => ({
+          host: r.host || '*',
+          paths: (r.http?.paths || []).map(p => ({
+            path: p.path || '/',
+            backend: p.backend?.service ? p.backend.service.name + ':' + (p.backend.service.port?.number || '80') : '-',
+          })),
+        }));
+        ingresses.push({
+          name: ing.metadata.name, namespace: ing.metadata.namespace,
+          className: ing.spec?.ingressClassName || '-', rules,
+          tls: (ing.spec?.tls || []).length > 0,
+        });
+      });
+    } catch { /* ignore */ }
+  }
+  sendJson(res, 200, { ingresses });
+}
+
 // ─── HTTP Server ─────────────────────────────────────────────────────────────
 
 function sendJson(res, code, data) {
@@ -1165,6 +1703,7 @@ function readBody(req, maxBytes = 1024 * 1024) {
 }
 
 const server = http.createServer(async (req, res) => {
+  const reqStart = Date.now();
   setCors(req, res);
 
   if (req.method === 'OPTIONS') {
@@ -1174,6 +1713,13 @@ const server = http.createServer(async (req, res) => {
 
   const parsed = url.parse(req.url, true);
   const path = parsed.pathname;
+
+  // Track latency for non-stream endpoints
+  res.on('finish', () => {
+    if (path !== '/api/stream' && path !== '/api/health') {
+      recordApiLatency(path, Date.now() - reqStart);
+    }
+  });
 
   try {
     // Health — no auth required
