@@ -226,6 +226,25 @@ function updateNodeTracking(nodes) {
   }
 }
 
+// Pod restart tracking
+const podRestartHistory = {};  // { podKey: { lastRestarts, spikes: [{at, count}] } }
+
+function trackPodRestarts(pods) {
+  for (const pod of pods) {
+    const key = pod.namespace + '/' + pod.name;
+    if (!podRestartHistory[key]) {
+      podRestartHistory[key] = { lastRestarts: pod.restarts, spikes: [] };
+      continue;
+    }
+    const h = podRestartHistory[key];
+    if (pod.restarts > h.lastRestarts) {
+      h.spikes.push({ at: new Date().toISOString(), count: pod.restarts - h.lastRestarts });
+      if (h.spikes.length > 20) h.spikes.shift();
+    }
+    h.lastRestarts = pod.restarts;
+  }
+}
+
 // Mining hashrate history (ring buffer, stores every poll for 24h at 30s intervals = ~2880 entries)
 const MAX_MINING_HISTORY = 2880;
 const miningHistory = [];
@@ -468,9 +487,8 @@ async function handleStatus(req, res) {
     errors.push('kubectl get nodes failed: ' + nodesResult.stderr);
   }
 
-  // Track node uptime and pod restarts
+  // Track node uptime
   updateNodeTracking(nodes);
-  trackPodRestarts(pods);
 
   // Kubectl: pods
   const podsResult = run('kubectl get pods -A -o json', 15000);
@@ -491,6 +509,9 @@ async function handleStatus(req, res) {
   } else {
     errors.push('kubectl get pods failed: ' + podsResult.stderr);
   }
+
+  // Track pod restart spikes
+  trackPodRestarts(pods);
 
   // Kubectl: services
   const svcResult = run('kubectl get svc -A -o json', 15000);
@@ -1758,6 +1779,31 @@ const server = http.createServer(async (req, res) => {
       // Pod describe: /api/pods/:namespace/:pod/describe
       const descMatch = path.match(/^\/api\/pods\/([^/]+)\/([^/]+)\/describe$/);
       if (descMatch) return await handlePodDescribe(req, res, descMatch[1], descMatch[2]);
+
+      // Pod YAML: /api/pod-yaml/:namespace/:pod
+      const yamlMatch = path.match(/^\/api\/pod-yaml\/([^/]+)\/([^/]+)$/);
+      if (yamlMatch) return await handlePodYaml(req, res, yamlMatch[1], yamlMatch[2]);
+
+      // Node annotations: /api/node-annotations/:node
+      const annotMatch = path.match(/^\/api\/node-annotations\/([^/]+)$/);
+      if (annotMatch) return await handleNodeAnnotations(req, res, annotMatch[1]);
+
+      if (path === '/api/battery') return await handleBattery(req, res);
+      if (path === '/api/connectivity') return await handleConnectivity(req, res);
+      if (path === '/api/latency') return await handleLatency(req, res);
+      if (path === '/api/ssh/presets') return handleSshPresets(req, res);
+      if (path === '/api/stream') return handleSSE(req, res);
+      if (path === '/api/health-history') return handleHealthHistory(req, res);
+      if (path === '/api/pod-resources') return await handlePodResources(req, res);
+      if (path === '/api/service-health') return await handleServiceHealth(req, res);
+      if (path === '/api/metrics-history') return handleMetricsHistory(req, res);
+      if (path === '/api/node-scheduling') return await handleNodeScheduling(req, res);
+      if (path === '/api/resource-quotas') return await handleResourceQuotas(req, res);
+      if (path === '/api/configmaps') return await handleConfigMaps(req, res);
+      if (path === '/api/cronjobs') return await handleCronJobs(req, res);
+      if (path === '/api/api-latency') return handleApiLatencyHistory(req, res);
+      if (path === '/api/pvcs') return await handlePVCs(req, res);
+      if (path === '/api/ingresses') return await handleIngresses(req, res);
     }
 
     // ─── POST endpoints ───
@@ -1769,6 +1815,7 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/nodes/drain') return await handleNodeDrain(req, res, body);
       if (path === '/api/nodes/uncordon') return await handleNodeUncordon(req, res, body);
       if (path === '/api/alerts/ack') return handleAlertAck(req, res, body);
+      if (path === '/api/cluster-snapshot') return await handleClusterSnapshot(req, res, body);
     }
 
     sendJson(res, 404, { error: 'Not found' });
