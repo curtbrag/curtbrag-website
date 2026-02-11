@@ -1137,6 +1137,20 @@
     .ssh-term-input .term-prompt { color: #22c55e; font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; margin-right: 0.3rem; }
     .ssh-term-input input { flex: 1; background: transparent; border: none; color: #e5e5e5; font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; outline: none; }
 
+    /* PVC status badges */
+    .pvc-status { font-size: 0.65rem; padding: 0.1rem 0.3rem; border-radius: 4px; font-weight: 600; }
+    .pvc-status.bound { background: rgba(34,197,94,0.1); color: var(--green); }
+    .pvc-status.pending { background: rgba(234,179,8,0.1); color: var(--yellow); }
+    .pvc-status.released { background: rgba(59,130,246,0.1); color: #3b82f6; }
+    .pvc-status.available { background: rgba(34,197,94,0.1); color: var(--green); }
+
+    /* Ingress display */
+    .ingress-rule { font-size: 0.72rem; padding: 0.15rem 0; }
+    .ingress-host { font-weight: 600; color: var(--text); }
+    .ingress-path { font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: var(--muted); }
+    .ingress-backend { font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: var(--brand); }
+    .ingress-tls { display: inline-flex; align-items: center; gap: 0.2rem; font-size: 0.6rem; color: var(--green); }
+
     @media (max-width: 768px) {
       .header h1 { font-size: 1.3rem; }
       .container { padding: 0.75rem; }
@@ -1993,6 +2007,40 @@
       </div>
     </div>
 
+    <!-- Persistent Volume Claims -->
+    <div class="section-header" onclick="toggleSection('pvcPanel',this)" id="pvcHeader" style="display:none">
+      <h2 class="section-title"><i class="fa-solid fa-database"></i> Storage (PVCs)</h2>
+      <span class="section-badge" id="pvcBadge">0 claims</span>
+      <i class="fa-solid fa-chevron-down section-collapse"></i>
+    </div>
+    <div class="section-body" id="pvcPanel" style="display:none">
+      <div class="table-container">
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Name</th><th>Namespace</th><th>Status</th><th>Capacity</th><th>Access</th><th>StorageClass</th></tr></thead>
+            <tbody id="pvcTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ingresses -->
+    <div class="section-header" onclick="toggleSection('ingressPanel',this)" id="ingressHeader" style="display:none">
+      <h2 class="section-title"><i class="fa-solid fa-globe"></i> Ingresses</h2>
+      <span class="section-badge" id="ingressBadge">0 routes</span>
+      <i class="fa-solid fa-chevron-down section-collapse"></i>
+    </div>
+    <div class="section-body" id="ingressPanel" style="display:none">
+      <div class="table-container">
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Name</th><th>Namespace</th><th>Class</th><th>Hosts & Paths</th><th>TLS</th></tr></thead>
+            <tbody id="ingressTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- CronJobs & Jobs -->
     <div class="section-header" onclick="toggleSection('cronPanel',this)" id="cronHeader" style="display:none">
       <h2 class="section-title"><i class="fa-solid fa-calendar-check"></i> CronJobs & Jobs</h2>
@@ -2511,6 +2559,8 @@
           loadConfigMaps();
           loadCronJobs();
           loadApiLatency();
+          loadPVCs();
+          loadIngresses();
         }
 
         consecutiveFailures = 0;
@@ -4423,6 +4473,67 @@
       } catch (e) { return null; }
     }
 
+    // ─── Persistent Volume Claims ──────────────────────────────────────
+    async function loadPVCs() {
+      if (!apiEndpoint) return;
+      try {
+        var data = await apiFetch('/api/pvcs');
+        renderPVCs(data.pvcs || [], data.pvs || []);
+      } catch (e) { /* silent */ }
+    }
+
+    function renderPVCs(pvcs, pvs) {
+      var header = document.getElementById('pvcHeader');
+      if (pvcs.length === 0 && pvs.length === 0) { header.style.display = 'none'; return; }
+      header.style.display = '';
+      document.getElementById('pvcPanel').style.display = '';
+      document.getElementById('pvcBadge').textContent = pvcs.length + ' claims, ' + pvs.length + ' volumes';
+
+      var rows = pvcs.map(function(pvc) {
+        var statusCls = pvc.status.toLowerCase();
+        return '<tr><td class="pod-name">' + pvc.name + '</td>' +
+          '<td><span class="pod-namespace">' + pvc.namespace + '</span></td>' +
+          '<td><span class="pvc-status ' + statusCls + '">' + pvc.status + '</span></td>' +
+          '<td><code>' + pvc.capacity + '</code></td>' +
+          '<td style="font-size:0.7rem">' + pvc.accessModes + '</td>' +
+          '<td style="font-size:0.7rem">' + pvc.storageClass + '</td></tr>';
+      });
+      document.getElementById('pvcTableBody').innerHTML = rows.join('') || '<tr><td colspan="6" class="empty-state">No PVCs</td></tr>';
+    }
+
+    // ─── Ingresses ──────────────────────────────────────────────────────
+    async function loadIngresses() {
+      if (!apiEndpoint) return;
+      try {
+        var data = await apiFetch('/api/ingresses');
+        renderIngresses(data.ingresses || []);
+      } catch (e) { /* silent */ }
+    }
+
+    function renderIngresses(ingresses) {
+      var header = document.getElementById('ingressHeader');
+      if (ingresses.length === 0) { header.style.display = 'none'; return; }
+      header.style.display = '';
+      document.getElementById('ingressPanel').style.display = '';
+      document.getElementById('ingressBadge').textContent = ingresses.length + ' routes';
+
+      var rows = ingresses.map(function(ing) {
+        var rulesHtml = (ing.rules || []).map(function(r) {
+          var pathsHtml = (r.paths || []).map(function(p) {
+            return '<span class="ingress-path">' + p.path + '</span> &rarr; <span class="ingress-backend">' + p.backend + '</span>';
+          }).join('<br>');
+          return '<div class="ingress-rule"><span class="ingress-host">' + r.host + '</span><br>' + pathsHtml + '</div>';
+        }).join('');
+        var tlsHtml = ing.tls ? '<span class="ingress-tls"><i class="fa-solid fa-lock"></i> TLS</span>' : '<span style="color:var(--muted);font-size:0.65rem">None</span>';
+        return '<tr><td class="pod-name">' + ing.name + '</td>' +
+          '<td><span class="pod-namespace">' + ing.namespace + '</span></td>' +
+          '<td style="font-size:0.7rem">' + ing.className + '</td>' +
+          '<td>' + rulesHtml + '</td>' +
+          '<td>' + tlsHtml + '</td></tr>';
+      });
+      document.getElementById('ingressTableBody').innerHTML = rows.join('');
+    }
+
     // ─── CronJobs & Jobs ──────────────────────────────────────────────
     async function loadCronJobs() {
       if (!apiEndpoint) return;
@@ -5271,6 +5382,12 @@
       if (tickerData.avgBatt !== undefined) items.push({ icon: 'fa-battery-three-quarters', label: 'Battery', val: tickerData.avgBatt + '%' });
       if (tickerData.alerts !== undefined) items.push({ icon: 'fa-bell', label: 'Alerts', val: tickerData.alerts });
       if (tickerData.uptime) items.push({ icon: 'fa-clock', label: 'API Uptime', val: tickerData.uptime });
+
+      // Power estimate: 10 phones @ ~3W each + AORUS ~200W
+      var phonesUp = tickerData.nodesReady || 0;
+      var watts = (Math.min(phonesUp, 10) * 3) + 200;
+      items.push({ icon: 'fa-bolt', label: 'Power', val: watts + 'W' });
+      items.push({ icon: 'fa-dollar-sign', label: 'Daily Cost', val: '$' + ((watts * 24 / 1000) * 0.12).toFixed(2) });
 
       var el = document.querySelector('.stats-ticker-inner');
       if (el && items.length > 0) {

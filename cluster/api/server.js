@@ -1817,6 +1817,76 @@ async function handleClusterSnapshot(req, res, body) {
   sendJson(res, 200, { snapshot, sizeBytes: JSON.stringify(snapshot).length });
 }
 
+// ─── Persistent Volume Claims ───────────────────────────────────────────────
+
+async function handlePVCs(req, res) {
+  const [pvcResult, pvResult] = await Promise.all([
+    runAsync('kubectl get pvc -A -o json 2>/dev/null', 10000),
+    runAsync('kubectl get pv -o json 2>/dev/null', 10000),
+  ]);
+
+  const pvcs = [];
+  if (pvcResult.ok) {
+    try {
+      const parsed = JSON.parse(pvcResult.stdout);
+      (parsed.items || []).forEach(pvc => {
+        pvcs.push({
+          name: pvc.metadata.name, namespace: pvc.metadata.namespace,
+          status: pvc.status?.phase || 'Unknown',
+          capacity: pvc.status?.capacity?.storage || '-',
+          accessModes: (pvc.status?.accessModes || []).join(', '),
+          storageClass: pvc.spec?.storageClassName || '-',
+          volumeName: pvc.spec?.volumeName || '-',
+        });
+      });
+    } catch { /* ignore */ }
+  }
+
+  const pvs = [];
+  if (pvResult.ok) {
+    try {
+      const parsed = JSON.parse(pvResult.stdout);
+      (parsed.items || []).forEach(pv => {
+        pvs.push({
+          name: pv.metadata.name, capacity: pv.spec?.capacity?.storage || '-',
+          status: pv.status?.phase || 'Unknown',
+          reclaimPolicy: pv.spec?.persistentVolumeReclaimPolicy || '-',
+          storageClass: pv.spec?.storageClassName || '-',
+        });
+      });
+    } catch { /* ignore */ }
+  }
+
+  sendJson(res, 200, { pvcs, pvs });
+}
+
+// ─── Ingress/Routes ─────────────────────────────────────────────────────────
+
+async function handleIngresses(req, res) {
+  const result = await runAsync('kubectl get ingress -A -o json 2>/dev/null', 10000);
+  const ingresses = [];
+  if (result.ok) {
+    try {
+      const parsed = JSON.parse(result.stdout);
+      (parsed.items || []).forEach(ing => {
+        const rules = (ing.spec?.rules || []).map(r => ({
+          host: r.host || '*',
+          paths: (r.http?.paths || []).map(p => ({
+            path: p.path || '/',
+            backend: p.backend?.service ? p.backend.service.name + ':' + (p.backend.service.port?.number || '80') : '-',
+          })),
+        }));
+        ingresses.push({
+          name: ing.metadata.name, namespace: ing.metadata.namespace,
+          className: ing.spec?.ingressClassName || '-', rules,
+          tls: (ing.spec?.tls || []).length > 0,
+        });
+      });
+    } catch { /* ignore */ }
+  }
+  sendJson(res, 200, { ingresses });
+}
+
 // ─── HTTP Server ─────────────────────────────────────────────────────────────
 
 function sendJson(res, code, data) {
@@ -1930,6 +2000,8 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/configmaps') return await handleConfigMaps(req, res);
       if (path === '/api/cronjobs') return await handleCronJobs(req, res);
       if (path === '/api/latency/history') return handleApiLatencyHistory(req, res);
+      if (path === '/api/pvcs') return await handlePVCs(req, res);
+      if (path === '/api/ingresses') return await handleIngresses(req, res);
 
       // Node annotations: /api/nodes/:name/annotations
       const annotMatch = path.match(/^\/api\/nodes\/([^/]+)\/annotations$/);
