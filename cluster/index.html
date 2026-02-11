@@ -797,6 +797,59 @@
     .toast.success { border-color: var(--green); }
     .toast.error { border-color: var(--red); }
     .toast.info { border-color: var(--blue); }
+
+    /* Node Detail Modal */
+    .node-detail-modal-content { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; max-width: 600px; width: 95%; max-height: 80vh; display: flex; flex-direction: column; }
+    .node-detail-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+    .node-detail-modal-header h3 { font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
+    .node-detail-modal-header h3 i { color: var(--brand); }
+    .node-detail-body { padding: 1rem; overflow-y: auto; flex: 1; }
+    .node-detail-section { margin-bottom: 1rem; }
+    .node-detail-section h4 { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .node-detail-metrics { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    .nd-metric { text-align: center; padding: 0.5rem 0.75rem; background: var(--bg); border-radius: 8px; border: 1px solid var(--border); min-width: 70px; }
+    .nd-metric-val { font-size: 1.1rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .nd-metric-label { font-size: 0.65rem; color: var(--muted); margin-top: 0.2rem; }
+    .node-detail-pods { max-height: 200px; overflow-y: auto; }
+    .node-detail-actions { display: flex; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--border); flex-wrap: wrap; }
+    .node-detail-actions button { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.35rem 0.75rem; border-radius: 6px; cursor: pointer; font-size: 0.78rem; font-family: inherit; display: flex; align-items: center; gap: 0.35rem; transition: all 0.2s; }
+    .node-detail-actions button:hover { border-color: var(--brand); color: var(--brand); }
+    .node-annot { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.3rem; }
+    .annot-tag { font-size: 0.68rem; padding: 0.15rem 0.4rem; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; }
+    .annot-key { color: var(--muted); }
+    .annot-val { color: var(--text); }
+
+    /* Compare Modal */
+    .compare-modal-content { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; max-width: 900px; width: 95%; max-height: 80vh; display: flex; flex-direction: column; }
+    .compare-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+    .compare-modal-header h3 { font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
+    .compare-modal-header h3 i { color: var(--brand); }
+    .compare-body { padding: 1rem; overflow: auto; flex: 1; }
+    .compare-grid { display: flex; flex-direction: column; gap: 0; }
+    .compare-row { display: flex; align-items: center; padding: 0.4rem 0; border-bottom: 1px solid var(--border); }
+    .compare-label { min-width: 100px; font-size: 0.78rem; color: var(--muted); font-weight: 600; }
+    .compare-val { flex: 1; text-align: center; font-size: 0.78rem; font-family: 'JetBrains Mono', monospace; }
+
+    /* Shortcuts Modal */
+    .shortcuts-modal-content { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; max-width: 480px; width: 95%; max-height: 80vh; overflow-y: auto; }
+    .shortcuts-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+    .shortcuts-modal-header h3 { font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
+    .shortcuts-modal-header h3 i { color: var(--brand); }
+    .shortcuts-list { padding: 0.75rem 1rem; }
+    .shortcut-row { display: flex; align-items: center; justify-content: space-between; padding: 0.35rem 0; font-size: 0.82rem; }
+    .shortcut-row kbd { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: 'JetBrains Mono', monospace; min-width: 24px; text-align: center; }
+
+    /* Command Palette */
+    #cmdPalette.visible { display: flex !important; }
+    .cmd-palette-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem; cursor: pointer; transition: background 0.15s; color: var(--text); font-size: 0.85rem; }
+    .cmd-palette-item:hover, .cmd-palette-item.selected { background: var(--panel-hover); }
+    .cmd-palette-item i { color: var(--muted); width: 16px; text-align: center; font-size: 0.8rem; }
+    .cmd-palette-item .cmd-label { flex: 1; }
+    .cmd-palette-item .cmd-shortcut { font-size: 0.65rem; padding: 0.1rem 0.35rem; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+    /* Node Scheduling Badge */
+    .node-sched-badge { font-size: 0.6rem; padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: 600; display: inline-flex; align-items: center; gap: 0.25rem; }
+    .node-sched-badge.cordoned { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
   </style>
 </head>
 <body>
@@ -1543,6 +1596,66 @@
     <p style="margin-top: 0.5rem;">&copy; 2026 Curtis Bragdon. All rights reserved.</p>
   </footer>
 
+  <!-- Node Detail Modal -->
+  <div class="modal-overlay" id="nodeDetailModal">
+    <div class="node-detail-modal-content">
+      <div class="node-detail-modal-header">
+        <h3><i class="fa-solid fa-server"></i> <span id="nodeDetailTitle">Node</span></h3>
+        <button style="background:none;border:none;color:var(--text);cursor:pointer;font-size:1.2rem;" onclick="closeNodeDetail()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="node-detail-body" id="nodeDetailBody"></div>
+      <div class="node-detail-actions" id="nodeDetailActions"></div>
+    </div>
+  </div>
+
+  <!-- Compare Modal -->
+  <div class="modal-overlay" id="compareModal">
+    <div class="compare-modal-content">
+      <div class="compare-modal-header">
+        <h3><i class="fa-solid fa-code-compare"></i> <span id="compareTitle">Compare Nodes</span></h3>
+        <button style="background:none;border:none;color:var(--text);cursor:pointer;font-size:1.2rem;" onclick="closeCompare()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="compare-body" id="compareBody"></div>
+    </div>
+  </div>
+
+  <!-- Shortcuts Modal -->
+  <div class="modal-overlay" id="shortcutsModal">
+    <div class="shortcuts-modal-content">
+      <div class="shortcuts-modal-header">
+        <h3><i class="fa-solid fa-keyboard"></i> Keyboard Shortcuts</h3>
+        <button style="background:none;border:none;color:var(--text);cursor:pointer;font-size:1.2rem;" onclick="closeShortcuts()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="shortcuts-list">
+        <div class="shortcut-row"><span>Refresh cluster</span><kbd>R</kbd></div>
+        <div class="shortcut-row"><span>Toggle theme</span><kbd>T</kbd></div>
+        <div class="shortcut-row"><span>Toggle bulk select</span><kbd>B</kbd></div>
+        <div class="shortcut-row"><span>Toggle alert sound</span><kbd>S</kbd></div>
+        <div class="shortcut-row"><span>Focus pod search</span><kbd>/</kbd></div>
+        <div class="shortcut-row"><span>Command palette</span><kbd>Ctrl+K</kbd></div>
+        <div class="shortcut-row"><span>Nodes section</span><kbd>1</kbd></div>
+        <div class="shortcut-row"><span>Pods section</span><kbd>2</kbd></div>
+        <div class="shortcut-row"><span>Services section</span><kbd>3</kbd></div>
+        <div class="shortcut-row"><span>Mining section</span><kbd>4</kbd></div>
+        <div class="shortcut-row"><span>Network section</span><kbd>5</kbd></div>
+        <div class="shortcut-row"><span>Scroll to top</span><kbd>Home</kbd></div>
+        <div class="shortcut-row"><span>Show this help</span><kbd>?</kbd></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Command Palette (Ctrl+K) -->
+  <div id="cmdPalette" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:3000;align-items:flex-start;justify-content:center;padding-top:20vh;">
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;width:90%;max-width:480px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="padding:0.75rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.5rem;">
+        <i class="fa-solid fa-magnifying-glass" style="color:var(--muted);font-size:0.85rem;"></i>
+        <input id="cmdPaletteInput" type="text" placeholder="Type a command..." style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-family:inherit;font-size:0.9rem;">
+        <kbd style="font-size:0.65rem;padding:0.15rem 0.4rem;border-radius:4px;background:var(--bg);border:1px solid var(--border);color:var(--muted);font-family:'JetBrains Mono',monospace;">ESC</kbd>
+      </div>
+      <div id="cmdPaletteResults" style="max-height:320px;overflow-y:auto;"></div>
+    </div>
+  </div>
+
   <script>
     let allPods = [];
     let allServices = [];
@@ -1809,7 +1922,7 @@
           <div class="node-header">
             <div class="node-name"><i class="fa-solid ${icon}"></i>${node.name}</div>
             <span class="node-role">${isCP ? 'Control Plane' : 'Worker'}</span>
-            ${getNodeSchedBadge(safeName)}
+            ${getNodeSchedBadge(node.name)}
           </div>
           <div class="node-tooltip">
             <div class="tooltip-row"><span class="tooltip-key">IP:</span><span class="tooltip-val">${node.ip || '--'}</span></div>
