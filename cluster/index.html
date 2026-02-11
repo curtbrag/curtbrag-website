@@ -822,6 +822,32 @@
     .copy-btn:hover { border-color: var(--brand); color: var(--text); }
     .copy-btn.copied { border-color: var(--green); color: var(--green); }
 
+    /* Command palette */
+    .cmd-palette-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 3000; display: none; align-items: flex-start; justify-content: center; padding-top: 15vh; }
+    .cmd-palette-overlay.visible { display: flex; }
+    .cmd-palette { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; width: 90%; max-width: 500px; box-shadow: 0 16px 64px rgba(0,0,0,0.5); overflow: hidden; }
+    .cmd-palette-input { width: 100%; background: transparent; border: none; border-bottom: 1px solid var(--border); color: var(--text); padding: 0.75rem 1rem; font-size: 0.95rem; font-family: inherit; outline: none; }
+    .cmd-palette-input::placeholder { color: var(--muted); }
+    .cmd-palette-results { max-height: 300px; overflow-y: auto; }
+    .cmd-palette-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; cursor: pointer; transition: background 0.15s; font-size: 0.85rem; }
+    .cmd-palette-item:hover, .cmd-palette-item.selected { background: var(--bg); }
+    .cmd-palette-item i { width: 20px; text-align: center; color: var(--brand); font-size: 0.8rem; }
+    .cmd-palette-item .cmd-label { flex: 1; }
+    .cmd-palette-item .cmd-shortcut { font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: var(--muted); background: var(--bg); padding: 0.1rem 0.4rem; border-radius: 4px; }
+    .cmd-palette-footer { border-top: 1px solid var(--border); padding: 0.4rem 1rem; font-size: 0.65rem; color: var(--muted); display: flex; gap: 1rem; }
+
+    /* Pod restart graph */
+    .restart-graph { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; margin-top: 0.5rem; }
+    .restart-graph svg { width: 100%; height: 60px; }
+
+    /* Cluster warnings */
+    .warnings-banner { background: rgba(234, 179, 8, 0.08); border: 1px solid rgba(234, 179, 8, 0.25); border-radius: 10px; padding: 0.6rem 1rem; margin-bottom: 0.75rem; display: none; }
+    .warnings-banner.visible { display: block; }
+    .warnings-title { font-size: 0.85rem; font-weight: 600; color: var(--yellow); margin-bottom: 0.3rem; display: flex; align-items: center; gap: 0.4rem; }
+    .warnings-list { list-style: none; }
+    .warnings-list li { font-size: 0.78rem; color: var(--muted); padding: 0.15rem 0; display: flex; align-items: flex-start; gap: 0.4rem; }
+    .warnings-list li i { color: var(--yellow); margin-top: 0.15rem; font-size: 0.7rem; }
+
     /* Auto-detect connection */
     .api-detect { display: flex; align-items: center; gap: 0.3rem; }
     .api-detect-btn { background: none; border: 1px solid var(--border); color: var(--muted); padding: 0.25rem 0.5rem; border-radius: 6px; cursor: pointer; font-size: 0.72rem; font-family: inherit; transition: all 0.2s; }
@@ -1558,6 +1584,12 @@
       <button class="reconnect-btn" onclick="reconnectNow()"><i class="fa-solid fa-arrows-rotate"></i> Reconnect Now</button>
     </div>
 
+    <!-- Cluster Warnings -->
+    <div class="warnings-banner" id="warningsBanner">
+      <div class="warnings-title"><i class="fa-solid fa-triangle-exclamation"></i> Cluster Warnings</div>
+      <ul class="warnings-list" id="warningsList"></ul>
+    </div>
+
     <!-- Battery Heatmap -->
     <div class="panel" id="batteryPanel" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem">
       <div class="section-header" style="margin-bottom:0.5rem">
@@ -1953,6 +1985,19 @@
   <!-- Scroll to top -->
   <button class="scroll-top" id="scrollTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})"><i class="fa-solid fa-arrow-up"></i></button>
 
+  <!-- Command Palette -->
+  <div class="cmd-palette-overlay" id="cmdPalette">
+    <div class="cmd-palette">
+      <input class="cmd-palette-input" id="cmdPaletteInput" placeholder="Type a command..." autocomplete="off">
+      <div class="cmd-palette-results" id="cmdPaletteResults"></div>
+      <div class="cmd-palette-footer">
+        <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> navigate</span>
+        <span><kbd>Enter</kbd> run</span>
+        <span><kbd>Esc</kbd> close</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
   <div class="toast" id="toast"><i class="fa-solid fa-circle-info"></i> <span id="toastMsg"></span></div>
 
@@ -2157,6 +2202,8 @@
         renderCostCalc(data.mining);
         renderPodHeatmap(allPods, data.nodes || []);
         renderSystemInfo(data.nodes || [], lastMetrics);
+        checkClusterWarnings(data);
+        trackPodRestarts(allPods);
 
         // Update ticker
         tickerData.nodesReady = summary.nodesReady || 0;
@@ -3618,6 +3665,160 @@
         dd.classList.remove('visible');
       }
     });
+
+    // ─── Command Palette (Ctrl+K) ──────────────────────────────────
+    var cmdPaletteOpen = false;
+    var cmdPaletteSelected = 0;
+    var paletteCommands = [
+      { icon: 'fa-arrows-rotate', label: 'Refresh cluster status', shortcut: 'R', action: function() { loadClusterStatus(); } },
+      { icon: 'fa-sun', label: 'Wake all phones', action: function() { groupCmd('phones', 'wake'); } },
+      { icon: 'fa-moon', label: 'Sleep all phones', action: function() { groupCmd('phones', 'sleep'); } },
+      { icon: 'fa-rotate', label: 'Restart all phones', action: function() { groupCmd('phones', 'restart'); } },
+      { icon: 'fa-play', label: 'Start all miners', action: function() { groupCmd('all', 'mining-start'); } },
+      { icon: 'fa-stop', label: 'Stop all miners', action: function() { groupCmd('all', 'mining-stop'); } },
+      { icon: 'fa-satellite-dish', label: 'Run ping test', shortcut: 'P', action: function() { runPingTest(); } },
+      { icon: 'fa-download', label: 'Export cluster snapshot', shortcut: 'E', action: function() { exportClusterState(); } },
+      { icon: 'fa-camera', label: 'Capture phone screens', action: function() { loadScreens(); } },
+      { icon: 'fa-expand', label: 'Toggle fullscreen', shortcut: 'F', action: function() { toggleFullscreen(); } },
+      { icon: 'fa-circle-half-stroke', label: 'Toggle theme', shortcut: 'T', action: function() { toggleTheme(); } },
+      { icon: 'fa-magnifying-glass', label: 'Auto-detect API server', action: function() { autoDetectApi(); } },
+      { icon: 'fa-file-export', label: 'Export dashboard config', action: function() { exportDashboardConfig(); } },
+      { icon: 'fa-usb', label: 'Refresh ADB devices', action: function() { quickAction('refresh-adb', 'all'); } },
+      { icon: 'fa-bell', label: 'Clear notifications', action: function() { clearNotifications(); } },
+      { icon: 'fa-check-double', label: 'Toggle bulk select', action: function() { toggleBulkSelect(); } },
+      { icon: 'fa-grip', label: 'Toggle node grid/list view', action: function() { toggleNodeView(); } },
+    ];
+
+    function openCmdPalette() {
+      cmdPaletteOpen = true;
+      cmdPaletteSelected = 0;
+      document.getElementById('cmdPalette').classList.add('visible');
+      var input = document.getElementById('cmdPaletteInput');
+      input.value = '';
+      input.focus();
+      renderPaletteResults('');
+    }
+
+    function closeCmdPalette() {
+      cmdPaletteOpen = false;
+      document.getElementById('cmdPalette').classList.remove('visible');
+    }
+
+    function renderPaletteResults(query) {
+      var q = query.toLowerCase();
+      var filtered = paletteCommands.filter(function(c) {
+        return !q || c.label.toLowerCase().indexOf(q) !== -1;
+      });
+      var el = document.getElementById('cmdPaletteResults');
+      if (filtered.length === 0) {
+        el.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--muted)">No matching commands</div>';
+        return;
+      }
+      el.innerHTML = filtered.map(function(c, i) {
+        return '<div class="cmd-palette-item' + (i === cmdPaletteSelected ? ' selected' : '') + '" onmouseenter="cmdPaletteSelected=' + i + ';renderPaletteResults(document.getElementById(\'cmdPaletteInput\').value)" onclick="executePaletteCommand(' + i + ')">' +
+          '<i class="fa-solid ' + c.icon + '"></i>' +
+          '<span class="cmd-label">' + c.label + '</span>' +
+          (c.shortcut ? '<span class="cmd-shortcut">' + c.shortcut + '</span>' : '') +
+          '</div>';
+      }).join('');
+    }
+
+    function executePaletteCommand(idx) {
+      var q = document.getElementById('cmdPaletteInput').value.toLowerCase();
+      var filtered = paletteCommands.filter(function(c) {
+        return !q || c.label.toLowerCase().indexOf(q) !== -1;
+      });
+      if (filtered[idx]) {
+        closeCmdPalette();
+        filtered[idx].action();
+      }
+    }
+
+    document.getElementById('cmdPaletteInput').addEventListener('input', function() {
+      cmdPaletteSelected = 0;
+      renderPaletteResults(this.value);
+    });
+
+    document.getElementById('cmdPaletteInput').addEventListener('keydown', function(e) {
+      var q = this.value.toLowerCase();
+      var filtered = paletteCommands.filter(function(c) { return !q || c.label.toLowerCase().indexOf(q) !== -1; });
+      if (e.key === 'ArrowDown') { e.preventDefault(); cmdPaletteSelected = Math.min(cmdPaletteSelected + 1, filtered.length - 1); renderPaletteResults(q); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); cmdPaletteSelected = Math.max(cmdPaletteSelected - 1, 0); renderPaletteResults(q); }
+      else if (e.key === 'Enter') { e.preventDefault(); executePaletteCommand(cmdPaletteSelected); }
+      else if (e.key === 'Escape') { closeCmdPalette(); }
+    });
+
+    document.getElementById('cmdPalette').addEventListener('click', function(e) {
+      if (e.target === this) closeCmdPalette();
+    });
+
+    // Override Ctrl+K globally
+    document.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        if (cmdPaletteOpen) closeCmdPalette();
+        else openCmdPalette();
+      }
+    });
+
+    // ─── Cluster Warnings ────────────────────────────────────────────
+    function checkClusterWarnings(data) {
+      var warnings = [];
+      var summary = data.summary || {};
+
+      // Node issues
+      if (summary.nodesReady < summary.nodesTotal) {
+        warnings.push((summary.nodesTotal - summary.nodesReady) + ' node(s) not ready');
+      }
+
+      // Pod issues
+      if (data.pods) {
+        var crashed = data.pods.filter(function(p) { return p.status === 'CrashLoopBackOff'; });
+        if (crashed.length > 0) warnings.push(crashed.length + ' pod(s) in CrashLoopBackOff');
+        var pending = data.pods.filter(function(p) { return p.status === 'Pending'; });
+        if (pending.length > 0) warnings.push(pending.length + ' pod(s) stuck in Pending');
+        var highRestarts = data.pods.filter(function(p) { return (p.restarts || 0) > 10; });
+        if (highRestarts.length > 0) warnings.push(highRestarts.length + ' pod(s) with >10 restarts');
+      }
+
+      // Metric issues
+      if (lastMetrics) {
+        Object.entries(lastMetrics).forEach(function(e) {
+          var m = e[1];
+          if (m.cpu && m.cpu.usage > 90) warnings.push(e[0] + ' CPU critical (' + m.cpu.usage + '%)');
+          if (m.memory && m.memory.percent > 90) warnings.push(e[0] + ' RAM critical (' + m.memory.percent + '%)');
+          if (m.battery && m.battery.level < 10 && !m.battery.charging) warnings.push(e[0] + ' battery critical (' + m.battery.level + '%)');
+          if (m.temp && m.temp.celsius > 55) warnings.push(e[0] + ' overheating (' + m.temp.celsius + '°C)');
+          if (m.storage && m.storage.percent > 90) warnings.push(e[0] + ' disk nearly full (' + m.storage.percent + '%)');
+        });
+      }
+
+      // Health score
+      if (summary.healthScore && summary.healthScore < 50) {
+        warnings.push('Cluster health score critically low: ' + summary.healthScore + '%');
+      }
+
+      var banner = document.getElementById('warningsBanner');
+      var list = document.getElementById('warningsList');
+      if (warnings.length === 0) {
+        banner.classList.remove('visible');
+        return;
+      }
+      banner.classList.add('visible');
+      list.innerHTML = warnings.map(function(w) {
+        return '<li><i class="fa-solid fa-exclamation"></i> ' + w + '</li>';
+      }).join('');
+    }
+
+    // ─── Pod Restart Graph ───────────────────────────────────────────
+    var podRestartData = [];
+
+    function trackPodRestarts(pods) {
+      if (!pods || pods.length === 0) return;
+      var totalRestarts = pods.reduce(function(sum, p) { return sum + (p.restarts || 0); }, 0);
+      podRestartData.push({ ts: Date.now(), restarts: totalRestarts });
+      if (podRestartData.length > 144) podRestartData.shift(); // 24h at 10min intervals
+    }
 
     // ─── Clipboard Copy ──────────────────────────────────────────────
     function copyToClipboard(text, btn) {
