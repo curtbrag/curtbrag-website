@@ -1482,7 +1482,7 @@
         <button class="toolbar-btn" onclick="exportDashboardConfig()" title="Export dashboard settings"><i class="fa-solid fa-file-export"></i></button>
         <label class="toolbar-btn" title="Import dashboard settings" style="cursor:pointer"><i class="fa-solid fa-file-import"></i><input type="file" accept=".json" onchange="importDashboardConfig(event)" style="display:none"></label>
         <button class="toolbar-btn" onclick="toggleFullscreen()" title="Toggle fullscreen" id="fullscreenBtn"><i class="fa-solid fa-expand"></i></button>
-        <button class="toolbar-btn" onclick="showShortcuts()" title="Keyboard shortcuts"><i class="fa-solid fa-keyboard"></i> <kbd>?</kbd></button>
+        <button class="toolbar-btn" onclick="openShortcuts()" title="Keyboard shortcuts"><i class="fa-solid fa-keyboard"></i> <kbd>?</kbd></button>
         <div class="conn-quality" id="connQuality" title="API connection quality" style="display:none">
           <div class="conn-bars" id="connBars">
             <div class="conn-bar" style="height:4px"></div>
@@ -3185,46 +3185,6 @@
     }
 
     // ─── Keyboard Shortcuts ──────────────────────────────────────────────
-    function showShortcuts() {
-      document.getElementById('logModalTitle').textContent = 'Keyboard Shortcuts';
-      document.getElementById('logBody').innerHTML =
-        '<div style="font-size:0.9rem;color:var(--text);line-height:2.2">' +
-        '<strong>R</strong> &mdash; Refresh cluster status<br>' +
-        '<strong>S</strong> &mdash; Capture phone screens<br>' +
-        '<strong>E</strong> &mdash; Export cluster snapshot<br>' +
-        '<strong>W</strong> &mdash; Wake all phones<br>' +
-        '<strong>F</strong> &mdash; Focus pod search<br>' +
-        '<strong>H</strong> &mdash; Toggle command history<br>' +
-        '<strong>A</strong> &mdash; Toggle alerts<br>' +
-        '<strong>T</strong> &mdash; Toggle theme (dark/light)<br>' +
-        '<strong>G</strong> &mdash; Toggle fullscreen mode<br>' +
-        '<strong>B</strong> &mdash; Toggle bulk node selection<br>' +
-        '<strong>P</strong> &mdash; Run ping test<br>' +
-        '<strong>Esc</strong> &mdash; Close modals<br>' +
-        '<strong>?</strong> &mdash; Show this help</div>';
-      document.getElementById('logModal').classList.add('visible');
-    }
-
-    document.addEventListener('keydown', function(e) {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
-      var key = e.key.toLowerCase();
-      if (key === 'r') loadClusterStatus();
-      else if (key === 's') loadScreens();
-      else if (key === 'e') exportClusterState();
-      else if (key === 'w') {
-        if (savedPassword) sendToBackend({ command: 'wake', target: 'phones', password: savedPassword }).then(function() { showToast('Wake sent to all phones', 'success'); });
-      }
-      else if (key === 'f') { e.preventDefault(); var si = document.getElementById('podSearchInput'); if (si) si.focus(); }
-      else if (key === 'h') toggleCmdHistory();
-      else if (key === 'a') toggleAlerts();
-      else if (key === 't') toggleTheme();
-      else if (key === 'g') toggleFullscreen();
-      else if (key === 'b') toggleBulkSelect();
-      else if (key === 'p') runPingTest();
-      else if (key === '?') showShortcuts();
-      else if (key === 'escape') { closeLogModal(); closeScreenModal(); closeModal(); closeNodeDetail(); }
-    });
-
     // ─── Screen Viewer Functions ──────────────────────────────────────────
 
     async function loadScreens() {
@@ -4430,12 +4390,12 @@
         case 'b':
         case 'B':
           e.preventDefault();
-          if (typeof toggleBulkMode === 'function') toggleBulkMode();
+          if (typeof toggleBulkSelect === 'function') toggleBulkSelect();
           break;
         case 's':
         case 'S':
           e.preventDefault();
-          if (typeof toggleSound === 'function') toggleSound();
+          if (typeof toggleAlertSound === 'function') toggleAlertSound();
           break;
         case '/':
           e.preventDefault();
