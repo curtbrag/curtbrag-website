@@ -1443,6 +1443,71 @@ function handleSshPresets(req, res) {
   });
 }
 
+// ─── Server-Sent Events (SSE) ─────────────────────────────────────────────
+
+const sseClients = new Set();
+
+function handleSSE(req, res) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write('data: {"type":"connected","ts":' + Date.now() + '}\n\n');
+  sseClients.add(res);
+  req.on('close', () => sseClients.delete(res));
+}
+
+function broadcastSSE(event, data) {
+  const msg = 'event: ' + event + '\ndata: ' + JSON.stringify(data) + '\n\n';
+  for (const client of sseClients) {
+    try { client.write(msg); } catch { sseClients.delete(client); }
+  }
+}
+
+// Broadcast status every 10s to SSE clients
+setInterval(async () => {
+  if (sseClients.size === 0) return;
+  try {
+    const status = statusCache.data || {};
+    const summary = status.summary || {};
+    broadcastSSE('status', {
+      ts: Date.now(),
+      nodesReady: summary.nodesReady || 0,
+      nodesTotal: summary.nodesTotal || 0,
+      podsRunning: summary.podsRunning || 0,
+      podsTotal: summary.podsTotal || 0,
+      healthScore: summary.healthScore || 0,
+    });
+  } catch (e) { /* ignore */ }
+}, 10000);
+
+// ─── Health History ──────────────────────────────────────────────────────────
+
+const healthHistory = [];
+const MAX_HEALTH_HISTORY = 288; // 24h at 5min intervals
+
+function recordHealthSnapshot() {
+  const status = statusCache.data || {};
+  const summary = status.summary || {};
+  healthHistory.push({
+    ts: Date.now(),
+    score: summary.healthScore || 0,
+    nodesReady: summary.nodesReady || 0,
+    nodesTotal: summary.nodesTotal || 0,
+    podsRunning: summary.podsRunning || 0,
+    podsTotal: summary.podsTotal || 0,
+  });
+  if (healthHistory.length > MAX_HEALTH_HISTORY) healthHistory.shift();
+}
+
+setInterval(recordHealthSnapshot, 300000); // Every 5 min
+
+function handleHealthHistory(req, res) {
+  sendJson(res, 200, { history: healthHistory });
+}
+
 // ─── HTTP Server ─────────────────────────────────────────────────────────────
 
 function sendJson(res, code, data) {
@@ -1538,6 +1603,8 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/connectivity') return await handleConnectivity(req, res);
       if (path === '/api/latency') return await handleLatency(req, res);
       if (path === '/api/ssh/presets') return handleSshPresets(req, res);
+      if (path === '/api/stream') return handleSSE(req, res);
+      if (path === '/api/health/history') return handleHealthHistory(req, res);
 
       // Node detail: /api/nodes/:name/detail
       const nodeDetailMatch = path.match(/^\/api\/nodes\/([^/]+)\/detail$/);

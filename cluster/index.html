@@ -1140,6 +1140,30 @@
     .cluster-age i { color: var(--brand); font-size: 0.7rem; }
     .cluster-age .age-val { color: var(--text); font-weight: 600; }
 
+    /* Health history graph */
+    .health-graph { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; margin-top: 0.5rem; }
+    .health-graph svg { width: 100%; height: 80px; }
+    .health-graph-label { font-size: 0.65rem; color: var(--muted); text-align: right; margin-top: 0.2rem; }
+
+    /* Power schedule */
+    .schedule-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0.5rem; }
+    .schedule-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.75rem; }
+    .schedule-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.3rem; }
+    .schedule-name { font-weight: 600; font-size: 0.8rem; }
+    .schedule-toggle { width: 36px; height: 20px; border-radius: 10px; background: var(--border); cursor: pointer; position: relative; transition: background 0.3s; border: none; }
+    .schedule-toggle.active { background: var(--green); }
+    .schedule-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: white; transition: left 0.3s; }
+    .schedule-toggle.active::after { left: 18px; }
+    .schedule-times { display: flex; gap: 0.5rem; margin-top: 0.3rem; }
+    .schedule-time { font-size: 0.72rem; display: flex; align-items: center; gap: 0.25rem; }
+    .schedule-time input { width: 70px; background: var(--panel); border: 1px solid var(--border); color: var(--text); padding: 0.2rem 0.3rem; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; }
+    .schedule-time input:focus { outline: none; border-color: var(--brand); }
+
+    /* SSE live indicator */
+    .sse-indicator { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; color: var(--muted); }
+    .sse-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
+    .sse-dot.connected { background: var(--green); animation: pulse 2s infinite; }
+
     /* Cluster topology map */
     .topology-map { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; overflow-x: auto; }
     .topology-map svg { width: 100%; min-height: 300px; }
@@ -1239,6 +1263,7 @@
         <div class="status-item" style="color: var(--muted);">
           <i class="fa-regular fa-clock"></i>
           <span>Updated: <span id="lastUpdate">--</span></span>
+          <span class="sse-indicator" id="sseIndicator" style="display:none"><span class="sse-dot" id="sseDot"></span> SSE</span>
         </div>
       </div>
       <div class="toolbar">
@@ -1408,6 +1433,19 @@
       <div class="health-label"><i class="fa-solid fa-heart-pulse"></i> Cluster Health</div>
       <div class="health-track"><div class="health-fill good" id="healthFill" style="width: 0%"></div></div>
       <div class="health-pct" id="healthPct">--%</div>
+    </div>
+    <div class="health-graph" id="healthGraph" style="display:none">
+      <svg id="healthGraphSvg" viewBox="0 0 600 80"></svg>
+      <div class="health-graph-label" id="healthGraphLabel">Last 24h</div>
+    </div>
+
+    <!-- Power Scheduling -->
+    <div class="panel" id="schedulePanel" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem">
+      <div class="section-header" style="margin-bottom:0.5rem">
+        <h2 class="section-title" style="font-size:0.95rem"><i class="fa-solid fa-calendar-check"></i> Power Schedule</h2>
+        <button class="toolbar-btn" onclick="saveSchedules()" title="Save schedules"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+      </div>
+      <div class="schedule-grid" id="scheduleGrid"></div>
     </div>
 
     <!-- Cluster Resource Summary -->
@@ -2068,6 +2106,7 @@
         readyEl.className = 'card-value ' + (ready === total && total > 0 ? 'green' : ready >= total * 0.7 ? 'yellow' : 'red');
 
         renderHealthScore(summary.healthScore || 0);
+        recordLocalHealth(summary.healthScore || 0);
         lastMetrics = data.metrics || {};
         renderResourceSummary(lastMetrics);
         renderThermalGrid(lastMetrics);
@@ -3544,6 +3583,168 @@
       }
     });
 
+    // ─── Server-Sent Events (SSE) ──────────────────────────────────
+    var sseConnection = null;
+
+    function connectSSE() {
+      if (!apiEndpoint) return;
+      var indicator = document.getElementById('sseIndicator');
+      indicator.style.display = 'inline-flex';
+
+      try {
+        var url = apiEndpoint + '/api/stream';
+        if (apiToken) url += '?token=' + encodeURIComponent(apiToken);
+        sseConnection = new EventSource(url);
+
+        sseConnection.onopen = function() {
+          document.getElementById('sseDot').classList.add('connected');
+        };
+
+        sseConnection.addEventListener('status', function(e) {
+          try {
+            var data = JSON.parse(e.data);
+            // Update lightweight status from SSE
+            if (data.nodesReady !== undefined) {
+              document.getElementById('nodesReady').textContent = data.nodesReady;
+              document.getElementById('nodesTotal').textContent = data.nodesTotal;
+              document.getElementById('podsRunning').textContent = data.podsRunning;
+              document.getElementById('podsTotal').textContent = data.podsTotal;
+              if (data.healthScore) renderHealthScore(data.healthScore);
+            }
+          } catch (err) { /* ignore parse errors */ }
+        });
+
+        sseConnection.onerror = function() {
+          document.getElementById('sseDot').classList.remove('connected');
+          // EventSource auto-reconnects
+        };
+      } catch (e) {
+        console.warn('SSE connection failed:', e.message);
+      }
+    }
+
+    function disconnectSSE() {
+      if (sseConnection) {
+        sseConnection.close();
+        sseConnection = null;
+      }
+      document.getElementById('sseDot').classList.remove('connected');
+    }
+
+    // ─── Health History Graph ────────────────────────────────────────
+    var localHealthHistory = [];
+
+    function recordLocalHealth(score) {
+      localHealthHistory.push({ ts: Date.now(), score: score });
+      if (localHealthHistory.length > 288) localHealthHistory.shift(); // 24h at 5min
+      renderHealthGraph();
+    }
+
+    async function loadHealthHistory() {
+      if (!apiEndpoint) return;
+      try {
+        var res = await fetch(apiEndpoint + '/api/health/history', { headers: apiHeaders(), signal: AbortSignal.timeout(5000) });
+        var data = await res.json();
+        if (data.history && data.history.length > 0) {
+          localHealthHistory = data.history;
+          renderHealthGraph();
+        }
+      } catch (e) { /* use local only */ }
+    }
+
+    function renderHealthGraph() {
+      var el = document.getElementById('healthGraph');
+      if (localHealthHistory.length < 2) { el.style.display = 'none'; return; }
+      el.style.display = 'block';
+
+      var svg = document.getElementById('healthGraphSvg');
+      var W = 600;
+      var H = 80;
+      var pad = 5;
+      var points = localHealthHistory.map(function(h, i) {
+        var x = pad + ((W - 2 * pad) * i / (localHealthHistory.length - 1));
+        var y = H - pad - ((H - 2 * pad) * h.score / 100);
+        return x + ',' + y;
+      });
+
+      var fillPoints = pad + ',' + (H - pad) + ' ' + points.join(' ') + ' ' + (W - pad) + ',' + (H - pad);
+      var pathStr = 'M' + points.join(' L');
+
+      svg.innerHTML =
+        '<defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--green)" stop-opacity="0.3"/><stop offset="1" stop-color="var(--green)" stop-opacity="0"/></linearGradient></defs>' +
+        '<polygon points="' + fillPoints + '" fill="url(#hg)"/>' +
+        '<path d="' + pathStr + '" fill="none" stroke="var(--green)" stroke-width="2"/>' +
+        '<line x1="' + pad + '" y1="' + (H - pad - (H - 2 * pad) * 0.8) + '" x2="' + (W - pad) + '" y2="' + (H - pad - (H - 2 * pad) * 0.8) + '" stroke="var(--border)" stroke-dasharray="4"/>' +
+        '<text x="' + (W - pad) + '" y="' + (H - pad - (H - 2 * pad) * 0.8 - 3) + '" fill="var(--muted)" font-size="8" text-anchor="end">80%</text>';
+
+      var firstTs = new Date(localHealthHistory[0].ts);
+      var lastTs = new Date(localHealthHistory[localHealthHistory.length - 1].ts);
+      document.getElementById('healthGraphLabel').textContent = firstTs.toLocaleTimeString() + ' — ' + lastTs.toLocaleTimeString();
+    }
+
+    // ─── Power Scheduling ────────────────────────────────────────────
+    var schedules = JSON.parse(localStorage.getItem('clusterSchedules') || '{}');
+
+    function renderSchedules() {
+      var panel = document.getElementById('schedulePanel');
+      if (!apiEndpoint) { panel.style.display = 'none'; return; }
+      panel.style.display = 'block';
+
+      var groups = [
+        { id: 'phones', label: 'All Phones', icon: 'fa-mobile-screen' },
+        { id: 'node1', label: 'Node 1 (CP)', icon: 'fa-crown' },
+        { id: 'other', label: 'PCs & Other', icon: 'fa-desktop' },
+      ];
+
+      var grid = document.getElementById('scheduleGrid');
+      grid.innerHTML = groups.map(function(g) {
+        var s = schedules[g.id] || { enabled: false, wake: '06:00', sleep: '23:00' };
+        return '<div class="schedule-card">' +
+          '<div class="schedule-card-header"><span class="schedule-name"><i class="fa-solid ' + g.icon + '"></i> ' + g.label + '</span>' +
+          '<button class="schedule-toggle' + (s.enabled ? ' active' : '') + '" onclick="toggleSchedule(\'' + g.id + '\',this)"></button></div>' +
+          '<div class="schedule-times">' +
+          '<span class="schedule-time"><i class="fa-solid fa-sun"></i> Wake: <input type="time" value="' + (s.wake || '06:00') + '" onchange="updateScheduleTime(\'' + g.id + '\',\'wake\',this.value)"></span>' +
+          '<span class="schedule-time"><i class="fa-solid fa-moon"></i> Sleep: <input type="time" value="' + (s.sleep || '23:00') + '" onchange="updateScheduleTime(\'' + g.id + '\',\'sleep\',this.value)"></span>' +
+          '</div></div>';
+      }).join('');
+    }
+
+    function toggleSchedule(id, btn) {
+      if (!schedules[id]) schedules[id] = { enabled: false, wake: '06:00', sleep: '23:00' };
+      schedules[id].enabled = !schedules[id].enabled;
+      btn.classList.toggle('active');
+      saveSchedules();
+    }
+
+    function updateScheduleTime(id, field, val) {
+      if (!schedules[id]) schedules[id] = { enabled: false, wake: '06:00', sleep: '23:00' };
+      schedules[id][field] = val;
+    }
+
+    function saveSchedules() {
+      localStorage.setItem('clusterSchedules', JSON.stringify(schedules));
+      showToast('Schedules saved', 'success');
+    }
+
+    // Check schedules every minute
+    setInterval(function() {
+      var now = new Date();
+      var timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+      Object.entries(schedules).forEach(function(entry) {
+        var id = entry[0];
+        var s = entry[1];
+        if (!s.enabled) return;
+        if (timeStr === s.wake) {
+          groupCmd(id, 'wake');
+          addNotification('info', 'Scheduled wake for ' + id);
+        }
+        if (timeStr === s.sleep) {
+          groupCmd(id, 'sleep');
+          addNotification('info', 'Scheduled sleep for ' + id);
+        }
+      });
+    }, 60000);
+
     // ─── Node Group Commands ─────────────────────────────────────────
     function groupCmd(group, cmd) {
       var pw = localStorage.getItem('clusterPassword');
@@ -3975,6 +4176,9 @@
     setInterval(updateClusterAge, 60000);
     loadClusterStatus();
     measureApiLatency();
+    connectSSE();
+    renderSchedules();
+    loadHealthHistory();
     setInterval(loadClusterStatus, 10000);
     setInterval(measureApiLatency, 15000);
     setInterval(function() { if (apiEndpoint) loadScreens(); }, 30000);
