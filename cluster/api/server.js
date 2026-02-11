@@ -1351,6 +1351,98 @@ function formatUptime(seconds) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
+// ─── Battery Endpoint ─────────────────────────────────────────────────────────
+
+let batteryCache = { data: null, timestamp: 0 };
+const BATTERY_CACHE_TTL = 10000;
+
+async function handleBattery(req, res) {
+  const now = Date.now();
+  if (batteryCache.data && now - batteryCache.timestamp < BATTERY_CACHE_TTL) {
+    return sendJson(res, 200, batteryCache.data);
+  }
+
+  const results = await Promise.all(CONFIG.phoneNodeNames.map(async (name) => {
+    const node = CONFIG.phoneNodes[name];
+    const battResult = await sshExecAsync(name, 'cat /sys/class/power_supply/battery/capacity 2>/dev/null; echo "|"; cat /sys/class/power_supply/battery/status 2>/dev/null; echo "|"; cat /sys/class/power_supply/battery/temp 2>/dev/null; echo "|"; cat /sys/class/power_supply/battery/voltage_now 2>/dev/null; echo "|"; cat /sys/class/power_supply/battery/current_now 2>/dev/null; echo "|"; cat /sys/class/power_supply/battery/health 2>/dev/null');
+    if (!battResult.ok) return { name, online: false };
+    const parts = battResult.stdout.split('|').map(s => s.trim());
+    const level = parseInt(parts[0]) || 0;
+    const status = parts[1] || 'Unknown';
+    const tempRaw = parseInt(parts[2]) || 0;
+    const voltageRaw = parseInt(parts[3]) || 0;
+    const currentRaw = parseInt(parts[4]) || 0;
+    const health = parts[5] || 'Unknown';
+    return {
+      name, online: true, level, status,
+      charging: status === 'Charging' || status === 'Full',
+      temp: (tempRaw / 10).toFixed(1),
+      voltage: (voltageRaw / 1000000).toFixed(2),
+      current: (Math.abs(currentRaw) / 1000).toFixed(0),
+      health,
+    };
+  }));
+
+  const online = results.filter(r => r.online);
+  const avgLevel = online.length > 0 ? Math.round(online.reduce((s, r) => s + r.level, 0) / online.length) : 0;
+  const charging = online.filter(r => r.charging).length;
+  const low = online.filter(r => r.level < 20).length;
+  const critical = online.filter(r => r.level < 10).length;
+
+  const data = {
+    phones: results,
+    summary: { avgLevel, charging, low, critical, online: online.length, total: CONFIG.phoneNodeNames.length }
+  };
+  batteryCache = { data, timestamp: now };
+  sendJson(res, 200, data);
+}
+
+// ─── Connectivity Endpoint ───────────────────────────────────────────────────
+
+async function handleConnectivity(req, res) {
+  const allNodes = [...CONFIG.phoneNodeNames, ...CONFIG.otherNodes];
+  const results = await Promise.all(allNodes.map(async (name) => {
+    const node = CONFIG.phoneNodes[name];
+    if (node) {
+      const r = await runAsync(`ping -c 1 -W 2 ${node.ip}`, 5000);
+      const latencyMatch = r.stdout.match(/time=([\d.]+)/);
+      return { name, reachable: r.ok, latency: latencyMatch ? parseFloat(latencyMatch[1]) : null, ip: node.ip };
+    }
+    const r = await runAsync(`ping -c 1 -W 2 ${name}`, 5000);
+    const latencyMatch = r.stdout.match(/time=([\d.]+)/);
+    return { name, reachable: r.ok, latency: latencyMatch ? parseFloat(latencyMatch[1]) : null };
+  }));
+
+  const reachable = results.filter(r => r.reachable).length;
+  sendJson(res, 200, { nodes: results, summary: { reachable, total: allNodes.length } });
+}
+
+// ─── Latency Endpoint (lightweight for connection quality) ───────────────────
+
+async function handleLatency(req, res) {
+  const start = process.hrtime.bigint();
+  sendJson(res, 200, { ts: Date.now(), serverUptime: process.uptime(), latencyTest: true });
+}
+
+// ─── SSH Presets ──────────────────────────────────────────────────────────────
+
+function handleSshPresets(req, res) {
+  sendJson(res, 200, {
+    presets: [
+      { id: 'uptime', label: 'Uptime', icon: 'fa-clock', cmd: 'uptime' },
+      { id: 'memory', label: 'Memory', icon: 'fa-memory', cmd: 'free -m' },
+      { id: 'disk', label: 'Disk', icon: 'fa-hard-drive', cmd: 'df -h /' },
+      { id: 'top', label: 'Top Procs', icon: 'fa-list-ol', cmd: 'top -bn1 | head -15' },
+      { id: 'temp', label: 'Temperature', icon: 'fa-temperature-half', cmd: 'cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk \'{printf "%.1f°C\\n", $1/1000}\'' },
+      { id: 'network', label: 'Network', icon: 'fa-wifi', cmd: 'ip -br addr | head -5' },
+      { id: 'processes', label: 'Processes', icon: 'fa-gears', cmd: 'ps aux --sort=-%cpu | head -10' },
+      { id: 'k3s-status', label: 'K3s Status', icon: 'fa-dharmachakra', cmd: 'rc-service k3s-agent status 2>/dev/null || systemctl status k3s-agent 2>/dev/null | head -5' },
+      { id: 'battery', label: 'Battery', icon: 'fa-battery-three-quarters', cmd: 'echo "Level: $(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo N/A)% Status: $(cat /sys/class/power_supply/battery/status 2>/dev/null || echo N/A)"' },
+      { id: 'logs', label: 'Recent Logs', icon: 'fa-scroll', cmd: 'dmesg | tail -15' },
+    ]
+  });
+}
+
 // ─── HTTP Server ─────────────────────────────────────────────────────────────
 
 function sendJson(res, code, data) {
@@ -1442,6 +1534,10 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/events') return await handleEvents(req, res);
       if (path === '/api/namespaces/usage') return await handleNamespaceUsage(req, res);
       if (path === '/api/export') return await handleExport(req, res);
+      if (path === '/api/battery') return await handleBattery(req, res);
+      if (path === '/api/connectivity') return await handleConnectivity(req, res);
+      if (path === '/api/latency') return await handleLatency(req, res);
+      if (path === '/api/ssh/presets') return handleSshPresets(req, res);
 
       // Node detail: /api/nodes/:name/detail
       const nodeDetailMatch = path.match(/^\/api\/nodes\/([^/]+)\/detail$/);
@@ -1486,5 +1582,5 @@ server.listen(CONFIG.port, () => {
   console.log(`[CLUSTER-API] XMR wallet: ${CONFIG.xmrWallet || 'not configured'}`);
   const mapped = CONFIG.phoneNodeNames.filter(n => CONFIG.phoneNodes[n].adb);
   console.log(`[CLUSTER-API] ADB devices: ${mapped.length}/${CONFIG.phoneNodeNames.length}`);
-  console.log('[CLUSTER-API] Endpoints: /api/status, /api/screens, /api/mining/stats, /api/mining/history, /api/metrics, /api/commands/log, /api/alerts, /api/nodes/history, /api/pods/restart-trends, /api/pods/:ns/:pod/logs, /api/pods/delete, /api/scale, /api/nodes/drain, /api/nodes/uncordon, /api/ping, /api/deployments, /api/nodes/:name/detail, /api/export');
+  console.log('[CLUSTER-API] Endpoints: /api/status, /api/screens, /api/mining/stats, /api/mining/history, /api/metrics, /api/commands/log, /api/alerts, /api/nodes/history, /api/pods/restart-trends, /api/pods/:ns/:pod/logs, /api/pods/delete, /api/scale, /api/nodes/drain, /api/nodes/uncordon, /api/ping, /api/deployments, /api/nodes/:name/detail, /api/export, /api/battery, /api/connectivity, /api/latency, /api/ssh/presets');
 });

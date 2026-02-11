@@ -1011,6 +1011,87 @@
       .footer { border-top: 1px solid #ddd; }
     }
 
+    /* Connection quality meter */
+    .conn-quality { display: flex; align-items: center; gap: 0.5rem; margin-left: 0.75rem; }
+    .conn-bars { display: flex; align-items: flex-end; gap: 2px; height: 16px; }
+    .conn-bar { width: 4px; border-radius: 1px; background: var(--border); transition: background 0.3s; }
+    .conn-bar.active.good { background: var(--green); }
+    .conn-bar.active.ok { background: var(--yellow); }
+    .conn-bar.active.bad { background: var(--red); }
+    .conn-latency { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--muted); }
+
+    /* Battery heatmap */
+    .battery-heatmap { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 0.5rem; margin-top: 0.75rem; }
+    .batt-cell { border-radius: 8px; padding: 0.5rem; text-align: center; border: 1px solid var(--border); transition: transform 0.2s; cursor: default; position: relative; }
+    .batt-cell:hover { transform: scale(1.05); }
+    .batt-cell-name { font-size: 0.7rem; font-weight: 600; margin-bottom: 0.2rem; }
+    .batt-cell-level { font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 700; }
+    .batt-cell-status { font-size: 0.6rem; color: var(--muted); margin-top: 0.1rem; }
+    .batt-cell-temp { font-size: 0.6rem; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+    .batt-cell.charging .batt-cell-level::after { content: ' \u26A1'; }
+    .batt-cell.critical { background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); }
+    .batt-cell.low { background: rgba(234, 179, 8, 0.1); border-color: rgba(234, 179, 8, 0.25); }
+    .batt-cell.good { background: rgba(34, 197, 94, 0.08); border-color: rgba(34, 197, 94, 0.2); }
+    .batt-cell.full { background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.25); }
+    .batt-cell.offline { background: var(--bg); opacity: 0.5; }
+    .batt-summary { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.5rem; }
+    .batt-summary-item { display: flex; align-items: center; gap: 0.3rem; }
+    .batt-summary-item .batt-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    /* Auto-reconnect banner */
+    .reconnect-banner { display: none; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 10px; margin-bottom: 0.75rem; font-size: 0.85rem; color: var(--red); }
+    .reconnect-banner.visible { display: flex; }
+    .reconnect-banner i { font-size: 1rem; }
+    .reconnect-timer { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+    .reconnect-btn { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.3rem 0.7rem; border-radius: 6px; cursor: pointer; font-size: 0.78rem; font-family: inherit; }
+    .reconnect-btn:hover { border-color: var(--brand); }
+
+    /* SSH presets */
+    .ssh-presets { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+    .ssh-preset { background: var(--bg); border: 1px solid var(--border); color: var(--muted); padding: 0.3rem 0.6rem; border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-family: inherit; transition: all 0.2s; display: flex; align-items: center; gap: 0.3rem; }
+    .ssh-preset:hover { border-color: var(--brand); color: var(--text); }
+    .ssh-preset i { font-size: 0.65rem; }
+    .ssh-output { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; margin-top: 0.5rem; max-height: 300px; overflow-y: auto; display: none; }
+    .ssh-output pre { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; white-space: pre-wrap; word-break: break-all; color: var(--text); margin: 0; }
+    .ssh-output-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; font-size: 0.7rem; color: var(--muted); }
+    .ssh-output-header button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.7rem; padding: 0.1rem 0.3rem; }
+    .ssh-output-header button:hover { color: var(--text); }
+
+    /* Notification center */
+    .notif-bell { position: relative; background: none; border: 1px solid var(--border); color: var(--muted); width: 34px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+    .notif-bell:hover { border-color: var(--brand); color: var(--text); }
+    .notif-bell .notif-dot { position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); display: none; }
+    .notif-bell .notif-dot.visible { display: block; }
+    .notif-dropdown { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-height: 400px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); z-index: 2000; display: none; overflow: hidden; }
+    .notif-dropdown.visible { display: block; }
+    .notif-dropdown-header { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; font-weight: 600; }
+    .notif-dropdown-header button { background: none; border: none; color: var(--brand); cursor: pointer; font-size: 0.72rem; }
+    .notif-list { max-height: 340px; overflow-y: auto; }
+    .notif-item { display: flex; gap: 0.5rem; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); font-size: 0.78rem; cursor: default; transition: background 0.2s; }
+    .notif-item:hover { background: var(--bg); }
+    .notif-item:last-child { border-bottom: none; }
+    .notif-item.unread { background: rgba(237, 35, 42, 0.04); }
+    .notif-item .notif-icon { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; flex-shrink: 0; }
+    .notif-item .notif-icon.info { background: rgba(59, 130, 246, 0.15); color: var(--blue); }
+    .notif-item .notif-icon.warning { background: rgba(234, 179, 8, 0.15); color: var(--yellow); }
+    .notif-item .notif-icon.error { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+    .notif-item .notif-icon.success { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+    .notif-item .notif-content { flex: 1; min-width: 0; }
+    .notif-item .notif-msg { word-break: break-word; }
+    .notif-item .notif-time { font-size: 0.65rem; color: var(--muted); margin-top: 0.1rem; }
+    .notif-empty { text-align: center; padding: 2rem; color: var(--muted); font-size: 0.8rem; }
+
+    /* Node uptime timeline */
+    .uptime-timeline { margin-top: 0.75rem; }
+    .uptime-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; }
+    .uptime-label { font-size: 0.72rem; font-weight: 600; min-width: 55px; text-align: right; }
+    .uptime-track { flex: 1; height: 12px; background: var(--bg); border-radius: 6px; overflow: hidden; display: flex; }
+    .uptime-segment { height: 100%; transition: width 0.3s; }
+    .uptime-segment.up { background: var(--green); }
+    .uptime-segment.down { background: var(--red); }
+    .uptime-segment.unknown { background: var(--border); }
+    .uptime-pct { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--muted); min-width: 40px; }
+
     /* Node comparison modal */
     .compare-modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; max-width: 900px; width: 95%; max-height: 80vh; display: flex; flex-direction: column; }
     .compare-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
@@ -1067,6 +1148,31 @@
         <button class="toolbar-btn" onclick="exportClusterState()" title="Export cluster snapshot"><i class="fa-solid fa-download"></i> Export</button>
         <button class="toolbar-btn" onclick="toggleFullscreen()" title="Toggle fullscreen" id="fullscreenBtn"><i class="fa-solid fa-expand"></i></button>
         <button class="toolbar-btn" onclick="showShortcuts()" title="Keyboard shortcuts"><i class="fa-solid fa-keyboard"></i> <kbd>?</kbd></button>
+        <div class="conn-quality" id="connQuality" title="API connection quality" style="display:none">
+          <div class="conn-bars" id="connBars">
+            <div class="conn-bar" style="height:4px"></div>
+            <div class="conn-bar" style="height:7px"></div>
+            <div class="conn-bar" style="height:10px"></div>
+            <div class="conn-bar" style="height:13px"></div>
+            <div class="conn-bar" style="height:16px"></div>
+          </div>
+          <span class="conn-latency" id="connLatency">--ms</span>
+        </div>
+        <div style="position:relative">
+          <button class="notif-bell" id="notifBell" onclick="toggleNotifCenter()">
+            <i class="fa-solid fa-bell"></i>
+            <span class="notif-dot" id="notifDot"></span>
+          </button>
+          <div class="notif-dropdown" id="notifDropdown">
+            <div class="notif-dropdown-header">
+              <span><i class="fa-solid fa-bell"></i> Notifications</span>
+              <button onclick="clearNotifications()">Clear all</button>
+            </div>
+            <div class="notif-list" id="notifList">
+              <div class="notif-empty"><i class="fa-solid fa-bell-slash"></i><br>No notifications yet</div>
+            </div>
+          </div>
+        </div>
         <span class="refresh-countdown" id="refreshCountdown" title="Auto-refresh countdown">10s</span>
         <button class="refresh-btn" onclick="loadClusterStatus()" id="refreshBtn" aria-label="Refresh cluster status">
           <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Refresh
@@ -1116,6 +1222,23 @@
       <div class="custom-cmd">
         <input type="text" id="customCmdInput" placeholder="Custom SSH command (e.g. uptime, free -m, df -h)" onkeydown="if(event.key==='Enter')runCustomCommand()">
         <button class="ctrl-btn" onclick="runCustomCommand()"><i class="fa-solid fa-terminal"></i> Run</button>
+      </div>
+      <div class="ssh-presets" id="sshPresets">
+        <button class="ssh-preset" onclick="runPreset('uptime')"><i class="fa-solid fa-clock"></i> Uptime</button>
+        <button class="ssh-preset" onclick="runPreset('free -m')"><i class="fa-solid fa-memory"></i> Memory</button>
+        <button class="ssh-preset" onclick="runPreset('df -h /')"><i class="fa-solid fa-hard-drive"></i> Disk</button>
+        <button class="ssh-preset" onclick="runPreset('top -bn1 | head -15')"><i class="fa-solid fa-list-ol"></i> Top</button>
+        <button class="ssh-preset" onclick="runPreset('cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk \\'{printf \\\"%.1f°C\\\\n\\\", $1/1000}\\'')"><i class="fa-solid fa-temperature-half"></i> Temp</button>
+        <button class="ssh-preset" onclick="runPreset('ip -br addr | head -5')"><i class="fa-solid fa-wifi"></i> Network</button>
+        <button class="ssh-preset" onclick="runPreset('ps aux --sort=-%cpu | head -10')"><i class="fa-solid fa-gears"></i> Processes</button>
+        <button class="ssh-preset" onclick="runPreset('dmesg | tail -15')"><i class="fa-solid fa-scroll"></i> Logs</button>
+      </div>
+      <div class="ssh-output" id="sshOutput">
+        <div class="ssh-output-header">
+          <span id="sshOutputTitle">Output</span>
+          <button onclick="closeSshOutput()"><i class="fa-solid fa-xmark"></i> Close</button>
+        </div>
+        <pre id="sshOutputPre"></pre>
       </div>
       <div class="control-status" id="controlStatus"></div>
     </div>
@@ -1221,6 +1344,23 @@
     <div class="demo-banner" id="demoBanner">
       <i class="fa-solid fa-flask"></i>
       <span>Demo Mode — Showing sample data. Live updates appear when cluster pushes status.</span>
+    </div>
+
+    <!-- Auto-Reconnect Banner -->
+    <div class="reconnect-banner" id="reconnectBanner">
+      <i class="fa-solid fa-wifi-slash"></i>
+      <span>API connection lost. Reconnecting in <span class="reconnect-timer" id="reconnectTimer">10</span>s...</span>
+      <button class="reconnect-btn" onclick="reconnectNow()"><i class="fa-solid fa-arrows-rotate"></i> Reconnect Now</button>
+    </div>
+
+    <!-- Battery Heatmap -->
+    <div class="panel" id="batteryPanel" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem">
+      <div class="section-header" style="margin-bottom:0.5rem">
+        <h2 class="section-title" style="font-size:0.95rem"><i class="fa-solid fa-battery-three-quarters"></i> Battery Heatmap</h2>
+        <button class="toolbar-btn" onclick="loadBatteryHeatmap()" title="Refresh battery data"><i class="fa-solid fa-arrows-rotate"></i></button>
+      </div>
+      <div class="batt-summary" id="battSummary"></div>
+      <div class="battery-heatmap" id="batteryHeatmap"></div>
     </div>
 
     <!-- Mining Panel -->
@@ -1439,6 +1579,14 @@
       <div class="empty-state" style="padding:1rem"><i class="fa-solid fa-folder-open"></i><br>Connect API for namespace data</div>
     </div>
 
+    <!-- Node Uptime Timeline -->
+    <div class="panel" id="uptimePanel" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem">
+      <div class="section-header" style="margin-bottom:0.5rem">
+        <h2 class="section-title" style="font-size:0.95rem"><i class="fa-solid fa-timeline"></i> Node Uptime (Last 24h)</h2>
+      </div>
+      <div class="uptime-timeline" id="uptimeTimeline"></div>
+    </div>
+
     <!-- Cluster Specs -->
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-circle-info"></i> Cluster Specs</h2>
@@ -1574,6 +1722,8 @@
       t.className = 'toast visible ' + type;
       clearTimeout(t._timer);
       t._timer = setTimeout(() => t.classList.remove('visible'), 3500);
+      // Also push to notification center
+      if (typeof addNotification === 'function') addNotification(type, msg);
     }
 
     function initApiConfig() {
@@ -1747,6 +1897,9 @@
         if (data.mining) tickerData.hashrate = data.mining.totalHashrate || '0 H/s';
         updateStatsTicker();
 
+        // Track uptime
+        if (data.nodes) trackNodeUptime(data.nodes);
+
         if (apiEndpoint && isDirectApi) {
           loadScreens();
           loadAlerts();
@@ -1756,6 +1909,7 @@
           loadRestartTrends();
           loadEvents();
           loadNamespaceUsage();
+          loadBatteryHeatmap();
         }
 
         consecutiveFailures = 0;
@@ -2986,6 +3140,269 @@
     // Save session state periodically
     setInterval(saveSessionState, 5000);
 
+    // ─── Connection Quality Meter ────────────────────────────────────────
+    var lastApiLatency = null;
+    var latencyHistory = [];
+
+    async function measureApiLatency() {
+      if (!apiEndpoint) {
+        document.getElementById('connQuality').style.display = 'none';
+        return;
+      }
+      try {
+        var start = performance.now();
+        var res = await fetch(apiEndpoint + '/api/latency', { headers: apiHeaders(), signal: AbortSignal.timeout(5000) });
+        if (!res.ok) throw new Error('Bad status');
+        var elapsed = Math.round(performance.now() - start);
+        lastApiLatency = elapsed;
+        latencyHistory.push(elapsed);
+        if (latencyHistory.length > 30) latencyHistory.shift();
+
+        var el = document.getElementById('connQuality');
+        el.style.display = 'flex';
+        document.getElementById('connLatency').textContent = elapsed + 'ms';
+
+        var bars = document.getElementById('connBars').children;
+        var quality = elapsed < 100 ? 5 : elapsed < 200 ? 4 : elapsed < 500 ? 3 : elapsed < 1000 ? 2 : 1;
+        var cls = quality >= 4 ? 'good' : quality >= 3 ? 'ok' : 'bad';
+        for (var i = 0; i < bars.length; i++) {
+          bars[i].className = 'conn-bar' + (i < quality ? ' active ' + cls : '');
+        }
+
+        // Reset reconnect state on success
+        if (reconnectActive) {
+          reconnectActive = false;
+          reconnectAttempts = 0;
+          document.getElementById('reconnectBanner').classList.remove('visible');
+        }
+      } catch (e) {
+        lastApiLatency = null;
+        var el = document.getElementById('connQuality');
+        el.style.display = 'flex';
+        document.getElementById('connLatency').textContent = 'ERR';
+        var bars = document.getElementById('connBars').children;
+        for (var i = 0; i < bars.length; i++) bars[i].className = 'conn-bar';
+
+        // Trigger reconnect
+        if (apiEndpoint && !reconnectActive) startReconnect();
+      }
+    }
+
+    // ─── Auto-Reconnect ──────────────────────────────────────────────────
+    var reconnectActive = false;
+    var reconnectAttempts = 0;
+    var reconnectTimerId = null;
+    var reconnectCountdown = 0;
+
+    function startReconnect() {
+      reconnectActive = true;
+      reconnectAttempts++;
+      var delay = Math.min(5 * Math.pow(2, reconnectAttempts - 1), 60);
+      reconnectCountdown = delay;
+      document.getElementById('reconnectBanner').classList.add('visible');
+      document.getElementById('reconnectTimer').textContent = delay;
+      addNotification('warning', 'API connection lost. Reconnecting in ' + delay + 's (attempt ' + reconnectAttempts + ')');
+
+      clearInterval(reconnectTimerId);
+      reconnectTimerId = setInterval(function() {
+        reconnectCountdown--;
+        document.getElementById('reconnectTimer').textContent = reconnectCountdown;
+        if (reconnectCountdown <= 0) {
+          clearInterval(reconnectTimerId);
+          reconnectNow();
+        }
+      }, 1000);
+    }
+
+    function reconnectNow() {
+      clearInterval(reconnectTimerId);
+      document.getElementById('reconnectTimer').textContent = '...';
+      loadClusterStatus();
+      measureApiLatency();
+    }
+
+    // ─── Battery Heatmap ─────────────────────────────────────────────────
+    async function loadBatteryHeatmap() {
+      if (!apiEndpoint) return;
+      try {
+        var res = await fetch(apiEndpoint + '/api/battery', { headers: apiHeaders(), signal: AbortSignal.timeout(15000) });
+        var data = await res.json();
+        renderBatteryHeatmap(data);
+        document.getElementById('batteryPanel').style.display = 'block';
+      } catch (e) {
+        console.warn('Battery heatmap load failed:', e.message);
+      }
+    }
+
+    function renderBatteryHeatmap(data) {
+      var summary = data.summary || {};
+      var summaryEl = document.getElementById('battSummary');
+      summaryEl.innerHTML =
+        '<span class="batt-summary-item"><span class="batt-dot" style="background:var(--green)"></span> Online: ' + summary.online + '/' + summary.total + '</span>' +
+        '<span class="batt-summary-item"><span class="batt-dot" style="background:var(--blue)"></span> Charging: ' + summary.charging + '</span>' +
+        '<span class="batt-summary-item"><span class="batt-dot" style="background:var(--yellow)"></span> Low (<20%): ' + summary.low + '</span>' +
+        '<span class="batt-summary-item"><span class="batt-dot" style="background:var(--red)"></span> Critical (<10%): ' + summary.critical + '</span>' +
+        '<span class="batt-summary-item">Avg: <strong>' + summary.avgLevel + '%</strong></span>';
+
+      var grid = document.getElementById('batteryHeatmap');
+      grid.innerHTML = (data.phones || []).map(function(p) {
+        if (!p.online) return '<div class="batt-cell offline"><div class="batt-cell-name">' + p.name + '</div><div class="batt-cell-level">--</div><div class="batt-cell-status">Offline</div></div>';
+        var cls = p.level < 10 ? 'critical' : p.level < 20 ? 'low' : p.level >= 95 ? 'full' : 'good';
+        if (p.charging) cls += ' charging';
+        var color = p.level < 10 ? 'var(--red)' : p.level < 20 ? 'var(--yellow)' : p.level < 50 ? 'var(--text)' : 'var(--green)';
+        return '<div class="batt-cell ' + cls + '">' +
+          '<div class="batt-cell-name">' + p.name + '</div>' +
+          '<div class="batt-cell-level" style="color:' + color + '">' + p.level + '%</div>' +
+          '<div class="batt-cell-status">' + p.status + '</div>' +
+          '<div class="batt-cell-temp">' + (p.temp || '--') + '°C / ' + (p.voltage || '--') + 'V</div>' +
+          '</div>';
+      }).join('');
+    }
+
+    // ─── SSH Presets ──────────────────────────────────────────────────────
+    function runPreset(cmd) {
+      var target = document.getElementById('targetSelect').value;
+      document.getElementById('sshOutput').style.display = 'block';
+      document.getElementById('sshOutputTitle').textContent = target + ' $ ' + cmd;
+      document.getElementById('sshOutputPre').textContent = 'Running...';
+
+      apiPost('/api/command/custom', { command: cmd, target: target, password: localStorage.getItem('clusterPassword') || '' })
+        .then(function(data) {
+          document.getElementById('sshOutputPre').textContent = data.output || data.error || 'No output';
+        })
+        .catch(function(e) {
+          document.getElementById('sshOutputPre').textContent = 'Error: ' + e.message;
+        });
+    }
+
+    function closeSshOutput() {
+      document.getElementById('sshOutput').style.display = 'none';
+    }
+
+    // ─── Notification Center ─────────────────────────────────────────────
+    var notifications = [];
+    var notifUnread = 0;
+    var MAX_NOTIFICATIONS = 50;
+
+    function addNotification(type, msg) {
+      notifications.unshift({ type: type, msg: msg, time: new Date(), read: false });
+      if (notifications.length > MAX_NOTIFICATIONS) notifications.pop();
+      notifUnread++;
+      updateNotifBadge();
+    }
+
+    function updateNotifBadge() {
+      var dot = document.getElementById('notifDot');
+      dot.classList.toggle('visible', notifUnread > 0);
+    }
+
+    function toggleNotifCenter() {
+      var dd = document.getElementById('notifDropdown');
+      var isOpen = dd.classList.toggle('visible');
+      if (isOpen) renderNotifications();
+    }
+
+    function renderNotifications() {
+      var list = document.getElementById('notifList');
+      if (notifications.length === 0) {
+        list.innerHTML = '<div class="notif-empty"><i class="fa-solid fa-bell-slash"></i><br>No notifications yet</div>';
+        return;
+      }
+      list.innerHTML = notifications.map(function(n, i) {
+        var iconCls = n.type === 'error' ? 'error' : n.type === 'warning' ? 'warning' : n.type === 'success' ? 'success' : 'info';
+        var icon = n.type === 'error' ? 'fa-circle-xmark' : n.type === 'warning' ? 'fa-triangle-exclamation' : n.type === 'success' ? 'fa-circle-check' : 'fa-circle-info';
+        var timeStr = n.time.toLocaleTimeString();
+        return '<div class="notif-item' + (n.read ? '' : ' unread') + '" onclick="markNotifRead(' + i + ')">' +
+          '<div class="notif-icon ' + iconCls + '"><i class="fa-solid ' + icon + '"></i></div>' +
+          '<div class="notif-content"><div class="notif-msg">' + n.msg + '</div><div class="notif-time">' + timeStr + '</div></div></div>';
+      }).join('');
+      // Mark all as read on view
+      notifications.forEach(function(n) { n.read = true; });
+      notifUnread = 0;
+      updateNotifBadge();
+    }
+
+    function markNotifRead(idx) {
+      if (notifications[idx]) notifications[idx].read = true;
+    }
+
+    function clearNotifications() {
+      notifications = [];
+      notifUnread = 0;
+      updateNotifBadge();
+      renderNotifications();
+    }
+
+    // Close notification dropdown on outside click
+    document.addEventListener('click', function(e) {
+      var dd = document.getElementById('notifDropdown');
+      var bell = document.getElementById('notifBell');
+      if (dd.classList.contains('visible') && !dd.contains(e.target) && !bell.contains(e.target)) {
+        dd.classList.remove('visible');
+      }
+    });
+
+    // ─── Node Uptime Timeline ────────────────────────────────────────────
+    var nodeUptimeData = {};
+
+    function trackNodeUptime(nodes) {
+      var now = Date.now();
+      nodes.forEach(function(n) {
+        if (!nodeUptimeData[n.name]) nodeUptimeData[n.name] = [];
+        nodeUptimeData[n.name].push({ ts: now, up: n.status === 'Ready' });
+        // Keep 24h of data at most (samples every 10s = 8640 entries max)
+        var cutoff = now - 86400000;
+        nodeUptimeData[n.name] = nodeUptimeData[n.name].filter(function(d) { return d.ts > cutoff; });
+      });
+      renderUptimeTimeline();
+    }
+
+    function renderUptimeTimeline() {
+      var el = document.getElementById('uptimeTimeline');
+      var panel = document.getElementById('uptimePanel');
+      var names = Object.keys(nodeUptimeData);
+      if (names.length === 0) { panel.style.display = 'none'; return; }
+      panel.style.display = 'block';
+
+      var now = Date.now();
+      var windowMs = 86400000; // 24h
+      var startTs = now - windowMs;
+
+      el.innerHTML = names.sort().map(function(name) {
+        var entries = nodeUptimeData[name];
+        if (entries.length < 2) {
+          var isUp = entries.length === 1 && entries[0].up;
+          var upPct = isUp ? 100 : 0;
+          return '<div class="uptime-row"><span class="uptime-label">' + name + '</span>' +
+            '<div class="uptime-track"><div class="uptime-segment ' + (isUp ? 'up' : 'unknown') + '" style="width:100%"></div></div>' +
+            '<span class="uptime-pct">' + upPct + '%</span></div>';
+        }
+
+        // Calculate segments
+        var totalUp = 0;
+        var totalDown = 0;
+        var segments = [];
+        for (var i = 0; i < entries.length; i++) {
+          var segStart = i === 0 ? startTs : entries[i].ts;
+          var segEnd = i < entries.length - 1 ? entries[i + 1].ts : now;
+          var duration = segEnd - segStart;
+          var pct = (duration / windowMs) * 100;
+          if (pct < 0.5) continue;
+          segments.push({ up: entries[i].up, pct: pct });
+          if (entries[i].up) totalUp += duration; else totalDown += duration;
+        }
+
+        var uptimePct = totalUp + totalDown > 0 ? Math.round((totalUp / (totalUp + totalDown)) * 100) : 0;
+        var segsHtml = segments.map(function(s) {
+          return '<div class="uptime-segment ' + (s.up ? 'up' : 'down') + '" style="width:' + s.pct + '%"></div>';
+        }).join('');
+
+        return '<div class="uptime-row"><span class="uptime-label">' + name + '</span>' +
+          '<div class="uptime-track">' + segsHtml + '</div>' +
+          '<span class="uptime-pct">' + uptimePct + '%</span></div>';
+      }).join('');
+    }
+
     // ─── Init ──────────────────────────────────────────────────────────────
 
     // ─── Scroll to Top ────────────────────────────────────────────────────
@@ -3063,9 +3480,12 @@
     initApiConfig();
     applyNodeView();
     loadClusterStatus();
+    measureApiLatency();
     setInterval(loadClusterStatus, 10000);
+    setInterval(measureApiLatency, 15000);
     setInterval(function() { if (apiEndpoint) loadScreens(); }, 30000);
     setInterval(function() { if (apiEndpoint) { loadAlerts(); loadCommandLog(); loadDeployments(); loadRestartTrends(); loadEvents(); loadNamespaceUsage(); } }, 15000);
+    setInterval(function() { if (apiEndpoint) loadBatteryHeatmap(); }, 30000);
   </script>
 </body>
 </html>
