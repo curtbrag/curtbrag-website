@@ -1011,237 +1011,6 @@ function handleNodeHistory(req, res) {
   sendJson(res, 200, { nodes: summary });
 }
 
-// ─── Pod Restart Tracking ────────────────────────────────────────────────────
-
-const podRestartHistory = {};  // { podKey: [{ timestamp, restarts }] }
-
-function trackPodRestarts(pods) {
-  const now = new Date().toISOString();
-  for (const pod of pods) {
-    const key = pod.namespace + '/' + pod.name;
-    if (!podRestartHistory[key]) podRestartHistory[key] = [];
-    const h = podRestartHistory[key];
-    const lastEntry = h.length > 0 ? h[h.length - 1] : null;
-    if (!lastEntry || lastEntry.restarts !== (pod.restarts || 0)) {
-      h.push({ timestamp: now, restarts: pod.restarts || 0 });
-      if (h.length > 50) h.shift();
-    }
-  }
-}
-
-function handlePodRestartTrends(req, res) {
-  const trends = {};
-  for (const [key, history] of Object.entries(podRestartHistory)) {
-    if (history.length < 2) continue;
-    const recent = history[history.length - 1].restarts;
-    const earlier = history[0].restarts;
-    if (recent > 0) {
-      trends[key] = {
-        current: recent,
-        delta: recent - earlier,
-        trend: recent > earlier ? 'up' : recent < earlier ? 'down' : 'flat',
-        history: history.slice(-20),
-      };
-    }
-  }
-  sendJson(res, 200, { trends });
-}
-
-// ─── Ping / Connectivity Test ────────────────────────────────────────────────
-
-async function handlePing(req, res) {
-  const allNodes = [...CONFIG.phoneNodeNames, ...CONFIG.otherNodes];
-  const results = await Promise.all(
-    allNodes.map(async name => {
-      const start = Date.now();
-      const isPhone = CONFIG.phoneNodeNames.includes(name);
-      let ok = false;
-      let latency = null;
-
-      if (isPhone) {
-        const node = CONFIG.phoneNodes[name];
-        const r = await runAsync(`ping -c 1 -W 2 ${node.ip}`, 5000);
-        ok = r.ok;
-        latency = Date.now() - start;
-        if (r.ok) {
-          const match = r.stdout.match(/time[=<](\d+\.?\d*)/);
-          if (match) latency = parseFloat(match[1]);
-        }
-      } else {
-        const r = await runAsync(`ping -c 1 -W 2 ${name} 2>/dev/null || echo unreachable`, 5000);
-        ok = r.ok && !r.stdout.includes('unreachable');
-        latency = Date.now() - start;
-      }
-
-      return { name, reachable: ok, latencyMs: ok ? Math.round(latency) : null };
-    })
-  );
-
-  sendJson(res, 200, {
-    timestamp: new Date().toISOString(),
-    results,
-    summary: { total: results.length, reachable: results.filter(r => r.reachable).length, unreachable: results.filter(r => !r.reachable).length },
-  });
-}
-
-// ─── Deployments ─────────────────────────────────────────────────────────────
-
-async function handleDeployments(req, res) {
-  const result = await runAsync('kubectl get deployments -A -o json', 15000);
-  if (!result.ok) return sendJson(res, 500, { error: 'Failed to get deployments', details: result.stderr });
-  try {
-    const parsed = JSON.parse(result.stdout);
-    const deployments = parsed.items.map(d => ({
-      name: d.metadata.name,
-      namespace: d.metadata.namespace,
-      replicas: d.spec.replicas || 0,
-      ready: d.status.readyReplicas || 0,
-      available: d.status.availableReplicas || 0,
-      updated: d.status.updatedReplicas || 0,
-      age: d.metadata.creationTimestamp || null,
-      strategy: (d.spec.strategy || {}).type || 'RollingUpdate',
-    }));
-    sendJson(res, 200, { deployments });
-  } catch (e) {
-    sendJson(res, 500, { error: 'Failed to parse deployments', details: e.message });
-  }
-}
-
-// ─── Node Detail ─────────────────────────────────────────────────────────────
-
-async function handleNodeDetail(req, res, nodeName) {
-  if (!/^[a-zA-Z0-9._-]+$/.test(nodeName)) return sendJson(res, 400, { error: 'Invalid node name' });
-
-  const [descResult, podsResult] = await Promise.all([
-    runAsync(`kubectl describe node ${nodeName}`, 15000),
-    runAsync(`kubectl get pods -A --field-selector spec.nodeName=${nodeName} -o json`, 15000),
-  ]);
-
-  let pods = [];
-  if (podsResult.ok) {
-    try {
-      const parsed = JSON.parse(podsResult.stdout);
-      pods = parsed.items.map(p => ({
-        name: p.metadata.name, namespace: p.metadata.namespace,
-        status: p.status.phase || 'Unknown',
-        restarts: ((p.status.containerStatuses || [])[0] || {}).restartCount || 0,
-      }));
-    } catch { /* ignore */ }
-  }
-
-  sendJson(res, 200, {
-    node: nodeName,
-    describe: descResult.ok ? descResult.stdout : null,
-    pods,
-    metrics: (metricsCache.data || {})[nodeName] || null,
-    history: nodeHistory[nodeName] ? {
-      lastStatus: nodeHistory[nodeName].lastStatus,
-      statusChanges: nodeHistory[nodeName].statusChanges,
-      downtimeEvents: nodeHistory[nodeName].downtimeEvents,
-    } : null,
-  });
-}
-
-// ─── Custom Command ─────────────────────────────────────────────────────────
-
-async function handleCustomCommand(req, res, body) {
-  const { cmd, target, password: pwd } = body;
-
-  if (pwd !== CONFIG.password) {
-    logCommand({ command: 'custom', target, status: 'denied' });
-    return sendJson(res, 401, { error: 'Invalid password' });
-  }
-
-  if (!cmd || typeof cmd !== 'string' || cmd.length > 500) {
-    return sendJson(res, 400, { error: 'Invalid command (max 500 chars)' });
-  }
-
-  // Block dangerous commands
-  const blocked = ['rm -rf', 'mkfs', 'dd if=', ':(){', 'fork', '> /dev/sd', 'shutdown', 'reboot', 'init 0', 'init 6'];
-  const cmdLower = cmd.toLowerCase();
-  for (const b of blocked) {
-    if (cmdLower.includes(b)) {
-      logCommand({ command: 'custom', target, status: 'denied', reason: 'Blocked command: ' + b });
-      return sendJson(res, 403, { error: 'Command blocked for safety: ' + b });
-    }
-  }
-
-  const targets = resolveTargets(target || 'all', 'custom');
-  const isReadOnly = /^(uptime|free|df|top|cat|hostname|uname|whoami|date|id|ps|ls|ip addr|ip route|w|who)\b/.test(cmd.trim());
-
-  const results = {};
-  await Promise.all(targets.map(async name => {
-    const isPhone = CONFIG.phoneNodeNames.includes(name);
-    if (isPhone) {
-      const r = await sshExecAsync(name, cmd);
-      results[name] = { ok: r.ok, stdout: r.stdout, stderr: r.stderr };
-    } else {
-      results[name] = { ok: false, error: 'Custom commands only supported on phone nodes' };
-    }
-  }));
-
-  const succeeded = Object.values(results).filter(r => r.ok).length;
-  logCommand({
-    command: 'custom',
-    target: target || 'all',
-    status: succeeded > 0 ? 'success' : 'failed',
-    message: `"${cmd.substring(0, 50)}" on ${succeeded}/${targets.length} nodes`,
-  });
-
-  sendJson(res, 200, {
-    success: succeeded > 0,
-    message: `Command ran on ${succeeded}/${targets.length} nodes`,
-    results,
-  });
-}
-
-// ─── Cluster Events ─────────────────────────────────────────────────────────
-
-async function handleEvents(req, res) {
-  const result = await runAsync('kubectl get events -A --sort-by=.lastTimestamp -o json', 15000);
-  if (!result.ok) return sendJson(res, 500, { error: 'Failed to get events', details: result.stderr });
-  try {
-    const parsed = JSON.parse(result.stdout);
-    const events = parsed.items.slice(-50).reverse().map(e => ({
-      type: e.type || 'Normal',
-      reason: e.reason || '',
-      message: (e.message || '').substring(0, 200),
-      namespace: (e.involvedObject || {}).namespace || '',
-      object: ((e.involvedObject || {}).kind || '') + '/' + ((e.involvedObject || {}).name || ''),
-      count: e.count || 1,
-      firstSeen: e.firstTimestamp || e.metadata.creationTimestamp,
-      lastSeen: e.lastTimestamp || e.metadata.creationTimestamp,
-      source: ((e.source || {}).component || '') + (e.source?.host ? ' on ' + e.source.host : ''),
-    }));
-    sendJson(res, 200, { events });
-  } catch (e) {
-    sendJson(res, 500, { error: 'Failed to parse events', details: e.message });
-  }
-}
-
-// ─── Namespace Resource Usage ────────────────────────────────────────────────
-
-async function handleNamespaceUsage(req, res) {
-  // Get pods with resource info grouped by namespace
-  const result = await runAsync('kubectl get pods -A -o json', 15000);
-  if (!result.ok) return sendJson(res, 500, { error: 'Failed to get pods' });
-  try {
-    const parsed = JSON.parse(result.stdout);
-    const nsUsage = {};
-    for (const pod of parsed.items) {
-      const ns = pod.metadata.namespace;
-      if (!nsUsage[ns]) nsUsage[ns] = { pods: 0, running: 0, containers: 0, restarts: 0 };
-      nsUsage[ns].pods++;
-      if (pod.status.phase === 'Running') nsUsage[ns].running++;
-      nsUsage[ns].containers += (pod.spec.containers || []).length;
-      nsUsage[ns].restarts += ((pod.status.containerStatuses || [])[0] || {}).restartCount || 0;
-    }
-    sendJson(res, 200, { namespaces: nsUsage });
-  } catch (e) {
-    sendJson(res, 500, { error: 'Failed to parse', details: e.message });
-  }
-}
-
 // ─── Export ──────────────────────────────────────────────────────────────────
 
 async function handleExport(req, res) {
@@ -1980,44 +1749,11 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/commands/log') return handleCommandLog(req, res);
       if (path === '/api/alerts') return handleAlerts(req, res);
       if (path === '/api/nodes/history') return handleNodeHistory(req, res);
-      if (path === '/api/pods/restart-trends') return handlePodRestartTrends(req, res);
-      if (path === '/api/ping') return await handlePing(req, res);
-      if (path === '/api/deployments') return await handleDeployments(req, res);
-      if (path === '/api/events') return await handleEvents(req, res);
-      if (path === '/api/namespaces/usage') return await handleNamespaceUsage(req, res);
       if (path === '/api/export') return await handleExport(req, res);
-      if (path === '/api/battery') return await handleBattery(req, res);
-      if (path === '/api/connectivity') return await handleConnectivity(req, res);
-      if (path === '/api/latency') return await handleLatency(req, res);
-      if (path === '/api/ssh/presets') return handleSshPresets(req, res);
-      if (path === '/api/stream') return handleSSE(req, res);
-      if (path === '/api/health/history') return handleHealthHistory(req, res);
-      if (path === '/api/pods/resources') return await handlePodResources(req, res);
-      if (path === '/api/services/health') return await handleServiceHealth(req, res);
-      if (path === '/api/metrics/history') return handleMetricsHistory(req, res);
-      if (path === '/api/nodes/scheduling') return await handleNodeScheduling(req, res);
-      if (path === '/api/resourcequotas') return await handleResourceQuotas(req, res);
-      if (path === '/api/configmaps') return await handleConfigMaps(req, res);
-      if (path === '/api/cronjobs') return await handleCronJobs(req, res);
-      if (path === '/api/latency/history') return handleApiLatencyHistory(req, res);
-      if (path === '/api/pvcs') return await handlePVCs(req, res);
-      if (path === '/api/ingresses') return await handleIngresses(req, res);
-
-      // Node annotations: /api/nodes/:name/annotations
-      const annotMatch = path.match(/^\/api\/nodes\/([^/]+)\/annotations$/);
-      if (annotMatch) return await handleNodeAnnotations(req, res, annotMatch[1]);
-
-      // Node detail: /api/nodes/:name/detail
-      const nodeDetailMatch = path.match(/^\/api\/nodes\/([^/]+)\/detail$/);
-      if (nodeDetailMatch) return await handleNodeDetail(req, res, nodeDetailMatch[1]);
 
       // Pod logs: /api/pods/:namespace/:pod/logs?tail=100&container=name
       const logMatch = path.match(/^\/api\/pods\/([^/]+)\/([^/]+)\/logs$/);
       if (logMatch) return await handlePodLogs(req, res, logMatch[1], logMatch[2], parsed.query);
-
-      // Pod YAML: /api/pods/:namespace/:pod/yaml
-      const yamlMatch = path.match(/^\/api\/pods\/([^/]+)\/([^/]+)\/yaml$/);
-      if (yamlMatch) return await handlePodYaml(req, res, yamlMatch[1], yamlMatch[2]);
 
       // Pod describe: /api/pods/:namespace/:pod/describe
       const descMatch = path.match(/^\/api\/pods\/([^/]+)\/([^/]+)\/describe$/);
@@ -2028,13 +1764,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST') {
       const body = await readBody(req);
       if (path === '/api/command') return await handleCommand(req, res, body);
-      if (path === '/api/command/custom') return await handleCustomCommand(req, res, body);
       if (path === '/api/pods/delete') return await handlePodDelete(req, res, body);
       if (path === '/api/scale') return await handleScale(req, res, body);
       if (path === '/api/nodes/drain') return await handleNodeDrain(req, res, body);
       if (path === '/api/nodes/uncordon') return await handleNodeUncordon(req, res, body);
       if (path === '/api/alerts/ack') return handleAlertAck(req, res, body);
-      if (path === '/api/snapshot') return await handleClusterSnapshot(req, res, body);
     }
 
     sendJson(res, 404, { error: 'Not found' });
@@ -2055,5 +1789,5 @@ server.listen(CONFIG.port, () => {
   console.log(`[CLUSTER-API] XMR wallet: ${CONFIG.xmrWallet || 'not configured'}`);
   const mapped = CONFIG.phoneNodeNames.filter(n => CONFIG.phoneNodes[n].adb);
   console.log(`[CLUSTER-API] ADB devices: ${mapped.length}/${CONFIG.phoneNodeNames.length}`);
-  console.log('[CLUSTER-API] Endpoints: /api/status, /api/health, /api/screens, /api/mining/stats, /api/mining/history, /api/metrics, /api/metrics/history, /api/commands/log, /api/alerts, /api/nodes/history, /api/pods/restart-trends, /api/pods/resources, /api/pods/:ns/:pod/logs, /api/pods/:ns/:pod/yaml, /api/pods/delete, /api/scale, /api/nodes/drain, /api/nodes/uncordon, /api/nodes/:name/detail, /api/nodes/:name/annotations, /api/nodes/scheduling, /api/ping, /api/deployments, /api/events, /api/namespaces/usage, /api/export, /api/battery, /api/connectivity, /api/latency, /api/latency/history, /api/ssh/presets, /api/stream, /api/health/history, /api/services/health, /api/resourcequotas, /api/configmaps, /api/cronjobs, /api/pvcs, /api/ingresses, POST /api/snapshot');
+  console.log('[CLUSTER-API] New endpoints: /api/metrics, /api/commands/log, /api/alerts, /api/mining/history, /api/nodes/history, /api/pods/:ns/:pod/logs, /api/pods/delete, /api/scale, /api/nodes/drain, /api/export');
 });
