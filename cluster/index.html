@@ -1107,6 +1107,36 @@
     .node-sort { display: flex; gap: 0.3rem; align-items: center; }
     .node-sort select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.25rem 0.4rem; border-radius: 6px; font-size: 0.72rem; font-family: inherit; }
 
+    /* CronJob/Job table */
+    .cj-schedule { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; background: var(--bg); padding: 0.1rem 0.4rem; border-radius: 4px; }
+    .cj-status { font-size: 0.65rem; padding: 0.1rem 0.3rem; border-radius: 4px; font-weight: 600; }
+    .cj-status.active { background: rgba(34,197,94,0.1); color: var(--green); }
+    .cj-status.suspended { background: rgba(234,179,8,0.1); color: var(--yellow); }
+    .cj-status.complete { background: rgba(59,130,246,0.1); color: #3b82f6; }
+    .cj-status.failed { background: rgba(239,68,68,0.1); color: var(--red); }
+    .cj-status.running { background: rgba(34,197,94,0.1); color: var(--green); }
+
+    /* API latency chart */
+    .latency-chart { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; }
+    .latency-chart svg { width: 100%; height: 80px; }
+    .latency-stats { display: flex; gap: 1rem; font-size: 0.72rem; color: var(--muted); margin-top: 0.4rem; }
+    .latency-stats .lat-val { color: var(--text); font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+
+    /* SSH terminal */
+    .ssh-terminal { background: #1a1a2e; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-top: 0.5rem; }
+    .ssh-term-header { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.75rem; background: rgba(0,0,0,0.3); border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .ssh-term-header .term-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .ssh-term-header .term-dot.red { background: #ef4444; }
+    .ssh-term-header .term-dot.yellow { background: #eab308; }
+    .ssh-term-header .term-dot.green { background: #22c55e; }
+    .ssh-term-header .term-title { font-size: 0.72rem; color: #9ca3af; flex: 1; text-align: center; font-family: 'JetBrains Mono', monospace; }
+    .ssh-term-body { padding: 0.5rem; max-height: 200px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #e5e5e5; line-height: 1.5; }
+    .ssh-term-body .term-prompt { color: #22c55e; }
+    .ssh-term-body .term-output { color: #d1d5db; white-space: pre-wrap; word-break: break-all; }
+    .ssh-term-input { display: flex; align-items: center; border-top: 1px solid rgba(255,255,255,0.1); padding: 0.3rem 0.5rem; }
+    .ssh-term-input .term-prompt { color: #22c55e; font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; margin-right: 0.3rem; }
+    .ssh-term-input input { flex: 1; background: transparent; border: none; color: #e5e5e5; font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; outline: none; }
+
     @media (max-width: 768px) {
       .header h1 { font-size: 1.3rem; }
       .container { padding: 0.75rem; }
@@ -1434,6 +1464,7 @@
         <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" id="themeBtn"><i class="fa-solid fa-circle-half-stroke"></i></button>
         <button class="toolbar-btn" onclick="runPingTest()" title="Ping all nodes"><i class="fa-solid fa-satellite-dish"></i> Ping</button>
         <button class="toolbar-btn" onclick="exportClusterState()" title="Export cluster snapshot"><i class="fa-solid fa-download"></i> Export</button>
+        <button class="toolbar-btn" onclick="takeClusterSnapshot()" title="Full cluster backup (kubectl)"><i class="fa-solid fa-database"></i> Snapshot</button>
         <button class="toolbar-btn" onclick="exportDashboardConfig()" title="Export dashboard settings"><i class="fa-solid fa-file-export"></i></button>
         <label class="toolbar-btn" title="Import dashboard settings" style="cursor:pointer"><i class="fa-solid fa-file-import"></i><input type="file" accept=".json" onchange="importDashboardConfig(event)" style="display:none"></label>
         <button class="toolbar-btn" onclick="toggleFullscreen()" title="Toggle fullscreen" id="fullscreenBtn"><i class="fa-solid fa-expand"></i></button>
@@ -1962,6 +1993,25 @@
       </div>
     </div>
 
+    <!-- CronJobs & Jobs -->
+    <div class="section-header" onclick="toggleSection('cronPanel',this)" id="cronHeader" style="display:none">
+      <h2 class="section-title"><i class="fa-solid fa-calendar-check"></i> CronJobs & Jobs</h2>
+      <span class="section-badge" id="cronBadge">0 items</span>
+      <i class="fa-solid fa-chevron-down section-collapse"></i>
+    </div>
+    <div class="section-body" id="cronPanel" style="display:none">
+      <div class="table-container">
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Name</th><th>Namespace</th><th>Schedule</th><th>Status</th><th>Last Run</th></tr></thead>
+            <tbody id="cronTableBody">
+              <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-calendar-check"></i><br>No cron jobs</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- Live Events Stream -->
     <div class="section-header" onclick="toggleSection('eventStreamPanel',this)">
       <h2 class="section-title"><i class="fa-solid fa-bolt"></i> Cluster Events</h2>
@@ -2028,6 +2078,48 @@
         <h2 class="section-title" style="font-size:0.95rem"><i class="fa-solid fa-timeline"></i> Node Uptime (Last 24h)</h2>
       </div>
       <div class="uptime-timeline" id="uptimeTimeline"></div>
+    </div>
+
+    <!-- SSH Terminal -->
+    <div class="section-header" onclick="toggleSection('sshTermSection',this)">
+      <h2 class="section-title"><i class="fa-solid fa-terminal"></i> SSH Terminal</h2>
+      <i class="fa-solid fa-chevron-down section-collapse"></i>
+    </div>
+    <div class="section-body" id="sshTermSection">
+      <div style="margin-bottom:0.4rem;display:flex;gap:0.3rem;align-items:center">
+        <select id="sshTermTarget" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:0.25rem 0.4rem;border-radius:6px;font-size:0.72rem;font-family:inherit">
+          <option value="node1">node1</option><option value="node2">node2</option><option value="node3">node3</option>
+          <option value="node4">node4</option><option value="node5">node5</option><option value="node6">node6</option>
+          <option value="node7">node7</option><option value="node8">node8</option><option value="node9">node9</option>
+          <option value="node10">node10</option><option value="aorus-node">aorus</option>
+        </select>
+        <button class="svc-check-btn" onclick="clearTerminal()"><i class="fa-solid fa-eraser"></i> Clear</button>
+      </div>
+      <div class="ssh-terminal" id="sshTerminal">
+        <div class="ssh-term-header">
+          <span class="term-dot red"></span><span class="term-dot yellow"></span><span class="term-dot green"></span>
+          <span class="term-title" id="sshTermTitle">ssh user@node1</span>
+        </div>
+        <div class="ssh-term-body" id="sshTermBody">
+          <div><span class="term-prompt">$ </span><span style="color:#6b7280">Type a command and press Enter</span></div>
+        </div>
+        <div class="ssh-term-input">
+          <span class="term-prompt">$ </span>
+          <input type="text" id="sshTermInput" placeholder="uptime" onkeydown="if(event.key==='Enter')runTermCmd()">
+        </div>
+      </div>
+    </div>
+
+    <!-- API Latency Monitor -->
+    <div class="section-header" onclick="toggleSection('latencySection',this)">
+      <h2 class="section-title"><i class="fa-solid fa-gauge-high"></i> API Response Times</h2>
+      <i class="fa-solid fa-chevron-down section-collapse"></i>
+    </div>
+    <div class="section-body" id="latencySection">
+      <div class="latency-chart" id="latencyChart">
+        <svg id="latencySvg" viewBox="0 0 400 80" preserveAspectRatio="none"></svg>
+        <div class="latency-stats" id="latencyStats"></div>
+      </div>
     </div>
 
     <!-- Cluster Specs -->
@@ -2417,6 +2509,8 @@
           loadNodeScheduling();
           loadResourceQuotas();
           loadConfigMaps();
+          loadCronJobs();
+          loadApiLatency();
         }
 
         consecutiveFailures = 0;
@@ -4327,6 +4421,146 @@
       try {
         return await apiFetch('/api/nodes/' + nodeName + '/annotations');
       } catch (e) { return null; }
+    }
+
+    // ─── CronJobs & Jobs ──────────────────────────────────────────────
+    async function loadCronJobs() {
+      if (!apiEndpoint) return;
+      try {
+        var data = await apiFetch('/api/cronjobs');
+        renderCronJobs(data.cronjobs || [], data.jobs || []);
+      } catch (e) { /* silent */ }
+    }
+
+    function renderCronJobs(cronjobs, jobs) {
+      var header = document.getElementById('cronHeader');
+      var total = cronjobs.length + jobs.length;
+      if (total === 0) { header.style.display = 'none'; return; }
+      header.style.display = '';
+      document.getElementById('cronPanel').style.display = '';
+      document.getElementById('cronBadge').textContent = total + ' items';
+
+      var rows = [];
+      cronjobs.forEach(function(cj) {
+        var statusCls = cj.suspend ? 'suspended' : cj.active > 0 ? 'active' : 'active';
+        var statusTxt = cj.suspend ? 'Suspended' : cj.active > 0 ? cj.active + ' Active' : 'Scheduled';
+        var lastRun = cj.lastSchedule ? new Date(cj.lastSchedule).toLocaleString() : '-';
+        rows.push('<tr><td class="pod-name"><i class="fa-solid fa-clock" style="color:var(--brand);margin-right:0.3rem"></i>' + cj.name + '</td>' +
+          '<td><span class="pod-namespace">' + cj.namespace + '</span></td>' +
+          '<td><span class="cj-schedule">' + cj.schedule + '</span></td>' +
+          '<td><span class="cj-status ' + statusCls + '">' + statusTxt + '</span></td>' +
+          '<td class="pod-age">' + lastRun + '</td></tr>');
+      });
+      jobs.forEach(function(j) {
+        var statusCls = j.status.toLowerCase();
+        var startTime = j.startTime ? new Date(j.startTime).toLocaleString() : '-';
+        rows.push('<tr><td class="pod-name"><i class="fa-solid fa-play" style="color:var(--muted);margin-right:0.3rem"></i>' + j.name + '</td>' +
+          '<td><span class="pod-namespace">' + j.namespace + '</span></td>' +
+          '<td>' + j.completions + (j.duration !== '-' ? ' (' + j.duration + ')' : '') + '</td>' +
+          '<td><span class="cj-status ' + statusCls + '">' + j.status + '</span></td>' +
+          '<td class="pod-age">' + startTime + '</td></tr>');
+      });
+      document.getElementById('cronTableBody').innerHTML = rows.join('');
+    }
+
+    // ─── SSH Terminal ───────────────────────────────────────────────
+    var termHistory = [];
+
+    function runTermCmd() {
+      var input = document.getElementById('sshTermInput');
+      var cmd = input.value.trim();
+      if (!cmd) return;
+      if (!apiEndpoint || !savedPassword) { showToast('API + password required', 'error'); return; }
+
+      var target = document.getElementById('sshTermTarget').value;
+      document.getElementById('sshTermTitle').textContent = 'ssh user@' + target;
+      input.value = '';
+
+      var body = document.getElementById('sshTermBody');
+      body.innerHTML += '<div><span class="term-prompt">$ </span>' + cmd.replace(/</g, '&lt;') + '</div>';
+      body.innerHTML += '<div class="term-output" id="termLoading"><i class="fa-solid fa-spinner fa-spin" style="color:#6b7280"></i></div>';
+      body.scrollTop = body.scrollHeight;
+
+      apiPost('/api/command/custom', { cmd: cmd, target: target, password: savedPassword })
+        .then(function(data) {
+          var loadEl = document.getElementById('termLoading');
+          if (loadEl) loadEl.remove();
+          var output = '';
+          if (data.results) {
+            data.results.forEach(function(r) {
+              output += (r.output || r.error || 'No output') + '\n';
+            });
+          } else {
+            output = data.error || data.message || 'Done';
+          }
+          body.innerHTML += '<div class="term-output">' + output.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+          body.scrollTop = body.scrollHeight;
+        })
+        .catch(function(e) {
+          var loadEl = document.getElementById('termLoading');
+          if (loadEl) loadEl.remove();
+          body.innerHTML += '<div class="term-output" style="color:#ef4444">Error: ' + e.message + '</div>';
+          body.scrollTop = body.scrollHeight;
+        });
+    }
+
+    function clearTerminal() {
+      document.getElementById('sshTermBody').innerHTML = '<div><span class="term-prompt">$ </span><span style="color:#6b7280">Terminal cleared</span></div>';
+    }
+
+    // ─── API Latency Chart ──────────────────────────────────────────
+    async function loadApiLatency() {
+      if (!apiEndpoint) return;
+      try {
+        var data = await apiFetch('/api/latency/history');
+        renderLatencyChart(data.history || []);
+      } catch (e) { /* silent */ }
+    }
+
+    function renderLatencyChart(history) {
+      if (!history || history.length < 2) return;
+      var svg = document.getElementById('latencySvg');
+      var w = 400, h = 80;
+      var vals = history.map(function(h) { return h.durationMs; });
+      var max = Math.max.apply(null, vals.concat([100]));
+      var step = w / (vals.length - 1);
+
+      var points = vals.map(function(v, i) {
+        return (i * step).toFixed(1) + ',' + (h - (v / max) * (h - 5)).toFixed(1);
+      }).join(' ');
+
+      var avg = Math.round(vals.reduce(function(a,b){return a+b},0) / vals.length);
+      var p50 = vals.slice().sort(function(a,b){return a-b})[Math.floor(vals.length * 0.5)];
+      var p99 = vals.slice().sort(function(a,b){return a-b})[Math.floor(vals.length * 0.99)];
+
+      svg.innerHTML = '<polyline fill="none" stroke="var(--brand)" stroke-width="2" points="' + points + '"/>' +
+        '<line x1="0" y1="' + (h - (avg / max) * (h - 5)) + '" x2="' + w + '" y2="' + (h - (avg / max) * (h - 5)) + '" stroke="var(--muted)" stroke-dasharray="4" stroke-width="0.5"/>';
+
+      document.getElementById('latencyStats').innerHTML =
+        'Avg: <span class="lat-val">' + avg + 'ms</span> | ' +
+        'P50: <span class="lat-val">' + (p50 || 0) + 'ms</span> | ' +
+        'P99: <span class="lat-val">' + (p99 || 0) + 'ms</span> | ' +
+        'Samples: <span class="lat-val">' + vals.length + '</span>';
+    }
+
+    // ─── Cluster Snapshot ───────────────────────────────────────────
+    async function takeClusterSnapshot() {
+      if (!apiEndpoint || !savedPassword) { showToast('API + password required', 'error'); return; }
+      showToast('Creating cluster snapshot...', 'info');
+      try {
+        var data = await apiPost('/api/snapshot', { password: savedPassword });
+        if (data.snapshot) {
+          var blob = new Blob([JSON.stringify(data.snapshot, null, 2)], { type: 'application/json' });
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'cluster-snapshot-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json';
+          a.click();
+          URL.revokeObjectURL(a.href);
+          showToast('Snapshot downloaded (' + Math.round(data.sizeBytes / 1024) + ' KB)', 'success');
+        } else {
+          showToast(data.error || 'Snapshot failed', 'error');
+        }
+      } catch (e) { showToast('Error: ' + e.message, 'error'); }
     }
 
     // ─── Cluster Warnings ────────────────────────────────────────────

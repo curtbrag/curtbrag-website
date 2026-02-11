@@ -1724,6 +1724,99 @@ async function handleConfigMaps(req, res) {
   sendJson(res, 200, { items });
 }
 
+// ─── CronJobs & Jobs ────────────────────────────────────────────────────────
+
+async function handleCronJobs(req, res) {
+  const [cronResult, jobResult] = await Promise.all([
+    runAsync('kubectl get cronjob -A -o json 2>/dev/null', 10000),
+    runAsync('kubectl get jobs -A -o json 2>/dev/null', 10000),
+  ]);
+
+  const cronjobs = [];
+  if (cronResult.ok) {
+    try {
+      const parsed = JSON.parse(cronResult.stdout);
+      (parsed.items || []).forEach(cj => {
+        cronjobs.push({
+          name: cj.metadata.name,
+          namespace: cj.metadata.namespace,
+          schedule: cj.spec?.schedule || '-',
+          suspend: cj.spec?.suspend || false,
+          active: (cj.status?.active || []).length,
+          lastSchedule: cj.status?.lastScheduleTime || null,
+          lastSuccessful: cj.status?.lastSuccessfulTime || null,
+        });
+      });
+    } catch { /* ignore */ }
+  }
+
+  const jobs = [];
+  if (jobResult.ok) {
+    try {
+      const parsed = JSON.parse(jobResult.stdout);
+      (parsed.items || []).forEach(j => {
+        const conditions = j.status?.conditions || [];
+        const complete = conditions.find(c => c.type === 'Complete' && c.status === 'True');
+        const failed = conditions.find(c => c.type === 'Failed' && c.status === 'True');
+        jobs.push({
+          name: j.metadata.name,
+          namespace: j.metadata.namespace,
+          status: complete ? 'Complete' : failed ? 'Failed' : 'Running',
+          completions: `${j.status?.succeeded || 0}/${j.spec?.completions || 1}`,
+          duration: j.status?.completionTime && j.status?.startTime ?
+            Math.round((new Date(j.status.completionTime) - new Date(j.status.startTime)) / 1000) + 's' : '-',
+          startTime: j.status?.startTime || null,
+        });
+      });
+    } catch { /* ignore */ }
+  }
+
+  sendJson(res, 200, { cronjobs, jobs });
+}
+
+// ─── API Latency Tracking ───────────────────────────────────────────────────
+
+const apiLatencyHistory = []; // { ts, endpoint, durationMs }
+const API_LATENCY_MAX = 100;
+
+function recordApiLatency(endpoint, durationMs) {
+  apiLatencyHistory.push({ ts: Date.now(), endpoint, durationMs: Math.round(durationMs) });
+  if (apiLatencyHistory.length > API_LATENCY_MAX) {
+    apiLatencyHistory.splice(0, apiLatencyHistory.length - API_LATENCY_MAX);
+  }
+}
+
+function handleApiLatencyHistory(req, res) {
+  sendJson(res, 200, { history: apiLatencyHistory });
+}
+
+// ─── Cluster Snapshot/Backup ────────────────────────────────────────────────
+
+async function handleClusterSnapshot(req, res, body) {
+  const { password: pwd } = body;
+  if (pwd !== CONFIG.password) return sendJson(res, 401, { error: 'Invalid password' });
+
+  // Gather a full snapshot of the cluster state
+  const [nodes, pods, svcs, deploys, cms] = await Promise.all([
+    runAsync('kubectl get nodes -o json 2>/dev/null', 15000),
+    runAsync('kubectl get pods -A -o json 2>/dev/null', 15000),
+    runAsync('kubectl get svc -A -o json 2>/dev/null', 15000),
+    runAsync('kubectl get deploy -A -o json 2>/dev/null', 15000),
+    runAsync('kubectl get configmap -A -o json 2>/dev/null', 15000),
+  ]);
+
+  const snapshot = {
+    timestamp: new Date().toISOString(),
+    nodes: nodes.ok ? nodes.stdout : null,
+    pods: pods.ok ? pods.stdout : null,
+    services: svcs.ok ? svcs.stdout : null,
+    deployments: deploys.ok ? deploys.stdout : null,
+    configmaps: cms.ok ? cms.stdout : null,
+  };
+
+  sendJson(res, 200, { snapshot, sizeBytes: JSON.stringify(snapshot).length });
+}
+
 // ─── HTTP Server ─────────────────────────────────────────────────────────────
 
 function sendJson(res, code, data) {
@@ -1771,6 +1864,7 @@ function readBody(req, maxBytes = 1024 * 1024) {
 }
 
 const server = http.createServer(async (req, res) => {
+  const reqStart = Date.now();
   setCors(req, res);
 
   if (req.method === 'OPTIONS') {
@@ -1780,6 +1874,13 @@ const server = http.createServer(async (req, res) => {
 
   const parsed = url.parse(req.url, true);
   const path = parsed.pathname;
+
+  // Track latency for non-stream endpoints
+  res.on('finish', () => {
+    if (path !== '/api/stream' && path !== '/api/health') {
+      recordApiLatency(path, Date.now() - reqStart);
+    }
+  });
 
   try {
     // Health — no auth required
@@ -1827,6 +1928,8 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/nodes/scheduling') return await handleNodeScheduling(req, res);
       if (path === '/api/resourcequotas') return await handleResourceQuotas(req, res);
       if (path === '/api/configmaps') return await handleConfigMaps(req, res);
+      if (path === '/api/cronjobs') return await handleCronJobs(req, res);
+      if (path === '/api/latency/history') return handleApiLatencyHistory(req, res);
 
       // Node annotations: /api/nodes/:name/annotations
       const annotMatch = path.match(/^\/api\/nodes\/([^/]+)\/annotations$/);
@@ -1859,6 +1962,7 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/nodes/drain') return await handleNodeDrain(req, res, body);
       if (path === '/api/nodes/uncordon') return await handleNodeUncordon(req, res, body);
       if (path === '/api/alerts/ack') return handleAlertAck(req, res, body);
+      if (path === '/api/snapshot') return await handleClusterSnapshot(req, res, body);
     }
 
     sendJson(res, 404, { error: 'Not found' });
