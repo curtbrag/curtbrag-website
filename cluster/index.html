@@ -889,6 +889,38 @@
     .warnings-list li { font-size: 0.78rem; color: var(--muted); padding: 0.15rem 0; display: flex; align-items: flex-start; gap: 0.4rem; }
     .warnings-list li i { color: var(--yellow); margin-top: 0.15rem; font-size: 0.7rem; }
 
+    /* Node scheduling status */
+    .node-sched-badge { font-size: 0.6rem; padding: 0.1rem 0.35rem; border-radius: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; display: inline-flex; align-items: center; gap: 0.2rem; }
+    .node-sched-badge.cordoned { background: rgba(239, 68, 68, 0.12); color: var(--red); border: 1px solid rgba(239, 68, 68, 0.3); }
+    .node-sched-badge.schedulable { background: rgba(34, 197, 94, 0.08); color: var(--green); border: 1px solid rgba(34, 197, 94, 0.2); }
+
+    /* Fullscreen mode */
+    .fullscreen-btn { background: none; border: 1px solid var(--border); color: var(--muted); padding: 0.3rem 0.5rem; border-radius: 6px; cursor: pointer; font-size: 0.75rem; transition: all 0.2s; }
+    .fullscreen-btn:hover { border-color: var(--brand); color: var(--text); }
+    body.fullscreen-mode .header, body.fullscreen-mode .footer, body.fullscreen-mode .api-config { display: none; }
+    body.fullscreen-mode .container { max-width: 100%; padding: 0.5rem; }
+
+    /* Event stream */
+    .event-stream { max-height: 250px; overflow-y: auto; font-size: 0.75rem; }
+    .event-item { display: flex; gap: 0.5rem; padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
+    .event-item:last-child { border-bottom: none; }
+    .event-time { color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; white-space: nowrap; min-width: 65px; }
+    .event-type { font-size: 0.65rem; padding: 0.05rem 0.3rem; border-radius: 4px; font-weight: 600; text-transform: uppercase; }
+    .event-type.normal { background: rgba(34,197,94,0.1); color: var(--green); }
+    .event-type.warning { background: rgba(234,179,8,0.1); color: var(--yellow); }
+    .event-msg { flex: 1; color: var(--text); }
+    .event-src { color: var(--muted); font-size: 0.65rem; }
+
+    /* Resource quota bars */
+    .quota-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.5rem; }
+    .quota-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem; }
+    .quota-ns { font-size: 0.75rem; font-weight: 600; margin-bottom: 0.3rem; }
+    .quota-row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.7rem; margin: 0.15rem 0; }
+    .quota-row-label { min-width: 60px; color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; }
+    .quota-bar { flex: 1; height: 5px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+    .quota-fill { height: 100%; border-radius: 3px; background: var(--brand); transition: width 0.3s; }
+    .quota-val { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; color: var(--muted); min-width: 50px; text-align: right; }
+
     /* Auto-detect connection */
     .api-detect { display: flex; align-items: center; gap: 0.3rem; }
     .api-detect-btn { background: none; border: 1px solid var(--border); color: var(--muted); padding: 0.25rem 0.5rem; border-radius: 6px; cursor: pointer; font-size: 0.72rem; font-family: inherit; transition: all 0.2s; }
@@ -1877,6 +1909,27 @@
       </div>
     </div>
 
+    <!-- Live Events Stream -->
+    <div class="section-header" onclick="toggleSection('eventStreamPanel',this)">
+      <h2 class="section-title"><i class="fa-solid fa-bolt"></i> Cluster Events</h2>
+      <span class="section-badge" id="eventsBadge">0 events</span>
+      <i class="fa-solid fa-chevron-down section-collapse"></i>
+    </div>
+    <div class="section-body" id="eventStreamPanel">
+      <div class="event-stream" id="eventStream">
+        <div class="empty-state" style="padding:1rem;font-size:0.8rem"><i class="fa-solid fa-bolt"></i><br>No events loaded</div>
+      </div>
+    </div>
+
+    <!-- Resource Quotas -->
+    <div class="section-header" onclick="toggleSection('quotaPanel',this)" style="display:none" id="quotaHeader">
+      <h2 class="section-title"><i class="fa-solid fa-gauge-high"></i> Resource Quotas</h2>
+      <i class="fa-solid fa-chevron-down section-collapse"></i>
+    </div>
+    <div class="section-body" id="quotaPanel" style="display:none">
+      <div class="quota-grid" id="quotaGrid"></div>
+    </div>
+
     <!-- Network Section -->
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-wifi"></i> Network</h2>
@@ -2004,6 +2057,8 @@
       <div class="log-toolbar">
         <button onclick="refreshCurrentLogs()" title="Refresh"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
         <button id="autoScrollBtn" onclick="toggleAutoScroll()" title="Auto-scroll">Auto-scroll</button>
+        <button onclick="downloadLogs()" title="Download logs"><i class="fa-solid fa-download"></i> Download</button>
+        <button onclick="toggleLogWrap()" id="logWrapBtn" title="Toggle word wrap">Wrap</button>
         <span class="log-info" id="logInfo"></span>
       </div>
       <div class="log-search">
@@ -2305,6 +2360,8 @@
           loadBatteryHeatmap();
           loadPodResources();
           loadNodeMetricsHistory();
+          loadNodeScheduling();
+          loadResourceQuotas();
         }
 
         consecutiveFailures = 0;
@@ -2379,6 +2436,7 @@
           <div class="node-header">
             <div class="node-name"><i class="fa-solid ${icon}"></i>${node.name}</div>
             <span class="node-role">${isCP ? 'Control Plane' : 'Worker'}</span>
+            ${getNodeSchedBadge(safeName)}
           </div>
           <div class="node-tooltip">
             <div class="tooltip-row"><span class="tooltip-key">IP:</span><span class="tooltip-val">${node.ip || '--'}</span></div>
@@ -2464,6 +2522,7 @@
           <td class="pod-actions">
             <button class="pod-action-btn info" onclick="viewPodLogs('${ns}','${pn}')" title="View logs"><i class="fa-solid fa-scroll"></i></button>
             <button class="pod-action-btn" onclick="describePod('${ns}','${pn}')" title="Describe"><i class="fa-solid fa-circle-info"></i></button>
+            <button class="pod-action-btn" onclick="viewPodYaml('${ns}','${pn}')" title="View YAML"><i class="fa-solid fa-code"></i></button>
             <button class="pod-action-btn danger" onclick="deletePod('${ns}','${pn}')" title="Delete pod"><i class="fa-solid fa-trash"></i></button>
           </td>
         </tr>`;
@@ -2527,6 +2586,42 @@
       } catch (e) {
         document.getElementById('logBody').textContent = 'Error: ' + e.message;
       }
+    }
+
+    async function viewPodYaml(ns, pod) {
+      if (!apiEndpoint) { showToast('Direct API required', 'error'); return; }
+      document.getElementById('logModalTitle').textContent = 'YAML: ' + pod;
+      document.getElementById('logBody').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+      document.getElementById('logModal').classList.add('visible');
+      try {
+        const data = await apiFetch('/api/pods/' + ns + '/' + pod + '/yaml');
+        document.getElementById('logBody').textContent = data.yaml || data.error || 'No data';
+        document.getElementById('logInfo').textContent = 'YAML manifest';
+      } catch (e) {
+        document.getElementById('logBody').textContent = 'Error: ' + e.message;
+      }
+    }
+
+    function downloadLogs() {
+      var body = document.getElementById('logBody');
+      var title = document.getElementById('logModalTitle').textContent || 'logs';
+      var text = body.innerText || body.textContent || '';
+      var blob = new Blob([text], { type: 'text/plain' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = title.replace(/[^a-zA-Z0-9]/g, '_') + '.txt';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      showToast('Downloaded', 'success');
+    }
+
+    var logWrap = false;
+    function toggleLogWrap() {
+      logWrap = !logWrap;
+      var body = document.getElementById('logBody');
+      body.style.whiteSpace = logWrap ? 'pre-wrap' : 'pre';
+      body.style.wordBreak = logWrap ? 'break-all' : 'normal';
+      document.getElementById('logWrapBtn').className = logWrap ? 'active' : '';
     }
 
     async function deletePod(ns, pod) {
@@ -3462,6 +3557,23 @@
           '<span class="event-msg">' + ev.message + '</span>' +
           '<div class="event-meta">' + ev.object + ' | ' + ev.namespace + ' | ' + time + (ev.count > 1 ? ' (x' + ev.count + ')' : '') + '</div></div></div>';
       }).join('');
+
+      // Also populate the event stream panel
+      var stream = document.getElementById('eventStream');
+      var streamBadge = document.getElementById('eventsBadge');
+      if (stream) {
+        streamBadge.textContent = events.length + ' events';
+        stream.innerHTML = events.slice(0, 50).map(function(ev) {
+          var time = ev.lastSeen ? new Date(ev.lastSeen).toLocaleTimeString() : '';
+          var typeCls = (ev.type || '').toLowerCase() === 'warning' ? 'warning' : 'normal';
+          return '<div class="event-item">' +
+            '<span class="event-time">' + time + '</span>' +
+            '<span class="event-type ' + typeCls + '">' + (ev.type || 'Normal') + '</span>' +
+            '<span class="event-msg">' + (ev.reason || '') + ': ' + (ev.message || '').substring(0, 120) + '</span>' +
+            '<span class="event-src">' + (ev.object || '') + '</span>' +
+            '</div>';
+        }).join('');
+      }
     }
 
     function toggleEvents() {
@@ -3495,6 +3607,62 @@
           '<div class="ns-chip-stats">' + u.running + '/' + u.pods + ' pods | ' + u.containers + ' containers' +
           (u.restarts > 0 ? ' | ' + u.restarts + ' restarts' : '') + '</div></div>';
       }).join('');
+    }
+
+    // ─── Resource Quotas ────────────────────────────────────────────────
+    async function loadResourceQuotas() {
+      if (!apiEndpoint) return;
+      try {
+        var data = await apiFetch('/api/resourcequotas');
+        renderResourceQuotas(data.quotas || []);
+      } catch (e) { /* silent */ }
+    }
+
+    function renderResourceQuotas(quotas) {
+      var header = document.getElementById('quotaHeader');
+      var grid = document.getElementById('quotaGrid');
+      if (!quotas || quotas.length === 0) { if (header) header.style.display = 'none'; return; }
+      header.style.display = '';
+      document.getElementById('quotaPanel').style.display = '';
+
+      grid.innerHTML = quotas.map(function(q) {
+        var rows = '';
+        Object.keys(q.hard || {}).forEach(function(key) {
+          var hardVal = q.hard[key];
+          var usedVal = q.used[key] || '0';
+          var hardNum = parseInt(hardVal) || 0;
+          var usedNum = parseInt(usedVal) || 0;
+          var pct = hardNum > 0 ? Math.round((usedNum / hardNum) * 100) : 0;
+          var color = pct > 80 ? 'var(--red)' : pct > 60 ? 'var(--yellow)' : 'var(--brand)';
+          rows += '<div class="quota-row"><span class="quota-row-label">' + key + '</span>' +
+            '<div class="quota-bar"><div class="quota-fill" style="width:' + pct + '%;background:' + color + '"></div></div>' +
+            '<span class="quota-val">' + usedVal + '/' + hardVal + '</span></div>';
+        });
+        return '<div class="quota-card"><div class="quota-ns">' + q.namespace + ' / ' + q.name + '</div>' + rows + '</div>';
+      }).join('');
+    }
+
+    // ─── Node Scheduling Status ─────────────────────────────────────────
+    var nodeSchedulingData = {};
+
+    async function loadNodeScheduling() {
+      if (!apiEndpoint) return;
+      try {
+        var data = await apiFetch('/api/nodes/scheduling');
+        nodeSchedulingData = {};
+        (data.nodes || []).forEach(function(n) {
+          nodeSchedulingData[n.name] = n;
+        });
+      } catch (e) { /* silent */ }
+    }
+
+    function getNodeSchedBadge(nodeName) {
+      var d = nodeSchedulingData[nodeName];
+      if (!d) return '';
+      if (d.unschedulable) {
+        return '<span class="node-sched-badge cordoned"><i class="fa-solid fa-ban" style="font-size:0.5rem"></i> Cordoned</span>';
+      }
+      return '';
     }
 
     // ─── Connection Status ───────────────────────────────────────────────

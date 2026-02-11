@@ -1633,6 +1633,55 @@ function handleMetricsHistory(req, res) {
   sendJson(res, 200, { history: metricsHistory });
 }
 
+// ─── Pod YAML ───────────────────────────────────────────────────────────────
+
+async function handlePodYaml(req, res, namespace, podName) {
+  if (!/^[a-zA-Z0-9._-]+$/.test(namespace) || !/^[a-zA-Z0-9._-]+$/.test(podName)) {
+    return sendJson(res, 400, { error: 'Invalid names' });
+  }
+  const result = await runAsync(`kubectl get pod ${podName} -n ${namespace} -o yaml 2>/dev/null`, 10000);
+  if (!result.ok) return sendJson(res, 500, { error: 'Failed to get pod YAML' });
+  sendJson(res, 200, { yaml: result.stdout });
+}
+
+// ─── Node Scheduling Status ─────────────────────────────────────────────────
+
+async function handleNodeScheduling(req, res) {
+  const result = await runAsync('kubectl get nodes -o json 2>/dev/null', 10000);
+  if (!result.ok) return sendJson(res, 500, { error: 'Failed' });
+  try {
+    const parsed = JSON.parse(result.stdout);
+    const nodes = (parsed.items || []).map(n => ({
+      name: n.metadata.name,
+      unschedulable: n.spec?.unschedulable || false,
+      taints: (n.spec?.taints || []).map(t => t.key + '=' + (t.value || '') + ':' + t.effect),
+      conditions: (n.status?.conditions || []).filter(c => c.type === 'Ready').map(c => ({ status: c.status, reason: c.reason })),
+    }));
+    sendJson(res, 200, { nodes });
+  } catch { sendJson(res, 500, { error: 'Parse error' }); }
+}
+
+// ─── Namespace Resource Quotas ──────────────────────────────────────────────
+
+async function handleResourceQuotas(req, res) {
+  const result = await runAsync('kubectl get resourcequota -A -o json 2>/dev/null', 10000);
+  const quotas = [];
+  if (result.ok) {
+    try {
+      const parsed = JSON.parse(result.stdout);
+      (parsed.items || []).forEach(q => {
+        quotas.push({
+          name: q.metadata.name,
+          namespace: q.metadata.namespace,
+          hard: q.status?.hard || {},
+          used: q.status?.used || {},
+        });
+      });
+    } catch { /* ignore */ }
+  }
+  sendJson(res, 200, { quotas });
+}
+
 // ─── HTTP Server ─────────────────────────────────────────────────────────────
 
 function sendJson(res, code, data) {
@@ -1733,6 +1782,8 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/pods/resources') return await handlePodResources(req, res);
       if (path === '/api/services/health') return await handleServiceHealth(req, res);
       if (path === '/api/metrics/history') return handleMetricsHistory(req, res);
+      if (path === '/api/nodes/scheduling') return await handleNodeScheduling(req, res);
+      if (path === '/api/resourcequotas') return await handleResourceQuotas(req, res);
 
       // Node annotations: /api/nodes/:name/annotations
       const annotMatch = path.match(/^\/api\/nodes\/([^/]+)\/annotations$/);
@@ -1745,6 +1796,10 @@ const server = http.createServer(async (req, res) => {
       // Pod logs: /api/pods/:namespace/:pod/logs?tail=100&container=name
       const logMatch = path.match(/^\/api\/pods\/([^/]+)\/([^/]+)\/logs$/);
       if (logMatch) return await handlePodLogs(req, res, logMatch[1], logMatch[2], parsed.query);
+
+      // Pod YAML: /api/pods/:namespace/:pod/yaml
+      const yamlMatch = path.match(/^\/api\/pods\/([^/]+)\/([^/]+)\/yaml$/);
+      if (yamlMatch) return await handlePodYaml(req, res, yamlMatch[1], yamlMatch[2]);
 
       // Pod describe: /api/pods/:namespace/:pod/describe
       const descMatch = path.match(/^\/api\/pods\/([^/]+)\/([^/]+)\/describe$/);
