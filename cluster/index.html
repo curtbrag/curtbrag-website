@@ -797,6 +797,366 @@
     .toast.success { border-color: var(--green); }
     .toast.error { border-color: var(--red); }
     .toast.info { border-color: var(--blue); }
+
+    /* Node Detail Modal */
+    .node-detail-modal-content { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; max-width: 600px; width: 95%; max-height: 80vh; display: flex; flex-direction: column; }
+    .node-detail-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+    .node-detail-modal-header h3 { font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
+    .node-detail-modal-header h3 i { color: var(--brand); }
+    .node-detail-body { padding: 1rem; overflow-y: auto; flex: 1; }
+    .node-detail-section { margin-bottom: 1rem; }
+    .node-detail-section h4 { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .node-detail-metrics { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    .nd-metric { text-align: center; padding: 0.5rem 0.75rem; background: var(--bg); border-radius: 8px; border: 1px solid var(--border); min-width: 70px; }
+    .nd-metric-val { font-size: 1.1rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .nd-metric-label { font-size: 0.65rem; color: var(--muted); margin-top: 0.2rem; }
+    .node-detail-pods { max-height: 200px; overflow-y: auto; }
+    .node-detail-actions { display: flex; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--border); flex-wrap: wrap; }
+    .node-detail-actions button { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.35rem 0.75rem; border-radius: 6px; cursor: pointer; font-size: 0.78rem; font-family: inherit; display: flex; align-items: center; gap: 0.35rem; transition: all 0.2s; }
+    .node-detail-actions button:hover { border-color: var(--brand); color: var(--brand); }
+    .node-annot { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.3rem; }
+    .annot-tag { font-size: 0.68rem; padding: 0.15rem 0.4rem; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; }
+    .annot-key { color: var(--muted); }
+    .annot-val { color: var(--text); }
+
+    /* Compare Modal */
+    .compare-modal-content { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; max-width: 900px; width: 95%; max-height: 80vh; display: flex; flex-direction: column; }
+    .compare-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+    .compare-modal-header h3 { font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
+    .compare-modal-header h3 i { color: var(--brand); }
+    .compare-body { padding: 1rem; overflow: auto; flex: 1; }
+    .compare-grid { display: flex; flex-direction: column; gap: 0; }
+    .compare-row { display: flex; align-items: center; padding: 0.4rem 0; border-bottom: 1px solid var(--border); }
+    .compare-label { min-width: 100px; font-size: 0.78rem; color: var(--muted); font-weight: 600; }
+    .compare-val { flex: 1; text-align: center; font-size: 0.78rem; font-family: 'JetBrains Mono', monospace; }
+
+    /* Shortcuts Modal */
+    .shortcuts-modal-content { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; max-width: 480px; width: 95%; max-height: 80vh; overflow-y: auto; }
+    .shortcuts-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+    .shortcuts-modal-header h3 { font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
+    .shortcuts-modal-header h3 i { color: var(--brand); }
+    .shortcuts-list { padding: 0.75rem 1rem; }
+    .shortcut-row { display: flex; align-items: center; justify-content: space-between; padding: 0.35rem 0; font-size: 0.82rem; }
+    .shortcut-row kbd { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: 'JetBrains Mono', monospace; min-width: 24px; text-align: center; }
+
+    /* Command Palette */
+    #cmdPalette.visible { display: flex !important; }
+    .cmd-palette-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem; cursor: pointer; transition: background 0.15s; color: var(--text); font-size: 0.85rem; }
+    .cmd-palette-item:hover, .cmd-palette-item.selected { background: var(--panel-hover); }
+    .cmd-palette-item i { color: var(--muted); width: 16px; text-align: center; font-size: 0.8rem; }
+    .cmd-palette-item .cmd-label { flex: 1; }
+    .cmd-palette-item .cmd-shortcut { font-size: 0.65rem; padding: 0.1rem 0.35rem; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+    /* Node Scheduling Badge */
+    .node-sched-badge { font-size: 0.6rem; padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: 600; display: inline-flex; align-items: center; gap: 0.25rem; }
+    .node-sched-badge.cordoned { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+
+    /* Resource Summary */
+    .resource-bars { display: flex; flex-direction: column; gap: 0.6rem; }
+    .resource-bar-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; }
+    .resource-label { min-width: 50px; font-weight: 600; color: var(--muted); }
+    .resource-val { min-width: 36px; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+    .resource-track { flex: 1; height: 10px; background: var(--bg); border-radius: 5px; overflow: hidden; }
+    .resource-fill { height: 100%; border-radius: 5px; background: linear-gradient(90deg, var(--green), #4ade80); transition: width 0.8s ease; }
+    .resource-detail { font-size: 0.68rem; color: var(--muted); min-width: 60px; font-family: 'JetBrains Mono', monospace; }
+
+    /* Donut Charts */
+    .donut-charts { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+    .donut-chart { text-align: center; }
+    .donut-center { font-size: 0.7rem; color: var(--muted); margin-top: 0.3rem; }
+    .donut-center-val { font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--text); }
+    .donut-center-label { font-size: 0.6rem; }
+
+    /* Node Tooltip */
+    .node-tooltip { display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.75rem; z-index: 100; min-width: 160px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .node:hover .node-tooltip { display: block; }
+    .tooltip-row { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.72rem; padding: 0.15rem 0; }
+    .tooltip-key { color: var(--muted); }
+    .tooltip-val { color: var(--text); font-family: 'JetBrains Mono', monospace; }
+
+    /* Copy Button */
+    .copy-btn { background: none; border: none; color: var(--muted); cursor: pointer; padding: 0.1rem 0.25rem; font-size: 0.7rem; transition: color 0.2s; }
+    .copy-btn:hover { color: var(--brand); }
+    .copy-btn.copied { color: var(--green); }
+
+    /* Service Health */
+    .svc-health { display: flex; align-items: center; gap: 0.35rem; }
+    .svc-health-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .svc-health-dot.healthy { background: var(--green); }
+    .svc-health-dot.unhealthy { background: var(--red); }
+    .svc-health-dot.unknown { background: var(--muted); }
+    .svc-health-ms { font-size: 0.68rem; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+    /* Deploy Scale */
+    .deploy-scale { display: flex; align-items: center; gap: 0.3rem; }
+
+    /* Ping Grid */
+    .ping-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+    .ping-chip { padding: 0.35rem 0.6rem; border-radius: 6px; font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; border: 1px solid var(--border); background: var(--bg); }
+    .ping-chip.ok { border-color: var(--green); color: var(--green); }
+    .ping-chip.fail { border-color: var(--red); color: var(--red); }
+    .ping-ms { font-size: 0.65rem; color: var(--muted); margin-left: 0.3rem; }
+
+    /* Namespace Chips */
+    .ns-chip { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.6rem; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); font-size: 0.78rem; }
+    .ns-chip-name { font-weight: 600; }
+    .ns-chip-stats { font-size: 0.68rem; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+    /* Quota */
+    .quota-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; margin-bottom: 0.5rem; }
+    .quota-ns { font-weight: 600; font-size: 0.8rem; margin-bottom: 0.4rem; }
+    .quota-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.2rem 0; font-size: 0.75rem; }
+    .quota-row-label { min-width: 80px; color: var(--muted); }
+    .quota-bar { flex: 1; height: 8px; background: var(--panel); border-radius: 4px; overflow: hidden; }
+    .quota-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
+    .quota-val { min-width: 60px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; }
+
+    /* Config Items */
+    .config-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; border-bottom: 1px solid var(--border); font-size: 0.78rem; }
+    .config-item:last-child { border-bottom: none; }
+    .config-item-name { font-weight: 600; flex: 1; }
+    .config-item-type { font-size: 0.65rem; padding: 0.1rem 0.35rem; border-radius: 4px; font-weight: 600; }
+    .config-item-type.configmap { background: rgba(59,130,246,0.15); color: var(--blue); }
+    .config-item-type.secret { background: rgba(239,68,68,0.15); color: var(--red); }
+    .config-item-keys { font-size: 0.68rem; color: var(--muted); }
+
+    /* Pod Heatmap */
+    .pod-heatmap { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 0.3rem; }
+    .hm-0 { background: var(--bg); }
+    .hm-1 { background: rgba(74,222,128,0.15); }
+    .hm-2 { background: rgba(74,222,128,0.3); }
+    .hm-3 { background: rgba(250,204,21,0.3); }
+    .hm-4 { background: rgba(239,68,68,0.2); }
+    .hm-5 { background: rgba(239,68,68,0.4); }
+    .has-pods { border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem; text-align: center; font-size: 0.7rem; }
+
+    /* Battery Heatmap */
+    .battery-heatmap { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.5rem; }
+    .batt-cell { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; }
+    .batt-cell-name { font-weight: 600; font-size: 0.78rem; margin-bottom: 0.3rem; }
+    .batt-cell-level { font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 700; }
+    .batt-cell-status { font-size: 0.68rem; color: var(--muted); }
+    .batt-cell-temp { font-size: 0.68rem; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+    .batt-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.3rem; }
+    .batt-dot.critical { background: var(--red); }
+    .batt-dot.low { background: var(--yellow); }
+    .batt-dot.good { background: var(--green); }
+    .batt-dot.full { background: #4ade80; }
+    .batt-dot.charging { background: var(--blue); }
+    .batt-summary-item { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; margin-right: 1rem; }
+
+    /* Topology */
+    .topology-map { position: relative; min-height: 200px; }
+    .topo-node { position: absolute; text-align: center; font-size: 0.7rem; }
+    .topo-node.active { opacity: 1; }
+    .topo-link { stroke: var(--border); stroke-width: 1; }
+    .topo-legend { display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.72rem; color: var(--muted); }
+    .topo-legend-item { display: flex; align-items: center; gap: 0.3rem; }
+    .topo-legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    /* Thermal Grid */
+    .thermal-panel { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.4rem; }
+    .thermal-cell { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; text-align: center; }
+    .thermal-name { font-size: 0.72rem; font-weight: 600; margin-bottom: 0.2rem; }
+    .thermal-temp { font-family: 'JetBrains Mono', monospace; font-size: 1rem; font-weight: 700; }
+    .thermal-temp.hot { color: var(--red); }
+    .thermal-temp.warm { color: var(--yellow); }
+    .thermal-temp.cool { color: var(--green); }
+
+    /* System Info */
+    .sysinfo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; }
+    .sysinfo-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.75rem; }
+    .sysinfo-card-name { font-weight: 600; font-size: 0.82rem; margin-bottom: 0.3rem; }
+    .sysinfo-row { display: flex; justify-content: space-between; font-size: 0.72rem; padding: 0.15rem 0; }
+    .sysinfo-key { color: var(--muted); }
+    .sysinfo-val { font-family: 'JetBrains Mono', monospace; color: var(--text); }
+
+    /* Ingress */
+    .ingress-rule { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; margin-bottom: 0.4rem; }
+    .ingress-host { font-weight: 600; font-size: 0.8rem; }
+    .ingress-path { font-size: 0.72rem; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+    .ingress-backend { font-size: 0.72rem; color: var(--text); }
+    .ingress-tls { font-size: 0.65rem; color: var(--green); }
+
+    /* PVC Status */
+    .pvc-status { font-size: 0.68rem; padding: 0.1rem 0.35rem; border-radius: 4px; font-weight: 600; }
+    .pvc-status.bound { background: rgba(74,222,128,0.15); color: var(--green); }
+    .pvc-status.pending { background: rgba(250,204,21,0.15); color: var(--yellow); }
+
+    /* CronJobs */
+    .cj-schedule { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--muted); }
+    .cj-status { font-size: 0.68rem; padding: 0.1rem 0.35rem; border-radius: 4px; font-weight: 600; }
+    .cj-status.active { background: rgba(74,222,128,0.15); color: var(--green); }
+    .cj-status.suspended { background: rgba(250,204,21,0.15); color: var(--yellow); }
+
+    /* SSH Terminal */
+    .ssh-terminal { background: #1a1a2e; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
+    .ssh-term-header { display: flex; align-items: center; gap: 0.4rem; padding: 0.5rem 0.75rem; background: #16161e; border-bottom: 1px solid var(--border); }
+    .term-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .term-dot.red { background: #ff5f57; }
+    .term-dot.yellow { background: #ffbd2e; }
+    .term-dot.green { background: #28c840; }
+    .term-title { margin-left: 0.5rem; color: var(--muted); font-size: 0.7rem; }
+    .ssh-term-body { padding: 0.75rem; max-height: 300px; overflow-y: auto; line-height: 1.5; }
+    .ssh-term-input { display: flex; align-items: center; padding: 0.5rem 0.75rem; border-top: 1px solid var(--border); background: #16161e; }
+    .ssh-term-input input { flex: 1; background: transparent; border: none; outline: none; color: var(--text); font-family: inherit; font-size: inherit; }
+    .term-prompt { color: var(--green); margin-right: 0.3rem; font-weight: 700; }
+    .term-output { color: #d4d4d4; white-space: pre-wrap; word-break: break-all; }
+
+    /* Service Check Button */
+    .svc-check-btn { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.25rem 0.5rem; border-radius: 6px; cursor: pointer; font-size: 0.72rem; font-family: inherit; display: inline-flex; align-items: center; gap: 0.25rem; transition: all 0.2s; }
+    .svc-check-btn:hover { border-color: var(--brand); color: var(--brand); }
+
+    /* Latency Chart */
+    .latency-chart { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; }
+    .latency-chart svg { width: 100%; height: 80px; }
+    .latency-stats { display: flex; gap: 1rem; margin-top: 0.4rem; justify-content: center; }
+    .lat-val { font-size: 0.72rem; color: var(--muted); }
+    .lat-val strong { color: var(--text); font-family: 'JetBrains Mono', monospace; }
+
+    /* Stats Ticker */
+    .stats-ticker { overflow: hidden; white-space: nowrap; margin-bottom: 1rem; }
+    .stats-ticker-inner { display: inline-flex; gap: 2rem; animation: ticker 30s linear infinite; }
+    .stats-ticker-item { font-size: 0.78rem; color: var(--muted); display: inline-flex; align-items: center; gap: 0.3rem; }
+    .ticker-val { color: var(--text); font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    @keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+    /* Section Body Collapse */
+    .section-body.collapsed { display: none; }
+
+    /* Uptime Timeline */
+    .uptime-timeline { display: flex; flex-direction: column; gap: 0.4rem; }
+    .uptime-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; }
+    .uptime-label { min-width: 70px; font-weight: 600; }
+    .uptime-track { flex: 1; height: 16px; display: flex; border-radius: 4px; overflow: hidden; }
+    .uptime-segment { height: 100%; }
+    .uptime-segment.up { background: var(--green); }
+    .uptime-segment.down { background: var(--red); }
+    .uptime-segment.unknown { background: var(--muted); }
+    .uptime-pct { min-width: 40px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; }
+
+    /* Schedule Cards */
+    .schedule-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; }
+    .schedule-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem; }
+    .schedule-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem; }
+    .schedule-name { font-weight: 600; font-size: 0.82rem; }
+    .schedule-toggle { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 0.8rem; }
+    .schedule-times { font-size: 0.72rem; color: var(--muted); }
+    .schedule-time { font-family: 'JetBrains Mono', monospace; }
+
+    /* Node Tags */
+    .node-tags { display: flex; gap: 0.2rem; flex-wrap: wrap; margin-top: 0.3rem; }
+    .node-tag { font-size: 0.6rem; padding: 0.1rem 0.3rem; border-radius: 3px; background: var(--bg); border: 1px solid var(--border); color: var(--muted); }
+
+    /* Node Checkbox (Bulk Select) */
+    .node-checkbox { position: absolute; top: 0.4rem; left: 0.4rem; }
+
+    /* Section Collapse Icon */
+    .section-collapse { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.8rem; transition: transform 0.2s; }
+
+    /* Favorites */
+    .favorites-bar { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.75rem; padding: 0.5rem; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+    .fav-btn { padding: 0.25rem 0.5rem; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); color: var(--text); cursor: pointer; font-size: 0.72rem; font-family: inherit; transition: all 0.2s; }
+    .fav-btn:hover { border-color: var(--brand); }
+
+    /* Group Actions */
+    .group-actions { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; margin-bottom: 1rem; }
+    .group-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem; }
+    .group-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; }
+    .group-card-title { font-weight: 600; font-size: 0.85rem; }
+    .group-card-count { font-size: 0.68rem; color: var(--muted); }
+    .group-card-btns { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+    .group-btn { padding: 0.25rem 0.5rem; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); color: var(--text); cursor: pointer; font-size: 0.72rem; font-family: inherit; display: inline-flex; align-items: center; gap: 0.25rem; transition: all 0.2s; }
+    .group-btn:hover { border-color: var(--brand); color: var(--brand); }
+
+    /* Bulk Select Bar */
+    .bulk-bar { display: none; position: sticky; top: 0; z-index: 100; background: var(--panel); border: 1px solid var(--brand); border-radius: 10px; padding: 0.5rem 1rem; margin-bottom: 0.75rem; align-items: center; justify-content: space-between; }
+    .bulk-bar.visible { display: flex; }
+    .bulk-count { font-size: 0.82rem; font-weight: 600; }
+
+    /* Node Sort */
+    .node-sort { display: flex; gap: 0.3rem; }
+    .node-sort select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.2rem 0.4rem; border-radius: 6px; font-size: 0.72rem; font-family: inherit; }
+
+    /* Reconnect Banner */
+    .reconnect-banner { display: none; background: rgba(239,68,68,0.1); border: 1px solid var(--red); border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1rem; align-items: center; gap: 0.5rem; font-size: 0.82rem; }
+    .reconnect-banner.visible { display: flex; }
+    .reconnect-timer { font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+    .reconnect-btn { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.3rem 0.6rem; border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-family: inherit; margin-left: auto; }
+
+    /* Warnings Banner */
+    .warnings-banner { display: none; background: rgba(250,204,21,0.1); border: 1px solid var(--yellow); border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
+    .warnings-banner.visible { display: flex; flex-direction: column; }
+    .warnings-title { font-weight: 600; font-size: 0.85rem; margin-bottom: 0.3rem; display: flex; align-items: center; gap: 0.4rem; }
+    .warnings-list { list-style: disc; padding-left: 1.5rem; font-size: 0.78rem; color: var(--muted); }
+
+    /* Cluster Age */
+    .cluster-age { font-size: 0.78rem; color: var(--muted); display: flex; align-items: center; gap: 0.4rem; }
+    .age-val { font-family: 'JetBrains Mono', monospace; color: var(--text); font-weight: 600; }
+
+    /* Connection Quality */
+    .conn-quality { display: flex; align-items: center; gap: 0.3rem; }
+    .conn-bars { display: flex; align-items: flex-end; gap: 2px; }
+    .conn-bar { width: 4px; background: var(--muted); border-radius: 1px; transition: background 0.3s; }
+    .conn-bar.active { background: var(--green); }
+    .conn-latency { font-size: 0.65rem; font-family: 'JetBrains Mono', monospace; color: var(--muted); }
+
+    /* Notification Center */
+    .notif-bell { background: none; border: none; color: var(--text); cursor: pointer; font-size: 1rem; position: relative; padding: 0.3rem; }
+    .notif-dot { position: absolute; top: 0; right: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--brand); display: none; }
+    .notif-dot.visible { display: block; }
+    .notif-dropdown { display: none; position: absolute; top: 100%; right: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; width: 300px; max-height: 400px; overflow-y: auto; z-index: 1000; box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
+    .notif-dropdown.visible { display: block; }
+    .notif-dropdown-header { display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; font-weight: 600; }
+    .notif-dropdown-header button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.72rem; }
+    .notif-list { padding: 0; }
+    .notif-empty { text-align: center; padding: 1.5rem; color: var(--muted); font-size: 0.8rem; }
+    .notif-item { display: flex; gap: 0.5rem; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s; }
+    .notif-item:hover { background: var(--panel-hover); }
+    .notif-item.unread { background: rgba(237,35,42,0.05); }
+    .notif-icon { width: 24px; text-align: center; font-size: 0.8rem; }
+    .notif-icon.error { color: var(--red); }
+    .notif-icon.warning { color: var(--yellow); }
+    .notif-icon.success { color: var(--green); }
+    .notif-icon.info { color: var(--blue); }
+    .notif-content { flex: 1; }
+    .notif-msg { font-size: 0.78rem; }
+    .notif-time { font-size: 0.65rem; color: var(--muted); }
+
+    /* Refresh Countdown */
+    .refresh-countdown { font-size: 0.68rem; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+    /* Theme Toggle */
+    .theme-toggle { background: none; border: 1px solid var(--border); color: var(--text); padding: 0.3rem 0.5rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem; }
+
+    /* SSE Indicator */
+    .sse-indicator { display: flex; align-items: center; gap: 0.3rem; font-size: 0.68rem; color: var(--muted); }
+    .sse-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+    .sse-dot.connected { background: var(--green); }
+
+    /* API Detect Button */
+    .api-detect-btn { background: none; border: 1px solid var(--border); color: var(--muted); padding: 0.3rem 0.5rem; border-radius: 6px; cursor: pointer; font-size: 0.72rem; transition: all 0.2s; }
+    .api-detect-btn:hover { border-color: var(--brand); color: var(--brand); }
+
+    /* Cost Calculator */
+    .cost-calc { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.5rem; }
+    .cost-item { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.75rem; }
+    .cost-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 0.2rem; }
+    .cost-value { font-size: 1.1rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .cost-detail { font-size: 0.65rem; color: var(--muted); }
+    .cost-value.positive { color: var(--green); }
+    .cost-value.negative { color: var(--red); }
+
+    /* SSH Output Panel */
+    .ssh-presets { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+    .ssh-preset { padding: 0.25rem 0.5rem; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); color: var(--text); cursor: pointer; font-size: 0.72rem; transition: all 0.2s; }
+    .ssh-preset:hover { border-color: var(--brand); }
+    .ssh-output { display: none; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin-top: 0.5rem; overflow: hidden; }
+    .ssh-output-header { display: flex; justify-content: space-between; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); font-size: 0.72rem; color: var(--muted); }
+
+    /* Events Panel */
+    .events-body { max-height: 300px; overflow-y: auto; }
+    .events-body.collapsed { display: none; }
   </style>
 </head>
 <body>
@@ -847,6 +1207,7 @@
         <button class="toolbar-btn" onclick="takeClusterSnapshot()" title="Full cluster backup (kubectl)"><i class="fa-solid fa-database"></i> Snapshot</button>
         <button class="toolbar-btn" onclick="exportDashboardConfig()" title="Export dashboard settings"><i class="fa-solid fa-file-export"></i></button>
         <label class="toolbar-btn" title="Import dashboard settings" style="cursor:pointer"><i class="fa-solid fa-file-import"></i><input type="file" accept=".json" onchange="importDashboardConfig(event)" style="display:none"></label>
+        <button class="toolbar-btn" onclick="toggleAlertSound()" title="Toggle alert sound" id="soundToggle"><i class="fa-solid fa-volume-high"></i></button>
         <button class="toolbar-btn" onclick="toggleFullscreen()" title="Toggle fullscreen" id="fullscreenBtn"><i class="fa-solid fa-expand"></i></button>
         <button class="toolbar-btn" onclick="openShortcuts()" title="Keyboard shortcuts"><i class="fa-solid fa-keyboard"></i> <kbd>?</kbd></button>
         <div class="conn-quality" id="connQuality" title="API connection quality" style="display:none">
@@ -875,13 +1236,6 @@
           </div>
         </div>
         <span class="refresh-countdown" id="refreshCountdown" title="Auto-refresh countdown">10s</span>
-        <button class="refresh-btn" onclick="loadClusterStatus()" id="refreshBtn" aria-label="Refresh cluster status">
-          <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Refresh
-        </button>
-      </div>
-      <div class="toolbar">
-        <button class="toolbar-btn" onclick="exportClusterState()" title="Export cluster snapshot"><i class="fa-solid fa-download"></i> Export</button>
-        <button class="toolbar-btn" onclick="showShortcuts()" title="Keyboard shortcuts"><i class="fa-solid fa-keyboard"></i> <kbd>?</kbd></button>
         <button class="refresh-btn" onclick="loadClusterStatus()" id="refreshBtn" aria-label="Refresh cluster status">
           <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Refresh
         </button>
@@ -1019,6 +1373,12 @@
       <div class="health-pct" id="healthPct">--%</div>
     </div>
 
+    <!-- Health Graph -->
+    <div id="healthGraph" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:0.75rem 1rem;margin-bottom:1.25rem">
+      <svg id="healthGraphSvg" viewBox="0 0 400 60" preserveAspectRatio="none" style="width:100%;height:60px"></svg>
+      <div id="healthGraphLabel" style="font-size:0.7rem;color:var(--muted);text-align:center;margin-top:0.25rem"></div>
+    </div>
+
     <!-- Alerts Panel -->
     <div class="alerts-panel" id="alertsPanel" style="display:none">
       <div class="alerts-header" onclick="toggleAlerts()">
@@ -1054,6 +1414,22 @@
     <div class="warnings-banner" id="warningsBanner">
       <div class="warnings-title"><i class="fa-solid fa-triangle-exclamation"></i> Cluster Warnings</div>
       <ul class="warnings-list" id="warningsList"></ul>
+    </div>
+
+    <!-- Resource Summary -->
+    <div class="panel" id="resourceSummary" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem">
+      <div class="section-header" style="margin-bottom:0.75rem">
+        <h2 class="section-title" style="font-size:0.95rem"><i class="fa-solid fa-chart-pie"></i> Resource Summary</h2>
+      </div>
+      <div class="resource-bars">
+        <div class="resource-bar-row"><span class="resource-label">CPU</span><span class="resource-val" id="totalCpuVal">--%</span><div class="resource-track"><div class="resource-fill" id="totalCpuBar" style="width:0%"></div></div><span class="resource-detail" id="totalCpuDetail"></span></div>
+        <div class="resource-bar-row"><span class="resource-label">RAM</span><span class="resource-val" id="totalRamVal">--%</span><div class="resource-track"><div class="resource-fill" id="totalRamBar" style="width:0%"></div></div><span class="resource-detail" id="totalRamDetail"></span></div>
+        <div class="resource-bar-row"><span class="resource-label">Disk</span><span class="resource-val" id="totalStorVal">--%</span><div class="resource-track"><div class="resource-fill" id="totalStorBar" style="width:0%"></div></div><span class="resource-detail" id="totalStorDetail"></span></div>
+        <div class="resource-bar-row"><span class="resource-label">Battery</span><span class="resource-val" id="avgBattVal">--%</span><div class="resource-track"><div class="resource-fill" id="avgBattBar" style="width:0%"></div></div><span class="resource-detail" id="avgBattDetail"></span></div>
+      </div>
+      <div id="donutChartSection" style="display:none;margin-top:1rem">
+        <div class="donut-charts" id="donutCharts"></div>
+      </div>
     </div>
 
     <!-- Battery Heatmap -->
@@ -1376,6 +1752,24 @@
       <div class="quota-grid" id="quotaGrid"></div>
     </div>
 
+    <!-- ConfigMaps & Secrets -->
+    <div class="section-header" onclick="toggleSection('configPanel',this)" style="display:none" id="configHeader">
+      <h2 class="section-title"><i class="fa-solid fa-file-code"></i> ConfigMaps & Secrets <span class="section-badge" id="configBadge">0</span></h2>
+      <i class="fa-solid fa-chevron-down section-collapse"></i>
+    </div>
+    <div class="section-body" id="configPanel" style="display:none">
+      <div class="config-list" id="configList"></div>
+    </div>
+
+    <!-- Events -->
+    <div class="panel" id="eventsPanel" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem">
+      <div class="section-header" style="margin-bottom:0.5rem;cursor:pointer" onclick="toggleEvents()">
+        <h2 class="section-title" style="font-size:0.95rem"><i class="fa-solid fa-bolt"></i> Cluster Events <span class="section-badge" id="eventCount">0</span></h2>
+        <i class="fa-solid fa-chevron-down" id="eventsChevron"></i>
+      </div>
+      <div class="events-body" id="eventsBody"></div>
+    </div>
+
     <!-- Network Section -->
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-wifi"></i> Network</h2>
@@ -1421,6 +1815,14 @@
         <h2 class="section-title" style="font-size:0.95rem"><i class="fa-solid fa-timeline"></i> Node Uptime (Last 24h)</h2>
       </div>
       <div class="uptime-timeline" id="uptimeTimeline"></div>
+    </div>
+
+    <!-- Schedules -->
+    <div class="panel" id="schedulePanel" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem">
+      <div class="section-header" style="margin-bottom:0.5rem">
+        <h2 class="section-title" style="font-size:0.95rem"><i class="fa-solid fa-clock"></i> Schedules</h2>
+      </div>
+      <div class="schedule-grid" id="scheduleGrid"></div>
     </div>
 
     <!-- SSH Terminal -->
@@ -1542,6 +1944,68 @@
     <p><a href="/"><i class="fa-solid fa-arrow-left"></i> Back to Home</a></p>
     <p style="margin-top: 0.5rem;">&copy; 2026 Curtis Bragdon. All rights reserved.</p>
   </footer>
+
+  <button id="scrollTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" style="display:none;position:fixed;bottom:2rem;right:2rem;z-index:999;background:var(--brand);color:#fff;border:none;border-radius:50%;width:40px;height:40px;cursor:pointer;font-size:1rem;box-shadow:0 4px 12px rgba(0,0,0,0.3)"><i class="fa-solid fa-arrow-up"></i></button>
+
+  <!-- Node Detail Modal -->
+  <div class="modal-overlay" id="nodeDetailModal">
+    <div class="node-detail-modal-content">
+      <div class="node-detail-modal-header">
+        <h3><i class="fa-solid fa-server"></i> <span id="nodeDetailTitle">Node</span></h3>
+        <button style="background:none;border:none;color:var(--text);cursor:pointer;font-size:1.2rem;" onclick="closeNodeDetail()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="node-detail-body" id="nodeDetailBody"></div>
+      <div class="node-detail-actions" id="nodeDetailActions"></div>
+    </div>
+  </div>
+
+  <!-- Compare Modal -->
+  <div class="modal-overlay" id="compareModal">
+    <div class="compare-modal-content">
+      <div class="compare-modal-header">
+        <h3><i class="fa-solid fa-code-compare"></i> <span id="compareTitle">Compare Nodes</span></h3>
+        <button style="background:none;border:none;color:var(--text);cursor:pointer;font-size:1.2rem;" onclick="closeCompare()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="compare-body" id="compareBody"></div>
+    </div>
+  </div>
+
+  <!-- Shortcuts Modal -->
+  <div class="modal-overlay" id="shortcutsModal">
+    <div class="shortcuts-modal-content">
+      <div class="shortcuts-modal-header">
+        <h3><i class="fa-solid fa-keyboard"></i> Keyboard Shortcuts</h3>
+        <button style="background:none;border:none;color:var(--text);cursor:pointer;font-size:1.2rem;" onclick="closeShortcuts()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="shortcuts-list">
+        <div class="shortcut-row"><span>Refresh cluster</span><kbd>R</kbd></div>
+        <div class="shortcut-row"><span>Toggle theme</span><kbd>T</kbd></div>
+        <div class="shortcut-row"><span>Toggle bulk select</span><kbd>B</kbd></div>
+        <div class="shortcut-row"><span>Toggle alert sound</span><kbd>S</kbd></div>
+        <div class="shortcut-row"><span>Focus pod search</span><kbd>/</kbd></div>
+        <div class="shortcut-row"><span>Command palette</span><kbd>Ctrl+K</kbd></div>
+        <div class="shortcut-row"><span>Nodes section</span><kbd>1</kbd></div>
+        <div class="shortcut-row"><span>Pods section</span><kbd>2</kbd></div>
+        <div class="shortcut-row"><span>Services section</span><kbd>3</kbd></div>
+        <div class="shortcut-row"><span>Mining section</span><kbd>4</kbd></div>
+        <div class="shortcut-row"><span>Network section</span><kbd>5</kbd></div>
+        <div class="shortcut-row"><span>Scroll to top</span><kbd>Home</kbd></div>
+        <div class="shortcut-row"><span>Show this help</span><kbd>?</kbd></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Command Palette (Ctrl+K) -->
+  <div id="cmdPalette" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:3000;align-items:flex-start;justify-content:center;padding-top:20vh;">
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;width:90%;max-width:480px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="padding:0.75rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.5rem;">
+        <i class="fa-solid fa-magnifying-glass" style="color:var(--muted);font-size:0.85rem;"></i>
+        <input id="cmdPaletteInput" type="text" placeholder="Type a command..." style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-family:inherit;font-size:0.9rem;">
+        <kbd style="font-size:0.65rem;padding:0.15rem 0.4rem;border-radius:4px;background:var(--bg);border:1px solid var(--border);color:var(--muted);font-family:'JetBrains Mono',monospace;">ESC</kbd>
+      </div>
+      <div id="cmdPaletteResults" style="max-height:320px;overflow-y:auto;"></div>
+    </div>
+  </div>
 
   <script>
     let allPods = [];
@@ -1746,11 +2210,26 @@
         // Track uptime
         if (data.nodes) trackNodeUptime(data.nodes);
 
+        // Render resource summary, donut charts, topology, thermal
+        if (lastMetrics && Object.keys(lastMetrics).length > 0) {
+          renderResourceSummary(lastMetrics);
+          renderDonutCharts(lastMetrics);
+          renderThermalGrid(lastMetrics);
+        }
+        if (data.nodes && data.nodes.length > 0) {
+          renderTopologyMap(data.nodes);
+        }
+        recordLocalHealth(summary.healthScore || 0);
+
         if (apiEndpoint && isDirectApi) {
           loadScreens();
           loadAlerts();
           loadCommandLog();
           loadMiningHistory();
+          loadNodeScheduling();
+          loadPodResources();
+          loadConfigMaps();
+          loadBatteryHeatmap();
         }
 
         document.getElementById('lastUpdate').textContent = data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : 'Never';
@@ -1809,7 +2288,7 @@
           <div class="node-header">
             <div class="node-name"><i class="fa-solid ${icon}"></i>${node.name}</div>
             <span class="node-role">${isCP ? 'Control Plane' : 'Worker'}</span>
-            ${getNodeSchedBadge(safeName)}
+            ${getNodeSchedBadge(node.name)}
           </div>
           <div class="node-tooltip">
             <div class="tooltip-row"><span class="tooltip-key">IP:</span><span class="tooltip-val">${node.ip || '--'}</span></div>
@@ -2000,13 +2479,25 @@
       document.getElementById('passwordInput').value = '';
     }
 
+    var pendingPasswordCallback = null;
+
+    function requirePassword(callback) {
+      pendingPasswordCallback = callback;
+      document.getElementById('passwordModal').classList.add('visible');
+      document.getElementById('passwordInput').focus();
+    }
+
     function submitPassword() {
       const pw = document.getElementById('passwordInput').value;
       if (pw) {
         savedPassword = pw;
         localStorage.setItem('clusterPassword', pw);
         closeModal();
-        if (pendingCommand === 'browse') sendBrowseCommand();
+        if (pendingPasswordCallback) {
+          var cb = pendingPasswordCallback;
+          pendingPasswordCallback = null;
+          cb();
+        } else if (pendingCommand === 'browse') sendBrowseCommand();
         else if (pendingCommand && pendingCommand.startsWith('mining-')) sendMiningCommand(pendingCommand);
         else executeCommand(pendingCommand, pw);
       }
@@ -2280,39 +2771,6 @@
       } catch (e) { showToast('Export failed: ' + e.message, 'error'); }
     }
 
-    // ─── Keyboard Shortcuts ──────────────────────────────────────────────
-    function showShortcuts() {
-      document.getElementById('logModalTitle').textContent = 'Keyboard Shortcuts';
-      document.getElementById('logBody').innerHTML =
-        '<div style="font-size:0.9rem;color:var(--text);line-height:2.2">' +
-        '<strong>R</strong> &mdash; Refresh cluster status<br>' +
-        '<strong>S</strong> &mdash; Capture phone screens<br>' +
-        '<strong>E</strong> &mdash; Export cluster snapshot<br>' +
-        '<strong>W</strong> &mdash; Wake all phones<br>' +
-        '<strong>F</strong> &mdash; Focus pod search<br>' +
-        '<strong>H</strong> &mdash; Toggle command history<br>' +
-        '<strong>A</strong> &mdash; Toggle alerts<br>' +
-        '<strong>Esc</strong> &mdash; Close modals<br>' +
-        '<strong>?</strong> &mdash; Show this help</div>';
-      document.getElementById('logModal').classList.add('visible');
-    }
-
-    document.addEventListener('keydown', function(e) {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
-      var key = e.key.toLowerCase();
-      if (key === 'r') loadClusterStatus();
-      else if (key === 's') loadScreens();
-      else if (key === 'e') exportClusterState();
-      else if (key === 'w') {
-        if (savedPassword) sendToBackend({ command: 'wake', target: 'phones', password: savedPassword }).then(function() { showToast('Wake sent to all phones', 'success'); });
-      }
-      else if (key === 'f') { e.preventDefault(); var si = document.getElementById('podSearchInput'); if (si) si.focus(); }
-      else if (key === 'h') toggleCmdHistory();
-      else if (key === 'a') toggleAlerts();
-      else if (key === '?') showShortcuts();
-      else if (key === 'escape') { closeLogModal(); closeScreenModal(); closeModal(); }
-    });
-
     // ─── Screen Viewer Functions ──────────────────────────────────────────
 
     async function loadScreens() {
@@ -2420,15 +2878,15 @@
       if (!apiEndpoint) { showToast('Direct API required for ping test', 'error'); return; }
       showToast('Pinging all nodes...', 'info');
       try {
-        var data = await apiFetch('/api/ping');
-        var results = data.results || [];
+        var data = await apiFetch('/api/connectivity');
+        var results = data.nodes || [];
         var html = '<h3 style="margin-bottom:0.75rem"><i class="fa-solid fa-satellite-dish" style="color:var(--brand)"></i> Connectivity Test</h3>';
         html += '<p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.75rem">' + data.summary.reachable + '/' + data.summary.total + ' nodes reachable</p>';
         html += '<div class="ping-grid">';
         results.forEach(function(r) {
           html += '<span class="ping-chip ' + (r.reachable ? 'ok' : 'fail') + '">';
           html += '<i class="fa-solid ' + (r.reachable ? 'fa-circle-check' : 'fa-circle-xmark') + '" style="color:var(--' + (r.reachable ? 'green' : 'red') + ')"></i>';
-          html += r.name + ' <span class="ping-ms">' + (r.reachable ? r.latencyMs + 'ms' : 'timeout') + '</span></span>';
+          html += r.name + ' <span class="ping-ms">' + (r.reachable ? r.latency + 'ms' : 'timeout') + '</span></span>';
         });
         html += '</div>';
         document.getElementById('logModalTitle').textContent = 'Ping Results';
@@ -2440,9 +2898,7 @@
     // ─── Quick Actions ───────────────────────────────────────────────────
     async function quickAction(cmd, target) {
       if (!savedPassword) {
-        pendingCommand = cmd;
-        document.getElementById('passwordModal').classList.add('visible');
-        document.getElementById('passwordInput').focus();
+        requirePassword(function() { quickAction(cmd, target); });
         return;
       }
       showToast('Sending ' + cmd + ' to ' + target + '...', 'info');
@@ -2572,10 +3028,12 @@
       var tbody = document.getElementById('deployTableBody');
       if (deployments.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-rocket"></i><br>No deployments</td></tr>'; return; }
       tbody.innerHTML = deployments.map(function(d) {
-        var rc = d.ready === d.replicas ? 'green' : d.ready > 0 ? 'yellow' : 'red';
+        var avail = d.available || 0;
+        var rc = avail === d.replicas ? 'green' : avail > 0 ? 'yellow' : 'red';
         var ns = d.namespace.replace(/[^a-zA-Z0-9._-]/g, '');
         var dn = d.name.replace(/[^a-zA-Z0-9._-]/g, '');
-        return '<tr><td class="pod-name">' + d.name + '</td><td><span class="pod-namespace">' + d.namespace + '</span></td><td style="color:var(--' + rc + ')">' + d.ready + '/' + d.replicas + '</td><td style="font-size:0.75rem;color:var(--muted)">' + d.strategy + '</td><td><div class="deploy-scale"><button onclick="scaleDeployment(\'' + ns + '\',\'' + dn + '\',' + Math.max(0, d.replicas - 1) + ')"><i class="fa-solid fa-minus"></i></button><span>' + d.replicas + '</span><button onclick="scaleDeployment(\'' + ns + '\',\'' + dn + '\',' + (d.replicas + 1) + ')"><i class="fa-solid fa-plus"></i></button></div></td></tr>';
+        var img = (d.image || '').split('/').pop() || '';
+        return '<tr><td class="pod-name">' + d.name + '</td><td><span class="pod-namespace">' + d.namespace + '</span></td><td style="color:var(--' + rc + ')">' + avail + '/' + d.replicas + '</td><td style="font-size:0.75rem;color:var(--muted)" title="' + (d.image || '') + '">' + img + '</td><td><div class="deploy-scale"><button onclick="scaleDeployment(\'' + ns + '\',\'' + dn + '\',' + Math.max(0, d.replicas - 1) + ')"><i class="fa-solid fa-minus"></i></button><span>' + d.replicas + '</span><button onclick="scaleDeployment(\'' + ns + '\',\'' + dn + '\',' + (d.replicas + 1) + ')"><i class="fa-solid fa-plus"></i></button></div></td></tr>';
       }).join('');
     }
 
@@ -2595,7 +3053,8 @@
 
     function toggleAutoScroll() {
       logAutoScroll = !logAutoScroll;
-      document.getElementById('autoScrollBtn').className = logAutoScroll ? 'active' : '';
+      var asBtn = document.getElementById('autoScrollBtn');
+      if (asBtn) asBtn.className = logAutoScroll ? 'active' : '';
     }
     function refreshCurrentLogs() {
       if (currentLogNs && currentLogPod) viewPodLogs(currentLogNs, currentLogPod);
@@ -2755,7 +3214,7 @@
     function updateSoundToggle() {
       var btn = document.getElementById('soundToggle');
       if (btn) {
-        btn.className = 'sound-toggle' + (alertSoundEnabled ? ' active' : '');
+        btn.className = 'toolbar-btn' + (alertSoundEnabled ? ' active' : '');
         btn.innerHTML = '<i class="fa-solid ' + (alertSoundEnabled ? 'fa-volume-high' : 'fa-volume-xmark') + '"></i>';
       }
     }
@@ -2812,7 +3271,7 @@
 
     async function bulkCommand(cmd) {
       if (selectedNodes.size === 0) { showToast('No nodes selected', 'error'); return; }
-      if (!savedPassword) { pendingCommand = cmd; document.getElementById('passwordModal').classList.add('visible'); document.getElementById('passwordInput').focus(); return; }
+      if (!savedPassword) { requirePassword(function() { bulkCommand(cmd); }); return; }
       showToast('Sending ' + cmd + ' to ' + selectedNodes.size + ' nodes...', 'info');
       var targets = Array.from(selectedNodes);
       try {
@@ -2903,7 +3362,7 @@
       if (events.length === 0) { panel.style.display = 'none'; return; }
       panel.style.display = 'block';
       body.innerHTML = events.slice(0, 30).map(function(ev) {
-        var time = ev.lastSeen ? new Date(ev.lastSeen).toLocaleTimeString() : '';
+        var time = (ev.timestamp || ev.lastSeen) ? new Date(ev.timestamp || ev.lastSeen).toLocaleTimeString() : '';
         return '<div class="event-item">' +
           '<span class="event-type ' + ev.type + '">' + ev.type + '</span>' +
           '<div class="event-content"><span class="event-reason">' + ev.reason + '</span> ' +
@@ -2917,7 +3376,7 @@
       if (stream) {
         streamBadge.textContent = events.length + ' events';
         stream.innerHTML = events.slice(0, 50).map(function(ev) {
-          var time = ev.lastSeen ? new Date(ev.lastSeen).toLocaleTimeString() : '';
+          var time = (ev.timestamp || ev.lastSeen) ? new Date(ev.timestamp || ev.lastSeen).toLocaleTimeString() : '';
           var typeCls = (ev.type || '').toLowerCase() === 'warning' ? 'warning' : 'normal';
           return '<div class="event-item">' +
             '<span class="event-time">' + time + '</span>' +
@@ -2947,18 +3406,21 @@
     function renderNamespaceUsage(namespaces) {
       var container = document.getElementById('nsUsage');
       var badge = document.getElementById('nsBadge');
-      var nsNames = Object.keys(namespaces).sort();
-      badge.textContent = nsNames.length + ' namespaces';
-      if (nsNames.length === 0) {
+      // Handle both array format (from server) and object format (legacy)
+      var nsList = Array.isArray(namespaces) ? namespaces : Object.keys(namespaces).map(function(k) { return Object.assign({ name: k }, namespaces[k]); });
+      badge.textContent = nsList.length + ' namespaces';
+      if (nsList.length === 0) {
         container.innerHTML = '<div class="empty-state" style="padding:1rem">No namespace data</div>';
         return;
       }
-      container.innerHTML = nsNames.map(function(ns) {
-        var u = namespaces[ns];
-        var color = u.running === u.pods ? 'green' : u.running > 0 ? 'yellow' : 'red';
-        return '<div class="ns-chip"><div class="ns-chip-name" style="color:var(--' + color + ')">' + ns + '</div>' +
-          '<div class="ns-chip-stats">' + u.running + '/' + u.pods + ' pods | ' + u.containers + ' containers' +
-          (u.restarts > 0 ? ' | ' + u.restarts + ' restarts' : '') + '</div></div>';
+      nsList.sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
+      container.innerHTML = nsList.map(function(u) {
+        var name = u.name || 'unknown';
+        var pods = u.pods || 0;
+        var status = u.status || 'Active';
+        var color = status === 'Active' ? (pods > 0 ? 'green' : 'muted') : 'yellow';
+        return '<div class="ns-chip"><div class="ns-chip-name" style="color:var(--' + color + ')">' + name + '</div>' +
+          '<div class="ns-chip-stats">' + pods + ' pods | ' + status + '</div></div>';
       }).join('');
     }
 
@@ -2966,7 +3428,7 @@
     async function loadResourceQuotas() {
       if (!apiEndpoint) return;
       try {
-        var data = await apiFetch('/api/resourcequotas');
+        var data = await apiFetch('/api/resource-quotas');
         renderResourceQuotas(data.quotas || []);
       } catch (e) { /* silent */ }
     }
@@ -3001,7 +3463,7 @@
     async function loadNodeScheduling() {
       if (!apiEndpoint) return;
       try {
-        var data = await apiFetch('/api/nodes/scheduling');
+        var data = await apiFetch('/api/node-scheduling');
         nodeSchedulingData = {};
         (data.nodes || []).forEach(function(n) {
           nodeSchedulingData[n.name] = n;
@@ -3052,12 +3514,17 @@
       status.textContent = 'Running command on ' + target + '...';
       status.className = 'control-status visible';
       try {
-        var data = await apiPost('/api/command/custom', { cmd: cmd, target: target, password: savedPassword });
-        if (data.results) {
+        var data = await apiPost('/api/command', { command: 'custom', target: target, customCmd: cmd, password: savedPassword });
+        if (data.success || data.output || data.results) {
           var outputLines = [];
-          for (var n in data.results) {
-            outputLines.push('=== ' + n + ' ===');
-            outputLines.push(data.results[n].stdout || data.results[n].stderr || data.results[n].error || '(no output)');
+          if (data.output) {
+            outputLines.push('=== ' + target + ' ===');
+            outputLines.push(data.output);
+          } else if (data.results) {
+            for (var n in data.results) {
+              outputLines.push('=== ' + n + ' ===');
+              outputLines.push(data.results[n].stdout || data.results[n].stderr || data.results[n].error || '(no output)');
+            }
           }
           document.getElementById('logModalTitle').textContent = 'Command: ' + cmd;
           document.getElementById('logBody').innerHTML = outputLines.map(function(l) {
@@ -3243,7 +3710,7 @@
       document.getElementById('sshOutputTitle').textContent = target + ' $ ' + cmd;
       document.getElementById('sshOutputPre').textContent = 'Running...';
 
-      apiPost('/api/command/custom', { command: cmd, target: target, password: localStorage.getItem('clusterPassword') || '' })
+      apiPost('/api/command', { command: 'custom', target: target, customCmd: cmd, password: localStorage.getItem('clusterPassword') || '' })
         .then(function(data) {
           document.getElementById('sshOutputPre').textContent = data.output || data.error || 'No output';
         })
@@ -3420,7 +3887,7 @@
     async function loadPodResources() {
       if (!apiEndpoint) return;
       try {
-        var data = await apiFetch('/api/pods/resources');
+        var data = await apiFetch('/api/pod-resources');
         podResources = data.resources || {};
         renderPods();
       } catch (e) { /* silent */ }
@@ -3433,7 +3900,7 @@
       if (!apiEndpoint) { showToast('Direct API required for health checks', 'error'); return; }
       showToast('Checking service health...', 'info');
       try {
-        var data = await apiFetch('/api/services/health');
+        var data = await apiFetch('/api/service-health');
         serviceHealthData = {};
         (data.services || []).forEach(function(s) {
           serviceHealthData[s.namespace + '/' + s.name] = s;
@@ -3452,7 +3919,7 @@
     async function loadNodeMetricsHistory() {
       if (!apiEndpoint) return;
       try {
-        var data = await apiFetch('/api/metrics/history');
+        var data = await apiFetch('/api/metrics-history');
         nodeMetricsHistory = data.history || {};
       } catch (e) { /* silent */ }
     }
@@ -3557,7 +4024,7 @@
     async function loadNodeAnnotations(nodeName) {
       if (!apiEndpoint) return null;
       try {
-        return await apiFetch('/api/nodes/' + nodeName + '/annotations');
+        return await apiFetch('/api/node-annotations/' + nodeName);
       } catch (e) { return null; }
     }
 
@@ -3680,15 +4147,21 @@
       body.innerHTML += '<div class="term-output" id="termLoading"><i class="fa-solid fa-spinner fa-spin" style="color:#6b7280"></i></div>';
       body.scrollTop = body.scrollHeight;
 
-      apiPost('/api/command/custom', { cmd: cmd, target: target, password: savedPassword })
+      apiPost('/api/command', { command: 'custom', target: target, customCmd: cmd, password: savedPassword })
         .then(function(data) {
           var loadEl = document.getElementById('termLoading');
           if (loadEl) loadEl.remove();
           var output = '';
           if (data.results) {
-            data.results.forEach(function(r) {
-              output += (r.output || r.error || 'No output') + '\n';
-            });
+            if (Array.isArray(data.results)) {
+              data.results.forEach(function(r) {
+                output += (r.output || r.error || 'No output') + '\n';
+              });
+            } else {
+              for (var n in data.results) {
+                output += '=== ' + n + ' ===\n' + (data.results[n].stdout || data.results[n].stderr || data.results[n].error || 'No output') + '\n';
+              }
+            }
           } else {
             output = data.error || data.message || 'Done';
           }
@@ -3711,7 +4184,7 @@
     async function loadApiLatency() {
       if (!apiEndpoint) return;
       try {
-        var data = await apiFetch('/api/latency/history');
+        var data = await apiFetch('/api/api-latency');
         renderLatencyChart(data.history || []);
       } catch (e) { /* silent */ }
     }
@@ -3747,7 +4220,7 @@
       if (!apiEndpoint || !savedPassword) { showToast('API + password required', 'error'); return; }
       showToast('Creating cluster snapshot...', 'info');
       try {
-        var data = await apiPost('/api/snapshot', { password: savedPassword });
+        var data = await apiPost('/api/cluster-snapshot', { password: savedPassword });
         if (data.snapshot) {
           var blob = new Blob([JSON.stringify(data.snapshot, null, 2)], { type: 'application/json' });
           var a = document.createElement('a');
@@ -3998,7 +4471,7 @@
     async function loadHealthHistory() {
       if (!apiEndpoint) return;
       try {
-        var res = await fetch(apiEndpoint + '/api/health/history', { headers: apiHeaders(), signal: AbortSignal.timeout(5000) });
+        var res = await fetch(apiEndpoint + '/api/health-history', { headers: apiHeaders(), signal: AbortSignal.timeout(5000) });
         var data = await res.json();
         if (data.history && data.history.length > 0) {
           localHealthHistory = data.history;
@@ -4026,8 +4499,8 @@
       var pathStr = 'M' + points.join(' L');
 
       svg.innerHTML =
-        '<defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--green)" stop-opacity="0.3"/><stop offset="1" stop-color="var(--green)" stop-opacity="0"/></linearGradient></defs>' +
-        '<polygon points="' + fillPoints + '" fill="url(#hg)"/>' +
+        '<defs><linearGradient id="hgHealth" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--green)" stop-opacity="0.3"/><stop offset="1" stop-color="var(--green)" stop-opacity="0"/></linearGradient></defs>' +
+        '<polygon points="' + fillPoints + '" fill="url(#hgHealth)"/>' +
         '<path d="' + pathStr + '" fill="none" stroke="var(--green)" stroke-width="2"/>' +
         '<line x1="' + pad + '" y1="' + (H - pad - (H - 2 * pad) * 0.8) + '" x2="' + (W - pad) + '" y2="' + (H - pad - (H - 2 * pad) * 0.8) + '" stroke="var(--border)" stroke-dasharray="4"/>' +
         '<text x="' + (W - pad) + '" y="' + (H - pad - (H - 2 * pad) * 0.8 - 3) + '" fill="var(--muted)" font-size="8" text-anchor="end">80%</text>';
@@ -4455,7 +4928,7 @@
     // ─── Scroll to Top ────────────────────────────────────────────────────
     window.addEventListener('scroll', function() {
       var btn = document.getElementById('scrollTopBtn');
-      if (btn) btn.classList.toggle('visible', window.scrollY > 400);
+      if (btn) btn.style.display = window.scrollY > 400 ? 'block' : 'none';
     });
 
     // ─── Stats Ticker ────────────────────────────────────────────────────
@@ -4544,6 +5017,16 @@
     setInterval(measureApiLatency, 15000);
     setInterval(function() { if (apiEndpoint) loadScreens(); }, 30000);
     setInterval(function() { if (apiEndpoint) { loadAlerts(); loadCommandLog(); } }, 15000);
+    loadEvents();
+    loadDeployments();
+    loadNamespaceUsage();
+    loadResourceQuotas();
+    loadNodeMetricsHistory();
+    loadPVCs();
+    loadIngresses();
+    loadCronJobs();
+    loadApiLatency();
+    setInterval(function() { if (apiEndpoint) { loadEvents(); loadDeployments(); loadNodeMetricsHistory(); loadNamespaceUsage(); loadResourceQuotas(); loadPVCs(); loadIngresses(); loadCronJobs(); loadApiLatency(); } }, 30000);
   </script>
 </body>
 </html>

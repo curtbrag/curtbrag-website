@@ -718,13 +718,49 @@ async function handleCommand(req, res, body) {
     return sendJson(res, 401, { error: 'Invalid password' });
   }
 
-  const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse', 'refresh-adb'];
+  const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse', 'refresh-adb', 'custom'];
   if (!validCommands.includes(command)) {
     return sendJson(res, 400, { error: 'Invalid command: ' + command });
   }
 
   if (command === 'browse' && !browseUrl) {
     return sendJson(res, 400, { error: 'URL required for browse command' });
+  }
+
+  // Custom command: SSH into target and run a sanitized command
+  if (command === 'custom') {
+    const { customCmd } = body;
+    if (!customCmd || typeof customCmd !== 'string') {
+      return sendJson(res, 400, { error: 'customCmd is required for custom command' });
+    }
+    // Sanitize: only allow alphanumeric, spaces, dashes, underscores, dots, slashes, colons, equals
+    if (!/^[a-zA-Z0-9 _.\-/:=,+@]+$/.test(customCmd)) {
+      logCommand({ command: 'custom', target, status: 'denied', reason: 'Invalid characters in customCmd' });
+      return sendJson(res, 400, { error: 'customCmd contains disallowed characters. Only alphanumeric, spaces, and common safe characters (- _ . / : = , + @) are allowed.' });
+    }
+    if (customCmd.length > 200) {
+      return sendJson(res, 400, { error: 'customCmd too long (max 200 characters)' });
+    }
+    const customTarget = target;
+    if (!customTarget) {
+      return sendJson(res, 400, { error: 'Target is required for custom command' });
+    }
+    let r;
+    if (CONFIG.phoneNodes[customTarget]) {
+      r = await sshExecAsync(customTarget, customCmd);
+    } else if (CONFIG.otherNodes.includes(customTarget)) {
+      r = await runAsync(`ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes ${customTarget} ${shellEscape(customCmd)}`, 15000);
+    } else {
+      return sendJson(res, 400, { error: 'Unknown target node: ' + customTarget });
+    }
+    logCommand({
+      command: 'custom',
+      target: customTarget,
+      customCmd,
+      status: r.ok ? 'success' : 'failed',
+      message: r.ok ? r.stdout : r.stderr,
+    });
+    return sendJson(res, 200, { success: r.ok, output: r.stdout || r.stderr });
   }
 
   // Special: refresh-adb
@@ -1677,6 +1713,120 @@ async function handleIngresses(req, res) {
   sendJson(res, 200, { ingresses });
 }
 
+// ─── Node Detail ─────────────────────────────────────────────────────────────
+
+async function handleNodeDetail(req, res, nodeName) {
+  if (!/^[a-zA-Z0-9._-]+$/.test(nodeName)) {
+    return sendJson(res, 400, { error: 'Invalid node name' });
+  }
+
+  const metrics = (metricsCache.data || {})[nodeName] || null;
+
+  const statusData = statusCache.data || {};
+  const pods = (statusData.pods || []).filter(p => p.node === nodeName);
+
+  const history = nodeHistory[nodeName] || null;
+
+  sendJson(res, 200, { metrics, pods, history });
+}
+
+// ─── Deployments ─────────────────────────────────────────────────────────────
+
+async function handleDeployments(req, res) {
+  const result = await runAsync('kubectl get deployments -A -o json', 15000);
+  if (!result.ok) {
+    return sendJson(res, 500, { error: 'Failed to get deployments', details: result.stderr });
+  }
+
+  const deployments = [];
+  try {
+    const parsed = JSON.parse(result.stdout);
+    (parsed.items || []).forEach(d => {
+      const containers = (d.spec?.template?.spec?.containers || []);
+      deployments.push({
+        name: d.metadata.name,
+        namespace: d.metadata.namespace,
+        replicas: d.spec?.replicas || 0,
+        available: d.status?.availableReplicas || 0,
+        image: containers.length > 0 ? containers[0].image : '',
+        strategy: d.spec?.strategy?.type || 'RollingUpdate',
+      });
+    });
+  } catch (e) {
+    return sendJson(res, 500, { error: 'Failed to parse deployments', details: e.message });
+  }
+
+  sendJson(res, 200, { deployments });
+}
+
+// ─── Events ──────────────────────────────────────────────────────────────────
+
+async function handleEvents(req, res) {
+  const result = await runAsync('kubectl get events -A --sort-by=.lastTimestamp -o json', 15000);
+  if (!result.ok) {
+    return sendJson(res, 500, { error: 'Failed to get events', details: result.stderr });
+  }
+
+  const events = [];
+  try {
+    const parsed = JSON.parse(result.stdout);
+    const items = (parsed.items || []).slice(-50).reverse();
+    for (const ev of items) {
+      events.push({
+        type: ev.type || 'Normal',
+        reason: ev.reason || '',
+        message: ev.message || '',
+        object: ev.involvedObject ? (ev.involvedObject.kind || '') + '/' + (ev.involvedObject.name || '') : '',
+        namespace: ev.metadata?.namespace || '',
+        timestamp: ev.lastTimestamp || ev.metadata?.creationTimestamp || '',
+        count: ev.count || 1,
+      });
+    }
+  } catch (e) {
+    return sendJson(res, 500, { error: 'Failed to parse events', details: e.message });
+  }
+
+  sendJson(res, 200, { events });
+}
+
+// ─── Namespace Usage ─────────────────────────────────────────────────────────
+
+async function handleNamespaceUsage(req, res) {
+  const [nsResult, podResult] = await Promise.all([
+    runAsync('kubectl get namespaces -o json', 10000),
+    runAsync('kubectl get pods -A -o json', 15000),
+  ]);
+
+  if (!nsResult.ok) {
+    return sendJson(res, 500, { error: 'Failed to get namespaces', details: nsResult.stderr });
+  }
+
+  const namespaces = [];
+  try {
+    const nsParsed = JSON.parse(nsResult.stdout);
+    const podsParsed = podResult.ok ? JSON.parse(podResult.stdout) : { items: [] };
+
+    const podsByNs = {};
+    for (const pod of (podsParsed.items || [])) {
+      const ns = pod.metadata?.namespace || 'default';
+      podsByNs[ns] = (podsByNs[ns] || 0) + 1;
+    }
+
+    for (const ns of (nsParsed.items || [])) {
+      const name = ns.metadata?.name || '';
+      namespaces.push({
+        name,
+        status: ns.status?.phase || 'Active',
+        pods: podsByNs[name] || 0,
+      });
+    }
+  } catch (e) {
+    return sendJson(res, 500, { error: 'Failed to parse namespace data', details: e.message });
+  }
+
+  sendJson(res, 200, { namespaces });
+}
+
 // ─── HTTP Server ─────────────────────────────────────────────────────────────
 
 function sendJson(res, code, data) {
@@ -1804,6 +1954,13 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/api-latency') return handleApiLatencyHistory(req, res);
       if (path === '/api/pvcs') return await handlePVCs(req, res);
       if (path === '/api/ingresses') return await handleIngresses(req, res);
+      if (path === '/api/deployments') return await handleDeployments(req, res);
+      if (path === '/api/events') return await handleEvents(req, res);
+      if (path === '/api/namespaces/usage') return await handleNamespaceUsage(req, res);
+
+      // Node detail: /api/nodes/:name/detail
+      const nodeDetailMatch = path.match(/^\/api\/nodes\/([^/]+)\/detail$/);
+      if (nodeDetailMatch) return await handleNodeDetail(req, res, nodeDetailMatch[1]);
     }
 
     // ─── POST endpoints ───
@@ -1827,11 +1984,14 @@ const server = http.createServer(async (req, res) => {
 
 // ─── Startup ─────────────────────────────────────────────────────────────────
 
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[CLUSTER-API] Unhandled promise rejection:', reason);
+});
+
 initAdbDevices();
 
 server.listen(CONFIG.port, () => {
   console.log(`[CLUSTER-API] Server running on port ${CONFIG.port}`);
-  console.log(`[CLUSTER-API] Password: ${CONFIG.password}`);
   console.log(`[CLUSTER-API] Token auth: ${CONFIG.apiToken ? 'enabled' : 'disabled'}`);
   console.log(`[CLUSTER-API] XMR wallet: ${CONFIG.xmrWallet || 'not configured'}`);
   const mapped = CONFIG.phoneNodeNames.filter(n => CONFIG.phoneNodes[n].adb);
