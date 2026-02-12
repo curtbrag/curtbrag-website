@@ -2129,10 +2129,10 @@
       const statusText = document.getElementById('statusText');
       const demoBanner = document.getElementById('demoBanner');
       const refreshBtn = document.getElementById('refreshBtn');
-      refreshBtn.classList.add('spinning');
-      refreshCountdownVal = refreshInterval;
 
       try {
+        if (refreshBtn) refreshBtn.classList.add('spinning');
+        refreshCountdownVal = refreshInterval;
         let data;
         let isDirectApi = false;
 
@@ -2236,10 +2236,10 @@
       } catch (error) {
         console.error('Failed to load:', error);
         consecutiveFailures++;
-        statusDot.className = 'status-dot offline';
-        statusText.textContent = 'Offline' + (consecutiveFailures > 1 ? ' (' + consecutiveFailures + ' failures)' : '');
+        if (statusDot) statusDot.className = 'status-dot offline';
+        if (statusText) statusText.textContent = 'Offline' + (consecutiveFailures > 1 ? ' (' + consecutiveFailures + ' failures)' : '');
       } finally {
-        refreshBtn.classList.remove('spinning');
+        if (refreshBtn) refreshBtn.classList.remove('spinning');
       }
     }
 
@@ -4511,7 +4511,7 @@
     }
 
     // ─── Power Scheduling ────────────────────────────────────────────
-    var schedules = JSON.parse(localStorage.getItem('clusterSchedules') || '{}');
+    var schedules = {}; try { schedules = JSON.parse(localStorage.getItem('clusterSchedules') || '{}'); } catch(e) {}
 
     function renderSchedules() {
       var panel = document.getElementById('schedulePanel');
@@ -4807,7 +4807,7 @@
     }
 
     // ─── Section Collapse ────────────────────────────────────────────────
-    var sectionStates = JSON.parse(localStorage.getItem('clusterSectionStates') || '{}');
+    var sectionStates = {}; try { sectionStates = JSON.parse(localStorage.getItem('clusterSectionStates') || '{}'); } catch(e) {}
 
     function toggleSection(bodyId) {
       var body = document.getElementById(bodyId);
@@ -4833,7 +4833,7 @@
     }
 
     // ─── Node Tags ───────────────────────────────────────────────────────
-    var nodeTags = JSON.parse(localStorage.getItem('clusterNodeTags') || '{}');
+    var nodeTags = {}; try { nodeTags = JSON.parse(localStorage.getItem('clusterNodeTags') || '{}'); } catch(e) {}
 
     function addNodeTag(nodeName) {
       var input = document.getElementById('tagInput-' + nodeName);
@@ -5000,18 +5000,18 @@
 
     // ─── Init ──────────────────────────────────────────────────────────────
 
-    restoreSessionState();
-    restoreSectionStates();
-    updateSoundToggle();
-    initTheme();
-    initApiConfig();
-    applyNodeView();
-    updateClusterAge();
+    try { restoreSessionState(); } catch(e) { console.warn('restoreSessionState:', e); }
+    try { restoreSectionStates(); } catch(e) { console.warn('restoreSectionStates:', e); }
+    try { updateSoundToggle(); } catch(e) { console.warn('updateSoundToggle:', e); }
+    try { initTheme(); } catch(e) { console.warn('initTheme:', e); }
+    try { initApiConfig(); } catch(e) { console.warn('initApiConfig:', e); }
+    try { applyNodeView(); } catch(e) { console.warn('applyNodeView:', e); }
+    try { updateClusterAge(); } catch(e) { console.warn('updateClusterAge:', e); }
     setInterval(updateClusterAge, 60000);
     loadClusterStatus();
     measureApiLatency();
     connectSSE();
-    renderSchedules();
+    try { renderSchedules(); } catch(e) { console.warn('renderSchedules:', e); }
     loadHealthHistory();
     setInterval(loadClusterStatus, 10000);
     setInterval(measureApiLatency, 15000);
