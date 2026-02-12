@@ -1070,7 +1070,7 @@
     .group-btn:hover { border-color: var(--brand); color: var(--brand); }
 
     /* Bulk Select Bar */
-    .bulk-bar { display: none; position: sticky; top: 0; z-index: 100; background: var(--panel); border: 1px solid var(--brand); border-radius: 10px; padding: 0.5rem 1rem; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between; }
+    .bulk-bar { display: none; position: sticky; top: 0; z-index: 100; background: var(--panel); border: 1px solid var(--brand); border-radius: 10px; padding: 0.5rem 1rem; margin-bottom: 0.75rem; align-items: center; justify-content: space-between; }
     .bulk-bar.visible { display: flex; }
     .bulk-count { font-size: 0.82rem; font-weight: 600; }
 
@@ -2210,6 +2210,17 @@
         // Track uptime
         if (data.nodes) trackNodeUptime(data.nodes);
 
+        // Render resource summary, donut charts, topology, thermal
+        if (lastMetrics && Object.keys(lastMetrics).length > 0) {
+          renderResourceSummary(lastMetrics);
+          renderDonutCharts(lastMetrics);
+          renderThermalGrid(lastMetrics);
+        }
+        if (data.nodes && data.nodes.length > 0) {
+          renderTopologyMap(data.nodes);
+        }
+        recordLocalHealth(summary.healthScore || 0);
+
         if (apiEndpoint && isDirectApi) {
           loadScreens();
           loadAlerts();
@@ -2218,6 +2229,7 @@
           loadNodeScheduling();
           loadPodResources();
           loadConfigMaps();
+          loadBatteryHeatmap();
         }
 
         document.getElementById('lastUpdate').textContent = data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : 'Never';
@@ -3041,7 +3053,8 @@
 
     function toggleAutoScroll() {
       logAutoScroll = !logAutoScroll;
-      document.getElementById('autoScrollBtn').className = logAutoScroll ? 'active' : '';
+      var asBtn = document.getElementById('autoScrollBtn');
+      if (asBtn) asBtn.className = logAutoScroll ? 'active' : '';
     }
     function refreshCurrentLogs() {
       if (currentLogNs && currentLogPod) viewPodLogs(currentLogNs, currentLogPod);
@@ -3201,7 +3214,7 @@
     function updateSoundToggle() {
       var btn = document.getElementById('soundToggle');
       if (btn) {
-        btn.className = 'sound-toggle' + (alertSoundEnabled ? ' active' : '');
+        btn.className = 'toolbar-btn' + (alertSoundEnabled ? ' active' : '');
         btn.innerHTML = '<i class="fa-solid ' + (alertSoundEnabled ? 'fa-volume-high' : 'fa-volume-xmark') + '"></i>';
       }
     }
@@ -4478,8 +4491,8 @@
       var pathStr = 'M' + points.join(' L');
 
       svg.innerHTML =
-        '<defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--green)" stop-opacity="0.3"/><stop offset="1" stop-color="var(--green)" stop-opacity="0"/></linearGradient></defs>' +
-        '<polygon points="' + fillPoints + '" fill="url(#hg)"/>' +
+        '<defs><linearGradient id="hgHealth" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--green)" stop-opacity="0.3"/><stop offset="1" stop-color="var(--green)" stop-opacity="0"/></linearGradient></defs>' +
+        '<polygon points="' + fillPoints + '" fill="url(#hgHealth)"/>' +
         '<path d="' + pathStr + '" fill="none" stroke="var(--green)" stroke-width="2"/>' +
         '<line x1="' + pad + '" y1="' + (H - pad - (H - 2 * pad) * 0.8) + '" x2="' + (W - pad) + '" y2="' + (H - pad - (H - 2 * pad) * 0.8) + '" stroke="var(--border)" stroke-dasharray="4"/>' +
         '<text x="' + (W - pad) + '" y="' + (H - pad - (H - 2 * pad) * 0.8 - 3) + '" fill="var(--muted)" font-size="8" text-anchor="end">80%</text>';
@@ -4907,7 +4920,7 @@
     // ─── Scroll to Top ────────────────────────────────────────────────────
     window.addEventListener('scroll', function() {
       var btn = document.getElementById('scrollTopBtn');
-      if (btn) btn.classList.toggle('visible', window.scrollY > 400);
+      if (btn) btn.style.display = window.scrollY > 400 ? 'block' : 'none';
     });
 
     // ─── Stats Ticker ────────────────────────────────────────────────────
@@ -5005,7 +5018,7 @@
     loadIngresses();
     loadCronJobs();
     loadApiLatency();
-    setInterval(function() { if (apiEndpoint) { loadEvents(); loadDeployments(); loadNodeMetricsHistory(); } }, 30000);
+    setInterval(function() { if (apiEndpoint) { loadEvents(); loadDeployments(); loadNodeMetricsHistory(); loadNamespaceUsage(); loadResourceQuotas(); loadPVCs(); loadIngresses(); loadCronJobs(); loadApiLatency(); } }, 30000);
   </script>
 </body>
 </html>
