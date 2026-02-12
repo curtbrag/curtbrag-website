@@ -742,10 +742,17 @@ async function handleCommand(req, res, body) {
       return sendJson(res, 400, { error: 'customCmd too long (max 200 characters)' });
     }
     const customTarget = target;
-    if (!customTarget || !CONFIG.phoneNodes[customTarget]) {
-      return sendJson(res, 400, { error: 'Invalid target node for custom command (SSH-capable nodes only): ' + customTarget });
+    if (!customTarget) {
+      return sendJson(res, 400, { error: 'Target is required for custom command' });
     }
-    const r = await sshExecAsync(customTarget, customCmd);
+    let r;
+    if (CONFIG.phoneNodes[customTarget]) {
+      r = await sshExecAsync(customTarget, customCmd);
+    } else if (CONFIG.otherNodes.includes(customTarget)) {
+      r = await runAsync(`ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes ${customTarget} ${shellEscape(customCmd)}`, 15000);
+    } else {
+      return sendJson(res, 400, { error: 'Unknown target node: ' + customTarget });
+    }
     logCommand({
       command: 'custom',
       target: customTarget,
@@ -1742,6 +1749,7 @@ async function handleDeployments(req, res) {
         replicas: d.spec?.replicas || 0,
         available: d.status?.availableReplicas || 0,
         image: containers.length > 0 ? containers[0].image : '',
+        strategy: d.spec?.strategy?.type || 'RollingUpdate',
       });
     });
   } catch (e) {
@@ -1771,6 +1779,7 @@ async function handleEvents(req, res) {
         object: ev.involvedObject ? (ev.involvedObject.kind || '') + '/' + (ev.involvedObject.name || '') : '',
         namespace: ev.metadata?.namespace || '',
         timestamp: ev.lastTimestamp || ev.metadata?.creationTimestamp || '',
+        count: ev.count || 1,
       });
     }
   } catch (e) {

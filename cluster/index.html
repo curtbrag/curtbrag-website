@@ -2879,14 +2879,14 @@
       showToast('Pinging all nodes...', 'info');
       try {
         var data = await apiFetch('/api/connectivity');
-        var results = data.results || [];
+        var results = data.nodes || [];
         var html = '<h3 style="margin-bottom:0.75rem"><i class="fa-solid fa-satellite-dish" style="color:var(--brand)"></i> Connectivity Test</h3>';
         html += '<p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.75rem">' + data.summary.reachable + '/' + data.summary.total + ' nodes reachable</p>';
         html += '<div class="ping-grid">';
         results.forEach(function(r) {
           html += '<span class="ping-chip ' + (r.reachable ? 'ok' : 'fail') + '">';
           html += '<i class="fa-solid ' + (r.reachable ? 'fa-circle-check' : 'fa-circle-xmark') + '" style="color:var(--' + (r.reachable ? 'green' : 'red') + ')"></i>';
-          html += r.name + ' <span class="ping-ms">' + (r.reachable ? r.latencyMs + 'ms' : 'timeout') + '</span></span>';
+          html += r.name + ' <span class="ping-ms">' + (r.reachable ? r.latency + 'ms' : 'timeout') + '</span></span>';
         });
         html += '</div>';
         document.getElementById('logModalTitle').textContent = 'Ping Results';
@@ -2898,9 +2898,7 @@
     // ─── Quick Actions ───────────────────────────────────────────────────
     async function quickAction(cmd, target) {
       if (!savedPassword) {
-        pendingCommand = cmd;
-        document.getElementById('passwordModal').classList.add('visible');
-        document.getElementById('passwordInput').focus();
+        requirePassword(function() { quickAction(cmd, target); });
         return;
       }
       showToast('Sending ' + cmd + ' to ' + target + '...', 'info');
@@ -3030,10 +3028,12 @@
       var tbody = document.getElementById('deployTableBody');
       if (deployments.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-rocket"></i><br>No deployments</td></tr>'; return; }
       tbody.innerHTML = deployments.map(function(d) {
-        var rc = d.ready === d.replicas ? 'green' : d.ready > 0 ? 'yellow' : 'red';
+        var avail = d.available || 0;
+        var rc = avail === d.replicas ? 'green' : avail > 0 ? 'yellow' : 'red';
         var ns = d.namespace.replace(/[^a-zA-Z0-9._-]/g, '');
         var dn = d.name.replace(/[^a-zA-Z0-9._-]/g, '');
-        return '<tr><td class="pod-name">' + d.name + '</td><td><span class="pod-namespace">' + d.namespace + '</span></td><td style="color:var(--' + rc + ')">' + d.ready + '/' + d.replicas + '</td><td style="font-size:0.75rem;color:var(--muted)">' + d.strategy + '</td><td><div class="deploy-scale"><button onclick="scaleDeployment(\'' + ns + '\',\'' + dn + '\',' + Math.max(0, d.replicas - 1) + ')"><i class="fa-solid fa-minus"></i></button><span>' + d.replicas + '</span><button onclick="scaleDeployment(\'' + ns + '\',\'' + dn + '\',' + (d.replicas + 1) + ')"><i class="fa-solid fa-plus"></i></button></div></td></tr>';
+        var img = (d.image || '').split('/').pop() || '';
+        return '<tr><td class="pod-name">' + d.name + '</td><td><span class="pod-namespace">' + d.namespace + '</span></td><td style="color:var(--' + rc + ')">' + avail + '/' + d.replicas + '</td><td style="font-size:0.75rem;color:var(--muted)" title="' + (d.image || '') + '">' + img + '</td><td><div class="deploy-scale"><button onclick="scaleDeployment(\'' + ns + '\',\'' + dn + '\',' + Math.max(0, d.replicas - 1) + ')"><i class="fa-solid fa-minus"></i></button><span>' + d.replicas + '</span><button onclick="scaleDeployment(\'' + ns + '\',\'' + dn + '\',' + (d.replicas + 1) + ')"><i class="fa-solid fa-plus"></i></button></div></td></tr>';
       }).join('');
     }
 
@@ -3271,7 +3271,7 @@
 
     async function bulkCommand(cmd) {
       if (selectedNodes.size === 0) { showToast('No nodes selected', 'error'); return; }
-      if (!savedPassword) { pendingCommand = cmd; document.getElementById('passwordModal').classList.add('visible'); document.getElementById('passwordInput').focus(); return; }
+      if (!savedPassword) { requirePassword(function() { bulkCommand(cmd); }); return; }
       showToast('Sending ' + cmd + ' to ' + selectedNodes.size + ' nodes...', 'info');
       var targets = Array.from(selectedNodes);
       try {
@@ -3362,7 +3362,7 @@
       if (events.length === 0) { panel.style.display = 'none'; return; }
       panel.style.display = 'block';
       body.innerHTML = events.slice(0, 30).map(function(ev) {
-        var time = ev.lastSeen ? new Date(ev.lastSeen).toLocaleTimeString() : '';
+        var time = (ev.timestamp || ev.lastSeen) ? new Date(ev.timestamp || ev.lastSeen).toLocaleTimeString() : '';
         return '<div class="event-item">' +
           '<span class="event-type ' + ev.type + '">' + ev.type + '</span>' +
           '<div class="event-content"><span class="event-reason">' + ev.reason + '</span> ' +
@@ -3376,7 +3376,7 @@
       if (stream) {
         streamBadge.textContent = events.length + ' events';
         stream.innerHTML = events.slice(0, 50).map(function(ev) {
-          var time = ev.lastSeen ? new Date(ev.lastSeen).toLocaleTimeString() : '';
+          var time = (ev.timestamp || ev.lastSeen) ? new Date(ev.timestamp || ev.lastSeen).toLocaleTimeString() : '';
           var typeCls = (ev.type || '').toLowerCase() === 'warning' ? 'warning' : 'normal';
           return '<div class="event-item">' +
             '<span class="event-time">' + time + '</span>' +
@@ -3406,18 +3406,21 @@
     function renderNamespaceUsage(namespaces) {
       var container = document.getElementById('nsUsage');
       var badge = document.getElementById('nsBadge');
-      var nsNames = Object.keys(namespaces).sort();
-      badge.textContent = nsNames.length + ' namespaces';
-      if (nsNames.length === 0) {
+      // Handle both array format (from server) and object format (legacy)
+      var nsList = Array.isArray(namespaces) ? namespaces : Object.keys(namespaces).map(function(k) { return Object.assign({ name: k }, namespaces[k]); });
+      badge.textContent = nsList.length + ' namespaces';
+      if (nsList.length === 0) {
         container.innerHTML = '<div class="empty-state" style="padding:1rem">No namespace data</div>';
         return;
       }
-      container.innerHTML = nsNames.map(function(ns) {
-        var u = namespaces[ns];
-        var color = u.running === u.pods ? 'green' : u.running > 0 ? 'yellow' : 'red';
-        return '<div class="ns-chip"><div class="ns-chip-name" style="color:var(--' + color + ')">' + ns + '</div>' +
-          '<div class="ns-chip-stats">' + u.running + '/' + u.pods + ' pods | ' + u.containers + ' containers' +
-          (u.restarts > 0 ? ' | ' + u.restarts + ' restarts' : '') + '</div></div>';
+      nsList.sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
+      container.innerHTML = nsList.map(function(u) {
+        var name = u.name || 'unknown';
+        var pods = u.pods || 0;
+        var status = u.status || 'Active';
+        var color = status === 'Active' ? (pods > 0 ? 'green' : 'muted') : 'yellow';
+        return '<div class="ns-chip"><div class="ns-chip-name" style="color:var(--' + color + ')">' + name + '</div>' +
+          '<div class="ns-chip-stats">' + pods + ' pods | ' + status + '</div></div>';
       }).join('');
     }
 
@@ -3512,11 +3515,16 @@
       status.className = 'control-status visible';
       try {
         var data = await apiPost('/api/command', { command: 'custom', target: target, customCmd: cmd, password: savedPassword });
-        if (data.results) {
+        if (data.success || data.output || data.results) {
           var outputLines = [];
-          for (var n in data.results) {
-            outputLines.push('=== ' + n + ' ===');
-            outputLines.push(data.results[n].stdout || data.results[n].stderr || data.results[n].error || '(no output)');
+          if (data.output) {
+            outputLines.push('=== ' + target + ' ===');
+            outputLines.push(data.output);
+          } else if (data.results) {
+            for (var n in data.results) {
+              outputLines.push('=== ' + n + ' ===');
+              outputLines.push(data.results[n].stdout || data.results[n].stderr || data.results[n].error || '(no output)');
+            }
           }
           document.getElementById('logModalTitle').textContent = 'Command: ' + cmd;
           document.getElementById('logBody').innerHTML = outputLines.map(function(l) {
