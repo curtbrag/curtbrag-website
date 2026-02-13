@@ -2,10 +2,9 @@
 # Push K3s cluster status to curtbrag.com
 # Run this on node1 via cron: */5 * * * * /home/user/push-cluster-status.sh >> /var/log/cluster-push.log 2>&1
 
-set -e
-
-API_URL="https://www.curtbrag.com/.netlify/functions/cluster-status"
+API_URL="https://curtbrag.com/.netlify/functions/cluster-status"
 API_KEY="${CLUSTER_API_KEY:-curtbrag-cluster-2024}"
+TMP_DIR="/tmp/cluster-push"
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
@@ -13,149 +12,411 @@ log() {
 
 log "Starting cluster status push..."
 
-# Check if kubectl is available
-if ! command -v kubectl >/dev/null 2>&1; then
-  log "ERROR: kubectl not found"
-  exit 1
+# Check prerequisites
+for cmd in jq curl; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    log "ERROR: $cmd not found"
+    exit 1
+  fi
+done
+
+mkdir -p "$TMP_DIR"
+
+# ── Kubernetes data (may be unavailable if K3s is down) ──────────
+
+K3S_UP="false"
+if command -v kubectl >/dev/null 2>&1 && kubectl cluster-info >/dev/null 2>&1; then
+  K3S_UP="true"
 fi
 
-# Check if jq is available
-if ! command -v jq >/dev/null 2>&1; then
-  log "ERROR: jq not found"
-  exit 1
+if [ "$K3S_UP" = "true" ]; then
+  log "Connected to cluster, gathering K8s data..."
+
+  # Nodes (save raw for reuse)
+  NODES_RAW=$(kubectl get nodes -o json 2>/dev/null)
+  NODES_JSON=$(echo "$NODES_RAW" | jq -c '[.items[] | {
+    name: .metadata.name,
+    status: (if (.status.conditions[] | select(.type=="Ready") | .status) == "True" then "Ready" else "NotReady" end),
+    role: (if .metadata.labels["node-role.kubernetes.io/control-plane"] then "control-plane" else "worker" end),
+    ip: (.status.addresses[] | select(.type=="InternalIP") | .address),
+    kubeletVersion: .status.nodeInfo.kubeletVersion,
+    osImage: .status.nodeInfo.osImage,
+    arch: .status.nodeInfo.architecture
+  }]')
+  log "Got $(echo "$NODES_JSON" | jq 'length') nodes"
+
+  # Node scheduling (cordon status, taints)
+  NODE_SCHEDULING=$(echo "$NODES_RAW" | jq -c '[.items[] | {
+    name: .metadata.name,
+    unschedulable: (.spec.unschedulable // false),
+    taints: [(.spec.taints // [])[] | {key: .key, effect: .effect}]
+  }]')
+
+  # Pods with resource requests
+  PODS_JSON=$(kubectl get pods -A -o json 2>/dev/null | jq -c '[.items[] | {
+    name: .metadata.name,
+    namespace: .metadata.namespace,
+    status: .status.phase,
+    node: (.spec.nodeName // "unscheduled"),
+    restarts: ([.status.containerStatuses[]?.restartCount] | add // 0),
+    ready: (if .status.containerStatuses then ([.status.containerStatuses[] | select(.ready == true)] | length | tostring) + "/" + ([.status.containerStatuses[]] | length | tostring) else "0/0" end),
+    containers: [.spec.containers[]? | .name],
+    resources: {
+      requests: { cpu: (.spec.containers[0].resources.requests.cpu // null), memory: (.spec.containers[0].resources.requests.memory // null) },
+      limits: { cpu: (.spec.containers[0].resources.limits.cpu // null), memory: (.spec.containers[0].resources.limits.memory // null) }
+    }
+  }]')
+  log "Got $(echo "$PODS_JSON" | jq 'length') pods"
+
+  # Services
+  SERVICES_JSON=$(kubectl get svc -A -o json 2>/dev/null | jq -c '[.items[] | {
+    name: .metadata.name,
+    namespace: .metadata.namespace,
+    type: .spec.type,
+    clusterIP: .spec.clusterIP,
+    externalIP: ((.status.loadBalancer.ingress[0].ip // .spec.externalIPs[0]) // null),
+    ports: [.spec.ports[]? | "\(.port):\(.nodePort // .targetPort)"]
+  }]')
+  log "Got $(echo "$SERVICES_JSON" | jq 'length') services"
+
+  # Events (last 50)
+  EVENTS_JSON=$(kubectl get events -A --sort-by=.lastTimestamp -o json 2>/dev/null | jq -c '[.items[-50:] | reverse[] | {
+    type: (.type // "Normal"),
+    reason: (.reason // ""),
+    message: (.message // "")[0:200],
+    object: ((.involvedObject.kind // "") + "/" + (.involvedObject.name // "")),
+    namespace: (.metadata.namespace // ""),
+    timestamp: (.lastTimestamp // .metadata.creationTimestamp // ""),
+    count: (.count // 1)
+  }]' 2>/dev/null || echo '[]')
+  log "Got $(echo "$EVENTS_JSON" | jq 'length') events"
+else
+  log "WARNING: K3s unavailable — pushing metrics/battery/mining only"
+  NODES_JSON='[]'
+  NODE_SCHEDULING='[]'
+  PODS_JSON='[]'
+  SERVICES_JSON='[]'
+  EVENTS_JSON='[]'
 fi
 
-# Check cluster connectivity
-if ! kubectl cluster-info >/dev/null 2>&1; then
-  log "ERROR: Cannot connect to cluster"
-  exit 1
-fi
+# ── Network ─────────────────────────────────────────────────────────
 
-log "Connected to cluster, gathering data..."
-
-
-# Check cluster connectivity
-if ! kubectl cluster-info >/dev/null 2>&1; then
-  log "ERROR: Cannot connect to cluster"
-  exit 1
-fi
-
-log "Connected to cluster, gathering data..."
-
-# Get node status with more details
-NODES_JSON=$(kubectl get nodes -o json 2>/dev/null | jq -c '[.items[] | {
-  name: .metadata.name,
-  status: (if (.status.conditions[] | select(.type=="Ready") | .status) == "True" then "Ready" else "NotReady" end),
-  role: (if .metadata.labels["node-role.kubernetes.io/control-plane"] then "control-plane" else "worker" end),
-  ip: (.status.addresses[] | select(.type=="InternalIP") | .address),
-  kubeletVersion: .status.nodeInfo.kubeletVersion,
-  osImage: .status.nodeInfo.osImage,
-  arch: .status.nodeInfo.architecture
-}]')
-
-log "Got $(echo "$NODES_JSON" | jq 'length') nodes"
-
-# Get pod status with restart counts
-PODS_JSON=$(kubectl get pods -A -o json 2>/dev/null | jq -c '[.items[] | {
-  name: .metadata.name,
-  namespace: .metadata.namespace,
-  status: .status.phase,
-  node: (.spec.nodeName // "unscheduled"),
-  restarts: ([.status.containerStatuses[]?.restartCount] | add // 0),
-  ready: (if .status.containerStatuses then ([.status.containerStatuses[] | select(.ready == true)] | length | tostring) + "/" + ([.status.containerStatuses[]] | length | tostring) else "0/0" end)
-}]')
-
-log "Got $(echo "$PODS_JSON" | jq 'length') pods"
-
-# Get services with external IPs if available
-SERVICES_JSON=$(kubectl get svc -A -o json 2>/dev/null | jq -c '[.items[] | {
-  name: .metadata.name,
-  namespace: .metadata.namespace,
-  type: .spec.type,
-  clusterIP: .spec.clusterIP,
-  externalIP: ((.status.loadBalancer.ingress[0].ip // .spec.externalIPs[0]) // null),
-  ports: [.spec.ports[]? | "\(.port):\(.nodePort // .targetPort)"]
-}]')
-
-log "Got $(echo "$SERVICES_JSON" | jq 'length') services"
-
-# Get network status (Tailscale and local interfaces)
 log "Gathering network info..."
 NETWORK_JSON='{"tailscale":null,"wifi":null,"localIP":null}'
 
-# Get Tailscale status if available
 if command -v tailscale >/dev/null 2>&1; then
   TS_STATUS=$(tailscale status --json 2>/dev/null || echo '{}')
   TS_SELF=$(echo "$TS_STATUS" | jq -c '.Self // null')
   TS_PEERS=$(echo "$TS_STATUS" | jq -c '[.Peer // {} | to_entries[] | {name: .value.HostName, ip: .value.TailscaleIPs[0], online: .value.Online, lastSeen: .value.LastSeen}]')
-
   if [ "$TS_SELF" != "null" ]; then
     TS_IP=$(echo "$TS_SELF" | jq -r '.TailscaleIPs[0] // empty')
     TS_NAME=$(echo "$TS_SELF" | jq -r '.HostName // empty')
     NETWORK_JSON=$(echo "$NETWORK_JSON" | jq --arg ip "$TS_IP" --arg name "$TS_NAME" --argjson peers "$TS_PEERS" '.tailscale = {ip: $ip, hostname: $name, connected: true, peers: $peers}')
-    log "Tailscale: $TS_NAME ($TS_IP)"
   fi
 fi
 
-# Get WiFi info if available
 if command -v iw >/dev/null 2>&1; then
   WIFI_SSID=$(iw dev wlan0 link 2>/dev/null | grep SSID | awk '{print $2}' || echo "")
   WIFI_SIGNAL=$(iw dev wlan0 link 2>/dev/null | grep signal | awk '{print $2}' || echo "")
-
   if [ -n "$WIFI_SSID" ]; then
     NETWORK_JSON=$(echo "$NETWORK_JSON" | jq --arg ssid "$WIFI_SSID" --arg signal "$WIFI_SIGNAL" '.wifi = {ssid: $ssid, signal: $signal, connected: true}')
-    log "WiFi: $WIFI_SSID (${WIFI_SIGNAL}dBm)"
   fi
 fi
 
-# Get local IP
-LOCAL_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)192\.168\.\d+\.\d+' | head -1 || echo "")
+LOCAL_IP=$(ip -4 addr show 2>/dev/null | awk '/inet 192\.168\./{gsub(/\/.*/, "", $2); print $2; exit}')
 if [ -n "$LOCAL_IP" ]; then
   NETWORK_JSON=$(echo "$NETWORK_JSON" | jq --arg ip "$LOCAL_IP" '.localIP = $ip')
 fi
 
-log "Network info gathered"
+# ── Per-node metrics + battery (parallel SSH) ───────────────────────
 
-# Calculate summary
-NODES_READY=$(echo "$NODES_JSON" | jq '[.[] | select(.status=="Ready")] | length')
-NODES_TOTAL=$(echo "$NODES_JSON" | jq 'length')
-PODS_RUNNING=$(echo "$PODS_JSON" | jq '[.[] | select(.status=="Running")] | length')
-PODS_TOTAL=$(echo "$PODS_JSON" | jq 'length')
-PODS_PENDING=$(echo "$PODS_JSON" | jq '[.[] | select(.status=="Pending")] | length')
-PODS_FAILED=$(echo "$PODS_JSON" | jq '[.[] | select(.status=="Failed")] | length')
+log "Gathering per-node metrics + battery..."
+METRICS_JSON='{}'
+BATTERY_PHONES='[]'
 
-log "Summary: $NODES_READY/$NODES_TOTAL nodes ready, $PODS_RUNNING/$PODS_TOTAL pods running"
+# Metrics command (shared between local and SSH execution)
+METRICS_CMD='echo "CPU:$(top -bn1 2>/dev/null | head -3 | grep -i cpu | head -1)"
+echo "MEM:$(free -m 2>/dev/null | grep Mem)"
+echo "TEMP:$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0)"
+echo "DISK:$(df -m / 2>/dev/null | tail -1)"
+BD=""; for d in /sys/class/power_supply/*; do [ "$(cat "$d/type" 2>/dev/null)" = "Battery" ] && BD="$d" && break; done
+echo "BATT_CAP:$(cat "$BD/capacity" 2>/dev/null || echo -1)"
+echo "BATT_STATUS:$(cat "$BD/status" 2>/dev/null || echo Unknown)"
+echo "BATT_TEMP:$(cat "$BD/temp" 2>/dev/null || echo 0)"
+echo "BATT_VOLT:$(cat "$BD/voltage_now" 2>/dev/null || echo 0)"
+echo "BATT_HEALTH:$(cat "$BD/health" 2>/dev/null || echo Unknown)"'
 
-# Build payload
+# Gather from all phone nodes in parallel
+for i in $(seq 1 10); do
+  (
+    if [ "$i" = "1" ]; then
+      # node1 is localhost — gather metrics locally
+      RAW=$(sh -c "$METRICS_CMD" 2>/dev/null)
+    else
+      NODE_IP="192.168.1.$((205 + i))"
+      RAW=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes \
+        "user@$NODE_IP" "$METRICS_CMD" 2>/dev/null)
+    fi
+    echo "$RAW" > "$TMP_DIR/node${i}.tmp"
+  ) &
+done
+wait
+
+# Parse results sequentially
+for i in $(seq 1 10); do
+  NODE_NAME="node$i"
+  TMPFILE="$TMP_DIR/node${i}.tmp"
+
+  if [ ! -s "$TMPFILE" ]; then
+    # Node unreachable
+    METRICS_JSON=$(echo "$METRICS_JSON" | jq --arg n "$NODE_NAME" '.[$n] = {cpu:{usage:0,cores:null},memory:{totalMB:0,usedMB:0,percent:0},temp:null,storage:{totalMB:0,usedMB:0,availMB:0,percent:0}}')
+    BATTERY_PHONES=$(echo "$BATTERY_PHONES" | jq --arg n "$NODE_NAME" '. + [{name:$n,online:false}]')
+    continue
+  fi
+
+  RAW=$(cat "$TMPFILE")
+
+  # CPU
+  CPU_LINE=$(echo "$RAW" | grep "^CPU:" || echo "")
+  IDLE=$(echo "$CPU_LINE" | sed -n 's/.*[^0-9]\([0-9][0-9]*\)%[[:space:]]*id[le]*.*/\1/p' | head -1)
+  if [ -n "$IDLE" ]; then
+    CPU_USAGE=$((100 - IDLE))
+  else
+    USR=$(echo "$CPU_LINE" | sed -n 's/.*[^0-9]\([0-9][0-9]*\)%[[:space:]]*usr.*/\1/p' | head -1)
+    SYS=$(echo "$CPU_LINE" | sed -n 's/.*[^0-9]\([0-9][0-9]*\)%[[:space:]]*sys.*/\1/p' | head -1)
+    CPU_USAGE=$(( ${USR:-0} + ${SYS:-0} ))
+  fi
+
+  # Memory
+  MEM_LINE=$(echo "$RAW" | grep "^MEM:" | sed 's/^MEM://')
+  MEM_TOTAL=$(echo "$MEM_LINE" | awk '{print $2}')
+  MEM_USED=$(echo "$MEM_LINE" | awk '{print $3}')
+  MEM_PCT=0
+  if [ -n "$MEM_TOTAL" ] && [ "$MEM_TOTAL" -gt 0 ] 2>/dev/null; then
+    MEM_PCT=$((MEM_USED * 100 / MEM_TOTAL))
+  fi
+
+  # Temperature
+  TEMP_RAW=$(echo "$RAW" | grep "^TEMP:" | sed 's/^TEMP://' | tr -d ' ')
+  TEMP_C=0
+  if [ -n "$TEMP_RAW" ] && [ "$TEMP_RAW" -gt 0 ] 2>/dev/null; then
+    [ "$TEMP_RAW" -gt 1000 ] && TEMP_C=$((TEMP_RAW / 1000)) || TEMP_C="$TEMP_RAW"
+  fi
+
+  # Disk
+  DISK_LINE=$(echo "$RAW" | grep "^DISK:" | sed 's/^DISK://')
+  DISK_TOTAL=$(echo "$DISK_LINE" | awk '{print $2}')
+  DISK_USED=$(echo "$DISK_LINE" | awk '{print $3}')
+  DISK_AVAIL=$(echo "$DISK_LINE" | awk '{print $4}')
+  DISK_PCT=$(echo "$DISK_LINE" | awk '{print $5}' | tr -d '%')
+
+  # Battery
+  BATT_CAP=$(echo "$RAW" | grep "^BATT_CAP:" | sed 's/^BATT_CAP://' | tr -d ' ')
+  # Sanity check: capacity must be 0-100 (some devices report µAh instead of %)
+  if [ "${BATT_CAP:--1}" -gt 100 ] 2>/dev/null; then BATT_CAP="-1"; fi
+  BATT_STATUS=$(echo "$RAW" | grep "^BATT_STATUS:" | sed 's/^BATT_STATUS://' | tr -d ' ')
+  BATT_TEMP_RAW=$(echo "$RAW" | grep "^BATT_TEMP:" | sed 's/^BATT_TEMP://' | tr -d ' ')
+  BATT_VOLT=$(echo "$RAW" | grep "^BATT_VOLT:" | sed 's/^BATT_VOLT://' | tr -d ' ')
+  BATT_HEALTH=$(echo "$RAW" | grep "^BATT_HEALTH:" | sed 's/^BATT_HEALTH://' | tr -d ' ')
+
+  BATT_CHARGING="false"
+  { [ "$BATT_STATUS" = "Charging" ] || [ "$BATT_STATUS" = "Full" ]; } && BATT_CHARGING="true"
+
+  # Build metrics JSON for this node
+  BATT_BLOCK="null"
+  if [ "${BATT_CAP:--1}" != "-1" ]; then
+    BATT_TEMP_C=0
+    [ "${BATT_TEMP_RAW:-0}" -gt 0 ] 2>/dev/null && BATT_TEMP_C=$((BATT_TEMP_RAW / 10))
+    BATT_BLOCK=$(jq -n --argjson lv "${BATT_CAP:-0}" --argjson ch "$BATT_CHARGING" --argjson bt "$BATT_TEMP_C" '{level:$lv,charging:$ch,temperature:$bt}')
+  fi
+
+  TEMP_BLOCK="null"
+  [ "$TEMP_C" -gt 0 ] 2>/dev/null && TEMP_BLOCK=$(jq -n --argjson c "$TEMP_C" '{celsius:$c}')
+
+  NODE_M=$(jq -n \
+    --argjson cu "${CPU_USAGE:-0}" \
+    --argjson mt "${MEM_TOTAL:-0}" --argjson mu "${MEM_USED:-0}" --argjson mp "${MEM_PCT:-0}" \
+    --argjson dt "${DISK_TOTAL:-0}" --argjson du "${DISK_USED:-0}" --argjson da "${DISK_AVAIL:-0}" --argjson dp "${DISK_PCT:-0}" \
+    --argjson temp "$TEMP_BLOCK" --argjson batt "$BATT_BLOCK" \
+    '{cpu:{usage:$cu,cores:null},memory:{totalMB:$mt,usedMB:$mu,percent:$mp},temp:$temp,storage:{totalMB:$dt,usedMB:$du,availMB:$da,percent:$dp},battery:$batt}')
+
+  METRICS_JSON=$(echo "$METRICS_JSON" | jq --arg n "$NODE_NAME" --argjson m "$NODE_M" '.[$n] = $m')
+
+  # Battery array entry
+  if [ "${BATT_CAP:--1}" != "-1" ]; then
+    BATTERY_PHONES=$(echo "$BATTERY_PHONES" | jq \
+      --arg n "$NODE_NAME" --argjson lv "${BATT_CAP:-0}" --arg st "$BATT_STATUS" --argjson ch "$BATT_CHARGING" \
+      --argjson bt "${BATT_TEMP_RAW:-0}" --argjson vt "${BATT_VOLT:-0}" --arg hl "$BATT_HEALTH" \
+      '. + [{name:$n, online:true, level:$lv, status:$st, charging:$ch, temp:(if $bt > 0 then ($bt/10|floor|tostring) else null end), voltage:(if $vt > 0 then ($vt/1000000*100|round/100|tostring) else null end), health:$hl}]')
+  else
+    BATTERY_PHONES=$(echo "$BATTERY_PHONES" | jq --arg n "$NODE_NAME" '. + [{name:$n,online:true,level:null}]')
+  fi
+
+  log "  $NODE_NAME: CPU=${CPU_USAGE:-?}% MEM=${MEM_PCT:-?}% TEMP=${TEMP_C}C BATT=${BATT_CAP:--}%"
+done
+rm -f "$TMP_DIR"/node*.tmp
+
+# Battery summary
+BATT_ONLINE=$(echo "$BATTERY_PHONES" | jq '[.[] | select(.online and .level != null)] | length')
+BATT_AVG=$(echo "$BATTERY_PHONES" | jq '[.[] | select(.online and .level != null) | .level] | if length > 0 then (add/length|round) else 0 end')
+BATT_CHARGING_CT=$(echo "$BATTERY_PHONES" | jq '[.[] | select(.charging == true)] | length')
+BATT_LOW=$(echo "$BATTERY_PHONES" | jq '[.[] | select(.online and .level != null and .level < 20)] | length')
+BATT_CRIT=$(echo "$BATTERY_PHONES" | jq '[.[] | select(.online and .level != null and .level < 10)] | length')
+
+BATTERY_DATA=$(jq -n \
+  --argjson phones "$BATTERY_PHONES" \
+  --argjson avg "$BATT_AVG" --argjson chg "$BATT_CHARGING_CT" \
+  --argjson low "$BATT_LOW" --argjson crit "$BATT_CRIT" --argjson on "$BATT_ONLINE" \
+  '{phones:$phones, summary:{avgLevel:$avg, charging:$chg, low:$low, critical:$crit, online:$on, total:10}}')
+log "Battery: $BATT_ONLINE reporting, avg ${BATT_AVG}%"
+
+# ── Mining stats (curl xmrig API on each phone) ─────────────────────
+
+log "Gathering mining stats..."
+MINING_WORKERS='[]'
+TOTAL_HR=0
+TOTAL_ACC=0
+TOTAL_REJ=0
+
+for i in $(seq 1 10); do
+  NODE_NAME="node$i"
+  NODE_IP="192.168.1.$((205 + i))"
+  XMRIG=$(curl -s --connect-timeout 3 --max-time 5 "http://$NODE_IP:18080/1/summary" 2>/dev/null)
+
+  if [ -n "$XMRIG" ] && echo "$XMRIG" | jq . >/dev/null 2>&1; then
+    HR=$(echo "$XMRIG" | jq '.hashrate.total[0] // 0')
+    ACC=$(echo "$XMRIG" | jq '.results.shares_good // 0')
+    TOT_SH=$(echo "$XMRIG" | jq '.results.shares_total // 0')
+    REJ=$((TOT_SH - ACC))
+    UPT=$(echo "$XMRIG" | jq '.uptime // 0')
+    ALGO=$(echo "$XMRIG" | jq -r '.algo // "unknown"')
+    THREADS=$(echo "$XMRIG" | jq '.cpu.threads // null')
+
+    HR_INT=$(printf '%.0f' "$HR" 2>/dev/null || echo 0)
+    if [ "$HR_INT" -ge 1000000 ] 2>/dev/null; then
+      HR_FMT="$(echo "scale=2; $HR / 1000000" | bc 2>/dev/null || echo "$HR_INT") MH/s"
+    elif [ "$HR_INT" -ge 1000 ] 2>/dev/null; then
+      HR_FMT="$(echo "scale=2; $HR / 1000" | bc 2>/dev/null || echo "$HR_INT") KH/s"
+    else
+      HR_FMT="${HR_INT} H/s"
+    fi
+
+    MINING_WORKERS=$(echo "$MINING_WORKERS" | jq \
+      --arg n "$NODE_NAME" --arg hr "$HR_FMT" --argjson hrr "$HR" \
+      --argjson acc "$ACC" --argjson rej "$REJ" --argjson upt "$UPT" \
+      --arg algo "$ALGO" --argjson thr "$THREADS" \
+      '. + [{name:$n, hashrate:$hr, hashrateRaw:$hrr, status:"mining", accepted:$acc, rejected:$rej, uptime:$upt, algo:$algo, threads:$thr}]')
+
+    TOTAL_HR=$(echo "$TOTAL_HR + $HR" | bc 2>/dev/null || echo "$TOTAL_HR")
+    TOTAL_ACC=$((TOTAL_ACC + ACC))
+    TOTAL_REJ=$((TOTAL_REJ + REJ))
+    log "  $NODE_NAME mining: $HR_FMT"
+  else
+    MINING_WORKERS=$(echo "$MINING_WORKERS" | jq --arg n "$NODE_NAME" '. + [{name:$n, hashrate:"0 H/s", hashrateRaw:0, status:"offline", accepted:0}]')
+  fi
+done
+
+MINERS_RUNNING=$(echo "$MINING_WORKERS" | jq '[.[] | select(.status=="mining")] | length')
+
+# Format total hashrate
+THR_INT=$(printf '%.0f' "$TOTAL_HR" 2>/dev/null || echo 0)
+if [ "$THR_INT" -ge 1000000 ] 2>/dev/null; then
+  THR_FMT="$(echo "scale=2; $TOTAL_HR / 1000000" | bc 2>/dev/null) MH/s"
+elif [ "$THR_INT" -ge 1000 ] 2>/dev/null; then
+  THR_FMT="$(echo "scale=2; $TOTAL_HR / 1000" | bc 2>/dev/null) KH/s"
+else
+  THR_FMT="${THR_INT:-0} H/s"
+fi
+
+DAILY_USD=$(echo "scale=4; $TOTAL_HR * 0.00005" | bc 2>/dev/null || echo "0")
+MONTHLY_USD=$(echo "scale=2; $DAILY_USD * 30" | bc 2>/dev/null || echo "0")
+DAILY_FMT=$(printf '$%.2f' "$DAILY_USD" 2>/dev/null || echo '$0.00')
+MONTHLY_FMT=$(printf '$%.2f' "$MONTHLY_USD" 2>/dev/null || echo '$0.00')
+
+MINING_ENABLED="false"
+[ "$MINERS_RUNNING" -gt 0 ] && MINING_ENABLED="true"
+
+MINING_JSON=$(jq -n \
+  --argjson en "$MINING_ENABLED" --argjson mr "$MINERS_RUNNING" \
+  --arg thr "$THR_FMT" --argjson thrr "$TOTAL_HR" \
+  --argjson tacc "$TOTAL_ACC" --argjson trej "$TOTAL_REJ" \
+  --arg ed "$DAILY_FMT" --arg em "$MONTHLY_FMT" \
+  --argjson wk "$MINING_WORKERS" \
+  '{enabled:$en, minersRunning:$mr, minersTotal:10, totalHashrate:$thr, totalHashrateRaw:$thrr, totalAccepted:$tacc, totalRejected:$trej, coin:"XMR", pool:"supportxmr.com", estimatedDaily:$ed, estimatedMonthly:$em, workers:$wk}')
+log "Mining: $MINERS_RUNNING running, total $THR_FMT"
+
+# ── Summary ─────────────────────────────────────────────────────────
+
+if [ "$K3S_UP" = "true" ]; then
+  NODES_READY=$(echo "$NODES_JSON" | jq '[.[] | select(.status=="Ready")] | length')
+  NODES_TOTAL=$(echo "$NODES_JSON" | jq 'length')
+  PODS_RUNNING=$(echo "$PODS_JSON" | jq '[.[] | select(.status=="Running")] | length')
+  PODS_TOTAL=$(echo "$PODS_JSON" | jq 'length')
+  PODS_PENDING=$(echo "$PODS_JSON" | jq '[.[] | select(.status=="Pending")] | length')
+  PODS_FAILED=$(echo "$PODS_JSON" | jq '[.[] | select(.status=="Failed")] | length')
+  TOTAL_RESTARTS=$(echo "$PODS_JSON" | jq '[.[].restarts] | add // 0')
+
+  # Health score
+  NODE_PCT=0; [ "$NODES_TOTAL" -gt 0 ] && NODE_PCT=$((NODES_READY * 100 / NODES_TOTAL))
+  POD_PCT=0; [ "$PODS_TOTAL" -gt 0 ] && POD_PCT=$((PODS_RUNNING * 100 / PODS_TOTAL))
+  HEALTH_SCORE=$(( (NODE_PCT * 60 + POD_PCT * 40) / 100 ))
+  [ "$PODS_FAILED" -gt 0 ] && HEALTH_SCORE=$((HEALTH_SCORE - PODS_FAILED * 5))
+  [ "$HEALTH_SCORE" -lt 0 ] && HEALTH_SCORE=0
+else
+  NODES_READY=0; NODES_TOTAL=0
+  PODS_RUNNING=0; PODS_TOTAL=0; PODS_PENDING=0; PODS_FAILED=0
+  TOTAL_RESTARTS=0; HEALTH_SCORE=0
+fi
+
+log "Summary: $NODES_READY/$NODES_TOTAL nodes, $PODS_RUNNING/$PODS_TOTAL pods, health=$HEALTH_SCORE%"
+
+# ── Build & push payload ────────────────────────────────────────────
+
 PAYLOAD=$(jq -n \
   --argjson nodes "$NODES_JSON" \
   --argjson pods "$PODS_JSON" \
   --argjson services "$SERVICES_JSON" \
   --argjson network "$NETWORK_JSON" \
+  --argjson metrics "$METRICS_JSON" \
+  --argjson battery "$BATTERY_DATA" \
+  --argjson mining "$MINING_JSON" \
+  --argjson events "$EVENTS_JSON" \
+  --argjson nodeScheduling "$NODE_SCHEDULING" \
   --argjson nodesReady "$NODES_READY" \
   --argjson nodesTotal "$NODES_TOTAL" \
   --argjson podsRunning "$PODS_RUNNING" \
   --argjson podsTotal "$PODS_TOTAL" \
   --argjson podsPending "$PODS_PENDING" \
   --argjson podsFailed "$PODS_FAILED" \
+  --argjson totalRestarts "$TOTAL_RESTARTS" \
+  --argjson healthScore "$HEALTH_SCORE" \
   '{
     nodes: $nodes,
     pods: $pods,
     services: $services,
     network: $network,
+    metrics: $metrics,
+    battery: $battery,
+    mining: $mining,
+    events: $events,
+    nodeScheduling: $nodeScheduling,
     summary: {
       nodesReady: $nodesReady,
       nodesTotal: $nodesTotal,
       podsRunning: $podsRunning,
       podsTotal: $podsTotal,
       podsPending: $podsPending,
-      podsFailed: $podsFailed
+      podsFailed: $podsFailed,
+      totalRestarts: $totalRestarts,
+      healthScore: $healthScore
     }
   }')
 
-# Push to API
+PAYLOAD_SIZE=$(echo "$PAYLOAD" | wc -c)
+log "Payload size: ${PAYLOAD_SIZE} bytes"
+
 log "Pushing to API..."
-RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$API_URL" \
+RESPONSE=$(curl -sL -w "\n%{http_code}" -X POST "$API_URL" \
   -H "Content-Type: application/json" \
   -H "X-Cluster-Key: $API_KEY" \
   -d "$PAYLOAD")
@@ -164,8 +425,7 @@ HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
 BODY=$(echo "$RESPONSE" | sed '$d')
 
 if [ "$HTTP_CODE" = "200" ]; then
-  log "SUCCESS: Status pushed successfully"
-  log "Response: $BODY"
+  log "SUCCESS: Status pushed ($PAYLOAD_SIZE bytes)"
 else
   log "ERROR: HTTP $HTTP_CODE - $BODY"
   exit 1

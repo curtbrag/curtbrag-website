@@ -1,8 +1,50 @@
 // Netlify Function: Cluster Control API
 // Queues commands for the cluster to execute
+// Uses Netlify Blobs for persistence across cold starts
 
-let commandQueue = [];
-let commandHistory = [];
+const { getStore } = require("@netlify/blobs");
+
+async function getQueue() {
+  try {
+    const store = getStore("cluster-control");
+    const data = await store.get("queue", { type: "json" });
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    console.warn("Failed to read queue:", e.message);
+    return [];
+  }
+}
+
+async function saveQueue(queue) {
+  try {
+    const store = getStore("cluster-control");
+    await store.setJSON("queue", queue);
+  } catch (e) {
+    console.warn("Failed to save queue:", e.message);
+  }
+}
+
+async function getHistory() {
+  try {
+    const store = getStore("cluster-control");
+    const data = await store.get("history", { type: "json" });
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    console.warn("Failed to read history:", e.message);
+    return [];
+  }
+}
+
+async function saveHistory(history) {
+  try {
+    const store = getStore("cluster-control");
+    // Keep only last 20
+    const trimmed = history.slice(-20);
+    await store.setJSON("history", trimmed);
+  } catch (e) {
+    console.warn("Failed to save history:", e.message);
+  }
+}
 
 exports.handler = async (event) => {
   const headers = {
@@ -29,7 +71,11 @@ exports.handler = async (event) => {
       if (apiKey !== validKey) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
       }
-      const cmd = commandQueue.shift();
+      const queue = await getQueue();
+      const cmd = queue.shift();
+      if (cmd) {
+        await saveQueue(queue);
+      }
       return {
         statusCode: 200,
         headers,
@@ -38,13 +84,15 @@ exports.handler = async (event) => {
     }
 
     // Dashboard getting queue status
+    const queue = await getQueue();
+    const history = await getHistory();
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
-        pending: commandQueue.length,
-        queue: commandQueue,
-        history: commandHistory.slice(-10)
+        pending: queue.length,
+        queue: queue,
+        history: history.slice(-10)
       })
     };
   }
@@ -63,13 +111,13 @@ exports.handler = async (event) => {
       if (apiKey !== validKey) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
       }
-      commandHistory.push({
+      const history = await getHistory();
+      history.push({
         id: body.id,
         result: body.result,
         completedAt: new Date().toISOString()
       });
-      // Keep only last 20
-      if (commandHistory.length > 20) commandHistory = commandHistory.slice(-20);
+      await saveHistory(history);
       return {
         statusCode: 200,
         headers,
@@ -105,7 +153,9 @@ exports.handler = async (event) => {
       queuedAt: new Date().toISOString()
     };
 
-    commandQueue.push(newCmd);
+    const queue = await getQueue();
+    queue.push(newCmd);
+    await saveQueue(queue);
 
     return {
       statusCode: 200,
@@ -114,7 +164,7 @@ exports.handler = async (event) => {
         success: true,
         message: `Command '${command}' queued for ${target || 'all'}`,
         id: cmdId,
-        position: commandQueue.length
+        position: queue.length
       })
     };
   }
