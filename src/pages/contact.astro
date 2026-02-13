@@ -7,45 +7,45 @@ import Layout from '../layouts/Layout.astro';
   description="Get in touch with Curtis Bragdon - schedule a truck stop, request tools, or ask any questions."
 >
   <section class="max-w-xl mx-auto px-4 py-12">
-    <h1 class="text-3xl font-bold text-center mb-8 text-text">
-      <i class="fa-solid fa-envelope text-brand mr-2"></i>Contact Curtis
+    <h1 class="text-3xl font-bold text-center mb-8 text-text reveal">
+      <i class="fa-solid fa-envelope text-brand mr-2"></i>Contact <span class="gradient-text">Curtis</span>
     </h1>
 
-    <div class="bg-panel border border-border rounded-2xl p-8">
+    <div class="card-glow p-8 reveal">
       <p class="text-text-secondary leading-relaxed mb-6">
         Have a question about tools, need a custom order, or want to schedule a stop?
       </p>
 
       <!-- Quick Contact Buttons -->
-      <div class="flex flex-wrap gap-3 mb-6 pb-6 border-b border-border">
+      <div class="flex flex-wrap gap-3 mb-6 pb-6 border-b border-border stagger-children">
         <a
           href="tel:+17814170692"
-          class="inline-flex items-center gap-2 px-4 py-2 bg-bg border border-border rounded-lg text-text text-sm hover:border-brand transition"
+          class="inline-flex items-center gap-2 px-4 py-2 bg-bg border border-border rounded-lg text-text text-sm hover:border-brand hover:bg-brand/10 hover:scale-105 transition-all duration-200"
         >
           <i class="fa-solid fa-phone"></i>Call
         </a>
         <a
           href="sms:+17814170692"
-          class="inline-flex items-center gap-2 px-4 py-2 bg-bg border border-border rounded-lg text-text text-sm hover:border-brand transition"
+          class="inline-flex items-center gap-2 px-4 py-2 bg-bg border border-border rounded-lg text-text text-sm hover:border-brand hover:bg-brand/10 hover:scale-105 transition-all duration-200"
         >
           <i class="fa-solid fa-comment-sms"></i>Text
         </a>
         <a
           href="mailto:curtbrag@yahoo.com"
-          class="inline-flex items-center gap-2 px-4 py-2 bg-bg border border-border rounded-lg text-text text-sm hover:border-brand transition"
+          class="inline-flex items-center gap-2 px-4 py-2 bg-bg border border-border rounded-lg text-text text-sm hover:border-brand hover:bg-brand/10 hover:scale-105 transition-all duration-200"
         >
           <i class="fa-solid fa-envelope"></i>Email
         </a>
         <a
           href="/zelle"
-          class="inline-flex items-center gap-2 px-4 py-2 bg-bg border border-border rounded-lg text-text text-sm hover:border-brand transition"
+          class="inline-flex items-center gap-2 px-4 py-2 bg-bg border border-border rounded-lg text-text text-sm hover:border-brand hover:bg-brand/10 hover:scale-105 transition-all duration-200"
         >
           <i class="fa-solid fa-dollar-sign"></i>Zelle
         </a>
         <button
           type="button"
           id="copy-phone-btn"
-          class="inline-flex items-center gap-2 px-4 py-2 bg-bg border border-border rounded-lg text-text text-sm hover:border-brand transition cursor-pointer"
+          class="inline-flex items-center gap-2 px-4 py-2 bg-bg border border-border rounded-lg text-text text-sm hover:border-brand hover:bg-brand/10 hover:scale-105 transition-all duration-200 cursor-pointer"
         >
           <i class="fa-solid fa-copy"></i>Copy #
         </button>
@@ -75,7 +75,7 @@ import Layout from '../layouts/Layout.astro';
             id="name"
             name="name"
             required
-            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text focus:border-brand focus:ring-1 focus:ring-brand/30 transition outline-none"
+            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200 outline-none"
           />
         </div>
 
@@ -86,7 +86,7 @@ import Layout from '../layouts/Layout.astro';
             id="email"
             name="email"
             required
-            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text focus:border-brand focus:ring-1 focus:ring-brand/30 transition outline-none"
+            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200 outline-none"
           />
         </div>
 
@@ -97,7 +97,7 @@ import Layout from '../layouts/Layout.astro';
             id="subject"
             name="subject"
             placeholder="Schedule Stop, Tool Request, Warranty, etc."
-            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand/30 transition outline-none"
+            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text placeholder:text-muted focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200 outline-none"
           />
         </div>
 
@@ -109,14 +109,14 @@ import Layout from '../layouts/Layout.astro';
             required
             rows="5"
             placeholder="How can I help you?"
-            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand/30 transition outline-none resize-y"
+            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text placeholder:text-muted focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200 outline-none resize-y"
           ></textarea>
         </div>
 
         <button
           type="submit"
           id="contact-submit"
-          class="w-full bg-brand text-white rounded-xl py-3 font-semibold hover:bg-brand-dark transition flex items-center justify-center gap-2 cursor-pointer"
+          class="btn-brand w-full bg-brand text-white rounded-xl py-3 font-semibold hover:bg-brand-dark hover:scale-[1.02] transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-brand/20 hover:shadow-brand/40"
         >
           <span id="submit-text">Send Message</span>
           <i id="submit-spinner" class="fa-solid fa-spinner fa-spin hidden"></i>
