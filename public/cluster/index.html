@@ -211,6 +211,8 @@
     .ctrl-btn.wake:hover { background: rgba(59, 130, 246, 0.1); }
     .ctrl-btn.sleep { border-color: var(--purple); color: var(--purple); }
     .ctrl-btn.sleep:hover { background: rgba(168, 85, 247, 0.1); }
+    .ctrl-btn.reboot { border-color: #f43f5e; color: #f43f5e; }
+    .ctrl-btn.reboot:hover { background: rgba(244, 63, 94, 0.15); }
     .control-status {
       font-size: 0.8rem;
       color: var(--muted);
@@ -1280,6 +1282,7 @@
         <button class="ctrl-btn restart" onclick="sendCommand('restart')" aria-label="Restart selected nodes"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Restart</button>
         <button class="ctrl-btn wake" onclick="sendCommand('wake')" aria-label="Wake selected nodes"><i class="fa-solid fa-sun" aria-hidden="true"></i> Wake</button>
         <button class="ctrl-btn sleep" onclick="sendCommand('sleep')" aria-label="Put selected nodes to sleep"><i class="fa-solid fa-moon" aria-hidden="true"></i> Sleep</button>
+        <button class="ctrl-btn reboot" onclick="sendCommand('reboot')" aria-label="Reboot selected nodes"><i class="fa-solid fa-power-off" aria-hidden="true"></i> Reboot</button>
       </div>
       <div class="custom-cmd">
         <input type="text" id="customCmdInput" placeholder="Custom SSH command (e.g. uptime, free -m, df -h)" onkeydown="if(event.key==='Enter')runCustomCommand()">
@@ -2099,19 +2102,24 @@
 
     async function sendToBackend(payload) {
       if (apiEndpoint) {
-        return apiFetch('/api/command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      } else {
-        const res = await fetch('/.netlify/functions/cluster-control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        return await res.json();
+        try {
+          const directRes = await fetch(apiEndpoint + '/api/command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...apiHeaders() },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(8000)
+          });
+          if (directRes.ok) return await directRes.json();
+        } catch (e) {
+          console.warn('Direct API command failed, falling back to Netlify relay:', e.message);
+        }
       }
+      const res = await fetch('/.netlify/functions/cluster-control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      return await res.json();
     }
 
     // ─── Health Score ────────────────────────────────────────────────────
@@ -2489,6 +2497,10 @@
 
     // Control functions
     function sendCommand(cmd) {
+      if (cmd === 'reboot') {
+        var target = document.getElementById('targetSelect').value;
+        if (!confirm('Are you sure you want to REBOOT ' + target + '? This will cause downtime.')) return;
+      }
       pendingCommand = cmd;
       if (savedPassword) {
         executeCommand(cmd, savedPassword);
@@ -2577,10 +2589,14 @@
         workerList.innerHTML = mining.workers.map(function(w) {
           const isOnline = w.status === 'mining';
           const uptimeStr = w.uptime ? ' | ' + w.uptime : '';
+          const toggleCmd = isOnline ? 'mining-stop' : 'mining-start';
+          const toggleIcon = isOnline ? 'fa-pause' : 'fa-play';
+          const toggleTitle = (isOnline ? 'Stop' : 'Start') + ' mining on ' + w.name;
           return '<div class="worker-chip ' + (isOnline ? '' : 'offline') + '">' +
             '<i class="fa-solid ' + (isOnline ? 'fa-circle-check' : 'fa-circle-xmark') + '" style="color: var(--' + (isOnline ? 'green' : 'red') + ')"></i>' +
             '<span>' + w.name + '</span>' +
-            '<span class="rate">' + w.hashrate + uptimeStr + '</span></div>';
+            '<span class="rate">' + w.hashrate + uptimeStr + '</span>' +
+            '<button class="ssh-preset" onclick="sendMiningNodeCommand(\'' + toggleCmd + '\',\'' + w.name + '\')" title="' + toggleTitle + '" style="margin-left:4px"><i class="fa-solid ' + toggleIcon + '"></i></button></div>';
         }).join('');
       } else {
         workerList.innerHTML = '<span class="worker-chip"><span>No workers</span></span>';
@@ -2598,11 +2614,35 @@
       }
     }
 
+    async function sendMiningNodeCommand(cmd, node) {
+      if (!savedPassword) {
+        pendingCommand = cmd;
+        document.getElementById('passwordModal').classList.add('visible');
+        document.getElementById('passwordInput').focus();
+        return;
+      }
+      showToast('Sending ' + cmd + ' to ' + node + '...', 'info');
+      try {
+        var data = await sendToBackend({ command: cmd, target: node, password: savedPassword });
+        if (data.success) {
+          showToast(data.message, 'success');
+          setTimeout(loadClusterStatus, 5000);
+        } else {
+          showToast(data.error || 'Failed', 'error');
+        }
+      } catch (e) { showToast('Error: ' + e.message, 'error'); }
+    }
+
     // ─── Mining History Chart ────────────────────────────────────────────
     async function loadMiningHistory() {
-      if (!apiEndpoint) return;
       try {
-        const data = await apiFetch('/api/mining/history');
+        var data;
+        if (apiEndpoint) {
+          data = await apiFetch('/api/mining/history');
+        } else {
+          var res = await fetch('/.netlify/functions/cluster-status?type=mining-history');
+          data = await res.json();
+        }
         renderMiningChart(data.history || []);
       } catch (e) { /* silent */ }
     }
@@ -2791,10 +2831,10 @@
           var res = await fetch('/.netlify/functions/cluster-control');
           data = await res.json();
           var cmds = (data.history || []).map(function(h) {
-            return { command: h.id, target: '', status: h.result || 'completed', timestamp: h.completedAt };
+            return { id: h.id, command: h.command || h.id, target: h.target || '', status: h.result || 'completed', timestamp: h.completedAt, output: h.output || null };
           });
           var queued = (data.queue || []).map(function(q) {
-            return { command: q.command, target: q.target || 'all', status: 'queued', timestamp: q.queuedAt };
+            return { id: q.id, command: q.command, target: q.target || 'all', status: 'queued', timestamp: q.queuedAt };
           });
           renderCommandLog(queued.concat(cmds));
         }
@@ -2806,14 +2846,30 @@
       var body = document.getElementById('cmdHistoryBody');
       if (commands.length === 0) { panel.style.display = 'none'; return; }
       panel.style.display = 'block';
+      window._cmdOutputs = {};
       body.innerHTML = commands.slice(0, 30).map(function(c) {
         var time = new Date(c.timestamp).toLocaleTimeString();
         var urlStr = c.url ? ' (' + c.url.substring(0, 30) + ')' : '';
+        var outputBtn = '';
+        if (c.output) {
+          window._cmdOutputs[c.id] = c.output;
+          outputBtn = ' <button class="ssh-preset" onclick="showCmdOutput(\'' + c.id + '\')" title="View output"><i class="fa-solid fa-terminal"></i></button>';
+        }
         return '<div class="cmd-item">' +
           '<span class="cmd-badge ' + c.status + '">' + c.status + '</span>' +
-          '<span style="flex:1"><strong>' + c.command + '</strong> &rarr; ' + (c.target || '') + urlStr + '</span>' +
+          '<span style="flex:1"><strong>' + c.command + '</strong> &rarr; ' + (c.target || '') + urlStr + outputBtn + '</span>' +
           '<span class="cmd-time">' + time + '</span></div>';
       }).join('');
+    }
+
+    function showCmdOutput(id) {
+      var output = (window._cmdOutputs || {})[id];
+      if (!output) return;
+      document.getElementById('logModalTitle').textContent = 'Command Output';
+      document.getElementById('logBody').innerHTML = output.split('\n').map(function(l) {
+        return '<div class="log-line">' + l.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
+      }).join('');
+      document.getElementById('logModal').classList.add('visible');
     }
 
     function toggleCmdHistory() {
@@ -3628,30 +3684,45 @@
         document.getElementById('passwordInput').focus();
         return;
       }
-      if (!apiEndpoint) { showToast('Direct API required', 'error'); return; }
       var target = document.getElementById('targetSelect').value;
       var status = document.getElementById('controlStatus');
       status.textContent = 'Running command on ' + target + '...';
       status.className = 'control-status visible';
-      try {
-        var data = await apiPost('/api/command', { command: 'custom', target: target, customCmd: cmd, password: savedPassword });
-        if (data.success || data.output || data.results) {
-          var outputLines = [];
-          if (data.output) {
-            outputLines.push('=== ' + target + ' ===');
-            outputLines.push(data.output);
-          } else if (data.results) {
-            for (var n in data.results) {
-              outputLines.push('=== ' + n + ' ===');
-              outputLines.push(data.results[n].stdout || data.results[n].stderr || data.results[n].error || '(no output)');
+
+      // Try direct API first for immediate output
+      if (apiEndpoint) {
+        try {
+          var data = await apiPost('/api/command', { command: 'custom', target: target, customCmd: cmd, password: savedPassword });
+          if (data.success || data.output || data.results) {
+            var outputLines = [];
+            if (data.output) {
+              outputLines.push('=== ' + target + ' ===');
+              outputLines.push(data.output);
+            } else if (data.results) {
+              for (var n in data.results) {
+                outputLines.push('=== ' + n + ' ===');
+                outputLines.push(data.results[n].stdout || data.results[n].stderr || data.results[n].error || '(no output)');
+              }
             }
+            document.getElementById('logModalTitle').textContent = 'Command: ' + cmd;
+            document.getElementById('logBody').innerHTML = outputLines.map(function(l) {
+              return '<div class="log-line">' + l.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
+            }).join('');
+            document.getElementById('logModal').classList.add('visible');
+            status.textContent = 'Command completed';
+            status.className = 'control-status visible success';
+            return;
           }
-          document.getElementById('logModalTitle').textContent = 'Command: ' + cmd;
-          document.getElementById('logBody').innerHTML = outputLines.map(function(l) {
-            return '<div class="log-line">' + l.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
-          }).join('');
-          document.getElementById('logModal').classList.add('visible');
-          status.textContent = 'Command completed';
+        } catch (e) {
+          console.warn('Direct API custom command failed, queuing via Netlify:', e.message);
+        }
+      }
+
+      // Fall back to Netlify relay (queued execution, output in command log)
+      try {
+        var data = await sendToBackend({ command: 'ssh', target: target, sshCmd: cmd, password: savedPassword });
+        if (data.success) {
+          status.textContent = data.message + ' (queued — check command log for output)';
           status.className = 'control-status visible success';
         } else {
           status.textContent = data.error || 'Failed';
@@ -4637,12 +4708,39 @@
       document.getElementById('healthGraphLabel').textContent = firstTs.toLocaleTimeString() + ' — ' + lastTs.toLocaleTimeString();
     }
 
-    // ─── Power Scheduling ────────────────────────────────────────────
-    var schedules = {}; try { schedules = JSON.parse(localStorage.getItem('clusterSchedules') || '{}'); } catch(e) {}
+    // ─── Power Scheduling (Server-Synced) ──────────────────────────────
+    var schedules = {};
+
+    async function loadSchedules() {
+      try {
+        var res = await fetch('/.netlify/functions/cluster-control?action=schedules');
+        var data = await res.json();
+        schedules = data.schedules || {};
+        renderSchedules();
+      } catch (e) { console.warn('Failed to load schedules:', e); }
+    }
+
+    async function saveSchedulesToServer() {
+      if (!savedPassword) {
+        pendingCommand = 'save-schedules';
+        document.getElementById('passwordModal').classList.add('visible');
+        document.getElementById('passwordInput').focus();
+        return;
+      }
+      try {
+        var res = await fetch('/.netlify/functions/cluster-control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'save-schedules', schedules: schedules, password: savedPassword })
+        });
+        var data = await res.json();
+        if (data.success) showToast('Schedules saved to server', 'success');
+        else showToast('Failed: ' + (data.error || 'unknown'), 'error');
+      } catch (e) { showToast('Error saving schedules: ' + e.message, 'error'); }
+    }
 
     function renderSchedules() {
       var panel = document.getElementById('schedulePanel');
-      if (!apiEndpoint) { panel.style.display = 'none'; return; }
       panel.style.display = 'block';
 
       var groups = [
@@ -4660,6 +4758,8 @@
           '<div class="schedule-times">' +
           '<span class="schedule-time"><i class="fa-solid fa-sun"></i> Wake: <input type="time" value="' + (s.wake || '06:00') + '" onchange="updateScheduleTime(\'' + g.id + '\',\'wake\',this.value)"></span>' +
           '<span class="schedule-time"><i class="fa-solid fa-moon"></i> Sleep: <input type="time" value="' + (s.sleep || '23:00') + '" onchange="updateScheduleTime(\'' + g.id + '\',\'sleep\',this.value)"></span>' +
+          '<span class="schedule-time"><i class="fa-solid fa-pickaxe"></i> Mine Start: <input type="time" value="' + (s.miningStart || '') + '" onchange="updateScheduleTime(\'' + g.id + '\',\'miningStart\',this.value)" placeholder="--:--"></span>' +
+          '<span class="schedule-time"><i class="fa-solid fa-stop"></i> Mine Stop: <input type="time" value="' + (s.miningStop || '') + '" onchange="updateScheduleTime(\'' + g.id + '\',\'miningStop\',this.value)" placeholder="--:--"></span>' +
           '</div></div>';
       }).join('');
     }
@@ -4668,37 +4768,14 @@
       if (!schedules[id]) schedules[id] = { enabled: false, wake: '06:00', sleep: '23:00' };
       schedules[id].enabled = !schedules[id].enabled;
       btn.classList.toggle('active');
-      saveSchedules();
+      saveSchedulesToServer();
     }
 
     function updateScheduleTime(id, field, val) {
       if (!schedules[id]) schedules[id] = { enabled: false, wake: '06:00', sleep: '23:00' };
       schedules[id][field] = val;
+      saveSchedulesToServer();
     }
-
-    function saveSchedules() {
-      localStorage.setItem('clusterSchedules', JSON.stringify(schedules));
-      showToast('Schedules saved', 'success');
-    }
-
-    // Check schedules every minute
-    setInterval(function() {
-      var now = new Date();
-      var timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
-      Object.entries(schedules).forEach(function(entry) {
-        var id = entry[0];
-        var s = entry[1];
-        if (!s.enabled) return;
-        if (timeStr === s.wake) {
-          groupCmd(id, 'wake');
-          addNotification('info', 'Scheduled wake for ' + id);
-        }
-        if (timeStr === s.sleep) {
-          groupCmd(id, 'sleep');
-          addNotification('info', 'Scheduled sleep for ' + id);
-        }
-      });
-    }, 60000);
 
     // ─── Node Group Commands ─────────────────────────────────────────
     function groupCmd(group, cmd) {
@@ -5138,7 +5215,7 @@
     loadClusterStatus();
     measureApiLatency();
     connectSSE();
-    try { renderSchedules(); } catch(e) { console.warn('renderSchedules:', e); }
+    try { loadSchedules(); } catch(e) { console.warn('loadSchedules:', e); }
     loadHealthHistory();
     setInterval(loadClusterStatus, 10000);
     setInterval(measureApiLatency, 15000);
