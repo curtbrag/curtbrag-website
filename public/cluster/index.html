@@ -2202,6 +2202,18 @@
         lastMetrics = data.metrics || {};
 
         window._lastNodes = data.nodes || [];
+        // If K3s is down but metrics exist, synthesize nodes from metrics
+        if (window._lastNodes.length === 0 && data.metrics && Object.keys(data.metrics).length > 0) {
+          window._lastNodes = Object.keys(data.metrics).sort(function(a, b) {
+            var na = parseInt(a.replace('node', '')), nb = parseInt(b.replace('node', ''));
+            return na - nb;
+          }).map(function(name) {
+            var m = data.metrics[name];
+            var online = m && m.cpu && m.cpu.usage > 0;
+            var num = parseInt(name.replace('node', ''));
+            return { name: name, status: online ? 'Ready' : 'NotReady', role: num === 1 ? 'control-plane' : 'worker', ip: '192.168.1.' + (205 + num) };
+          });
+        }
         renderNodes(window._lastNodes);
         document.getElementById('nodeBadge').textContent = `${window._lastNodes.length} nodes`;
 
