@@ -44,7 +44,7 @@ doas rm -rf /var/lib/rancher/k3s/agent/* 2>/dev/null || true
 
 echo "Creating k3s config..."
 doas mkdir -p /etc/rancher/k3s
-cat << 'CONF' | doas tee /etc/rancher/k3s/config.yaml
+cat << CONF | doas tee /etc/rancher/k3s/config.yaml
 server: https://$SERVER_IP:6443
 token: $TOKEN
 node-name: node$i
