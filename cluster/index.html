@@ -1400,7 +1400,7 @@
     <!-- Demo Banner -->
     <div class="demo-banner" id="demoBanner">
       <i class="fa-solid fa-flask"></i>
-      <span>Demo Mode — Showing sample data. Live updates appear when cluster pushes status.</span>
+      <span>Demo Mode — No live data yet. Run <code style="background:rgba(255,255,255,0.1);padding:0 4px;border-radius:3px">push-cluster-status.sh</code> on node1 to push live data.</span>
     </div>
 
     <!-- Auto-Reconnect Banner -->
@@ -2069,9 +2069,9 @@
         badge.style.background = 'rgba(59, 130, 246, 0.15)';
         badge.style.color = 'var(--blue)';
       } else {
-        badge.textContent = 'Netlify';
-        badge.style.background = 'rgba(138, 138, 138, 0.15)';
-        badge.style.color = 'var(--muted)';
+        badge.textContent = 'Netlify Relay';
+        badge.style.background = 'rgba(34, 197, 94, 0.15)';
+        badge.style.color = 'var(--green)';
       }
     }
 
@@ -2159,11 +2159,19 @@
         if (data.demo && !isDirectApi) {
           statusDot.className = 'status-dot demo';
           statusText.textContent = 'Demo Mode';
-          demoBanner.classList.add('visible');
+          if (demoBanner) demoBanner.classList.add('visible');
+        } else if (data.stale && !isDirectApi) {
+          statusDot.className = 'status-dot demo';
+          statusText.textContent = 'Stale (' + (data.ageMinutes || '?') + 'm ago)';
+          if (demoBanner) {
+            demoBanner.innerHTML = '<i class="fa-solid fa-clock"></i><span>Stale Data — Last update was ' + (data.ageMinutes || '?') + ' minutes ago. Cluster may be offline.</span>';
+            demoBanner.classList.add('visible');
+          }
         } else {
           statusDot.className = 'status-dot live';
-          statusText.textContent = isDirectApi ? 'Live (Direct)' : 'Live';
-          demoBanner.classList.remove('visible');
+          statusText.textContent = isDirectApi ? 'Live (Direct)' : 'Live (Netlify)';
+          if (demoBanner) demoBanner.classList.remove('visible');
+          consecutiveFailures = 0;
         }
 
         const summary = data.summary || {};
@@ -2180,8 +2188,9 @@
         renderHealthScore(summary.healthScore || 0);
         lastMetrics = data.metrics || {};
 
-        renderNodes(data.nodes || []);
-        document.getElementById('nodeBadge').textContent = `${(data.nodes || []).length} nodes`;
+        window._lastNodes = data.nodes || [];
+        renderNodes(window._lastNodes);
+        document.getElementById('nodeBadge').textContent = `${window._lastNodes.length} nodes`;
 
         allPods = data.pods || [];
         buildPodTabs();
@@ -2221,10 +2230,25 @@
         }
         recordLocalHealth(summary.healthScore || 0);
 
+        // Always load command history (works via Netlify relay too)
+        loadCommandLog();
+
+        // Features that work with pushed data (no Direct API needed)
+        generateLocalAlerts(data);
+        if (data.battery) {
+          renderBatteryHeatmap(data.battery);
+          document.getElementById('batteryPanel').style.display = 'block';
+        }
+        if (data.events) renderEvents(data.events);
+        if (data.nodeScheduling) {
+          nodeSchedulingData = {};
+          data.nodeScheduling.forEach(function(n) { nodeSchedulingData[n.name] = n; });
+        }
+
+        // Features that ONLY work with Direct API (live SSH/ADB)
         if (apiEndpoint && isDirectApi) {
           loadScreens();
           loadAlerts();
-          loadCommandLog();
           loadMiningHistory();
           loadNodeScheduling();
           loadPodResources();
@@ -2683,6 +2707,41 @@
     }
 
     // ─── Alerts ──────────────────────────────────────────────────────────
+    function generateLocalAlerts(data) {
+      var alertList = [];
+      var nodes = data.nodes || [];
+      var pods = data.pods || [];
+      var metrics = data.metrics || {};
+      var ts = data.lastUpdate || new Date().toISOString();
+
+      nodes.forEach(function(n) {
+        if (n.status !== 'Ready') {
+          alertList.push({ severity: 'critical', title: 'Node Down', message: n.name + ' is ' + n.status, timestamp: ts });
+        }
+      });
+      pods.forEach(function(p) {
+        if (p.restarts > 10) {
+          alertList.push({ severity: 'warning', title: 'Pod CrashLoop', message: p.name + ' has ' + p.restarts + ' restarts', timestamp: ts });
+        }
+        if (p.status === 'Failed') {
+          alertList.push({ severity: 'warning', title: 'Pod Failed', message: p.name + ' in ' + p.namespace, timestamp: ts });
+        }
+      });
+      Object.keys(metrics).forEach(function(name) {
+        var m = metrics[name];
+        if (m.temp && m.temp.celsius > 55) alertList.push({ severity: 'warning', title: 'High Temp', message: name + ' at ' + m.temp.celsius + '\u00B0C', timestamp: ts });
+        if (m.cpu && m.cpu.usage > 90) alertList.push({ severity: 'warning', title: 'CPU Critical', message: name + ' CPU at ' + m.cpu.usage + '%', timestamp: ts });
+        if (m.memory && m.memory.percent > 90) alertList.push({ severity: 'warning', title: 'Memory Critical', message: name + ' RAM at ' + m.memory.percent + '%', timestamp: ts });
+        if (m.storage && m.storage.percent > 90) alertList.push({ severity: 'warning', title: 'Disk Full', message: name + ' disk at ' + m.storage.percent + '%', timestamp: ts });
+        if (m.battery && m.battery.level < 10 && !m.battery.charging) alertList.push({ severity: 'critical', title: 'Battery Critical', message: name + ' at ' + m.battery.level + '%', timestamp: ts });
+      });
+      var mining = data.mining || {};
+      if (mining.minersTotal > 0 && mining.minersRunning === 0) {
+        alertList.push({ severity: 'warning', title: 'Mining Stopped', message: 'All miners are offline', timestamp: ts });
+      }
+      renderAlerts(alertList);
+    }
+
     async function loadAlerts() {
       if (!apiEndpoint) return;
       try {
@@ -2723,10 +2782,22 @@
 
     // ─── Command History ─────────────────────────────────────────────────
     async function loadCommandLog() {
-      if (!apiEndpoint) return;
       try {
-        var data = await apiFetch('/api/commands/log');
-        renderCommandLog(data.commands || []);
+        var data;
+        if (apiEndpoint) {
+          data = await apiFetch('/api/commands/log');
+          renderCommandLog(data.commands || []);
+        } else {
+          var res = await fetch('/.netlify/functions/cluster-control');
+          data = await res.json();
+          var cmds = (data.history || []).map(function(h) {
+            return { command: h.id, target: '', status: h.result || 'completed', timestamp: h.completedAt };
+          });
+          var queued = (data.queue || []).map(function(q) {
+            return { command: q.command, target: q.target || 'all', status: 'queued', timestamp: q.queuedAt };
+          });
+          renderCommandLog(queued.concat(cmds));
+        }
       } catch (e) { /* silent */ }
     }
 
@@ -2758,7 +2829,11 @@
         if (apiEndpoint) {
           data = await apiFetch('/api/export');
         } else {
-          data = { exportedAt: new Date().toISOString(), note: 'Connect to Direct API for full export' };
+          // Export what we have from Netlify push data
+          var res = await fetch('/.netlify/functions/cluster-status');
+          data = await res.json();
+          data.exportedAt = new Date().toISOString();
+          data.source = 'netlify-relay';
         }
         var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         var url = URL.createObjectURL(blob);
@@ -2776,7 +2851,7 @@
     async function loadScreens() {
       if (!apiEndpoint) {
         document.getElementById('screenGrid').innerHTML =
-          '<div class="empty-state"><i class="fa-solid fa-display"></i><br>Configure API endpoint above to view phone screens</div>';
+          '<div class="empty-state"><i class="fa-solid fa-display"></i><br>Live screenshots require Direct API connection</div>';
         return;
       }
 
@@ -2918,8 +2993,49 @@
       document.getElementById('nodeDetailBody').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
       document.getElementById('nodeDetailActions').innerHTML = '';
       document.getElementById('nodeDetailModal').classList.add('visible');
-      if (apiEndpoint) loadNodeDetail(nodeName);
-      else document.getElementById('nodeDetailBody').innerHTML = '<p style="color:var(--muted)">Connect Direct API for details</p>';
+      if (apiEndpoint) {
+        loadNodeDetail(nodeName);
+      } else {
+        // Show push data including metrics
+        var pushNodes = window._lastNodes || [];
+        var found = pushNodes.filter(function(n) { return n.name === nodeName; })[0];
+        var m = lastMetrics[nodeName] || {};
+        var html = '';
+        if (found) {
+          // Resources section from pushed metrics
+          if (m.cpu || m.memory || m.temp || m.battery || m.storage) {
+            html += '<div class="node-detail-section"><h4>Resources</h4><div class="node-detail-metrics">';
+            if (m.cpu) html += '<div class="nd-metric"><div class="nd-metric-val" style="color:' + (m.cpu.usage > 80 ? 'var(--red)' : m.cpu.usage > 50 ? 'var(--yellow)' : 'var(--green)') + '">' + m.cpu.usage + '%</div><div class="nd-metric-label">CPU</div></div>';
+            if (m.memory) html += '<div class="nd-metric"><div class="nd-metric-val" style="color:' + (m.memory.percent > 85 ? 'var(--red)' : 'var(--green)') + '">' + m.memory.percent + '%</div><div class="nd-metric-label">RAM (' + m.memory.usedMB + '/' + m.memory.totalMB + 'MB)</div></div>';
+            if (m.temp) html += '<div class="nd-metric"><div class="nd-metric-val" style="color:' + (m.temp.celsius > 60 ? 'var(--red)' : 'var(--green)') + '">' + m.temp.celsius + '&deg;C</div><div class="nd-metric-label">Temp</div></div>';
+            if (m.battery) html += '<div class="nd-metric"><div class="nd-metric-val" style="color:' + (m.battery.level > 50 ? 'var(--green)' : 'var(--red)') + '">' + m.battery.level + '%</div><div class="nd-metric-label">Battery' + (m.battery.charging ? ' (Charging)' : '') + '</div></div>';
+            if (m.storage) html += '<div class="nd-metric"><div class="nd-metric-val">' + m.storage.percent + '%</div><div class="nd-metric-label">Disk (' + (m.storage.availMB || '--') + 'MB free)</div></div>';
+            html += '</div></div>';
+          }
+          // Node info section
+          html += '<div class="node-detail-section"><h4>Node Info</h4><div class="node-detail-metrics">';
+          html += '<div class="nd-metric"><div class="nd-metric-val" style="color:' + (found.status === 'Ready' ? 'var(--green)' : 'var(--red)') + '">' + found.status + '</div><div class="nd-metric-label">Status</div></div>';
+          html += '<div class="nd-metric"><div class="nd-metric-val">' + (found.role || 'worker') + '</div><div class="nd-metric-label">Role</div></div>';
+          html += '<div class="nd-metric"><div class="nd-metric-val">' + (found.ip || '-') + '</div><div class="nd-metric-label">IP</div></div>';
+          if (found.kubeletVersion) html += '<div class="nd-metric"><div class="nd-metric-val">' + found.kubeletVersion + '</div><div class="nd-metric-label">K3s Version</div></div>';
+          if (found.osImage) html += '<div class="nd-metric"><div class="nd-metric-val">' + found.osImage + '</div><div class="nd-metric-label">OS</div></div>';
+          if (found.arch) html += '<div class="nd-metric"><div class="nd-metric-val">' + found.arch + '</div><div class="nd-metric-label">Arch</div></div>';
+          html += '</div></div>';
+          // Pods section
+          var nodePods = allPods.filter(function(p) { return p.node === nodeName; });
+          if (nodePods.length > 0) {
+            html += '<div class="node-detail-section"><h4>Pods (' + nodePods.length + ')</h4>';
+            nodePods.forEach(function(p) {
+              var color = p.status === 'Running' ? 'var(--green)' : p.status === 'Pending' ? 'var(--yellow)' : 'var(--red)';
+              html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0"><span style="color:' + color + '">&bull;</span><span>' + p.name + '</span><span style="color:var(--muted);font-size:0.8rem">' + p.namespace + '</span></div>';
+            });
+            html += '</div>';
+          }
+        } else {
+          html = '<p style="color:var(--muted)">No data available for this node</p>';
+        }
+        document.getElementById('nodeDetailBody').innerHTML = html;
+      }
     }
 
     async function loadNodeDetail(nodeName) {
@@ -3346,11 +3462,13 @@
     var eventsExpanded = false;
 
     async function loadEvents() {
-      if (!apiEndpoint) return;
-      try {
-        var data = await apiFetch('/api/events');
-        renderEvents(data.events || []);
-      } catch (e) { /* silent */ }
+      if (apiEndpoint) {
+        try {
+          var data = await apiFetch('/api/events');
+          renderEvents(data.events || []);
+        } catch (e) { /* silent */ }
+      }
+      // In Netlify mode, events are rendered from pushed data in loadClusterStatus()
     }
 
     function renderEvents(events) {
@@ -3365,9 +3483,9 @@
         var time = (ev.timestamp || ev.lastSeen) ? new Date(ev.timestamp || ev.lastSeen).toLocaleTimeString() : '';
         return '<div class="event-item">' +
           '<span class="event-type ' + ev.type + '">' + ev.type + '</span>' +
-          '<div class="event-content"><span class="event-reason">' + ev.reason + '</span> ' +
-          '<span class="event-msg">' + ev.message + '</span>' +
-          '<div class="event-meta">' + ev.object + ' | ' + ev.namespace + ' | ' + time + (ev.count > 1 ? ' (x' + ev.count + ')' : '') + '</div></div></div>';
+          '<div class="event-content"><span class="event-reason">' + (ev.reason || '') + '</span> ' +
+          '<span class="event-msg">' + (ev.message || '') + '</span>' +
+          '<div class="event-meta">' + (ev.object || '') + ' | ' + (ev.namespace || '') + ' | ' + time + (ev.count > 1 ? ' (x' + ev.count + ')' : '') + '</div></div></div>';
       }).join('');
 
       // Also populate the event stream panel
@@ -3461,14 +3579,16 @@
     var nodeSchedulingData = {};
 
     async function loadNodeScheduling() {
-      if (!apiEndpoint) return;
-      try {
-        var data = await apiFetch('/api/node-scheduling');
-        nodeSchedulingData = {};
-        (data.nodes || []).forEach(function(n) {
-          nodeSchedulingData[n.name] = n;
-        });
-      } catch (e) { /* silent */ }
+      if (apiEndpoint) {
+        try {
+          var data = await apiFetch('/api/node-scheduling');
+          nodeSchedulingData = {};
+          (data.nodes || []).forEach(function(n) {
+            nodeSchedulingData[n.name] = n;
+          });
+        } catch (e) { /* silent */ }
+      }
+      // In Netlify mode, scheduling data is populated from pushed data in loadClusterStatus()
     }
 
     function getNodeSchedBadge(nodeName) {
@@ -3589,13 +3709,11 @@
     var latencyHistory = [];
 
     async function measureApiLatency() {
-      if (!apiEndpoint) {
-        document.getElementById('connQuality').style.display = 'none';
-        return;
-      }
       try {
+        var fetchUrl = apiEndpoint ? apiEndpoint + '/api/latency' : '/.netlify/functions/cluster-status';
+        var fetchOpts = apiEndpoint ? { headers: apiHeaders(), signal: AbortSignal.timeout(5000) } : { signal: AbortSignal.timeout(5000) };
         var start = performance.now();
-        var res = await fetch(apiEndpoint + '/api/latency', { headers: apiHeaders(), signal: AbortSignal.timeout(5000) });
+        var res = await fetch(fetchUrl, fetchOpts);
         if (!res.ok) throw new Error('Bad status');
         var elapsed = Math.round(performance.now() - start);
         lastApiLatency = elapsed;
@@ -3667,15 +3785,17 @@
 
     // ─── Battery Heatmap ─────────────────────────────────────────────────
     async function loadBatteryHeatmap() {
-      if (!apiEndpoint) return;
-      try {
-        var res = await fetch(apiEndpoint + '/api/battery', { headers: apiHeaders(), signal: AbortSignal.timeout(15000) });
-        var data = await res.json();
-        renderBatteryHeatmap(data);
-        document.getElementById('batteryPanel').style.display = 'block';
-      } catch (e) {
-        console.warn('Battery heatmap load failed:', e.message);
+      if (apiEndpoint) {
+        try {
+          var res = await fetch(apiEndpoint + '/api/battery', { headers: apiHeaders(), signal: AbortSignal.timeout(15000) });
+          var data = await res.json();
+          renderBatteryHeatmap(data);
+          document.getElementById('batteryPanel').style.display = 'block';
+        } catch (e) {
+          console.warn('Battery heatmap load failed:', e.message);
+        }
       }
+      // In Netlify mode, battery data is rendered from pushed data in loadClusterStatus()
     }
 
     function renderBatteryHeatmap(data) {
@@ -3885,12 +4005,19 @@
     var podResources = {};
 
     async function loadPodResources() {
-      if (!apiEndpoint) return;
-      try {
-        var data = await apiFetch('/api/pod-resources');
-        podResources = data.resources || {};
-        renderPods();
-      } catch (e) { /* silent */ }
+      if (apiEndpoint) {
+        try {
+          var data = await apiFetch('/api/pod-resources');
+          podResources = data.resources || {};
+          renderPods();
+          return;
+        } catch (e) { /* silent */ }
+      }
+      // Build from enriched pod data in push
+      podResources = {};
+      allPods.forEach(function(p) {
+        if (p.resources) podResources[p.namespace + '/' + p.name] = p.resources;
+      });
     }
 
     // ─── Service Health ─────────────────────────────────────────────
@@ -5016,7 +5143,7 @@
     setInterval(loadClusterStatus, 10000);
     setInterval(measureApiLatency, 15000);
     setInterval(function() { if (apiEndpoint) loadScreens(); }, 30000);
-    setInterval(function() { if (apiEndpoint) { loadAlerts(); loadCommandLog(); } }, 15000);
+    setInterval(function() { if (apiEndpoint) loadAlerts(); loadCommandLog(); }, 15000);
     loadEvents();
     loadDeployments();
     loadNamespaceUsage();

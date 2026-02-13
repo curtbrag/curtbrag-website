@@ -1,0 +1,9 @@
+{
+  "name": "curtbrag-website",
+  "version": "1.0.0",
+  "description": "Curtis Bragdon's personal website with K3s cluster dashboard",
+  "private": true,
+  "dependencies": {
+    "@netlify/blobs": "^8.2.0"
+  }
+}
