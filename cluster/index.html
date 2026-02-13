@@ -2224,6 +2224,7 @@
           if (data.battery && data.battery.phones) data.battery.phones.forEach(function(p) { battMap[p.name] = p; });
           var tsMap = {};
           if (data.network && data.network.tailscale && data.network.tailscale.peers) data.network.tailscale.peers.forEach(function(p) { tsMap[p.name] = p; });
+          var nodeIPs = {node1:'192.168.1.206',node2:'192.168.1.207',node3:'192.168.1.208',node4:'192.168.1.209',node5:'192.168.1.210',node6:'192.168.1.211',node7:'192.168.1.212',node8:'192.168.1.213',node9:'192.168.1.214',node10:'192.168.1.215'};
           var synthNodes = [];
           var synthReady = 0;
           Object.keys(data.metrics).sort(function(a,b){ return parseInt(a.replace('node','')) - parseInt(b.replace('node','')); }).forEach(function(name) {
@@ -2234,6 +2235,7 @@
             if (alive) synthReady++;
             var num = parseInt(name.replace('node', ''));
             synthNodes.push({ name: name, status: alive ? 'Ready' : 'NotReady', role: name === 'node1' ? 'control-plane' : 'worker', ip: '192.168.1.' + (205 + num), kubeletVersion: 'N/A (K3s down)', osImage: 'postmarketOS', arch: 'aarch64' });
+            synthNodes.push({ name: name, status: alive ? 'Ready' : 'NotReady', role: name === 'node1' ? 'control-plane' : 'worker', ip: nodeIPs[name] || '', kubeletVersion: 'N/A (K3s down)', osImage: 'postmarketOS', arch: 'aarch64' });
           });
           data.nodes = synthNodes;
           data.k3sDown = true;
@@ -2595,6 +2597,41 @@
       }
     }
 
+    function pollCommandCompletion(cmdId, statusEl, cmdName, target) {
+      var attempts = 0;
+      var maxAttempts = 60; // 5 minutes at 5s intervals
+      var interval = setInterval(async function() {
+        attempts++;
+        if (attempts > maxAttempts) {
+          clearInterval(interval);
+          statusEl.textContent = cmdName + ' on ' + target + ': timed out waiting for completion';
+          statusEl.className = 'control-status visible error';
+          return;
+        }
+        try {
+          var res = await fetch('/.netlify/functions/cluster-control?action=command-status&id=' + cmdId);
+          var data = await res.json();
+          if (data.status === 'completed') {
+            clearInterval(interval);
+            var resultText = data.result || 'done';
+            var isError = resultText.startsWith('error');
+            var isPartial = resultText.startsWith('partial');
+            statusEl.textContent = cmdName + ' on ' + target + ': ' + resultText;
+            statusEl.className = 'control-status visible ' + (isError ? 'error' : isPartial ? 'warning' : 'success');
+            if (data.output) {
+              statusEl.textContent += ' | ' + data.output.substring(0, 200);
+            }
+            loadClusterStatus();
+            loadCommandLog();
+          } else if (data.status === 'queued') {
+            statusEl.textContent = cmdName + ' on ' + target + ': queued (waiting for node1 to pick up...)';
+          } else {
+            statusEl.textContent = cmdName + ' on ' + target + ': executing...';
+          }
+        } catch (e) { /* silent retry */ }
+      }, 5000);
+    }
+
     async function executeCommand(cmd, password) {
       const target = document.getElementById('targetSelect').value;
       const status = document.getElementById('controlStatus');
@@ -2608,6 +2645,11 @@
           status.className = 'control-status visible success';
           if (data.id) pollCommandCompletion(data.id, cmd, target);
           setTimeout(loadClusterStatus, 5000);
+          status.textContent = data.message + ' (waiting for execution...)';
+          status.className = 'control-status visible success';
+          if (data.id) {
+            pollCommandCompletion(data.id, status, cmd, target);
+          }
         } else {
           status.textContent = `Error: ${data.error}`;
           status.className = 'control-status visible error';
