@@ -32,86 +32,87 @@ const storeStructuredData = {
   <section class="max-w-5xl mx-auto px-4 py-12">
 
     <!-- ═══════════════════════════════════════════ HEADER ═══════════════════════════════════════════ -->
-    <div class="text-center mb-12">
+    <div class="text-center mb-12 reveal">
       <h1 class="text-4xl md:text-5xl font-bold mb-3">
-        <i class="fa-solid fa-shopping-cart text-brand mr-3"></i>Card Shop
+        <i class="fa-solid fa-shopping-cart text-brand mr-3"></i><span class="gradient-text">Card Shop</span>
       </h1>
       <p class="text-text-secondary text-lg">Trading cards from Curtis Bragdon's collection</p>
     </div>
 
     <!-- ═══════════════════════════════════════ QUICK FILTERS ═══════════════════════════════════════ -->
-    <div class="mb-10">
-      <h2 class="text-xl font-bold mb-4">Quick Filters</h2>
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div class="mb-10 reveal">
+      <h2 class="text-xl font-bold mb-1">Quick Filters</h2>
+      <div class="w-16 h-0.5 bg-gradient-to-r from-brand to-transparent mb-6"></div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 stagger-children">
         <a
           href="https://www.ebay.com/str/curtbrag"
           target="_blank"
           rel="noopener noreferrer"
-          class="flex items-center gap-2 bg-panel border border-border rounded-xl px-4 py-3 text-text hover:border-brand transition"
+          class="card-glow flex items-center gap-2 px-4 py-3 text-text group"
         >
-          <i class="fa-solid fa-layer-group"></i> All Listings
+          <i class="fa-solid fa-layer-group card-icon text-brand"></i> All Listings
         </a>
         <a
           href="https://www.ebay.com/str/curtbrag?_nkw=baseball"
           target="_blank"
           rel="noopener noreferrer"
-          class="flex items-center gap-2 bg-panel border border-border rounded-xl px-4 py-3 text-text hover:border-brand transition"
+          class="card-glow flex items-center gap-2 px-4 py-3 text-text group"
         >
-          <i class="fa-solid fa-baseball"></i> Baseball
+          <i class="fa-solid fa-baseball card-icon text-red"></i> Baseball
         </a>
         <a
           href="https://www.ebay.com/str/curtbrag?_nkw=basketball"
           target="_blank"
           rel="noopener noreferrer"
-          class="flex items-center gap-2 bg-panel border border-border rounded-xl px-4 py-3 text-text hover:border-brand transition"
+          class="card-glow flex items-center gap-2 px-4 py-3 text-text group"
         >
-          <i class="fa-solid fa-basketball"></i> Basketball
+          <i class="fa-solid fa-basketball card-icon text-amber-500"></i> Basketball
         </a>
         <a
           href="https://www.ebay.com/str/curtbrag?_nkw=football"
           target="_blank"
           rel="noopener noreferrer"
-          class="flex items-center gap-2 bg-panel border border-border rounded-xl px-4 py-3 text-text hover:border-brand transition"
+          class="card-glow flex items-center gap-2 px-4 py-3 text-text group"
         >
-          <i class="fa-solid fa-football"></i> Football
+          <i class="fa-solid fa-football card-icon text-green"></i> Football
         </a>
         <a
           href="https://www.ebay.com/str/curtbrag?_nkw=pokemon"
           target="_blank"
           rel="noopener noreferrer"
-          class="flex items-center gap-2 bg-panel border border-border rounded-xl px-4 py-3 text-text hover:border-brand transition"
+          class="card-glow flex items-center gap-2 px-4 py-3 text-text group"
         >
-          <i class="fa-solid fa-gamepad"></i> Pokemon
+          <i class="fa-solid fa-gamepad card-icon text-yellow"></i> Pokemon
         </a>
         <a
           href="https://www.ebay.com/str/curtbrag?_nkw=graded+psa"
           target="_blank"
           rel="noopener noreferrer"
-          class="flex items-center gap-2 bg-panel border border-border rounded-xl px-4 py-3 text-text hover:border-brand transition"
+          class="card-glow flex items-center gap-2 px-4 py-3 text-text group"
         >
-          <i class="fa-solid fa-award"></i> Graded/PSA
+          <i class="fa-solid fa-award card-icon text-blue"></i> Graded/PSA
         </a>
         <a
           href="https://www.ebay.com/str/curtbrag?_udhi=25"
           target="_blank"
           rel="noopener noreferrer"
-          class="flex items-center gap-2 bg-panel border border-border rounded-xl px-4 py-3 text-text hover:border-brand transition"
+          class="card-glow flex items-center gap-2 px-4 py-3 text-text group"
         >
-          <i class="fa-solid fa-tag"></i> Under $25
+          <i class="fa-solid fa-tag card-icon text-green"></i> Under $25
         </a>
         <a
           href="https://www.ebay.com/str/curtbrag?_udhi=50"
           target="_blank"
           rel="noopener noreferrer"
-          class="flex items-center gap-2 bg-panel border border-border rounded-xl px-4 py-3 text-text hover:border-brand transition"
+          class="card-glow flex items-center gap-2 px-4 py-3 text-text group"
         >
-          <i class="fa-solid fa-dollar-sign"></i> Under $50
+          <i class="fa-solid fa-dollar-sign card-icon text-yellow"></i> Under $50
         </a>
       </div>
     </div>
 
     <!-- ═══════════════════════════════════════ LIVE EBAY LISTINGS ═══════════════════════════════════════ -->
-    <div class="bg-panel border border-border rounded-2xl p-6 mb-10">
+    <div class="card-glow p-6 mb-10 reveal">
       <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
         <i class="fa-brands fa-ebay text-brand text-2xl"></i> Live eBay Listings
       </h2>
@@ -156,12 +157,12 @@ const storeStructuredData = {
     </script>
 
     <!-- ═══════════════════════════════════════ CTA ═══════════════════════════════════════ -->
-    <div class="text-center mb-6">
+    <div class="text-center mb-6 reveal">
       <a
         href="https://www.ebay.com/str/curtbrag"
         target="_blank"
         rel="noopener noreferrer"
-        class="inline-flex items-center gap-2 bg-brand text-white rounded-xl px-8 py-4 font-semibold hover:bg-brand-dark transition shadow-lg shadow-brand/20 text-lg"
+        class="btn-brand inline-flex items-center gap-2 bg-brand text-white rounded-xl px-8 py-4 font-semibold hover:bg-brand-dark transition shadow-lg shadow-brand/20 hover:shadow-brand/40 hover:scale-105 text-lg"
       >
         <i class="fa-solid fa-external-link"></i> Visit eBay Store
       </a>
