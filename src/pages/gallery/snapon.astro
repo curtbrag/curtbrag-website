@@ -1,0 +1,269 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="Snap-on Gallery - Curtis Bragdon" description="Tools, truck photos, and Snap-on memories from Curtis Bragdon.">
+
+  <!-- ═══════════════════════════════════════════ HEADER ═══════════════════════════════════════════ -->
+  <section class="max-w-7xl mx-auto px-4 py-12">
+    <div class="text-center mb-10">
+      <h1 class="text-4xl md:text-5xl font-bold mb-3">
+        <i class="fa-solid fa-wrench text-brand mr-3"></i>Snap-on Gallery
+      </h1>
+      <p class="text-text-secondary text-lg">Tools, truck, and memories</p>
+    </div>
+
+    <!-- ═══════════════════════════════════════ GALLERY GRID ═══════════════════════════════════════ -->
+    <div id="gallery-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+      <!-- Images injected by JavaScript -->
+    </div>
+
+    <!-- Share Button -->
+    <div class="mt-8 text-center">
+      <button
+        id="share-btn"
+        class="inline-flex items-center gap-2 bg-panel border border-border rounded-xl px-6 py-3 text-text hover:border-brand transition font-medium"
+      >
+        <i class="fa-solid fa-share-nodes"></i> Share Gallery
+      </button>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ LIGHTBOX ═══════════════════════════════════════ -->
+  <div id="lightbox" class="fixed inset-0 bg-black/95 z-50 hidden items-center justify-center">
+    <!-- Close -->
+    <button id="lb-close" class="absolute top-4 right-4 text-white text-3xl hover:text-brand transition z-10" aria-label="Close lightbox">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+
+    <!-- Prev -->
+    <button id="lb-prev" class="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-brand text-white flex items-center justify-center hover:bg-brand-dark transition z-10" aria-label="Previous photo">
+      <i class="fa-solid fa-chevron-left"></i>
+    </button>
+
+    <!-- Image -->
+    <img id="lb-img" src="" alt="Gallery photo" class="max-h-[85vh] max-w-[90vw] object-contain select-none" />
+
+    <!-- Next -->
+    <button id="lb-next" class="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-brand text-white flex items-center justify-center hover:bg-brand-dark transition z-10" aria-label="Next photo">
+      <i class="fa-solid fa-chevron-right"></i>
+    </button>
+
+    <!-- Counter -->
+    <div id="lb-counter" class="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/70 text-sm font-medium"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ BACK TO TOP ═══════════════════════════════════════ -->
+  <button
+    id="back-to-top"
+    class="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-brand text-white flex items-center justify-center shadow-lg hover:bg-brand-dark transition opacity-0 pointer-events-none z-40"
+    aria-label="Back to top"
+  >
+    <i class="fa-solid fa-chevron-up"></i>
+  </button>
+
+</Layout>
+
+<script is:inline>
+  (function() {
+    const images = [
+      "20160811_173654.jpg","20160811_182939.jpg","20160811_182953.jpg","20160811_185037.jpg",
+      "20160811_185053.jpg","20160811_210838.jpg","20160811_230907.jpg","20160811_230913.jpg",
+      "20160811_230919.jpg","20160812_083309.jpg","20160812_085747.jpg","20160812_085750.jpg",
+      "20160812_110309.jpg","20160812_160527.jpg","20160812_163904.jpg","20160812_163914.jpg",
+      "20160812_164348.jpg","20160812_170235.jpg","20160812_170239.jpg","20160812_170739.jpg",
+      "20160812_171829.jpg","20160812_174036.jpg","20160812_180759.jpg","20160812_180826.jpg",
+      "20160812_180832.jpg","20160812_181208.jpg","20160812_182856.jpg","20160812_182901.jpg",
+      "20160813_100655.jpg","20160813_100705.jpg","20160813_102216.jpg","20160813_124305.jpg",
+      "20160813_133157.jpg","20160813_133200.jpg","20160813_133205.jpg","20160813_135453.jpg",
+      "20160813_135455.jpg","20160813_141245.jpg","20160813_141249.jpg","20160813_141250.jpg",
+      "20160813_141748.jpg","20160813_141903.jpg","20160813_143241.jpg","20160813_143246.jpg",
+      "20160813_143250.jpg","20160813_143620.jpg","20160813_143944.jpg","20160813_143949.jpg",
+      "20160813_144037.jpg","20160813_144039.jpg","20160813_144044.jpg","20160813_144300.jpg",
+      "20160813_144840.jpg","20160813_144842.jpg","20160813_150319.jpg","20160813_150625.jpg",
+      "20160813_150659.jpg","20160813_150706.jpg","20160813_150751.jpg","20160813_150755.jpg",
+      "20160813_150801.jpg","20160813_150811.jpg","20160813_150818.jpg","20160813_150822.jpg",
+      "20160813_150850.jpg","20160813_150857.jpg","20160813_150901.jpg","20160813_150934.jpg",
+      "20160813_150945.jpg","20160813_150952.jpg","20160813_150954.jpg","20160813_150957.jpg",
+      "20160813_151014.jpg","20160813_151025.jpg","20160813_151031.jpg","20160813_151040.jpg",
+      "20160813_151139.jpg","20160813_151202.jpg","20160813_151218.jpg","20160813_151320.jpg",
+      "20160813_151412.jpg","20160813_151416.jpg","20160813_151420.jpg","20160813_151428.jpg",
+      "20160813_151436.jpg","20160813_151442.jpg","20160813_151447.jpg","20160813_151449.jpg",
+      "20160813_151522.jpg","20160813_151645.jpg","20160813_151733.jpg","20160813_151741.jpg",
+      "20160813_151746.jpg","20160813_151805.jpg","20160813_151808.jpg","20160813_151810.jpg",
+      "20160813_151851.jpg","20160813_151856.jpg","20160813_151858.jpg","20160813_152014.jpg",
+      "20160813_152018.jpg","20160813_152028.jpg","20160813_152122.jpg","20160813_152213.jpg",
+      "20160813_152216.jpg","20160813_152252.jpg","20160813_152301.jpg","20160813_152744.jpg",
+      "20160813_152748.jpg","20160813_152854.jpg","20160813_152857.jpg","20160813_153029.jpg",
+      "20160813_153035.jpg","20160813_153128.jpg","20160813_153132.jpg","20160813_153140.jpg",
+      "20160813_153151.jpg","20160813_153246.jpg","20160813_153249.jpg","20160813_153253.jpg",
+      "20160813_153257.jpg","20160813_153301.jpg","20160813_153436.jpg","20160813_153447.jpg",
+      "20160813_153458.jpg","20160813_153504.jpg","20160813_153842.jpg","20160813_154221.jpg",
+      "20160813_154226.jpg","20160813_162413.jpg","20160813_191325.jpg","20160813_191330.jpg",
+      "20160813_195125.jpg","20160813_195820.jpg","20160813_195822.jpg","20160813_195828.jpg",
+      "20160813_205826.jpg","20160813_232503.jpg","20160813_232507.jpg","20160813_232509.jpg",
+      "20160814_082030.jpg","20160814_082034.jpg","20160814_083412.jpg","20160814_083432.jpg",
+      "20160814_085107.jpg","20160814_085112.jpg","20160814_085117_001.jpg","20160814_085118.jpg",
+      "20160814_085124.jpg","20160814_085130.jpg","20160814_085137.jpg","20160814_085146.jpg",
+      "20160814_085157.jpg","20160814_085203.jpg","20160814_085207.jpg","20160814_085209.jpg",
+      "20160814_091250.jpg","20160814_091817.jpg","20160814_091829.jpg","20160814_091915.jpg",
+      "20160814_092210.jpg","20160814_092215.jpg","20160814_092216.jpg","20160814_092230.jpg",
+      "20160814_092240.jpg","20160814_092248.jpg","20160814_092255.jpg","20160814_092321.jpg",
+      "20160814_092327.jpg","20160814_092401.jpg","20160814_092429.jpg","20160814_092437.jpg",
+      "20160814_092442.jpg","20160814_092521.jpg","20160814_092539.jpg","20160814_092554.jpg",
+      "20160814_092638.jpg","20160814_092641.jpg","20160814_092734.jpg","20160814_092756.jpg",
+      "20160814_092915.jpg","20160814_092918.jpg","20160814_092923.jpg","20160814_093030.jpg",
+      "20160814_093033.jpg","20160814_093039.jpg","20160814_093128.jpg","20160814_093135.jpg",
+      "20160814_093210.jpg","20160814_093216.jpg","20160814_093225.jpg","20160814_093858.jpg",
+      "Mobile uploads.jpg"
+    ];
+
+    const basePath = "/gallery/snapon/";
+    let currentIndex = 0;
+
+    // ── Build Gallery Grid ──
+    const grid = document.getElementById("gallery-grid");
+    if (grid) {
+      images.forEach(function(img, idx) {
+        var div = document.createElement("div");
+        div.className = "rounded-xl overflow-hidden bg-panel cursor-pointer hover:scale-[1.02] transition";
+        div.setAttribute("data-index", idx);
+
+        var imgEl = document.createElement("img");
+        imgEl.src = basePath + img;
+        imgEl.alt = "Snap-on photo " + (idx + 1);
+        imgEl.className = "w-full h-48 object-cover";
+        imgEl.loading = "lazy";
+
+        div.appendChild(imgEl);
+        grid.appendChild(div);
+
+        div.addEventListener("click", function() {
+          openLightbox(idx);
+        });
+      });
+    }
+
+    // ── Lightbox ──
+    var lightbox = document.getElementById("lightbox");
+    var lbImg = document.getElementById("lb-img");
+    var lbCounter = document.getElementById("lb-counter");
+    var lbClose = document.getElementById("lb-close");
+    var lbPrev = document.getElementById("lb-prev");
+    var lbNext = document.getElementById("lb-next");
+
+    function openLightbox(idx) {
+      currentIndex = idx;
+      updateLightboxImage();
+      lightbox.classList.remove("hidden");
+      lightbox.classList.add("flex");
+      document.body.style.overflow = "hidden";
+    }
+
+    function closeLightbox() {
+      lightbox.classList.add("hidden");
+      lightbox.classList.remove("flex");
+      document.body.style.overflow = "";
+    }
+
+    function updateLightboxImage() {
+      lbImg.src = basePath + images[currentIndex];
+      lbImg.alt = "Snap-on photo " + (currentIndex + 1) + " of " + images.length;
+      lbCounter.textContent = (currentIndex + 1) + " / " + images.length;
+    }
+
+    function prevImage() {
+      currentIndex = (currentIndex - 1 + images.length) % images.length;
+      updateLightboxImage();
+    }
+
+    function nextImage() {
+      currentIndex = (currentIndex + 1) % images.length;
+      updateLightboxImage();
+    }
+
+    if (lbClose) lbClose.addEventListener("click", closeLightbox);
+    if (lbPrev) lbPrev.addEventListener("click", prevImage);
+    if (lbNext) lbNext.addEventListener("click", nextImage);
+
+    // Click outside image to close
+    if (lightbox) {
+      lightbox.addEventListener("click", function(e) {
+        if (e.target === lightbox) {
+          closeLightbox();
+        }
+      });
+    }
+
+    // Keyboard navigation
+    document.addEventListener("keydown", function(e) {
+      if (lightbox.classList.contains("hidden")) return;
+      if (e.key === "Escape") closeLightbox();
+      if (e.key === "ArrowLeft") prevImage();
+      if (e.key === "ArrowRight") nextImage();
+    });
+
+    // Touch / Swipe support
+    var touchStartX = 0;
+    var touchEndX = 0;
+
+    if (lightbox) {
+      lightbox.addEventListener("touchstart", function(e) {
+        touchStartX = e.changedTouches[0].screenX;
+      }, { passive: true });
+
+      lightbox.addEventListener("touchend", function(e) {
+        touchEndX = e.changedTouches[0].screenX;
+        var diff = touchStartX - touchEndX;
+        if (Math.abs(diff) > 50) {
+          if (diff > 0) {
+            nextImage();
+          } else {
+            prevImage();
+          }
+        }
+      }, { passive: true });
+    }
+
+    // ── Back to Top ──
+    var backToTop = document.getElementById("back-to-top");
+    if (backToTop) {
+      window.addEventListener("scroll", function() {
+        if (window.scrollY > 400) {
+          backToTop.classList.remove("opacity-0", "pointer-events-none");
+          backToTop.classList.add("opacity-100");
+        } else {
+          backToTop.classList.add("opacity-0", "pointer-events-none");
+          backToTop.classList.remove("opacity-100");
+        }
+      });
+
+      backToTop.addEventListener("click", function() {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    }
+
+    // ── Share ──
+    var shareBtn = document.getElementById("share-btn");
+    if (shareBtn) {
+      shareBtn.addEventListener("click", function() {
+        var shareData = {
+          title: "Snap-on Gallery - Curtis Bragdon",
+          text: "Snap-on tools and truck photos from Curtis Bragdon",
+          url: window.location.href
+        };
+
+        if (navigator.share) {
+          navigator.share(shareData).catch(function() {});
+        } else {
+          navigator.clipboard.writeText(window.location.href).then(function() {
+            shareBtn.innerHTML = '<i class="fa-solid fa-check"></i> Link Copied!';
+            setTimeout(function() {
+              shareBtn.innerHTML = '<i class="fa-solid fa-share-nodes"></i> Share Gallery';
+            }, 2000);
+          }).catch(function() {});
+        }
+      });
+    }
+  })();
+</script>

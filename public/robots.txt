@@ -1,0 +1,9 @@
+# Robots.txt for curtbrag.com
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://www.curtbrag.com/sitemap.xml
+
+# Disallow admin/function paths
+Disallow: /.netlify/

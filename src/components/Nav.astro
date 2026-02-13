@@ -1,0 +1,234 @@
+---
+const currentPath = Astro.url.pathname;
+
+const navLinks = [
+  { href: '/', label: 'Home' },
+  { href: '/gallery', label: 'Gallery' },
+  { href: '/shop', label: 'Shop' },
+  { href: '/cluster', label: 'Cluster' },
+  { href: '/contact', label: 'Contact' },
+];
+
+function isActive(href: string): boolean {
+  if (href === '/') {
+    return currentPath === '/';
+  }
+  return currentPath.startsWith(href);
+}
+---
+
+<header class="fixed top-0 left-0 right-0 z-50 bg-bg/80 backdrop-blur-xl border-b border-border">
+  <nav class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="flex items-center justify-between h-16">
+      <!-- Logo -->
+      <a href="/" class="flex-shrink-0">
+        <img
+          src="/assets/logo_icon.png"
+          alt="CurtBrag Logo"
+          class="h-10 w-auto"
+          loading="eager"
+        />
+      </a>
+
+      <!-- Desktop Navigation -->
+      <div class="hidden md:flex items-center gap-1">
+        {navLinks.map((link) => (
+          <a
+            href={link.href}
+            class:list={[
+              'px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200',
+              isActive(link.href)
+                ? 'text-brand'
+                : 'text-text-secondary hover:text-brand',
+            ]}
+            aria-current={isActive(link.href) ? 'page' : undefined}
+          >
+            {link.label}
+          </a>
+        ))}
+      </div>
+
+      <!-- Mobile Hamburger Button -->
+      <button
+        type="button"
+        id="mobile-menu-open"
+        class="md:hidden relative w-10 h-10 flex items-center justify-center rounded-lg text-text-secondary hover:text-text hover:bg-panel transition-colors duration-200"
+        aria-label="Open navigation menu"
+        aria-expanded="false"
+        aria-controls="mobile-menu"
+      >
+        <div class="flex flex-col items-center justify-center gap-1.5">
+          <span class="block w-5 h-0.5 bg-current transition-transform duration-200"></span>
+          <span class="block w-5 h-0.5 bg-current transition-opacity duration-200"></span>
+          <span class="block w-5 h-0.5 bg-current transition-transform duration-200"></span>
+        </div>
+      </button>
+    </div>
+  </nav>
+</header>
+
+<!-- Spacer to account for fixed header -->
+<div class="h-16"></div>
+
+<!-- Mobile Menu Overlay -->
+<div
+  id="mobile-menu"
+  class="fixed inset-0 z-[60] pointer-events-none opacity-0 transition-opacity duration-300 md:hidden"
+  aria-hidden="true"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Navigation menu"
+>
+  <!-- Dark Backdrop -->
+  <div
+    id="mobile-menu-backdrop"
+    class="absolute inset-0 bg-black/60 backdrop-blur-sm"
+  ></div>
+
+  <!-- Slide-in Panel -->
+  <div
+    id="mobile-menu-panel"
+    class="absolute top-0 right-0 h-full w-full max-w-sm bg-bg border-l border-border translate-x-full transition-transform duration-300 ease-out"
+  >
+    <!-- Mobile Menu Header -->
+    <div class="flex items-center justify-between h-16 px-4 sm:px-6 border-b border-border">
+      <a href="/" class="flex-shrink-0">
+        <img
+          src="/assets/logo_icon.png"
+          alt="CurtBrag Logo"
+          class="h-8 w-auto"
+          loading="lazy"
+        />
+      </a>
+      <button
+        type="button"
+        id="mobile-menu-close"
+        class="w-10 h-10 flex items-center justify-center rounded-lg text-text-secondary hover:text-text hover:bg-panel transition-colors duration-200"
+        aria-label="Close navigation menu"
+      >
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- Mobile Menu Links -->
+    <div class="px-4 sm:px-6 py-6">
+      <div class="flex flex-col gap-1">
+        {navLinks.map((link) => (
+          <a
+            href={link.href}
+            class:list={[
+              'flex items-center px-4 py-3.5 rounded-xl text-base font-medium transition-colors duration-200',
+              isActive(link.href)
+                ? 'text-brand bg-brand-glow'
+                : 'text-text-secondary hover:text-text hover:bg-panel',
+            ]}
+            aria-current={isActive(link.href) ? 'page' : undefined}
+          >
+            {link.label}
+          </a>
+        ))}
+      </div>
+
+      <!-- Mobile Menu Footer -->
+      <div class="mt-8 pt-6 border-t border-border">
+        <div class="flex items-center gap-4 px-4">
+          <a
+            href="https://www.instagram.com/curtbrag"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-muted hover:text-brand transition-colors duration-200"
+            aria-label="Instagram"
+          >
+            <i class="fa-brands fa-instagram text-xl"></i>
+          </a>
+          <a
+            href="https://www.tiktok.com/@curtbrag"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-muted hover:text-brand transition-colors duration-200"
+            aria-label="TikTok"
+          >
+            <i class="fa-brands fa-tiktok text-xl"></i>
+          </a>
+          <a
+            href="https://www.facebook.com/curtbrag"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-muted hover:text-brand transition-colors duration-200"
+            aria-label="Facebook"
+          >
+            <i class="fa-brands fa-facebook text-xl"></i>
+          </a>
+          <a
+            href="https://www.youtube.com/@curtbrag"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-muted hover:text-brand transition-colors duration-200"
+            aria-label="YouTube"
+          >
+            <i class="fa-brands fa-youtube text-xl"></i>
+          </a>
+        </div>
+        <div class="mt-4 px-4">
+          <a
+            href="tel:+17814170692"
+            class="text-sm text-muted hover:text-text-secondary transition-colors duration-200"
+          >
+            <i class="fa-solid fa-phone mr-2"></i>781-417-0692
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    const menu = document.getElementById('mobile-menu') as HTMLElement | null;
+    const panel = document.getElementById('mobile-menu-panel') as HTMLElement | null;
+    const backdrop = document.getElementById('mobile-menu-backdrop') as HTMLElement | null;
+    const openBtn = document.getElementById('mobile-menu-open') as HTMLButtonElement | null;
+    const closeBtn = document.getElementById('mobile-menu-close') as HTMLButtonElement | null;
+
+    if (!menu || !panel || !backdrop || !openBtn || !closeBtn) return;
+
+    function openMenu() {
+      menu!.classList.remove('pointer-events-none', 'opacity-0');
+      menu!.classList.add('pointer-events-auto', 'opacity-100');
+      menu!.setAttribute('aria-hidden', 'false');
+      panel!.classList.remove('translate-x-full');
+      panel!.classList.add('translate-x-0');
+      openBtn!.setAttribute('aria-expanded', 'true');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeMenu() {
+      panel!.classList.remove('translate-x-0');
+      panel!.classList.add('translate-x-full');
+      menu!.classList.remove('pointer-events-auto', 'opacity-100');
+      menu!.classList.add('pointer-events-none', 'opacity-0');
+      menu!.setAttribute('aria-hidden', 'true');
+      openBtn!.setAttribute('aria-expanded', 'false');
+      document.body.style.overflow = '';
+    }
+
+    openBtn.addEventListener('click', openMenu);
+    closeBtn.addEventListener('click', closeMenu);
+    backdrop.addEventListener('click', closeMenu);
+
+    // Close on Escape key
+    document.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && menu.getAttribute('aria-hidden') === 'false') {
+        closeMenu();
+      }
+    });
+
+    // Close when clicking a link inside the mobile menu
+    const menuLinks = menu.querySelectorAll('a');
+    menuLinks.forEach((link) => {
+      link.addEventListener('click', closeMenu);
+    });
+  });
+</script>

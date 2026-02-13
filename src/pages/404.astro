@@ -1,0 +1,41 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout
+  title="Page Not Found - Curtis Bragdon"
+  description="Page not found."
+>
+  <section class="min-h-[60vh] flex items-center justify-center px-4 py-12">
+    <div class="bg-panel border border-border rounded-2xl p-10 text-center max-w-lg mx-auto">
+      <i class="fa-solid fa-wrench text-brand text-5xl mb-4"></i>
+      <h1 class="text-3xl font-bold text-brand mb-3">404 - Lost in the Tool Truck</h1>
+      <p class="text-text-secondary leading-relaxed mb-8">
+        Sorry, the page you're looking for doesn't exist. Redirecting in <span id="countdown" class="font-bold text-brand">5</span> seconds...
+      </p>
+
+      <a
+        href="/"
+        class="inline-block px-6 py-3 bg-brand text-white rounded-xl font-semibold hover:bg-brand-dark transition"
+      >
+        Return Home Now
+      </a>
+    </div>
+  </section>
+</Layout>
+
+<script>
+  let seconds = 5;
+  const countdownEl = document.getElementById('countdown');
+
+  const interval = setInterval(() => {
+    seconds--;
+    if (countdownEl) {
+      countdownEl.textContent = String(seconds);
+    }
+    if (seconds <= 0) {
+      clearInterval(interval);
+      window.location.href = '/';
+    }
+  }, 1000);
+</script>

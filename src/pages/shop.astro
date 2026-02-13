@@ -1,0 +1,175 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const storeStructuredData = {
+  '@context': 'https://schema.org',
+  '@type': 'Store',
+  name: 'CurtBrag Card Shop',
+  url: 'https://www.ebay.com/str/curtbrag',
+  description: 'Trading cards from Curtis Bragdon — baseball, basketball, Pokemon and more on eBay.',
+  brand: {
+    '@type': 'Brand',
+    name: 'curtbrag',
+  },
+  seller: {
+    '@type': 'Person',
+    name: 'Curtis Bragdon',
+    url: 'https://www.curtbrag.com',
+  },
+  potentialAction: {
+    '@type': 'SearchAction',
+    target: 'https://www.ebay.com/str/curtbrag?_nkw={search_term_string}',
+    'query-input': 'required name=search_term_string',
+  },
+};
+---
+
+<Layout title="Card Shop - Curtis Bragdon" description="Browse Curtis Bragdon's trading card listings on eBay. Baseball, basketball, Pokemon and more.">
+
+  <!-- JSON-LD Store Structured Data -->
+  <script type="application/ld+json" set:html={JSON.stringify(storeStructuredData)} />
+
+  <section class="max-w-5xl mx-auto px-4 py-12">
+
+    <!-- ═══════════════════════════════════════════ HEADER ═══════════════════════════════════════════ -->
+    <div class="text-center mb-12">
+      <h1 class="text-4xl md:text-5xl font-bold mb-3">
+        <i class="fa-solid fa-shopping-cart text-brand mr-3"></i>Card Shop
+      </h1>
+      <p class="text-text-secondary text-lg">Trading cards from Curtis Bragdon's collection</p>
+    </div>
+
+    <!-- ═══════════════════════════════════════ QUICK FILTERS ═══════════════════════════════════════ -->
+    <div class="mb-10">
+      <h2 class="text-xl font-bold mb-4">Quick Filters</h2>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <a
+          href="https://www.ebay.com/str/curtbrag"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="flex items-center gap-2 bg-panel border border-border rounded-xl px-4 py-3 text-text hover:border-brand transition"
+        >
+          <i class="fa-solid fa-layer-group"></i> All Listings
+        </a>
+        <a
+          href="https://www.ebay.com/str/curtbrag?_nkw=baseball"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="flex items-center gap-2 bg-panel border border-border rounded-xl px-4 py-3 text-text hover:border-brand transition"
+        >
+          <i class="fa-solid fa-baseball"></i> Baseball
+        </a>
+        <a
+          href="https://www.ebay.com/str/curtbrag?_nkw=basketball"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="flex items-center gap-2 bg-panel border border-border rounded-xl px-4 py-3 text-text hover:border-brand transition"
+        >
+          <i class="fa-solid fa-basketball"></i> Basketball
+        </a>
+        <a
+          href="https://www.ebay.com/str/curtbrag?_nkw=football"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="flex items-center gap-2 bg-panel border border-border rounded-xl px-4 py-3 text-text hover:border-brand transition"
+        >
+          <i class="fa-solid fa-football"></i> Football
+        </a>
+        <a
+          href="https://www.ebay.com/str/curtbrag?_nkw=pokemon"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="flex items-center gap-2 bg-panel border border-border rounded-xl px-4 py-3 text-text hover:border-brand transition"
+        >
+          <i class="fa-solid fa-gamepad"></i> Pokemon
+        </a>
+        <a
+          href="https://www.ebay.com/str/curtbrag?_nkw=graded+psa"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="flex items-center gap-2 bg-panel border border-border rounded-xl px-4 py-3 text-text hover:border-brand transition"
+        >
+          <i class="fa-solid fa-award"></i> Graded/PSA
+        </a>
+        <a
+          href="https://www.ebay.com/str/curtbrag?_udhi=25"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="flex items-center gap-2 bg-panel border border-border rounded-xl px-4 py-3 text-text hover:border-brand transition"
+        >
+          <i class="fa-solid fa-tag"></i> Under $25
+        </a>
+        <a
+          href="https://www.ebay.com/str/curtbrag?_udhi=50"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="flex items-center gap-2 bg-panel border border-border rounded-xl px-4 py-3 text-text hover:border-brand transition"
+        >
+          <i class="fa-solid fa-dollar-sign"></i> Under $50
+        </a>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════ LIVE EBAY LISTINGS ═══════════════════════════════════════ -->
+    <div class="bg-panel border border-border rounded-2xl p-6 mb-10">
+      <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+        <i class="fa-brands fa-ebay text-brand text-2xl"></i> Live eBay Listings
+      </h2>
+      <div id="auction-nudge-items">
+        <!-- Loading spinner -->
+        <div id="listing-loader" class="flex flex-col items-center justify-center py-12">
+          <div class="w-10 h-10 border-4 border-border border-t-brand rounded-full animate-spin mb-4"></div>
+          <p class="text-muted text-sm">Loading eBay listings...</p>
+        </div>
+      </div>
+      <script is:inline type="text/javascript" src="//www.auctionnudge.com/feed/item/js/theme/gallery/page/init/img_size/220/cats_output/dropdown/search_box/1/SellerID/curtbrag"></script>
+    </div>
+
+    <!-- Hide loader when AuctionNudge loads -->
+    <script is:inline>
+      (function() {
+        var container = document.getElementById("auction-nudge-items");
+        var loader = document.getElementById("listing-loader");
+        if (!container || !loader) return;
+
+        // MutationObserver: hide loader when AuctionNudge injects content
+        var observer = new MutationObserver(function(mutations) {
+          for (var i = 0; i < mutations.length; i++) {
+            if (mutations[i].addedNodes.length > 0) {
+              loader.style.display = "none";
+              observer.disconnect();
+              return;
+            }
+          }
+        });
+
+        observer.observe(container, { childList: true, subtree: true });
+
+        // Timeout fallback: hide loader after 10 seconds regardless
+        setTimeout(function() {
+          if (loader) {
+            loader.style.display = "none";
+          }
+          observer.disconnect();
+        }, 10000);
+      })();
+    </script>
+
+    <!-- ═══════════════════════════════════════ CTA ═══════════════════════════════════════ -->
+    <div class="text-center mb-6">
+      <a
+        href="https://www.ebay.com/str/curtbrag"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="inline-flex items-center gap-2 bg-brand text-white rounded-xl px-8 py-4 font-semibold hover:bg-brand-dark transition shadow-lg shadow-brand/20 text-lg"
+      >
+        <i class="fa-solid fa-external-link"></i> Visit eBay Store
+      </a>
+    </div>
+
+    <!-- Disclaimer -->
+    <p class="text-muted text-xs text-center">Some links may be affiliate links.</p>
+
+  </section>
+
+</Layout>

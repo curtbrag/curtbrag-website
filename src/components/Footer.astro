@@ -1,0 +1,141 @@
+---
+const quickLinks = [
+  { href: '/', label: 'Home' },
+  { href: '/gallery', label: 'Gallery' },
+  { href: '/shop', label: 'Shop' },
+  { href: '/cluster', label: 'Cluster' },
+  { href: '/contact', label: 'Contact' },
+  { href: '/addyourride', label: 'Add Your Ride' },
+];
+
+const socialLinks = [
+  {
+    href: 'https://www.instagram.com/curtbrag',
+    label: 'Instagram',
+    icon: 'fa-brands fa-instagram',
+  },
+  {
+    href: 'https://www.facebook.com/curtbrag',
+    label: 'Facebook',
+    icon: 'fa-brands fa-facebook',
+  },
+  {
+    href: 'https://www.tiktok.com/@curtbrag',
+    label: 'TikTok',
+    icon: 'fa-brands fa-tiktok',
+  },
+  {
+    href: 'https://www.youtube.com/@curtbrag',
+    label: 'YouTube',
+    icon: 'fa-brands fa-youtube',
+  },
+];
+---
+
+<footer class="border-t border-border bg-bg-elevated">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-12 lg:py-16">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-10 lg:gap-16">
+      <!-- Column 1: Brand -->
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <img
+            src="/assets/logo_icon.png"
+            alt="CurtBrag Logo"
+            class="h-10 w-auto"
+            loading="lazy"
+          />
+          <div>
+            <h3 class="text-text font-semibold text-lg">Curtis Bragdon</h3>
+            <p class="text-brand text-sm font-medium">All Access. No Excuses.</p>
+          </div>
+        </div>
+        <p class="text-text-secondary text-sm leading-relaxed mt-4">
+          Snap-on Tools franchise proudly serving the Boston metro area.
+          Delivering premium automotive tools and equipment directly to
+          professionals who demand the best.
+        </p>
+      </div>
+
+      <!-- Column 2: Quick Links -->
+      <div>
+        <h3 class="text-text font-semibold text-lg mb-4">Quick Links</h3>
+        <nav aria-label="Footer navigation">
+          <ul class="space-y-2.5">
+            {quickLinks.map((link) => (
+              <li>
+                <a
+                  href={link.href}
+                  class="text-text-secondary hover:text-brand text-sm transition-colors duration-200 inline-flex items-center gap-2"
+                >
+                  <span class="w-1 h-1 rounded-full bg-border"></span>
+                  {link.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </div>
+
+      <!-- Column 3: Connect -->
+      <div>
+        <h3 class="text-text font-semibold text-lg mb-4">Connect</h3>
+
+        <!-- Social Links -->
+        <div class="flex items-center gap-3 mb-6">
+          {socialLinks.map((social) => (
+            <a
+              href={social.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="w-10 h-10 flex items-center justify-center rounded-lg bg-panel hover:bg-panel-hover text-text-secondary hover:text-brand border border-border hover:border-border-hover transition-all duration-200"
+              aria-label={social.label}
+            >
+              <i class={`${social.icon} text-lg`}></i>
+            </a>
+          ))}
+        </div>
+
+        <!-- Contact Info -->
+        <div class="space-y-3">
+          <a
+            href="tel:+17814170692"
+            class="flex items-center gap-3 text-text-secondary hover:text-brand text-sm transition-colors duration-200"
+          >
+            <i class="fa-solid fa-phone w-4 text-center text-muted"></i>
+            <span>781-417-0692</span>
+          </a>
+          <a
+            href="mailto:curtbrag@yahoo.com"
+            class="flex items-center gap-3 text-text-secondary hover:text-brand text-sm transition-colors duration-200"
+          >
+            <i class="fa-solid fa-envelope w-4 text-center text-muted"></i>
+            <span>curtbrag@yahoo.com</span>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Bar -->
+    <div class="mt-12 pt-8 border-t border-border">
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <p class="text-muted text-sm">
+          &copy; 2026 Curtis Bragdon. All rights reserved.
+        </p>
+        <div class="flex items-center gap-6">
+          <a
+            href="/privacy"
+            class="text-muted hover:text-text-secondary text-sm transition-colors duration-200"
+          >
+            Privacy Policy
+          </a>
+          <a
+            href="/terms"
+            class="text-muted hover:text-text-secondary text-sm transition-colors duration-200"
+          >
+            Terms of Service
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>

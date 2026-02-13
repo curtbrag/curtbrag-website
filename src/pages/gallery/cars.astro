@@ -1,0 +1,281 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="Cars Gallery - Curtis Bragdon" description="Customer cars, trucks, and rides from Curtis Bragdon's Snap-on route around Boston.">
+
+  <!-- ═══════════════════════════════════════════ HEADER ═══════════════════════════════════════════ -->
+  <section class="max-w-7xl mx-auto px-4 py-12">
+    <div class="text-center mb-10">
+      <h1 class="text-4xl md:text-5xl font-bold mb-3">
+        <i class="fa-solid fa-car text-brand mr-3"></i>Cars Gallery
+      </h1>
+      <p class="text-text-secondary text-lg">Customer rides from around Boston</p>
+    </div>
+
+    <!-- ═══════════════════════════════════════ GALLERY GRID ═══════════════════════════════════════ -->
+    <div id="gallery-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+      <!-- Images injected by JavaScript -->
+    </div>
+
+    <!-- ═══════════════════════════════════════ CTA ═══════════════════════════════════════ -->
+    <div class="mt-12 text-center">
+      <div class="bg-panel border border-border rounded-2xl p-8 max-w-2xl mx-auto">
+        <h3 class="text-xl font-bold mb-2">Got a Ride to Share?</h3>
+        <p class="text-text-secondary mb-6">Submit your car or truck to be featured in the gallery!</p>
+        <a
+          href="/addyourride"
+          class="inline-flex items-center gap-2 bg-brand text-white rounded-xl px-6 py-3 font-semibold hover:bg-brand-dark transition shadow-lg shadow-brand/20"
+        >
+          <i class="fa-solid fa-car-side"></i> Add Your Ride
+        </a>
+      </div>
+    </div>
+
+    <!-- Share Button -->
+    <div class="mt-8 text-center">
+      <button
+        id="share-btn"
+        class="inline-flex items-center gap-2 bg-panel border border-border rounded-xl px-6 py-3 text-text hover:border-brand transition font-medium"
+      >
+        <i class="fa-solid fa-share-nodes"></i> Share Gallery
+      </button>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ LIGHTBOX ═══════════════════════════════════════ -->
+  <div id="lightbox" class="fixed inset-0 bg-black/95 z-50 hidden items-center justify-center">
+    <!-- Close -->
+    <button id="lb-close" class="absolute top-4 right-4 text-white text-3xl hover:text-brand transition z-10" aria-label="Close lightbox">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+
+    <!-- Prev -->
+    <button id="lb-prev" class="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-brand text-white flex items-center justify-center hover:bg-brand-dark transition z-10" aria-label="Previous photo">
+      <i class="fa-solid fa-chevron-left"></i>
+    </button>
+
+    <!-- Image -->
+    <img id="lb-img" src="" alt="Gallery photo" class="max-h-[85vh] max-w-[90vw] object-contain select-none" />
+
+    <!-- Next -->
+    <button id="lb-next" class="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-brand text-white flex items-center justify-center hover:bg-brand-dark transition z-10" aria-label="Next photo">
+      <i class="fa-solid fa-chevron-right"></i>
+    </button>
+
+    <!-- Counter -->
+    <div id="lb-counter" class="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/70 text-sm font-medium"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ BACK TO TOP ═══════════════════════════════════════ -->
+  <button
+    id="back-to-top"
+    class="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-brand text-white flex items-center justify-center shadow-lg hover:bg-brand-dark transition opacity-0 pointer-events-none z-40"
+    aria-label="Back to top"
+  >
+    <i class="fa-solid fa-chevron-up"></i>
+  </button>
+
+</Layout>
+
+<script is:inline>
+  (function() {
+    const images = [
+      "1752533719678_instaPV.jpg","20140328_111738.jpg","20140329_192544.jpg",
+      "2018-10-24_b~EiQSFXMxeG95NjV5U2tKWnNjZlhTb3JjZRoAGgAyAXxIAlAEYAE.jpeg",
+      "20180514_152341.jpg",
+      "2019-04-21_0d2cf77b-715a-bcf5-fb2c-a42d606c6e77-main.jpg",
+      "2019-09-06_b~EiQSFW9ndFo4b3gwdjJzUlN6U3B0aVE0TRoAGgAyAXxIAlAEYAE.jpeg",
+      "2019-09-18_18c7e0eb-cb35-3eaf-882f-a8afe4be3349-main.jpg",
+      "2019-10-14_ad5f69cd-37a4-4ed1-bf1f-14751c99c5bf-main.jpg",
+      "2020-01-12_95608fab-07e6-71a8-e0a0-2ee191a8a2f2-main.jpg",
+      "2020-01-12_a51a73f5-da65-1b60-04bc-89e2d63c9485-main.jpg",
+      "2020-01-12_e67dab15-2964-b6a8-c5bc-0418f37996f3-main.jpg",
+      "2020-02-05_2479556d-1aa5-cd77-2b14-d66547e205a6-main.jpg",
+      "2020-07-13_7983365b-9c63-5f10-2614-520b77a9fe62-main.jpg",
+      "2020-07-19_f2707eac-36de-e2b2-783b-00e4bc4a175f-main.jpg",
+      "2020-09-12_4e49b161-6906-da7a-1237-857c0412efab-main.jpg",
+      "2020-10-29_37d909dc-c199-cb41-0712-291759c80ac9-main.jpg",
+      "2021-02-13_362acc06-03cb-dd76-6ff8-5a23cd85d7f4-main.jpg",
+      "20220624_131902.jpg","20220708_103637.jpg","20220801_174956.jpg","20220809_092556.jpg",
+      "20220816_171046.jpg","20220824_112059.jpg","20221019_140336.jpg","20221019_140350.jpg",
+      "20221109_131038.jpg","20230117_150153.jpg","20230516_120236.jpg","20231107_165858.jpg",
+      "20231207_155538.jpg","20231208_150928.jpg","20231226_095700.jpg","20231226_095705.jpg",
+      "20240125_092153.jpg","20240314_165418.jpg","20240606_105032.jpg","20240629_133541.jpg",
+      "20240706_152643.jpg","20240916_102348.jpg","20241007_085011.jpg","20241104_115503.jpg",
+      "20241104_115506.jpg","20241216_143649.jpg",
+      "2025-04-04_4893b49f-6a15-aabc-90e7-0f00b52ef0c6-main.jpg",
+      "2025-04-11_8a77308b-f89a-2466-8a25-b70375e48813-main.jpg",
+      "2025-04-23_50cb20f1-58c6-717c-7bc7-c153c8098e91-main.jpg",
+      "2025-05-25_03f49cdb-1aa3-42ff-6164-2ed6154a80fd-main.jpg",
+      "2025-06-14_4b00c211-41a6-ff0a-0443-632f14c07255-main.jpg",
+      "2025-07-05_018c1724-322d-f3f2-7f19-adf55542e3c2-main.jpg",
+      "2025-07-05_57c4a2b3-c855-dc58-a213-50b42a3e4c06-main.jpg",
+      "2025-07-05_c4ce4536-a033-c8fc-4cc8-f1d0881d2d9b-main.jpg",
+      "2025-07-24_3f1f36d8-0615-1726-235f-6e213021dba6-main.jpg",
+      "2025-07-24_7570c230-53f3-39a8-df55-3fd3c5df6ddd-main.jpg",
+      "20250120_115620.jpg","20250221_210600.jpg","20250224_083039.jpg","20250302_113209.jpg",
+      "20250323_105042.jpg","20250404_192118.jpg","20250423_161558.jpg","20250705_155712.jpg",
+      "20250705_155724.jpg","20250705_155738.jpg","20250705_155748.jpg","20250705_155805.jpg",
+      "20250709_152111.jpg","20250714_133543.jpg","20250714_133552.jpg","20250715_205541.jpg",
+      "20250715_212944.jpg","FB_IMG_1591014833380.jpg","FB_IMG_1646422731100.jpg",
+      "FB_IMG_1646424488729.jpg","FB_IMG_1659571670138.jpg","FB_IMG_1671243979137.jpg",
+      "FB_IMG_1671243986990.jpg","FB_IMG_1674071370347.jpg","FB_IMG_1674071377380.jpg",
+      "FB_IMG_1686913583477.jpg","FB_IMG_1729455364985.jpg","IMG_18400468023166.jpeg",
+      "IMG_20190403_142411.jpg","IMG_20220721_140832.jpg","IMG_20220802_210414_376.jpg",
+      "IMG_20230118_132742_685.jpg","IMG_20230624_133214_294.jpg","IMG_20231228_090858.jpg",
+      "IMG_20240108_172211.jpg","IMG_20240302_110922.jpg","IMG_20240304_161227.jpg",
+      "IMG_20240831_024508.jpg","IMG_20241027_184635.jpg","IMG_20241106_174039.jpg",
+      "IMG_20250125_142806.jpg","IMG_20250125_142808.jpg","IMG_20250125_142815.jpg",
+      "IMG_20250404_215831_162.jpg","IMG_20250411_184603.jpg","IMG_20250711_164915_755.jpg"
+    ];
+
+    const basePath = "/gallery/cars/";
+    let currentIndex = 0;
+
+    // ── Build Gallery Grid ──
+    const grid = document.getElementById("gallery-grid");
+    if (grid) {
+      images.forEach(function(img, idx) {
+        var div = document.createElement("div");
+        div.className = "rounded-xl overflow-hidden bg-panel cursor-pointer hover:scale-[1.02] transition";
+        div.setAttribute("data-index", idx);
+
+        var imgEl = document.createElement("img");
+        imgEl.src = basePath + img;
+        imgEl.alt = "Car photo " + (idx + 1);
+        imgEl.className = "w-full h-48 object-cover";
+        imgEl.loading = "lazy";
+
+        div.appendChild(imgEl);
+        grid.appendChild(div);
+
+        div.addEventListener("click", function() {
+          openLightbox(idx);
+        });
+      });
+    }
+
+    // ── Lightbox ──
+    var lightbox = document.getElementById("lightbox");
+    var lbImg = document.getElementById("lb-img");
+    var lbCounter = document.getElementById("lb-counter");
+    var lbClose = document.getElementById("lb-close");
+    var lbPrev = document.getElementById("lb-prev");
+    var lbNext = document.getElementById("lb-next");
+
+    function openLightbox(idx) {
+      currentIndex = idx;
+      updateLightboxImage();
+      lightbox.classList.remove("hidden");
+      lightbox.classList.add("flex");
+      document.body.style.overflow = "hidden";
+    }
+
+    function closeLightbox() {
+      lightbox.classList.add("hidden");
+      lightbox.classList.remove("flex");
+      document.body.style.overflow = "";
+    }
+
+    function updateLightboxImage() {
+      lbImg.src = basePath + images[currentIndex];
+      lbImg.alt = "Car photo " + (currentIndex + 1) + " of " + images.length;
+      lbCounter.textContent = (currentIndex + 1) + " / " + images.length;
+    }
+
+    function prevImage() {
+      currentIndex = (currentIndex - 1 + images.length) % images.length;
+      updateLightboxImage();
+    }
+
+    function nextImage() {
+      currentIndex = (currentIndex + 1) % images.length;
+      updateLightboxImage();
+    }
+
+    if (lbClose) lbClose.addEventListener("click", closeLightbox);
+    if (lbPrev) lbPrev.addEventListener("click", prevImage);
+    if (lbNext) lbNext.addEventListener("click", nextImage);
+
+    // Click outside image to close
+    if (lightbox) {
+      lightbox.addEventListener("click", function(e) {
+        if (e.target === lightbox) {
+          closeLightbox();
+        }
+      });
+    }
+
+    // Keyboard navigation
+    document.addEventListener("keydown", function(e) {
+      if (lightbox.classList.contains("hidden")) return;
+      if (e.key === "Escape") closeLightbox();
+      if (e.key === "ArrowLeft") prevImage();
+      if (e.key === "ArrowRight") nextImage();
+    });
+
+    // Touch / Swipe support
+    var touchStartX = 0;
+    var touchEndX = 0;
+
+    if (lightbox) {
+      lightbox.addEventListener("touchstart", function(e) {
+        touchStartX = e.changedTouches[0].screenX;
+      }, { passive: true });
+
+      lightbox.addEventListener("touchend", function(e) {
+        touchEndX = e.changedTouches[0].screenX;
+        var diff = touchStartX - touchEndX;
+        if (Math.abs(diff) > 50) {
+          if (diff > 0) {
+            nextImage();
+          } else {
+            prevImage();
+          }
+        }
+      }, { passive: true });
+    }
+
+    // ── Back to Top ──
+    var backToTop = document.getElementById("back-to-top");
+    if (backToTop) {
+      window.addEventListener("scroll", function() {
+        if (window.scrollY > 400) {
+          backToTop.classList.remove("opacity-0", "pointer-events-none");
+          backToTop.classList.add("opacity-100");
+        } else {
+          backToTop.classList.add("opacity-0", "pointer-events-none");
+          backToTop.classList.remove("opacity-100");
+        }
+      });
+
+      backToTop.addEventListener("click", function() {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    }
+
+    // ── Share ──
+    var shareBtn = document.getElementById("share-btn");
+    if (shareBtn) {
+      shareBtn.addEventListener("click", function() {
+        var shareData = {
+          title: "Cars Gallery - Curtis Bragdon",
+          text: "Check out customer cars and rides from Curtis Bragdon's Snap-on route!",
+          url: window.location.href
+        };
+
+        if (navigator.share) {
+          navigator.share(shareData).catch(function() {});
+        } else {
+          navigator.clipboard.writeText(window.location.href).then(function() {
+            shareBtn.innerHTML = '<i class="fa-solid fa-check"></i> Link Copied!';
+            setTimeout(function() {
+              shareBtn.innerHTML = '<i class="fa-solid fa-share-nodes"></i> Share Gallery';
+            }, 2000);
+          }).catch(function() {});
+        }
+      });
+    }
+  })();
+</script>
