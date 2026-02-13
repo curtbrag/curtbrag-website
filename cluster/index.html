@@ -2233,6 +2233,8 @@
             var t = tsMap[name];
             var alive = (m.cpu && (m.cpu.usage > 0 || (m.memory && m.memory.totalMB > 0))) || (b && b.online) || (t && t.online);
             if (alive) synthReady++;
+            var num = parseInt(name.replace('node', ''));
+            synthNodes.push({ name: name, status: alive ? 'Ready' : 'NotReady', role: name === 'node1' ? 'control-plane' : 'worker', ip: '192.168.1.' + (205 + num), kubeletVersion: 'N/A (K3s down)', osImage: 'postmarketOS', arch: 'aarch64' });
             synthNodes.push({ name: name, status: alive ? 'Ready' : 'NotReady', role: name === 'node1' ? 'control-plane' : 'worker', ip: nodeIPs[name] || '', kubeletVersion: 'N/A (K3s down)', osImage: 'postmarketOS', arch: 'aarch64' });
           });
           data.nodes = synthNodes;
@@ -2605,6 +2607,10 @@
         const data = await sendToBackend({ command: cmd, target, password });
         if (data.success) {
           status.textContent = data.message + ' — waiting for result...';
+          status.className = 'control-status visible success';
+          if (data.id) pollCommandCompletion(data.id, cmd, target);
+          setTimeout(loadClusterStatus, 5000);
+          status.textContent = data.message + ' (waiting for execution...)';
           status.className = 'control-status visible success';
           if (data.id) pollCommandCompletion(data.id, cmd, target);
           setTimeout(loadClusterStatus, 5000);
