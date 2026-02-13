@@ -2,7 +2,7 @@
 // Receives status updates from cluster and serves to website
 // Uses Netlify Blobs for persistence across cold starts
 
-const { getStore } = require("@netlify/blobs");
+const { getStore, connectLambda } = require("@netlify/blobs");
 
 // Demo data for when no live data is available
 const DEMO_DATA = {
@@ -191,6 +191,9 @@ exports.handler = async function(event, context) {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
+
+  // Initialize Netlify Blobs for Lambda compatibility mode
+  connectLambda(event);
 
   // POST - Update cluster status (from node1 cron job)
   if (event.httpMethod === 'POST') {

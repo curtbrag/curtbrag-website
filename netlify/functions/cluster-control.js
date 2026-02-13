@@ -2,7 +2,7 @@
 // Queues commands for the cluster to execute
 // Uses Netlify Blobs for persistence across cold starts
 
-const { getStore } = require("@netlify/blobs");
+const { getStore, connectLambda } = require("@netlify/blobs");
 
 async function getQueue() {
   try {
@@ -58,6 +58,9 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
+
+  // Initialize Netlify Blobs for Lambda compatibility mode
+  connectLambda(event);
 
   const apiKey = event.headers['x-cluster-key'];
   const validKey = process.env.CLUSTER_API_KEY || 'curtbrag-cluster-2024';

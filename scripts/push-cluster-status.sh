@@ -116,10 +116,14 @@ if command -v tailscale >/dev/null 2>&1; then
 fi
 
 if command -v iw >/dev/null 2>&1; then
-  WIFI_SSID=$(iw dev wlan0 link 2>/dev/null | grep SSID | awk '{print $2}' || echo "")
-  WIFI_SIGNAL=$(iw dev wlan0 link 2>/dev/null | grep signal | awk '{print $2}' || echo "")
-  if [ -n "$WIFI_SSID" ]; then
-    NETWORK_JSON=$(echo "$NETWORK_JSON" | jq --arg ssid "$WIFI_SSID" --arg signal "$WIFI_SIGNAL" '.wifi = {ssid: $ssid, signal: $signal, connected: true}')
+  # Auto-detect wireless interface (wlan0, wlp*, mlan0, etc.)
+  WIFI_IF=$(iw dev 2>/dev/null | awk '/Interface/{print $2; exit}')
+  if [ -n "$WIFI_IF" ]; then
+    WIFI_SSID=$(iw dev "$WIFI_IF" link 2>/dev/null | grep SSID | awk '{print $2}' || echo "")
+    WIFI_SIGNAL=$(iw dev "$WIFI_IF" link 2>/dev/null | grep signal | awk '{print $2}' || echo "")
+    if [ -n "$WIFI_SSID" ]; then
+      NETWORK_JSON=$(echo "$NETWORK_JSON" | jq --arg ssid "$WIFI_SSID" --arg signal "$WIFI_SIGNAL" --arg iface "$WIFI_IF" '.wifi = {ssid: $ssid, signal: $signal, interface: $iface, connected: true}')
+    fi
   fi
 fi
 
