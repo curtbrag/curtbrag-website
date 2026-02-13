@@ -6,6 +6,9 @@ package-lock.json
 # build output
 dist/
 
+# Astro generated types
+.astro/
+
 # quarantine & recovery dirs
 netlify/functions.quarantine*
 Recovered-*/
