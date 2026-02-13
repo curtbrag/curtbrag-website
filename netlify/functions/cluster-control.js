@@ -137,7 +137,7 @@ exports.handler = async (event) => {
       return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
     }
 
-    const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse'];
+    const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse', 'update'];
     if (!validCommands.includes(command)) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid command' }) };
     }
