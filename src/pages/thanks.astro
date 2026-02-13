@@ -1,0 +1,44 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout
+  title="Thank You - Curtis Bragdon"
+  description="Thank you for contacting Curtis Bragdon."
+>
+  <section class="min-h-[60vh] flex items-center justify-center px-4 py-12">
+    <div class="bg-panel border border-border rounded-2xl p-10 text-center max-w-lg mx-auto">
+      <i class="fa-solid fa-circle-check text-green-500 text-5xl mb-4"></i>
+      <h1 class="text-3xl font-bold text-brand mb-3">Thank You!</h1>
+      <p class="text-text-secondary leading-relaxed mb-8">
+        Your message was sent successfully. I'll get back to you as soon as possible.
+      </p>
+
+      <div class="flex flex-col sm:flex-row gap-3 justify-center">
+        <a
+          href="/"
+          class="px-6 py-3 bg-brand text-white rounded-xl font-semibold hover:bg-brand-dark transition text-center"
+        >
+          Return Home
+        </a>
+        <a
+          href="/gallery"
+          class="px-6 py-3 bg-transparent border border-border text-text rounded-xl font-semibold hover:border-brand transition text-center"
+        >
+          Browse Gallery
+        </a>
+        <a
+          href="/cards"
+          class="px-6 py-3 bg-transparent border border-border text-text rounded-xl font-semibold hover:border-brand transition text-center"
+        >
+          Card Shop
+        </a>
+      </div>
+
+      <p class="text-sm text-text-secondary mt-8">
+        Need immediate help? Call or text
+        <a href="tel:+17814170692" class="text-brand font-semibold hover:underline">781-417-0692</a>
+      </p>
+    </div>
+  </section>
+</Layout>

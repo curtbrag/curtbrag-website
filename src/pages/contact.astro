@@ -1,0 +1,172 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout
+  title="Contact - Curtis Bragdon"
+  description="Get in touch with Curtis Bragdon - schedule a truck stop, request tools, or ask any questions."
+>
+  <section class="max-w-xl mx-auto px-4 py-12">
+    <h1 class="text-3xl font-bold text-center mb-8 text-text">
+      <i class="fa-solid fa-envelope text-brand mr-2"></i>Contact Curtis
+    </h1>
+
+    <div class="bg-panel border border-border rounded-2xl p-8">
+      <p class="text-text-secondary leading-relaxed mb-6">
+        Have a question about tools, need a custom order, or want to schedule a stop?
+      </p>
+
+      <!-- Quick Contact Buttons -->
+      <div class="flex flex-wrap gap-3 mb-6 pb-6 border-b border-border">
+        <a
+          href="tel:+17814170692"
+          class="inline-flex items-center gap-2 px-4 py-2 bg-bg border border-border rounded-lg text-text text-sm hover:border-brand transition"
+        >
+          <i class="fa-solid fa-phone"></i>Call
+        </a>
+        <a
+          href="sms:+17814170692"
+          class="inline-flex items-center gap-2 px-4 py-2 bg-bg border border-border rounded-lg text-text text-sm hover:border-brand transition"
+        >
+          <i class="fa-solid fa-comment-sms"></i>Text
+        </a>
+        <a
+          href="mailto:curtbrag@yahoo.com"
+          class="inline-flex items-center gap-2 px-4 py-2 bg-bg border border-border rounded-lg text-text text-sm hover:border-brand transition"
+        >
+          <i class="fa-solid fa-envelope"></i>Email
+        </a>
+        <a
+          href="/zelle"
+          class="inline-flex items-center gap-2 px-4 py-2 bg-bg border border-border rounded-lg text-text text-sm hover:border-brand transition"
+        >
+          <i class="fa-solid fa-dollar-sign"></i>Zelle
+        </a>
+        <button
+          type="button"
+          id="copy-phone-btn"
+          class="inline-flex items-center gap-2 px-4 py-2 bg-bg border border-border rounded-lg text-text text-sm hover:border-brand transition cursor-pointer"
+        >
+          <i class="fa-solid fa-copy"></i>Copy #
+        </button>
+      </div>
+
+      <!-- Contact Form -->
+      <form
+        name="contact"
+        method="POST"
+        data-netlify="true"
+        netlify-honeypot="bot-field"
+        action="/thanks"
+        id="contact-form"
+        class="flex flex-col gap-4"
+      >
+        <input type="hidden" name="form-name" value="contact" />
+        <p class="hidden">
+          <label>
+            Don't fill this out: <input name="bot-field" />
+          </label>
+        </p>
+
+        <div>
+          <label for="name" class="block text-sm font-semibold text-text-secondary mb-1">Name</label>
+          <input
+            type="text"
+            id="name"
+            name="name"
+            required
+            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text focus:border-brand focus:ring-1 focus:ring-brand/30 transition outline-none"
+          />
+        </div>
+
+        <div>
+          <label for="email" class="block text-sm font-semibold text-text-secondary mb-1">Email</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            required
+            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text focus:border-brand focus:ring-1 focus:ring-brand/30 transition outline-none"
+          />
+        </div>
+
+        <div>
+          <label for="subject" class="block text-sm font-semibold text-text-secondary mb-1">Subject</label>
+          <input
+            type="text"
+            id="subject"
+            name="subject"
+            placeholder="Schedule Stop, Tool Request, Warranty, etc."
+            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand/30 transition outline-none"
+          />
+        </div>
+
+        <div>
+          <label for="message" class="block text-sm font-semibold text-text-secondary mb-1">Message</label>
+          <textarea
+            id="message"
+            name="message"
+            required
+            rows="5"
+            placeholder="How can I help you?"
+            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand/30 transition outline-none resize-y"
+          ></textarea>
+        </div>
+
+        <button
+          type="submit"
+          id="contact-submit"
+          class="w-full bg-brand text-white rounded-xl py-3 font-semibold hover:bg-brand-dark transition flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <span id="submit-text">Send Message</span>
+          <i id="submit-spinner" class="fa-solid fa-spinner fa-spin hidden"></i>
+        </button>
+      </form>
+    </div>
+  </section>
+</Layout>
+
+<script>
+  // Copy phone number
+  const copyBtn = document.getElementById('copy-phone-btn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText('781-417-0692');
+        const icon = copyBtn.querySelector('i');
+        const originalClass = icon?.className;
+        if (icon) {
+          icon.className = 'fa-solid fa-check';
+        }
+        copyBtn.querySelector('i')?.nextSibling && (copyBtn.lastChild!.textContent = 'Copied!');
+        setTimeout(() => {
+          if (icon && originalClass) icon.className = originalClass;
+          if (copyBtn.lastChild) copyBtn.lastChild.textContent = 'Copy #';
+        }, 2000);
+      } catch {
+        // Fallback for older browsers
+        const textarea = document.createElement('textarea');
+        textarea.value = '781-417-0692';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+    });
+  }
+
+  // Form loading state
+  const form = document.getElementById('contact-form') as HTMLFormElement;
+  const submitBtn = document.getElementById('contact-submit');
+  const submitText = document.getElementById('submit-text');
+  const submitSpinner = document.getElementById('submit-spinner');
+
+  if (form && submitBtn && submitText && submitSpinner) {
+    form.addEventListener('submit', () => {
+      submitBtn.setAttribute('disabled', 'true');
+      submitBtn.classList.add('opacity-70', 'cursor-not-allowed');
+      submitText.textContent = 'Sending...';
+      submitSpinner.classList.remove('hidden');
+    });
+  }
+</script>

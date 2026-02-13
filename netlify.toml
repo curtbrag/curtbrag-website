@@ -1,27 +1,13 @@
 # Netlify configuration
 [build]
-  publish = "."
+  command = "npm run build"
+  publish = "dist"
   functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "20"
 
-# Redirects for clean URLs
-[[redirects]]
-  from = "/shop"
-  to = "/shop/index.html"
-  status = 200
-
-[[redirects]]
-  from = "/gallery"
-  to = "/gallery/index.html"
-  status = 200
-
-[[redirects]]
-  from = "/addyourride"
-  to = "/addyourride/index.html"
-  status = 200
-
+# Redirects — Astro generates clean URLs, cluster is a static standalone page
 [[redirects]]
   from = "/cluster"
   to = "/cluster/index.html"
@@ -35,10 +21,15 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' https: data: blob:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; connect-src 'self' https: http://localhost:* http://192.168.*; frame-ancestors 'none';"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.auctionnudge.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://www.auctionnudge.com; img-src 'self' https: data: blob:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; connect-src 'self' https: http://localhost:* http://192.168.*; frame-ancestors 'none';"
 
 [[headers]]
   for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/_astro/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 

@@ -1,0 +1,452 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Curtis Bragdon's World" description="Curtis Bragdon — Snap-on tools, service, custom AI and builds. Galleries, contact, and more.">
+
+  <!-- ═══════════════════════════════════════════ HERO ═══════════════════════════════════════════ -->
+  <section class="relative py-16 md:py-24 overflow-hidden">
+    <!-- Radial glow pseudo-background -->
+    <div class="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden="true">
+      <div class="w-[600px] h-[600px] rounded-full bg-brand/10 blur-[120px]"></div>
+    </div>
+
+    <div class="relative max-w-6xl mx-auto px-4 sm:px-6 text-center">
+      <img
+        src="/assets/logo_icon.png"
+        alt="CurtBrag Logo"
+        class="w-28 h-auto mx-auto mb-8"
+        loading="eager"
+      />
+      <h1 class="text-4xl md:text-5xl font-bold font-sans mb-4">All Access. No Excuses.</h1>
+      <p class="text-text-secondary max-w-2xl mx-auto mb-10 text-lg leading-relaxed">
+        This ain't your average tool truck. I don't just sell tools &mdash; I build my own path and custom solutions that last, with Alina on standby.
+      </p>
+
+      <!-- Quick Contact Cluster -->
+      <div class="flex flex-wrap justify-center gap-3">
+        <a
+          href="tel:+17814170692"
+          class="inline-flex items-center gap-2 bg-brand text-white rounded-xl px-6 py-3 font-semibold hover:bg-brand-dark transition shadow-lg shadow-brand/20"
+        >
+          <i class="fa-solid fa-phone"></i> Call
+        </a>
+        <a
+          href="sms:+17814170692"
+          class="inline-flex items-center gap-2 bg-brand text-white rounded-xl px-6 py-3 font-semibold hover:bg-brand-dark transition shadow-lg shadow-brand/20"
+        >
+          <i class="fa-solid fa-comment-sms"></i> Text
+        </a>
+        <a
+          href="mailto:curtbrag@yahoo.com"
+          class="inline-flex items-center gap-2 bg-brand text-white rounded-xl px-6 py-3 font-semibold hover:bg-brand-dark transition shadow-lg shadow-brand/20"
+        >
+          <i class="fa-solid fa-envelope"></i> Email
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ SERVICES ═══════════════════════════════════════ -->
+  <section class="py-12 md:py-16">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <h2 class="text-2xl font-bold mb-1">Snap-on Services</h2>
+      <div class="w-16 h-0.5 bg-muted/40 mb-6"></div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Schedule Stop -->
+        <a
+          href="https://otis.curtbrag.com/curtschedule"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="bg-panel border border-border rounded-2xl p-6 hover:border-border-hover hover:bg-panel-hover transition block group"
+        >
+          <div class="text-3xl mb-4 text-green">
+            <i class="fa-solid fa-calendar-check"></i>
+          </div>
+          <h3 class="text-lg font-semibold mb-2 group-hover:text-brand transition">Schedule Stop</h3>
+          <p class="text-text-secondary text-sm">Book a tool truck visit at your shop or location.</p>
+        </a>
+
+        <!-- Request a Tool -->
+        <a
+          href="https://otis.curtbrag.com/curtrequest"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="bg-panel border border-border rounded-2xl p-6 hover:border-border-hover hover:bg-panel-hover transition block group"
+        >
+          <div class="text-3xl mb-4 text-amber-500">
+            <i class="fa-solid fa-toolbox"></i>
+          </div>
+          <h3 class="text-lg font-semibold mb-2 group-hover:text-brand transition">Request a Tool</h3>
+          <p class="text-text-secondary text-sm">Need something specific? Submit a request and I'll track it down.</p>
+        </a>
+
+        <!-- Warranty / RA Help -->
+        <a
+          href="https://otis.curtbrag.com/curtwarranty"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="bg-panel border border-border rounded-2xl p-6 hover:border-border-hover hover:bg-panel-hover transition block group"
+        >
+          <div class="text-3xl mb-4 text-blue">
+            <i class="fa-solid fa-shield"></i>
+          </div>
+          <h3 class="text-lg font-semibold mb-2 group-hover:text-brand transition">Warranty / RA Help</h3>
+          <p class="text-text-secondary text-sm">Broken tool? Start a warranty or return authorization.</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ SOCIAL & LINKS ═══════════════════════════════════════ -->
+  <section class="py-12 md:py-16">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <h2 class="text-2xl font-bold mb-6">Connect</h2>
+
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+        <a href="https://otis.curtbrag.com/curtinsta" target="_blank" rel="noopener noreferrer"
+          class="flex items-center gap-3 bg-panel border border-border rounded-xl px-4 py-3 hover:border-border-hover transition">
+          <i class="fa-brands fa-instagram text-xl" style="color:#E4405F"></i>
+          <span class="font-medium text-sm">Instagram</span>
+        </a>
+        <a href="https://otis.curtbrag.com/curtfacebook" target="_blank" rel="noopener noreferrer"
+          class="flex items-center gap-3 bg-panel border border-border rounded-xl px-4 py-3 hover:border-border-hover transition">
+          <i class="fa-brands fa-facebook text-xl" style="color:#1877F2"></i>
+          <span class="font-medium text-sm">Facebook</span>
+        </a>
+        <a href="https://otis.curtbrag.com/curttiktok" target="_blank" rel="noopener noreferrer"
+          class="flex items-center gap-3 bg-panel border border-border rounded-xl px-4 py-3 hover:border-border-hover transition">
+          <i class="fa-brands fa-tiktok text-xl" style="color:#69C9D0"></i>
+          <span class="font-medium text-sm">TikTok</span>
+        </a>
+        <a href="https://otis.curtbrag.com/curtyoutube" target="_blank" rel="noopener noreferrer"
+          class="flex items-center gap-3 bg-panel border border-border rounded-xl px-4 py-3 hover:border-border-hover transition">
+          <i class="fa-brands fa-youtube text-xl" style="color:#FF0000"></i>
+          <span class="font-medium text-sm">YouTube</span>
+        </a>
+        <a href="https://otis.curtbrag.com/curtthreads" target="_blank" rel="noopener noreferrer"
+          class="flex items-center gap-3 bg-panel border border-border rounded-xl px-4 py-3 hover:border-border-hover transition">
+          <i class="fa-brands fa-threads text-xl" style="color:#7C2E7A"></i>
+          <span class="font-medium text-sm">Threads</span>
+        </a>
+        <a href="https://otis.curtbrag.com/curtsnap" target="_blank" rel="noopener noreferrer"
+          class="flex items-center gap-3 bg-panel border border-border rounded-xl px-4 py-3 hover:border-border-hover transition">
+          <i class="fa-brands fa-snapchat text-xl" style="color:#FFFC00"></i>
+          <span class="font-medium text-sm">Snapchat</span>
+        </a>
+        <a href="https://otis.curtbrag.com/curttelegram" target="_blank" rel="noopener noreferrer"
+          class="flex items-center gap-3 bg-panel border border-border rounded-xl px-4 py-3 hover:border-border-hover transition">
+          <i class="fa-brands fa-telegram text-xl" style="color:#26A4E3"></i>
+          <span class="font-medium text-sm">Telegram</span>
+        </a>
+        <a href="https://otis.curtbrag.com/curtreddit" target="_blank" rel="noopener noreferrer"
+          class="flex items-center gap-3 bg-panel border border-border rounded-xl px-4 py-3 hover:border-border-hover transition">
+          <i class="fa-brands fa-reddit text-xl" style="color:#FF4500"></i>
+          <span class="font-medium text-sm">Reddit</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ EXPLORE ═══════════════════════════════════════ -->
+  <section class="py-12 md:py-16">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <h2 class="text-2xl font-bold mb-6">Explore</h2>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Photo Gallery -->
+        <a href="/gallery" class="bg-panel border border-border rounded-2xl p-5 hover:border-border-hover transition block group">
+          <div class="text-2xl mb-3 text-purple-400">
+            <i class="fa-solid fa-images"></i>
+          </div>
+          <h3 class="font-semibold mb-1 group-hover:text-brand transition">Photo Gallery</h3>
+          <p class="text-text-secondary text-sm">Browse cars and Snap-on photos</p>
+        </a>
+
+        <!-- Card Shop -->
+        <a href="/shop" class="bg-panel border border-border rounded-2xl p-5 hover:border-border-hover transition block group">
+          <div class="text-2xl mb-3 text-brand">
+            <i class="fa-solid fa-shopping-cart"></i>
+          </div>
+          <h3 class="font-semibold mb-1 group-hover:text-brand transition">Card Shop</h3>
+          <p class="text-text-secondary text-sm">Trading cards on eBay</p>
+        </a>
+
+        <!-- Phone Cluster -->
+        <a href="/cluster" class="bg-panel border border-border rounded-2xl p-5 hover:border-border-hover transition block group">
+          <div class="text-2xl mb-3 text-green">
+            <i class="fa-solid fa-server"></i>
+          </div>
+          <h3 class="font-semibold mb-1 group-hover:text-brand transition">Phone Cluster</h3>
+          <p class="text-text-secondary text-sm">10 phones running Kubernetes</p>
+        </a>
+
+        <!-- Add Your Ride -->
+        <a href="/addyourride" class="bg-panel border border-border rounded-2xl p-5 hover:border-border-hover transition block group">
+          <div class="text-2xl mb-3 text-blue">
+            <i class="fa-solid fa-car-side"></i>
+          </div>
+          <h3 class="font-semibold mb-1 group-hover:text-brand transition">Add Your Ride</h3>
+          <p class="text-text-secondary text-sm">Submit your vehicle photos</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ PAYMENTS ═══════════════════════════════════════ -->
+  <section class="py-12 md:py-16">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <h2 class="text-2xl font-bold mb-6">Quick Pay</h2>
+
+      <div class="flex flex-wrap gap-3 justify-center">
+        <a href="https://otis.curtbrag.com/curtdk" target="_blank" rel="noopener noreferrer"
+          class="inline-flex items-center gap-2 bg-surface border border-border rounded-lg px-4 py-2 text-sm hover:border-border-hover transition">
+          <i class="fa-solid fa-football"></i> DraftKings
+        </a>
+        <a href="https://otis.curtbrag.com/curtzelle" target="_blank" rel="noopener noreferrer"
+          class="inline-flex items-center gap-2 bg-surface border border-border rounded-lg px-4 py-2 text-sm hover:border-border-hover transition">
+          <i class="fa-solid fa-money-bill"></i> Zelle
+        </a>
+        <a href="https://otis.curtbrag.com/curtcash" target="_blank" rel="noopener noreferrer"
+          class="inline-flex items-center gap-2 bg-surface border border-border rounded-lg px-4 py-2 text-sm hover:border-border-hover transition">
+          <i class="fa-brands fa-square-cash-app"></i> CashApp
+        </a>
+        <a href="https://otis.curtbrag.com/curtvenmo" target="_blank" rel="noopener noreferrer"
+          class="inline-flex items-center gap-2 bg-surface border border-border rounded-lg px-4 py-2 text-sm hover:border-border-hover transition">
+          <i class="fa-brands fa-paypal"></i> Venmo
+        </a>
+        <a href="https://otis.curtbrag.com/curtspotify" target="_blank" rel="noopener noreferrer"
+          class="inline-flex items-center gap-2 bg-surface border border-border rounded-lg px-4 py-2 text-sm hover:border-border-hover transition">
+          <i class="fa-brands fa-spotify"></i> Spotify
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ ALINA AI ═══════════════════════════════════════ -->
+  <section class="py-12 md:py-16" id="alina">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <!-- Header -->
+      <div class="flex items-center gap-3 mb-1">
+        <img src="/assets/alina_avatar.png" alt="Alina AI" class="w-12 h-12 rounded-xl" loading="lazy" />
+        <h2 class="text-2xl font-bold">Alina &mdash; AI Command Center</h2>
+      </div>
+      <p class="text-muted text-sm mb-6">
+        GPT sessions 7,500+ &bull; Custom automations (Bitly, Netlify, DraftKings, more) &bull; Tool deals closed: infinity
+      </p>
+
+      <!-- Prompt Chips -->
+      <div class="flex flex-wrap gap-2 mb-4" id="prompt-chips">
+        <button data-prompt="Schedule a stop" class="alina-chip rounded-full border border-border bg-surface px-4 py-2 text-sm hover:border-brand-glow transition cursor-pointer">Schedule</button>
+        <button data-prompt="What promos are running?" class="alina-chip rounded-full border border-border bg-surface px-4 py-2 text-sm hover:border-brand-glow transition cursor-pointer">Promos</button>
+        <button data-prompt="How do I pay?" class="alina-chip rounded-full border border-border bg-surface px-4 py-2 text-sm hover:border-brand-glow transition cursor-pointer">Pay</button>
+        <button data-prompt="I need warranty help" class="alina-chip rounded-full border border-border bg-surface px-4 py-2 text-sm hover:border-brand-glow transition cursor-pointer">Warranty</button>
+        <button data-prompt="How do I contact Curt?" class="alina-chip rounded-full border border-border bg-surface px-4 py-2 text-sm hover:border-brand-glow transition cursor-pointer">Contact</button>
+        <button data-prompt="Tell me a joke" class="alina-chip rounded-full border border-border bg-surface px-4 py-2 text-sm hover:border-brand-glow transition cursor-pointer">Joke</button>
+      </div>
+
+      <!-- Chat Widget -->
+      <div class="bg-panel border border-border rounded-2xl p-4">
+        <div id="chat-log" class="bg-bg rounded-xl border border-border h-60 overflow-y-auto p-4 space-y-3">
+          <!-- System greeting -->
+          <div class="flex justify-start">
+            <div class="max-w-[80%] rounded-xl px-4 py-2 text-sm bg-surface border border-border text-text">
+              Alina here. What do you need?
+            </div>
+          </div>
+        </div>
+
+        <!-- Input Bar -->
+        <div class="flex gap-2 mt-3">
+          <input
+            type="text"
+            id="user-input"
+            placeholder="Ask Alina anything..."
+            class="flex-1 bg-bg border border-border rounded-lg px-4 py-3 text-text placeholder:text-muted focus:outline-none focus:border-brand transition text-sm"
+          />
+          <button
+            id="send-btn"
+            class="bg-brand text-white rounded-lg px-5 py-3 font-semibold hover:bg-brand-dark transition text-sm"
+          >
+            Send
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════ BOSTON SPORTS TRACKER ═══════════════════════════════════ -->
+  <section class="py-12 md:py-16">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="flex items-center gap-3 mb-6">
+        <i class="fa-solid fa-trophy text-yellow text-xl"></i>
+        <h2 class="text-2xl font-bold">Boston Sports Tracker</h2>
+      </div>
+
+      <div class="bg-panel border border-border rounded-2xl p-6">
+        <div class="divide-y divide-border">
+          <div class="flex justify-between items-center py-3">
+            <span class="font-semibold">Red Sox</span>
+            <span id="score-redsox" class="text-text-secondary text-sm">Loading...</span>
+          </div>
+          <div class="flex justify-between items-center py-3">
+            <span class="font-semibold">Patriots</span>
+            <span id="score-patriots" class="text-text-secondary text-sm">Loading...</span>
+          </div>
+          <div class="flex justify-between items-center py-3">
+            <span class="font-semibold">Celtics</span>
+            <span id="score-celtics" class="text-text-secondary text-sm">Loading...</span>
+          </div>
+          <div class="flex justify-between items-center py-3">
+            <span class="font-semibold">Bruins</span>
+            <span id="score-bruins" class="text-text-secondary text-sm">Loading...</span>
+          </div>
+          <div class="flex justify-between items-center py-3">
+            <span class="font-semibold">Revolution</span>
+            <span id="score-revolution" class="text-text-secondary text-sm">Loading...</span>
+          </div>
+        </div>
+        <p class="text-muted text-xs mt-4">Auto-updates every 5 min</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════ EASTER EGG ═══════════════════════════════════ -->
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 pb-8 text-center">
+    <a href="/yougood" class="text-muted text-xs hover:text-brand transition">You Good?</a>
+  </div>
+
+</Layout>
+
+<!-- ═══════════════════════════════════ ALINA CHAT SCRIPT ═══════════════════════════════════ -->
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const chatLog = document.getElementById('chat-log');
+    const userInput = document.getElementById('user-input') as HTMLInputElement;
+    const sendBtn = document.getElementById('send-btn');
+    const chips = document.querySelectorAll('.alina-chip');
+
+    if (!chatLog || !userInput || !sendBtn) return;
+
+    function appendMsg(who: string, text: string) {
+      const wrapper = document.createElement('div');
+      wrapper.className = who === 'user' ? 'flex justify-end' : 'flex justify-start';
+
+      const bubble = document.createElement('div');
+      bubble.className = who === 'user'
+        ? 'max-w-[80%] rounded-xl px-4 py-2 text-sm bg-green-900/30 border border-green-800/40 text-text'
+        : 'max-w-[80%] rounded-xl px-4 py-2 text-sm bg-surface border border-border text-text';
+      bubble.textContent = text;
+
+      wrapper.appendChild(bubble);
+      chatLog!.appendChild(wrapper);
+      chatLog!.scrollTop = chatLog!.scrollHeight;
+    }
+
+    async function askAlina(text: string): Promise<string> {
+      try {
+        const res = await fetch('/.netlify/functions/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text }),
+        });
+        const data = await res.json();
+        return data.reply || data.message || 'No response.';
+      } catch {
+        return 'Alina is offline right now. Try again later.';
+      }
+    }
+
+    function send() {
+      const text = userInput.value.trim();
+      if (!text) return;
+      userInput.value = '';
+
+      // Easter egg: clear chat
+      if (text.toLowerCase() === '!refresh') {
+        chatLog!.innerHTML = '';
+        appendMsg('system', 'Alina here. What do you need?');
+        return;
+      }
+
+      appendMsg('user', text);
+
+      // Show typing indicator
+      const typingId = 'typing-indicator';
+      const typingWrapper = document.createElement('div');
+      typingWrapper.className = 'flex justify-start';
+      typingWrapper.id = typingId;
+      const typingBubble = document.createElement('div');
+      typingBubble.className = 'max-w-[80%] rounded-xl px-4 py-2 text-sm bg-surface border border-border text-muted italic';
+      typingBubble.textContent = 'Alina is thinking...';
+      typingWrapper.appendChild(typingBubble);
+      chatLog!.appendChild(typingWrapper);
+      chatLog!.scrollTop = chatLog!.scrollHeight;
+
+      askAlina(text).then((reply) => {
+        const indicator = document.getElementById(typingId);
+        if (indicator) indicator.remove();
+        appendMsg('system', reply);
+      });
+    }
+
+    sendBtn.addEventListener('click', send);
+
+    userInput.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        send();
+      }
+    });
+
+    chips.forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const prompt = (chip as HTMLElement).getAttribute('data-prompt');
+        if (prompt) {
+          userInput.value = prompt;
+          send();
+        }
+      });
+    });
+  });
+</script>
+
+<!-- ═══════════════════════════════════ SPORTS TRACKER SCRIPT ═══════════════════════════════════ -->
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const teamIds = ['redsox', 'patriots', 'celtics', 'bruins', 'revolution'];
+
+    async function loadSports() {
+      try {
+        const res = await fetch('/.netlify/functions/sports');
+        const data = await res.json();
+
+        if (data.success && data.teams) {
+          teamIds.forEach((team) => {
+            const el = document.getElementById(`score-${team}`);
+            if (el && data.teams[team]) {
+              el.textContent = data.teams[team];
+            } else if (el) {
+              el.textContent = 'No game today';
+            }
+          });
+        }
+      } catch {
+        teamIds.forEach((team) => {
+          const el = document.getElementById(`score-${team}`);
+          if (el) el.textContent = 'Unavailable';
+        });
+      }
+    }
+
+    // Initial load
+    loadSports();
+
+    // Retry after 5 seconds in case the function cold-starts
+    setTimeout(loadSports, 5000);
+
+    // Auto-refresh every 5 minutes
+    setInterval(loadSports, 300000);
+  });
+</script>

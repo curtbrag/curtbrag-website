@@ -3,11 +3,16 @@
 node_modules/
 package-lock.json
 
+# build output
+dist/
+
+# Astro generated types
+.astro/
+
 # quarantine & recovery dirs
 netlify/functions.quarantine*
 Recovered-*/
 script-logs/
-
 
 # Local Netlify folder
 .netlify

@@ -1,0 +1,31 @@
+/* Card gallery styles to match PSAholics aesthetic */
+.card-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin: 2rem 0;
+}
+
+.card-gallery figure {
+  margin: 0;
+  background-color: #111;
+  padding: 1rem;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid #222;
+  box-shadow: 0 0 12px rgba(0,0,0,0.8);
+}
+
+.card-gallery img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 4px;
+}
+
+.card-gallery figcaption {
+  margin-top: 0.5rem;
+  color: #eee;
+  font-size: 0.9rem;
+  text-align: center;
+}

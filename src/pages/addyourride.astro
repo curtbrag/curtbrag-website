@@ -1,0 +1,199 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout
+  title="Add Your Ride - Curtis Bragdon"
+  description="Share your ride or card collection with Curtis Bragdon. Submit details and photos to be featured."
+>
+  <section class="max-w-xl mx-auto px-4 py-12">
+    <div class="text-center mb-8">
+      <h1 class="text-3xl font-bold text-text">
+        <i class="fa-solid fa-car-side text-brand mr-2"></i>Add Your Ride
+      </h1>
+      <p class="text-text-secondary mt-2">Share your vehicle or card collection with us!</p>
+    </div>
+
+    <div class="bg-panel border border-border rounded-2xl p-8">
+      <form
+        name="ride-submission"
+        method="POST"
+        data-netlify="true"
+        netlify-honeypot="bot-field"
+        enctype="multipart/form-data"
+        action="/thanks"
+        id="ride-form"
+        class="flex flex-col gap-4"
+      >
+        <input type="hidden" name="form-name" value="ride-submission" />
+        <p class="hidden">
+          <label>
+            Don't fill this out: <input name="bot-field" />
+          </label>
+        </p>
+
+        <div>
+          <label for="name" class="block text-sm font-semibold text-text-secondary mb-1">
+            <i class="fa-solid fa-user mr-1"></i>Name
+          </label>
+          <input
+            type="text"
+            id="name"
+            name="name"
+            required
+            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text focus:border-brand focus:ring-1 focus:ring-brand/30 transition outline-none"
+          />
+        </div>
+
+        <div>
+          <label for="email" class="block text-sm font-semibold text-text-secondary mb-1">
+            <i class="fa-solid fa-envelope mr-1"></i>Email
+          </label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            required
+            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text focus:border-brand focus:ring-1 focus:ring-brand/30 transition outline-none"
+          />
+        </div>
+
+        <div>
+          <label for="submission-type" class="block text-sm font-semibold text-text-secondary mb-1">
+            <i class="fa-solid fa-tag mr-1"></i>Submission Type
+          </label>
+          <input
+            type="text"
+            id="submission-type"
+            name="submission-type"
+            required
+            placeholder="Car, Truck, Motorcycle, Card Collection, etc."
+            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand/30 transition outline-none"
+          />
+        </div>
+
+        <div>
+          <label for="description" class="block text-sm font-semibold text-text-secondary mb-1">
+            <i class="fa-solid fa-align-left mr-1"></i>Description
+          </label>
+          <textarea
+            id="description"
+            name="description"
+            required
+            rows="4"
+            maxlength="500"
+            placeholder="Tell us about your ride or collection — year, make, model, mods, story behind it, etc."
+            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand/30 transition outline-none resize-y"
+          ></textarea>
+          <p class="text-xs text-muted mt-1 text-right">
+            <span id="char-count">0</span>/500 characters
+          </p>
+        </div>
+
+        <div>
+          <label for="photo" class="block text-sm font-semibold text-text-secondary mb-1">
+            <i class="fa-solid fa-camera mr-1"></i>Photo
+          </label>
+          <input
+            type="file"
+            id="photo"
+            name="photo"
+            required
+            accept="image/*"
+            class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text file:mr-3 file:px-3 file:py-1 file:rounded-md file:border-0 file:bg-brand file:text-white file:text-sm file:font-semibold file:cursor-pointer focus:border-brand focus:ring-1 focus:ring-brand/30 transition outline-none"
+          />
+          <p class="text-xs text-muted mt-1">Max file size: 10MB</p>
+          <div id="image-preview" class="mt-3 hidden">
+            <img
+              id="preview-img"
+              src=""
+              alt="Preview"
+              class="w-full max-h-64 object-cover rounded-lg border border-border"
+            />
+          </div>
+          <p id="file-error" class="text-xs text-red-500 mt-1 hidden">
+            File size exceeds 10MB. Please choose a smaller image.
+          </p>
+        </div>
+
+        <button
+          type="submit"
+          id="ride-submit"
+          class="w-full bg-brand text-white rounded-xl py-3 font-semibold hover:bg-brand-dark transition flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <span id="submit-text">Submit Your Ride</span>
+          <i id="submit-spinner" class="fa-solid fa-spinner fa-spin hidden"></i>
+        </button>
+      </form>
+    </div>
+  </section>
+</Layout>
+
+<script>
+  // Character counter
+  const description = document.getElementById('description') as HTMLTextAreaElement;
+  const charCount = document.getElementById('char-count');
+
+  if (description && charCount) {
+    description.addEventListener('input', () => {
+      charCount.textContent = String(description.value.length);
+    });
+  }
+
+  // Image preview with file size validation
+  const photoInput = document.getElementById('photo') as HTMLInputElement;
+  const imagePreview = document.getElementById('image-preview');
+  const previewImg = document.getElementById('preview-img') as HTMLImageElement;
+  const fileError = document.getElementById('file-error');
+  const submitBtn = document.getElementById('ride-submit') as HTMLButtonElement;
+
+  if (photoInput && imagePreview && previewImg && fileError) {
+    photoInput.addEventListener('change', () => {
+      const file = photoInput.files?.[0];
+      if (!file) {
+        imagePreview.classList.add('hidden');
+        fileError.classList.add('hidden');
+        return;
+      }
+
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      if (file.size > maxSize) {
+        fileError.classList.remove('hidden');
+        imagePreview.classList.add('hidden');
+        photoInput.value = '';
+        if (submitBtn) {
+          submitBtn.setAttribute('disabled', 'true');
+          submitBtn.classList.add('opacity-70', 'cursor-not-allowed');
+        }
+        return;
+      }
+
+      fileError.classList.add('hidden');
+      if (submitBtn) {
+        submitBtn.removeAttribute('disabled');
+        submitBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        previewImg.src = e.target?.result as string;
+        imagePreview.classList.remove('hidden');
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Form loading state
+  const form = document.getElementById('ride-form') as HTMLFormElement;
+  const submitText = document.getElementById('submit-text');
+  const submitSpinner = document.getElementById('submit-spinner');
+
+  if (form && submitBtn && submitText && submitSpinner) {
+    form.addEventListener('submit', () => {
+      submitBtn.setAttribute('disabled', 'true');
+      submitBtn.classList.add('opacity-70', 'cursor-not-allowed');
+      submitText.textContent = 'Submitting...';
+      submitSpinner.classList.remove('hidden');
+    });
+  }
+</script>

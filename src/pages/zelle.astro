@@ -1,0 +1,46 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout
+  title="Pay with Zelle - Curtis Bragdon"
+  description="Pay Curtis Bragdon via Zelle for Snap-on tool purchases."
+>
+  <section class="min-h-[60vh] flex items-center justify-center px-4 py-12">
+    <div class="bg-panel border border-border rounded-2xl p-10 text-center max-w-lg mx-auto">
+      <i class="fa-solid fa-dollar-sign text-brand text-5xl mb-4"></i>
+      <h1 class="text-3xl font-bold text-brand mb-3">Send Payment via Zelle</h1>
+      <p class="text-text-secondary leading-relaxed mb-2">
+        Use Zelle to send payment for your Snap-on tool purchases. Open your banking app, select Zelle, and send to one of the options below.
+      </p>
+
+      <div class="bg-bg border border-border rounded-xl p-4 my-6 text-left space-y-3">
+        <div>
+          <span class="text-sm font-bold text-brand">Phone:</span>
+          <span class="text-text ml-2">+1 781 417 0692</span>
+        </div>
+        <div>
+          <span class="text-sm font-bold text-brand">Email:</span>
+          <span class="text-text ml-2">curtis.bragdon@snapon.com</span>
+        </div>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-3 justify-center">
+        <a
+          href="https://www.zellepay.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="px-6 py-3 bg-transparent border border-border text-text rounded-xl font-semibold hover:border-brand transition text-center"
+        >
+          Visit zellepay.com <i class="fa-solid fa-arrow-up-right-from-square ml-1 text-xs"></i>
+        </a>
+        <a
+          href="/"
+          class="px-6 py-3 bg-brand text-white rounded-xl font-semibold hover:bg-brand-dark transition text-center"
+        >
+          Back Home
+        </a>
+      </div>
+    </div>
+  </section>
+</Layout>
