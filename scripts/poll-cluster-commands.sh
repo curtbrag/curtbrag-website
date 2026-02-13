@@ -240,6 +240,28 @@ ${NODE_OUT}
         report_result "$cmd_id" "success" "$TRUNC_OUTPUT" "$cmd" "$target"
       fi
       ;;
+    update)
+      log "Updating scripts from GitHub..."
+      REPO_RAW="https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts"
+      SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+      FAIL=""
+      for SCRIPT in push-cluster-status.sh poll-cluster-commands.sh; do
+        if curl -sfL "$REPO_RAW/$SCRIPT" -o "$SCRIPT_DIR/$SCRIPT.new"; then
+          chmod +x "$SCRIPT_DIR/$SCRIPT.new"
+          mv "$SCRIPT_DIR/$SCRIPT.new" "$SCRIPT_DIR/$SCRIPT"
+          log "  Updated $SCRIPT"
+        else
+          log "  Failed to download $SCRIPT"
+          FAIL="$FAIL $SCRIPT"
+          rm -f "$SCRIPT_DIR/$SCRIPT.new"
+        fi
+      done
+      if [ -z "$FAIL" ]; then
+        report_result "$cmd_id" "success: scripts updated"
+      else
+        report_result "$cmd_id" "partial: failed$FAIL"
+      fi
+      ;;
     *)
       log "Unknown command: $cmd"
       report_result "$cmd_id" "error: unknown command" "" "$cmd" "$target"
