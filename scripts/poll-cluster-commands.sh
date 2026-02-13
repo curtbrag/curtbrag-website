@@ -6,6 +6,7 @@
 API_URL="https://curtbrag.com/.netlify/functions/cluster-control"
 API_KEY="${CLUSTER_API_KEY:-curtbrag-cluster-2024}"
 POLL_INTERVAL=5  # seconds
+trap 'rm -rf /tmp/cmdres-*' EXIT INT TERM
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
@@ -49,7 +50,56 @@ ssh_node() {
   ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$ip" "$cmd" 2>/dev/null
 }
 
-# Run on all phone nodes in parallel
+# Run SSH on a single node, tracking success/failure via temp file
+ssh_node_tracked() {
+  local ip="$1"
+  local cmd="$2"
+  local result_dir="$3"
+  local label="$4"
+  if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$ip" "$cmd" >/dev/null 2>&1; then
+    echo "ok" > "$result_dir/$label"
+  else
+    echo "fail" > "$result_dir/$label"
+  fi
+}
+
+# Collect results from temp dir and produce a result string
+collect_results() {
+  local result_dir="$1"
+  local total=0
+  local failed=0
+  local failed_nodes=""
+  for f in "$result_dir"/*; do
+    [ -f "$f" ] || continue
+    total=$((total + 1))
+    if [ "$(cat "$f")" = "fail" ]; then
+      failed=$((failed + 1))
+      failed_nodes="$failed_nodes $(basename "$f")"
+    fi
+  done
+  rm -rf "$result_dir"
+  if [ "$total" -eq 0 ]; then
+    echo "error: no nodes targeted"
+  elif [ "$failed" -eq 0 ]; then
+    echo "success"
+  elif [ "$failed" -eq "$total" ]; then
+    echo "error: all $total nodes failed"
+  else
+    echo "partial: $failed/$total failed ($(echo "$failed_nodes" | sed 's/^ //'))"
+  fi
+}
+
+# Run command on all 10 phone nodes in parallel with tracking
+run_on_all_tracked() {
+  local cmd="$1"
+  local result_dir="$2"
+  for i in $(seq 1 10); do
+    ssh_node_tracked "192.168.1.$((205+i))" "$cmd" "$result_dir" "node$i" &
+  done
+  wait
+}
+
+# Run on all phone nodes in parallel (fire-and-forget)
 all_phones() {
   local cmd="$1"
   for i in $(seq 1 10); do
@@ -90,96 +140,120 @@ execute_command() {
 
   case "$cmd" in
     wake)
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        all_phones "input keyevent KEYCODE_WAKEUP"
+        run_on_all_tracked "input keyevent KEYCODE_WAKEUP" "$RESULT_DIR"
       else
-        ssh_node "$(resolve_ip "$target")" "input keyevent KEYCODE_WAKEUP" || true
+        ssh_node_tracked "$(resolve_ip "$target")" "input keyevent KEYCODE_WAKEUP" "$RESULT_DIR" "$target"
       fi
-      report_result "$cmd_id" "success" "" "$cmd" "$target"
+      RESULT=$(collect_results "$RESULT_DIR")
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
       ;;
     sleep)
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        all_phones "input keyevent KEYCODE_SLEEP"
+        run_on_all_tracked "input keyevent KEYCODE_SLEEP" "$RESULT_DIR"
       else
-        ssh_node "$(resolve_ip "$target")" "input keyevent KEYCODE_SLEEP" || true
+        ssh_node_tracked "$(resolve_ip "$target")" "input keyevent KEYCODE_SLEEP" "$RESULT_DIR" "$target"
       fi
-      report_result "$cmd_id" "success" "" "$cmd" "$target"
+      RESULT=$(collect_results "$RESULT_DIR")
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
       ;;
     restart)
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         for i in $(seq 1 10); do
           IP="192.168.1.$((205+i))"
           SVC=$(k3s_svc "node$i")
-          ssh_node "$IP" "doas systemctl restart $SVC" &
+          ssh_node_tracked "$IP" "doas systemctl restart $SVC" "$RESULT_DIR" "node$i" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        ssh_node "$IP" "doas systemctl restart $SVC" || true
+        ssh_node_tracked "$IP" "doas systemctl restart $SVC" "$RESULT_DIR" "$target"
       fi
-      report_result "$cmd_id" "success" "" "$cmd" "$target"
+      RESULT=$(collect_results "$RESULT_DIR")
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
       ;;
     start)
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         for i in $(seq 1 10); do
           IP="192.168.1.$((205+i))"
           SVC=$(k3s_svc "node$i")
-          ssh_node "$IP" "doas systemctl start $SVC" &
+          ssh_node_tracked "$IP" "doas systemctl start $SVC" "$RESULT_DIR" "node$i" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        ssh_node "$IP" "doas systemctl start $SVC" || true
+        ssh_node_tracked "$IP" "doas systemctl start $SVC" "$RESULT_DIR" "$target"
       fi
-      report_result "$cmd_id" "success" "" "$cmd" "$target"
+      RESULT=$(collect_results "$RESULT_DIR")
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
       ;;
     stop)
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         for i in $(seq 1 10); do
           IP="192.168.1.$((205+i))"
           SVC=$(k3s_svc "node$i")
-          ssh_node "$IP" "doas systemctl stop $SVC" &
+          ssh_node_tracked "$IP" "doas systemctl stop $SVC" "$RESULT_DIR" "node$i" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        ssh_node "$IP" "doas systemctl stop $SVC" || true
+        ssh_node_tracked "$IP" "doas systemctl stop $SVC" "$RESULT_DIR" "$target"
       fi
-      report_result "$cmd_id" "success" "" "$cmd" "$target"
+      RESULT=$(collect_results "$RESULT_DIR")
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
       ;;
     mining-start)
       log "Starting miners..."
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        all_phones "doas systemctl start xmrig"
+        run_on_all_tracked "doas systemctl start xmrig" "$RESULT_DIR"
       else
-        ssh_node "$(resolve_ip "$target")" "doas systemctl start xmrig" || true
+        ssh_node_tracked "$(resolve_ip "$target")" "doas systemctl start xmrig" "$RESULT_DIR" "$target"
       fi
-      report_result "$cmd_id" "success" "" "$cmd" "$target"
+      RESULT=$(collect_results "$RESULT_DIR")
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
       ;;
     mining-stop)
       log "Stopping miners..."
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        all_phones "doas systemctl stop xmrig"
+        run_on_all_tracked "doas systemctl stop xmrig" "$RESULT_DIR"
       else
-        ssh_node "$(resolve_ip "$target")" "doas systemctl stop xmrig" || true
+        ssh_node_tracked "$(resolve_ip "$target")" "doas systemctl stop xmrig" "$RESULT_DIR" "$target"
       fi
-      report_result "$cmd_id" "success" "" "$cmd" "$target"
+      RESULT=$(collect_results "$RESULT_DIR")
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
       ;;
     browse)
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
       if [ -n "$url" ]; then
         # Sanitize URL: only allow safe characters
         safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!$&'()*+,;=%-]//g")
         log "Opening $safe_url on phones..."
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-          all_phones "am start -a android.intent.action.VIEW -d '$safe_url'"
+          run_on_all_tracked "am start -a android.intent.action.VIEW -d '$safe_url'" "$RESULT_DIR"
         else
-          ssh_node "$(resolve_ip "$target")" "am start -a android.intent.action.VIEW -d '$safe_url'" || true
+          ssh_node_tracked "$(resolve_ip "$target")" "am start -a android.intent.action.VIEW -d '$safe_url'" "$RESULT_DIR" "$target"
         fi
       fi
-      report_result "$cmd_id" "success" "" "$cmd" "$target"
+      RESULT=$(collect_results "$RESULT_DIR")
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
       ;;
     update)
       log "Updating scripts from GitHub..."
@@ -205,17 +279,35 @@ execute_command() {
       ;;
     reboot)
       log "Rebooting $target..."
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         for i in $(seq 1 10); do
           IP="192.168.1.$((205+i))"
-          ssh_node "$IP" "doas reboot" &
+          (
+            if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$IP" "echo ok" >/dev/null 2>&1; then
+              echo "ok" > "$RESULT_DIR/node$i"
+              ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$IP" "doas reboot" >/dev/null 2>&1 || true
+            else
+              echo "fail" > "$RESULT_DIR/node$i"
+            fi
+          ) &
         done
         wait
       else
         IP=$(resolve_ip "$target")
-        ssh_node "$IP" "doas reboot" || true
+        if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$IP" "echo ok" >/dev/null 2>&1; then
+          echo "ok" > "$RESULT_DIR/$target"
+          ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$IP" "doas reboot" >/dev/null 2>&1 || true
+        else
+          echo "fail" > "$RESULT_DIR/$target"
+        fi
       fi
-      report_result "$cmd_id" "success: reboot initiated" "" "$cmd" "$target"
+      RESULT=$(collect_results "$RESULT_DIR")
+      if [ "$RESULT" = "success" ]; then
+        RESULT="success: reboot initiated"
+      fi
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
       ;;
     ssh)
       if [ -z "$ssh_cmd" ]; then
@@ -223,21 +315,38 @@ execute_command() {
       else
         log "Running SSH command: $ssh_cmd"
         OUTPUT=""
+        FAIL=0
+        TOTAL=0
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
           for i in $(seq 1 10); do
             IP="192.168.1.$((205+i))"
-            NODE_OUT=$(ssh_node "$IP" "$ssh_cmd" 2>&1 || echo "[error]")
+            TOTAL=$((TOTAL + 1))
+            NODE_OUT=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$IP" "$ssh_cmd" 2>&1)
+            NODE_RC=$?
+            if [ "$NODE_RC" -ne 0 ]; then
+              FAIL=$((FAIL + 1))
+              NODE_OUT="[exit code $NODE_RC] $NODE_OUT"
+            fi
             OUTPUT="${OUTPUT}=== node${i} ===
 ${NODE_OUT}
 "
           done
         else
           IP=$(resolve_ip "$target")
-          OUTPUT=$(ssh_node "$IP" "$ssh_cmd" 2>&1 || echo "[error]")
+          TOTAL=1
+          OUTPUT=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$IP" "$ssh_cmd" 2>&1)
+          if [ $? -ne 0 ]; then FAIL=1; fi
+        fi
+        if [ "$FAIL" -eq 0 ]; then
+          RESULT="success"
+        elif [ "$FAIL" -eq "$TOTAL" ]; then
+          RESULT="error: all $TOTAL nodes failed"
+        else
+          RESULT="partial: $FAIL/$TOTAL failed"
         fi
         # Truncate to 4000 chars for Netlify Blobs
         TRUNC_OUTPUT=$(printf '%.4000s' "$OUTPUT")
-        report_result "$cmd_id" "success" "$TRUNC_OUTPUT" "$cmd" "$target"
+        report_result "$cmd_id" "$RESULT" "$TRUNC_OUTPUT" "$cmd" "$target"
       fi
       ;;
     *)
