@@ -2279,12 +2279,12 @@
       grid.innerHTML = nodes.map(node => {
         const isReady = node.status === 'Ready';
         const isCP = node.role === 'control-plane';
-        const cls = 'node' + (isCP ? ' control-plane ready' : isReady ? ' ready' : ' notready');
+        const cls = 'node' + (isCP ? ' control-plane' : '') + (isReady ? ' ready' : ' notready');
         const icon = isCP ? 'fa-crown' : isReady ? 'fa-circle-check' : 'fa-circle-xmark';
         const m = lastMetrics[node.name] || {};
 
         let metricsHtml = '<div class="node-metrics">';
-        if (m.battery) {
+        if (m.battery && m.battery.level != null) {
           const bl = m.battery.level;
           const bc = bl > 50 ? 'batt-ok' : bl > 20 ? 'batt-mid' : 'batt-low';
           const bi = m.battery.charging ? 'fa-bolt' : 'fa-battery-' + (bl > 75 ? 'full' : bl > 50 ? 'three-quarters' : bl > 25 ? 'half' : bl > 10 ? 'quarter' : 'empty');
@@ -2318,7 +2318,7 @@
             <div class="tooltip-row"><span class="tooltip-key">IP:</span><span class="tooltip-val">${node.ip || '--'}</span></div>
             ${m.cpu ? '<div class="tooltip-row"><span class="tooltip-key">CPU:</span><span class="tooltip-val">' + m.cpu.usage + '%</span></div>' : ''}
             ${m.memory ? '<div class="tooltip-row"><span class="tooltip-key">RAM:</span><span class="tooltip-val">' + m.memory.percent + '% (' + (m.memory.usedMB || '--') + 'MB)</span></div>' : ''}
-            ${m.battery ? '<div class="tooltip-row"><span class="tooltip-key">Battery:</span><span class="tooltip-val">' + m.battery.level + '%' + (m.battery.charging ? ' charging' : '') + '</span></div>' : ''}
+            ${m.battery && m.battery.level != null ? '<div class="tooltip-row"><span class="tooltip-key">Battery:</span><span class="tooltip-val">' + m.battery.level + '%' + (m.battery.charging ? ' charging' : '') + '</span></div>' : ''}
             ${m.temp ? '<div class="tooltip-row"><span class="tooltip-key">Temp:</span><span class="tooltip-val">' + m.temp.celsius + '°C</span></div>' : ''}
           </div>
           <div class="node-details">

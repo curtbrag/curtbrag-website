@@ -157,11 +157,13 @@ execute_command() {
       ;;
     browse)
       if [ -n "$url" ]; then
-        log "Opening $url on phones..."
+        # Sanitize URL: only allow safe characters
+        safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!$&'()*+,;=%-]//g")
+        log "Opening $safe_url on phones..."
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-          all_phones "am start -a android.intent.action.VIEW -d \"$url\""
+          all_phones "am start -a android.intent.action.VIEW -d '$safe_url'"
         else
-          ssh_node "$(resolve_ip "$target")" "am start -a android.intent.action.VIEW -d \"$url\"" || true
+          ssh_node "$(resolve_ip "$target")" "am start -a android.intent.action.VIEW -d '$safe_url'" || true
         fi
       fi
       report_result "$cmd_id" "success"
