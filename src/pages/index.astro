@@ -122,6 +122,116 @@ import Layout from '../layouts/Layout.astro';
   <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
   <div class="section-divider mx-4"></div>
 
+  <!-- ═══════════════════════════════════════ PORTFOLIO ═══════════════════════════════════════ -->
+  <section class="py-14 md:py-20 reveal" id="portfolio">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="flex items-center gap-3 mb-1">
+        <i class="fa-solid fa-briefcase text-brand text-xl"></i>
+        <h2 class="text-2xl font-bold">Built by Curt</h2>
+      </div>
+      <p class="text-text-secondary text-sm mb-2">Custom websites, automation, and infrastructure &mdash; built from scratch.</p>
+      <div class="w-16 h-0.5 bg-gradient-to-r from-brand to-transparent mb-8"></div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 stagger-children">
+
+        <!-- CurtBrag.com -->
+        <div class="portfolio-card card-glow p-6 flex flex-col group">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-lg bg-brand/15 flex items-center justify-center">
+              <i class="fa-solid fa-wrench text-brand text-lg"></i>
+            </div>
+            <div>
+              <h3 class="font-semibold group-hover:text-brand transition">CurtBrag.com</h3>
+              <span class="text-muted text-xs">Business &amp; Personal Brand</span>
+            </div>
+          </div>
+          <p class="text-text-secondary text-sm mb-4 flex-1">Full-stack business site with AI chatbot, live sports tracker, e-commerce integration, photo galleries, and serverless backend.</p>
+          <div class="space-y-3">
+            <div class="flex flex-wrap gap-1.5">
+              <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">Astro</span>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">Tailwind</span>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">Claude AI</span>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">Netlify</span>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">eBay API</span>
+            </div>
+            <a href="/" class="inline-flex items-center gap-1.5 text-brand text-sm font-medium hover:underline">
+              You're on it <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+            </a>
+          </div>
+        </div>
+
+        <!-- Inked Mayhem -->
+        <div class="portfolio-card card-glow p-6 flex flex-col group">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-lg bg-purple-500/15 flex items-center justify-center">
+              <i class="fa-solid fa-fire text-purple-400 text-lg"></i>
+            </div>
+            <div>
+              <h3 class="font-semibold group-hover:text-brand transition">Inked Mayhem</h3>
+              <span class="text-muted text-xs">Creator Platform</span>
+            </div>
+          </div>
+          <p class="text-text-secondary text-sm mb-4 flex-1">Independent creator platform with 3-tier subscriptions, member authentication, content gating, photo galleries, blog, and direct monetization.</p>
+          <div class="space-y-3">
+            <div class="flex flex-wrap gap-1.5">
+              <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">Subscriptions</span>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">Auth</span>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">Paywalls</span>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">Blog/CMS</span>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">Galleries</span>
+            </div>
+            <a href="https://inkedmayhem.netlify.app" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-brand text-sm font-medium hover:underline">
+              View Live Site <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+            </a>
+          </div>
+        </div>
+
+        <!-- Phone Cluster Dashboard -->
+        <div class="portfolio-card card-glow p-6 flex flex-col group">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-lg bg-green/15 flex items-center justify-center">
+              <i class="fa-solid fa-server text-green text-lg"></i>
+            </div>
+            <div>
+              <h3 class="font-semibold group-hover:text-brand transition">Cluster Dashboard</h3>
+              <span class="text-muted text-xs">Infrastructure Control</span>
+            </div>
+          </div>
+          <p class="text-text-secondary text-sm mb-4 flex-1">Real-time Kubernetes dashboard managing 10 phones + PCs. Live metrics, SSH terminal, pod management, battery heatmaps, and mining stats.</p>
+          <div class="space-y-3">
+            <div class="flex flex-wrap gap-1.5">
+              <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">Kubernetes</span>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">Real-time</span>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">SSH</span>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">Monitoring</span>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">SSE</span>
+            </div>
+            <a href="/cluster" class="inline-flex items-center gap-1.5 text-brand text-sm font-medium hover:underline">
+              View Dashboard <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+            </a>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- CTA -->
+      <div class="mt-10 text-center">
+        <p class="text-text-secondary text-sm mb-4">Want something like this built for you?</p>
+        <div class="flex flex-wrap justify-center gap-3">
+          <a href="sms:+17814170692" class="btn-brand inline-flex items-center gap-2 bg-brand text-white rounded-xl px-6 py-3 font-semibold hover:bg-brand-dark transition shadow-lg shadow-brand/20 hover:shadow-brand/40 hover:scale-105 text-sm">
+            <i class="fa-solid fa-comment-sms"></i> Text Me
+          </a>
+          <a href="/contact" class="inline-flex items-center gap-2 bg-surface border border-border rounded-xl px-6 py-3 font-semibold hover:border-brand hover:bg-panel-hover hover:scale-105 transition-all duration-300 text-sm">
+            <i class="fa-solid fa-envelope"></i> Contact
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
   <!-- ═══════════════════════════════════════ SOCIAL & LINKS ═══════════════════════════════════════ -->
   <section class="py-14 md:py-20 reveal">
     <div class="max-w-6xl mx-auto px-4 sm:px-6">
