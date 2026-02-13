@@ -81,6 +81,33 @@ async function saveScheduleExec(data) {
   } catch (e) { /* silent */ }
 }
 
+// Screenshot blob helpers
+async function saveScreenshot(nodeName, imageData, timestamp) {
+  try {
+    const store = getStore("cluster-screenshots");
+    await store.setJSON("screen-" + nodeName, { image: imageData, timestamp, status: 'ok' });
+    const index = await store.get("screen-index", { type: "json" }) || {};
+    index[nodeName] = { timestamp, status: 'ok' };
+    await store.setJSON("screen-index", index);
+  } catch (e) {
+    console.warn("Failed to save screenshot for " + nodeName + ":", e.message);
+  }
+}
+
+async function getScreenshot(nodeName) {
+  try {
+    const store = getStore("cluster-screenshots");
+    return await store.get("screen-" + nodeName, { type: "json" });
+  } catch (e) { return null; }
+}
+
+async function getScreenIndex() {
+  try {
+    const store = getStore("cluster-screenshots");
+    return await store.get("screen-index", { type: "json" }) || {};
+  } catch (e) { return {}; }
+}
+
 exports.handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -149,6 +176,37 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify({ status: 'executing' }) };
     }
 
+    // Screenshot index (metadata only)
+    if (params.action === 'screenshot-index') {
+      const index = await getScreenIndex();
+      return { statusCode: 200, headers, body: JSON.stringify({ screens: index }) };
+    }
+
+    // Single node screenshot
+    if (params.action === 'screenshot' && params.node) {
+      const screenshot = await getScreenshot(params.node);
+      return {
+        statusCode: 200, headers,
+        body: JSON.stringify(screenshot || { status: 'not-found', node: params.node })
+      };
+    }
+
+    // All screenshots
+    if (params.action === 'screenshots') {
+      const index = await getScreenIndex();
+      const allNodes = ['node1','node2','node3','node4','node5','node6','node7','node8','node9','node10'];
+      const screens = [];
+      for (const n of allNodes) {
+        if (index[n]) {
+          const data = await getScreenshot(n);
+          screens.push({ device: n, ...(data || { status: 'offline', image: null }) });
+        } else {
+          screens.push({ device: n, status: 'never-captured', image: null });
+        }
+      }
+      return { statusCode: 200, headers, body: JSON.stringify({ screens }) };
+    }
+
     // Dashboard getting queue status
     const queue = await getQueue();
     const history = await getHistory();
@@ -192,6 +250,18 @@ exports.handler = async (event) => {
         headers,
         body: JSON.stringify({ success: true })
       };
+    }
+
+    // Screenshot upload from node1
+    if (body.action === 'screenshot-upload') {
+      if (apiKey !== validKey) {
+        return { statusCode: 401, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
+      }
+      if (!body.node || !body.image) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing node or image' }) };
+      }
+      await saveScreenshot(body.node, body.image, body.timestamp || new Date().toISOString());
+      return { statusCode: 200, headers, body: JSON.stringify({ success: true, node: body.node }) };
     }
 
     // Save schedules from dashboard
@@ -256,7 +326,7 @@ exports.handler = async (event) => {
       return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
     }
 
-    const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse', 'update', 'reboot', 'ssh'];
+    const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse', 'update', 'reboot', 'ssh', 'screenshot', 'brightness'];
     if (!validCommands.includes(command)) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid command' }) };
     }
@@ -264,6 +334,13 @@ exports.handler = async (event) => {
     // Validate URL for browse command
     if (command === 'browse' && !body.url) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'URL required for browse command' }) };
+    }
+
+    // Validate brightness command
+    if (command === 'brightness') {
+      if (!body.sshCmd || isNaN(parseInt(body.sshCmd))) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Brightness value (0-255) required' }) };
+      }
     }
 
     // Validate and sanitize SSH command

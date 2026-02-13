@@ -211,6 +211,8 @@
     .ctrl-btn.wake:hover { background: rgba(59, 130, 246, 0.1); }
     .ctrl-btn.sleep { border-color: var(--purple); color: var(--purple); }
     .ctrl-btn.sleep:hover { background: rgba(168, 85, 247, 0.1); }
+    .ctrl-btn.reboot { border-color: #f43f5e; color: #f43f5e; }
+    .ctrl-btn.reboot:hover { background: rgba(244, 63, 94, 0.15); }
     .control-status {
       font-size: 0.8rem;
       color: var(--muted);
@@ -797,6 +799,11 @@
     .toast.success { border-color: var(--green); }
     .toast.error { border-color: var(--red); }
     .toast.info { border-color: var(--blue); }
+    .toast.warning { border-color: var(--yellow); }
+    .cmd-badge.partial { background: rgba(234, 179, 8, 0.15); color: var(--yellow); }
+    .cmd-badge.error { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+    .cmd-badge.queued { background: rgba(59, 130, 246, 0.15); color: var(--blue); }
+    .cmd-badge.executing { background: rgba(168, 85, 247, 0.15); color: #a855f7; }
 
     /* Node Detail Modal */
     .node-detail-modal-content { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; max-width: 600px; width: 95%; max-height: 80vh; display: flex; flex-direction: column; }
@@ -1280,6 +1287,13 @@
         <button class="ctrl-btn restart" onclick="sendCommand('restart')" aria-label="Restart selected nodes"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Restart</button>
         <button class="ctrl-btn wake" onclick="sendCommand('wake')" aria-label="Wake selected nodes"><i class="fa-solid fa-sun" aria-hidden="true"></i> Wake</button>
         <button class="ctrl-btn sleep" onclick="sendCommand('sleep')" aria-label="Put selected nodes to sleep"><i class="fa-solid fa-moon" aria-hidden="true"></i> Sleep</button>
+        <button class="ctrl-btn reboot" onclick="sendCommand('reboot')" aria-label="Reboot selected nodes"><i class="fa-solid fa-power-off" aria-hidden="true"></i> Reboot</button>
+      </div>
+      <div style="display:flex;gap:0.5rem;align-items:center;padding:0.5rem 0;">
+        <i class="fa-solid fa-sun" style="color:var(--yellow);font-size:0.85rem" title="Brightness"></i>
+        <input type="range" id="brightnessSlider" min="0" max="255" value="128" style="flex:1;accent-color:var(--brand);cursor:pointer;" title="Phone screen brightness (0-255)">
+        <span id="brightnessValue" style="font-size:0.8rem;color:var(--muted);min-width:2.5rem;text-align:right;font-family:'JetBrains Mono',monospace;">128</span>
+        <button class="ctrl-btn" onclick="sendBrightness()" style="padding:0.4rem 0.8rem;font-size:0.8rem;"><i class="fa-solid fa-sun"></i> Set</button>
       </div>
       <div class="custom-cmd">
         <input type="text" id="customCmdInput" placeholder="Custom SSH command (e.g. uptime, free -m, df -h)" onkeydown="if(event.key==='Enter')runCustomCommand()">
@@ -1548,13 +1562,16 @@
       <h2 class="section-title"><i class="fa-solid fa-display"></i> Phone Screens</h2>
       <div style="display: flex; gap: 0.5rem; align-items: center;">
         <span class="section-badge" id="screenBadge">0 screens</span>
-        <button class="refresh-btn" onclick="loadScreens()" id="screenRefreshBtn" title="Capture all screens">
+        <button class="refresh-btn" onclick="requestScreenshotCapture()" id="screenRefreshBtn" title="Capture all screens via SSH">
           <i class="fa-solid fa-camera"></i> Capture
+        </button>
+        <button class="refresh-btn" onclick="loadScreensViaRelay()" title="View saved screenshots">
+          <i class="fa-solid fa-images"></i> View Saved
         </button>
       </div>
     </div>
     <div class="screen-grid" id="screenGrid">
-      <div class="empty-state"><i class="fa-solid fa-display"></i><br>Configure API endpoint to view phone screens</div>
+      <div class="empty-state"><i class="fa-solid fa-display"></i><br>Click "Capture" to take phone screenshots via SSH</div>
     </div>
 
     <!-- Screen Modal -->
@@ -1567,6 +1584,7 @@
         <img id="screenModalImg" src="" alt="Phone screen">
         <div class="screen-modal-actions">
           <button onclick="refreshSingleScreen()"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+          <button onclick="requestSingleScreenshot()"><i class="fa-solid fa-camera"></i> Capture</button>
           <button onclick="wakeScreen()"><i class="fa-solid fa-sun"></i> Wake</button>
           <button onclick="sleepScreen()"><i class="fa-solid fa-moon"></i> Sleep</button>
         </div>
@@ -2105,19 +2123,24 @@
 
     async function sendToBackend(payload) {
       if (apiEndpoint) {
-        return apiFetch('/api/command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      } else {
-        const res = await fetch('/.netlify/functions/cluster-control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        return await res.json();
+        try {
+          const directRes = await fetch(apiEndpoint + '/api/command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...apiHeaders() },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(8000)
+          });
+          if (directRes.ok) return await directRes.json();
+        } catch (e) {
+          console.warn('Direct API command failed, falling back to Netlify relay:', e.message);
+        }
       }
+      const res = await fetch('/.netlify/functions/cluster-control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      return await res.json();
     }
 
     // ─── Health Score ────────────────────────────────────────────────────
@@ -2199,7 +2222,6 @@
           if (data.battery && data.battery.phones) data.battery.phones.forEach(function(p) { battMap[p.name] = p; });
           var tsMap = {};
           if (data.network && data.network.tailscale && data.network.tailscale.peers) data.network.tailscale.peers.forEach(function(p) { tsMap[p.name] = p; });
-          var nodeIPs = {node1:'192.168.1.206',node2:'192.168.1.207',node3:'192.168.1.208',node4:'192.168.1.209',node5:'192.168.1.210',node6:'192.168.1.211',node7:'192.168.1.212',node8:'192.168.1.213',node9:'192.168.1.214',node10:'192.168.1.215'};
           var synthNodes = [];
           var synthReady = 0;
           Object.keys(data.metrics).sort(function(a,b){ return parseInt(a.replace('node','')) - parseInt(b.replace('node','')); }).forEach(function(name) {
@@ -2208,7 +2230,8 @@
             var t = tsMap[name];
             var alive = (m.cpu && (m.cpu.usage > 0 || (m.memory && m.memory.totalMB > 0))) || (b && b.online) || (t && t.online);
             if (alive) synthReady++;
-            synthNodes.push({ name: name, status: alive ? 'Ready' : 'NotReady', role: name === 'node1' ? 'control-plane' : 'worker', ip: nodeIPs[name] || '', kubeletVersion: 'N/A (K3s down)', osImage: 'postmarketOS', arch: 'aarch64' });
+            var num = parseInt(name.replace('node', ''));
+            synthNodes.push({ name: name, status: alive ? 'Ready' : 'NotReady', role: name === 'node1' ? 'control-plane' : 'worker', ip: '192.168.1.' + (205 + num), kubeletVersion: 'N/A (K3s down)', osImage: 'postmarketOS', arch: 'aarch64' });
           });
           data.nodes = synthNodes;
           data.k3sDown = true;
@@ -2318,12 +2341,12 @@
       grid.innerHTML = nodes.map(node => {
         const isReady = node.status === 'Ready';
         const isCP = node.role === 'control-plane';
-        const cls = 'node' + (isCP ? ' control-plane' : '') + (isReady ? ' ready' : ' notready');
+        const cls = 'node' + (isCP ? ' control-plane ready' : isReady ? ' ready' : ' notready');
         const icon = isCP ? 'fa-crown' : isReady ? 'fa-circle-check' : 'fa-circle-xmark';
         const m = lastMetrics[node.name] || {};
 
         let metricsHtml = '<div class="node-metrics">';
-        if (m.battery && m.battery.level != null) {
+        if (m.battery) {
           const bl = m.battery.level;
           const bc = bl > 50 ? 'batt-ok' : bl > 20 ? 'batt-mid' : 'batt-low';
           const bi = m.battery.charging ? 'fa-bolt' : 'fa-battery-' + (bl > 75 ? 'full' : bl > 50 ? 'three-quarters' : bl > 25 ? 'half' : bl > 10 ? 'quarter' : 'empty');
@@ -2357,7 +2380,7 @@
             <div class="tooltip-row"><span class="tooltip-key">IP:</span><span class="tooltip-val">${node.ip || '--'}</span></div>
             ${m.cpu ? '<div class="tooltip-row"><span class="tooltip-key">CPU:</span><span class="tooltip-val">' + m.cpu.usage + '%</span></div>' : ''}
             ${m.memory ? '<div class="tooltip-row"><span class="tooltip-key">RAM:</span><span class="tooltip-val">' + m.memory.percent + '% (' + (m.memory.usedMB || '--') + 'MB)</span></div>' : ''}
-            ${m.battery && m.battery.level != null ? '<div class="tooltip-row"><span class="tooltip-key">Battery:</span><span class="tooltip-val">' + m.battery.level + '%' + (m.battery.charging ? ' charging' : '') + '</span></div>' : ''}
+            ${m.battery ? '<div class="tooltip-row"><span class="tooltip-key">Battery:</span><span class="tooltip-val">' + m.battery.level + '%' + (m.battery.charging ? ' charging' : '') + '</span></div>' : ''}
             ${m.temp ? '<div class="tooltip-row"><span class="tooltip-key">Temp:</span><span class="tooltip-val">' + m.temp.celsius + '°C</span></div>' : ''}
           </div>
           <div class="node-details">
@@ -2528,6 +2551,10 @@
 
     // Control functions
     function sendCommand(cmd) {
+      if (cmd === 'reboot') {
+        var target = document.getElementById('targetSelect').value;
+        if (!confirm('Are you sure you want to REBOOT ' + target + '? This will cause downtime.')) return;
+      }
       pendingCommand = cmd;
       if (savedPassword) {
         executeCommand(cmd, savedPassword);
@@ -2566,41 +2593,6 @@
       }
     }
 
-    function pollCommandCompletion(cmdId, statusEl, cmdName, target) {
-      var attempts = 0;
-      var maxAttempts = 60; // 5 minutes at 5s intervals
-      var interval = setInterval(async function() {
-        attempts++;
-        if (attempts > maxAttempts) {
-          clearInterval(interval);
-          statusEl.textContent = cmdName + ' on ' + target + ': timed out waiting for completion';
-          statusEl.className = 'control-status visible error';
-          return;
-        }
-        try {
-          var res = await fetch('/.netlify/functions/cluster-control?action=command-status&id=' + cmdId);
-          var data = await res.json();
-          if (data.status === 'completed') {
-            clearInterval(interval);
-            var resultText = data.result || 'done';
-            var isError = resultText.startsWith('error');
-            var isPartial = resultText.startsWith('partial');
-            statusEl.textContent = cmdName + ' on ' + target + ': ' + resultText;
-            statusEl.className = 'control-status visible ' + (isError ? 'error' : isPartial ? 'warning' : 'success');
-            if (data.output) {
-              statusEl.textContent += ' | ' + data.output.substring(0, 200);
-            }
-            loadClusterStatus();
-            loadCommandLog();
-          } else if (data.status === 'queued') {
-            statusEl.textContent = cmdName + ' on ' + target + ': queued (waiting for node1 to pick up...)';
-          } else {
-            statusEl.textContent = cmdName + ' on ' + target + ': executing...';
-          }
-        } catch (e) { /* silent retry */ }
-      }, 5000);
-    }
-
     async function executeCommand(cmd, password) {
       const target = document.getElementById('targetSelect').value;
       const status = document.getElementById('controlStatus');
@@ -2610,11 +2602,10 @@
       try {
         const data = await sendToBackend({ command: cmd, target, password });
         if (data.success) {
-          status.textContent = data.message + ' (waiting for execution...)';
+          status.textContent = data.message + ' — waiting for result...';
           status.className = 'control-status visible success';
-          if (data.id) {
-            pollCommandCompletion(data.id, status, cmd, target);
-          }
+          if (data.id) pollCommandCompletion(data.id, cmd, target);
+          setTimeout(loadClusterStatus, 5000);
         } else {
           status.textContent = `Error: ${data.error}`;
           status.className = 'control-status visible error';
@@ -2627,6 +2618,40 @@
         status.textContent = `Error: ${e.message}`;
         status.className = 'control-status visible error';
       }
+    }
+
+    // Poll for a specific command's completion after queueing
+    function pollCommandCompletion(cmdId, cmdName, target) {
+      var attempts = 0;
+      var maxAttempts = 40; // 40 * 3s = 120s max wait
+      var pollInterval = setInterval(async function() {
+        attempts++;
+        if (attempts > maxAttempts) {
+          clearInterval(pollInterval);
+          showToast(cmdName + ' on ' + target + ': timed out waiting for result', 'error');
+          loadCommandLog();
+          return;
+        }
+        try {
+          var url = apiEndpoint
+            ? apiEndpoint + '/api/commands/status?id=' + cmdId
+            : '/.netlify/functions/cluster-control?action=command-status&id=' + cmdId;
+          var res = await fetch(url, { headers: apiEndpoint ? apiHeaders() : {} });
+          var data = await res.json();
+          if (data.status === 'completed') {
+            clearInterval(pollInterval);
+            var result = data.result || 'completed';
+            var toastType = 'success';
+            if (result.indexOf('error') === 0) toastType = 'error';
+            else if (result.indexOf('partial') === 0) toastType = 'warning';
+            showToast(cmdName + ' on ' + target + ': ' + result, toastType);
+            loadCommandLog();
+          }
+          // If 'queued' or 'executing', keep polling
+        } catch (e) {
+          // Network error, keep trying
+        }
+      }, 3000);
     }
 
     // Mining functions
@@ -2653,10 +2678,14 @@
         workerList.innerHTML = mining.workers.map(function(w) {
           const isOnline = w.status === 'mining';
           const uptimeStr = w.uptime ? ' | ' + w.uptime : '';
+          const toggleCmd = isOnline ? 'mining-stop' : 'mining-start';
+          const toggleIcon = isOnline ? 'fa-pause' : 'fa-play';
+          const toggleTitle = (isOnline ? 'Stop' : 'Start') + ' mining on ' + w.name;
           return '<div class="worker-chip ' + (isOnline ? '' : 'offline') + '">' +
             '<i class="fa-solid ' + (isOnline ? 'fa-circle-check' : 'fa-circle-xmark') + '" style="color: var(--' + (isOnline ? 'green' : 'red') + ')"></i>' +
             '<span>' + w.name + '</span>' +
-            '<span class="rate">' + w.hashrate + uptimeStr + '</span></div>';
+            '<span class="rate">' + w.hashrate + uptimeStr + '</span>' +
+            '<button class="ssh-preset" onclick="sendMiningNodeCommand(\'' + toggleCmd + '\',\'' + w.name + '\')" title="' + toggleTitle + '" style="margin-left:4px"><i class="fa-solid ' + toggleIcon + '"></i></button></div>';
         }).join('');
       } else {
         workerList.innerHTML = '<span class="worker-chip"><span>No workers</span></span>';
@@ -2672,6 +2701,26 @@
       } else if (poolInfoEl) {
         poolInfoEl.style.display = 'none';
       }
+    }
+
+    async function sendMiningNodeCommand(cmd, node) {
+      if (!savedPassword) {
+        pendingCommand = cmd;
+        document.getElementById('passwordModal').classList.add('visible');
+        document.getElementById('passwordInput').focus();
+        return;
+      }
+      showToast('Sending ' + cmd + ' to ' + node + '...', 'info');
+      try {
+        var data = await sendToBackend({ command: cmd, target: node, password: savedPassword });
+        if (data.success) {
+          showToast(data.message + ' — waiting for result...', 'info');
+          if (data.id) pollCommandCompletion(data.id, cmd, node);
+          setTimeout(loadClusterStatus, 5000);
+        } else {
+          showToast(data.error || 'Failed', 'error');
+        }
+      } catch (e) { showToast('Error: ' + e.message, 'error'); }
     }
 
     // ─── Mining History Chart ────────────────────────────────────────────
@@ -2728,8 +2777,9 @@
       try {
         const data = await sendToBackend({ command: cmd, target: 'all', password: savedPassword });
         if (data.success) {
-          msgEl.textContent = `${data.message} - Status will update shortly.`;
+          msgEl.textContent = `${data.message} — waiting for result...`;
           msgEl.className = 'mining-message success';
+          if (data.id) pollCommandCompletion(data.id, cmd, 'all');
           setTimeout(loadClusterStatus, 5000);
         } else {
           msgEl.textContent = `Error: ${data.error}`;
@@ -2770,8 +2820,9 @@
       try {
         const data = await sendToBackend({ command: 'browse', target: 'phones', url: url, password: savedPassword });
         if (data.success) {
-          status.textContent = `All phones navigating to ${url}`;
+          status.textContent = `All phones navigating to ${url} — waiting for result...`;
           status.className = 'control-status visible success';
+          if (data.id) pollCommandCompletion(data.id, 'browse', 'phones');
           urlInput.value = '';
         } else {
           status.textContent = `Error: ${data.error}`;
@@ -2872,10 +2923,14 @@
           var res = await fetch('/.netlify/functions/cluster-control');
           data = await res.json();
           var cmds = (data.history || []).map(function(h) {
-            return { command: h.id, target: '', status: h.result || 'completed', timestamp: h.completedAt };
+            var rawResult = h.result || 'completed';
+            var statusClass = 'success';
+            if (rawResult.indexOf('error') === 0) statusClass = 'error';
+            else if (rawResult.indexOf('partial') === 0) statusClass = 'partial';
+            return { id: h.id, command: h.command || h.id, target: h.target || '', status: statusClass, statusText: rawResult, timestamp: h.completedAt, output: h.output || null };
           });
           var queued = (data.queue || []).map(function(q) {
-            return { command: q.command, target: q.target || 'all', status: 'queued', timestamp: q.queuedAt };
+            return { id: q.id, command: q.command, target: q.target || 'all', status: 'queued', timestamp: q.queuedAt };
           });
           renderCommandLog(queued.concat(cmds));
         }
@@ -2887,14 +2942,30 @@
       var body = document.getElementById('cmdHistoryBody');
       if (commands.length === 0) { panel.style.display = 'none'; return; }
       panel.style.display = 'block';
+      window._cmdOutputs = {};
       body.innerHTML = commands.slice(0, 30).map(function(c) {
         var time = new Date(c.timestamp).toLocaleTimeString();
         var urlStr = c.url ? ' (' + c.url.substring(0, 30) + ')' : '';
+        var outputBtn = '';
+        if (c.output) {
+          window._cmdOutputs[c.id] = c.output;
+          outputBtn = ' <button class="ssh-preset" onclick="showCmdOutput(\'' + c.id + '\')" title="View output"><i class="fa-solid fa-terminal"></i></button>';
+        }
         return '<div class="cmd-item">' +
-          '<span class="cmd-badge ' + c.status + '">' + c.status + '</span>' +
-          '<span style="flex:1"><strong>' + c.command + '</strong> &rarr; ' + (c.target || '') + urlStr + '</span>' +
+          '<span class="cmd-badge ' + c.status + '">' + (c.statusText || c.status) + '</span>' +
+          '<span style="flex:1"><strong>' + c.command + '</strong> &rarr; ' + (c.target || '') + urlStr + outputBtn + '</span>' +
           '<span class="cmd-time">' + time + '</span></div>';
       }).join('');
+    }
+
+    function showCmdOutput(id) {
+      var output = (window._cmdOutputs || {})[id];
+      if (!output) return;
+      document.getElementById('logModalTitle').textContent = 'Command Output';
+      document.getElementById('logBody').innerHTML = output.split('\n').map(function(l) {
+        return '<div class="log-line">' + l.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
+      }).join('');
+      document.getElementById('logModal').classList.add('visible');
     }
 
     function toggleCmdHistory() {
@@ -2930,28 +3001,98 @@
     // ─── Screen Viewer Functions ──────────────────────────────────────────
 
     async function loadScreens() {
-      if (!apiEndpoint) {
-        document.getElementById('screenGrid').innerHTML =
-          '<div class="empty-state"><i class="fa-solid fa-display"></i><br>Live screenshots require Direct API connection</div>';
+      if (apiEndpoint) {
+        // Direct API path (existing)
+        const btn = document.getElementById('screenRefreshBtn');
+        btn.disabled = true;
+        try {
+          const headers = {};
+          if (apiToken) headers['Authorization'] = 'Bearer ' + apiToken;
+          const res = await fetch(apiEndpoint + '/api/screens', { headers, signal: AbortSignal.timeout(30000) });
+          const data = await res.json();
+          renderScreens(data.screens || []);
+        } catch (e) {
+          console.warn('Direct API screens failed, trying relay:', e.message);
+          await loadScreensViaRelay();
+        } finally {
+          btn.disabled = false;
+        }
         return;
       }
+      await loadScreensViaRelay();
+    }
 
-      const btn = document.getElementById('screenRefreshBtn');
+    async function loadScreensViaRelay() {
+      var btn = document.getElementById('screenRefreshBtn');
       btn.disabled = true;
-
       try {
-        const headers = {};
-        if (apiToken) headers['Authorization'] = 'Bearer ' + apiToken;
-        const res = await fetch(apiEndpoint + '/api/screens', { headers, signal: AbortSignal.timeout(30000) });
-        const data = await res.json();
-        renderScreens(data.screens || []);
+        var res = await fetch('/.netlify/functions/cluster-control?action=screenshots');
+        var data = await res.json();
+        if (data.screens && data.screens.length > 0) {
+          renderScreens(data.screens);
+        } else {
+          document.getElementById('screenGrid').innerHTML =
+            '<div class="empty-state"><i class="fa-solid fa-display"></i><br>No screenshots yet. Click "Capture" to request screenshots via SSH.</div>';
+        }
       } catch (e) {
-        console.error('Screen load failed:', e);
         document.getElementById('screenGrid').innerHTML =
-          '<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><br>Failed to load screens</div>';
+          '<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><br>Failed to load screenshots</div>';
       } finally {
         btn.disabled = false;
       }
+    }
+
+    async function requestScreenshotCapture() {
+      if (!savedPassword) {
+        pendingCommand = 'screenshot';
+        pendingPasswordCallback = function() { requestScreenshotCapture(); };
+        document.getElementById('passwordModal').classList.add('visible');
+        document.getElementById('passwordInput').focus();
+        return;
+      }
+      var target = document.getElementById('targetSelect').value;
+      var screenshotTarget = (target === 'all' || target.startsWith('node')) ? target : 'all';
+      var btn = document.getElementById('screenRefreshBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Capturing...';
+      try {
+        var data = await sendToBackend({ command: 'screenshot', target: screenshotTarget, password: savedPassword });
+        if (data.success) {
+          showToast('Screenshot capture queued — results in ~15s...', 'success');
+          if (data.id) pollScreenshotCompletion(data.id);
+        } else {
+          showToast('Screenshot failed: ' + (data.error || 'Unknown'), 'error');
+        }
+      } catch (e) {
+        showToast('Screenshot error: ' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-camera"></i> Capture';
+      }
+    }
+
+    function pollScreenshotCompletion(cmdId) {
+      var attempts = 0;
+      var interval = setInterval(async function() {
+        attempts++;
+        if (attempts > 30) { clearInterval(interval); loadScreensViaRelay(); return; }
+        try {
+          var res = await fetch('/.netlify/functions/cluster-control?action=command-status&id=' + cmdId);
+          var data = await res.json();
+          if (data.status === 'completed') {
+            clearInterval(interval);
+            showToast('Screenshots captured!', 'success');
+            setTimeout(loadScreensViaRelay, 1000);
+          }
+        } catch (e) { /* keep polling */ }
+      }, 2000);
+    }
+
+    async function requestSingleScreenshot() {
+      if (!currentScreenDevice || !savedPassword) return;
+      showToast('Capturing ' + currentScreenDevice + '...', 'info');
+      var data = await sendToBackend({ command: 'screenshot', target: currentScreenDevice, password: savedPassword });
+      if (data.success && data.id) pollScreenshotCompletion(data.id);
     }
 
     function renderScreens(screens) {
@@ -2992,28 +3133,65 @@
       currentScreenDevice = null;
     }
 
-    function refreshSingleScreen() {
-      if (!currentScreenDevice || !apiEndpoint) return;
-      const img = document.getElementById('screenModalImg');
-      const tokenParam = apiToken ? '&token=' + encodeURIComponent(apiToken) : '';
-      img.src = apiEndpoint + '/api/screen/' + encodeURIComponent(currentScreenDevice) + '?t=' + Date.now() + tokenParam;
+    async function refreshSingleScreen() {
+      if (!currentScreenDevice) return;
+      var img = document.getElementById('screenModalImg');
+      if (apiEndpoint) {
+        var tokenParam = apiToken ? '&token=' + encodeURIComponent(apiToken) : '';
+        img.src = apiEndpoint + '/api/screen/' + encodeURIComponent(currentScreenDevice) + '?t=' + Date.now() + tokenParam;
+        return;
+      }
+      try {
+        var res = await fetch('/.netlify/functions/cluster-control?action=screenshot&node=' + encodeURIComponent(currentScreenDevice));
+        var data = await res.json();
+        if (data && data.image) img.src = data.image;
+      } catch (e) { console.warn('Failed to refresh screen:', e); }
     }
 
     async function wakeScreen() {
       if (!currentScreenDevice || !savedPassword) return;
-      await sendToBackend({ command: 'wake', target: currentScreenDevice, password: savedPassword });
+      var data = await sendToBackend({ command: 'wake', target: currentScreenDevice, password: savedPassword });
+      if (data.success && data.id) pollCommandCompletion(data.id, 'wake', currentScreenDevice);
       setTimeout(refreshSingleScreen, 2000);
     }
 
     async function sleepScreen() {
       if (!currentScreenDevice || !savedPassword) return;
-      await sendToBackend({ command: 'sleep', target: currentScreenDevice, password: savedPassword });
+      var data = await sendToBackend({ command: 'sleep', target: currentScreenDevice, password: savedPassword });
+      if (data.success && data.id) pollCommandCompletion(data.id, 'sleep', currentScreenDevice);
     }
 
     // Close screen modal on backdrop click
     document.getElementById('screenModal').addEventListener('click', function(e) {
       if (e.target === this) closeScreenModal();
     });
+
+    // ─── Brightness Control ──────────────────────────────────────────────
+    document.getElementById('brightnessSlider').addEventListener('input', function() {
+      document.getElementById('brightnessValue').textContent = this.value;
+    });
+
+    function sendBrightness() {
+      var level = document.getElementById('brightnessSlider').value;
+      if (!savedPassword) {
+        pendingCommand = 'brightness';
+        pendingPasswordCallback = function() { sendBrightness(); };
+        document.getElementById('passwordModal').classList.add('visible');
+        document.getElementById('passwordInput').focus();
+        return;
+      }
+      var target = document.getElementById('targetSelect').value;
+      sendToBackend({ command: 'brightness', target: target, sshCmd: level, password: savedPassword }).then(function(data) {
+        if (data.success) {
+          showToast('Brightness set to ' + level + ' on ' + target, 'success');
+          if (data.id) pollCommandCompletion(data.id, 'brightness', target);
+        } else {
+          showToast('Brightness failed: ' + (data.error || 'Unknown'), 'error');
+        }
+      }).catch(function(e) {
+        showToast('Brightness error: ' + e.message, 'error');
+      });
+    }
 
     // ─── Theme Toggle ────────────────────────────────────────────────────
     function toggleTheme() {
@@ -3060,7 +3238,7 @@
       showToast('Sending ' + cmd + ' to ' + target + '...', 'info');
       try {
         var data = await sendToBackend({ command: cmd, target: target, password: savedPassword });
-        if (data.success) { showToast(data.message, 'success'); setTimeout(loadClusterStatus, 3000); }
+        if (data.success) { showToast(data.message + ' — waiting for result...', 'info'); if (data.id) pollCommandCompletion(data.id, cmd, target); setTimeout(loadClusterStatus, 3000); }
         else { showToast(data.error || 'Failed', 'error'); if (data.error === 'Invalid password') { savedPassword = ''; localStorage.removeItem('clusterPassword'); } }
       } catch (e) { showToast('Error: ' + e.message, 'error'); }
     }
@@ -3477,7 +3655,10 @@
         });
         var results = await Promise.all(promises);
         var ok = results.filter(function(r) { return r.success; }).length;
-        showToast(cmd + ': ' + ok + '/' + targets.length + ' succeeded', ok > 0 ? 'success' : 'error');
+        showToast(cmd + ': ' + ok + '/' + targets.length + ' queued — waiting for results...', ok > 0 ? 'info' : 'error');
+        results.forEach(function(r, i) {
+          if (r.success && r.id) pollCommandCompletion(r.id, cmd, targets[i]);
+        });
         setTimeout(loadClusterStatus, 3000);
       } catch (e) { showToast('Error: ' + e.message, 'error'); }
     }
@@ -3709,31 +3890,47 @@
         document.getElementById('passwordInput').focus();
         return;
       }
-      if (!apiEndpoint) { showToast('Direct API required', 'error'); return; }
       var target = document.getElementById('targetSelect').value;
       var status = document.getElementById('controlStatus');
       status.textContent = 'Running command on ' + target + '...';
       status.className = 'control-status visible';
-      try {
-        var data = await apiPost('/api/command', { command: 'custom', target: target, customCmd: cmd, password: savedPassword });
-        if (data.success || data.output || data.results) {
-          var outputLines = [];
-          if (data.output) {
-            outputLines.push('=== ' + target + ' ===');
-            outputLines.push(data.output);
-          } else if (data.results) {
-            for (var n in data.results) {
-              outputLines.push('=== ' + n + ' ===');
-              outputLines.push(data.results[n].stdout || data.results[n].stderr || data.results[n].error || '(no output)');
+
+      // Try direct API first for immediate output
+      if (apiEndpoint) {
+        try {
+          var data = await apiPost('/api/command', { command: 'custom', target: target, customCmd: cmd, password: savedPassword });
+          if (data.success || data.output || data.results) {
+            var outputLines = [];
+            if (data.output) {
+              outputLines.push('=== ' + target + ' ===');
+              outputLines.push(data.output);
+            } else if (data.results) {
+              for (var n in data.results) {
+                outputLines.push('=== ' + n + ' ===');
+                outputLines.push(data.results[n].stdout || data.results[n].stderr || data.results[n].error || '(no output)');
+              }
             }
+            document.getElementById('logModalTitle').textContent = 'Command: ' + cmd;
+            document.getElementById('logBody').innerHTML = outputLines.map(function(l) {
+              return '<div class="log-line">' + l.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
+            }).join('');
+            document.getElementById('logModal').classList.add('visible');
+            status.textContent = 'Command completed';
+            status.className = 'control-status visible success';
+            return;
           }
-          document.getElementById('logModalTitle').textContent = 'Command: ' + cmd;
-          document.getElementById('logBody').innerHTML = outputLines.map(function(l) {
-            return '<div class="log-line">' + l.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
-          }).join('');
-          document.getElementById('logModal').classList.add('visible');
-          status.textContent = 'Command completed';
+        } catch (e) {
+          console.warn('Direct API custom command failed, queuing via Netlify:', e.message);
+        }
+      }
+
+      // Fall back to Netlify relay (queued execution, output in command log)
+      try {
+        var data = await sendToBackend({ command: 'ssh', target: target, sshCmd: cmd, password: savedPassword });
+        if (data.success) {
+          status.textContent = data.message + ' — waiting for result...';
           status.className = 'control-status visible success';
+          if (data.id) pollCommandCompletion(data.id, 'ssh', target);
         } else {
           status.textContent = data.error || 'Failed';
           status.className = 'control-status visible error';
@@ -3999,7 +4196,8 @@
       { icon: 'fa-stop', label: 'Stop all miners', action: function() { groupCmd('all', 'mining-stop'); } },
       { icon: 'fa-satellite-dish', label: 'Run ping test', shortcut: 'P', action: function() { runPingTest(); } },
       { icon: 'fa-download', label: 'Export cluster snapshot', shortcut: 'E', action: function() { exportClusterState(); } },
-      { icon: 'fa-camera', label: 'Capture phone screens', action: function() { loadScreens(); } },
+      { icon: 'fa-camera', label: 'Capture phone screens via SSH', action: function() { requestScreenshotCapture(); } },
+      { icon: 'fa-sun', label: 'Set phone brightness', action: function() { document.getElementById('brightnessSlider').focus(); } },
       { icon: 'fa-expand', label: 'Toggle fullscreen', shortcut: 'F', action: function() { toggleFullscreen(); } },
       { icon: 'fa-circle-half-stroke', label: 'Toggle theme', shortcut: 'T', action: function() { toggleTheme(); } },
       { icon: 'fa-magnifying-glass', label: 'Auto-detect API server', action: function() { autoDetectApi(); } },
@@ -4718,12 +4916,39 @@
       document.getElementById('healthGraphLabel').textContent = firstTs.toLocaleTimeString() + ' — ' + lastTs.toLocaleTimeString();
     }
 
-    // ─── Power Scheduling ────────────────────────────────────────────
-    var schedules = {}; try { schedules = JSON.parse(localStorage.getItem('clusterSchedules') || '{}'); } catch(e) {}
+    // ─── Power Scheduling (Server-Synced) ──────────────────────────────
+    var schedules = {};
+
+    async function loadSchedules() {
+      try {
+        var res = await fetch('/.netlify/functions/cluster-control?action=schedules');
+        var data = await res.json();
+        schedules = data.schedules || {};
+        renderSchedules();
+      } catch (e) { console.warn('Failed to load schedules:', e); }
+    }
+
+    async function saveSchedulesToServer() {
+      if (!savedPassword) {
+        pendingCommand = 'save-schedules';
+        document.getElementById('passwordModal').classList.add('visible');
+        document.getElementById('passwordInput').focus();
+        return;
+      }
+      try {
+        var res = await fetch('/.netlify/functions/cluster-control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'save-schedules', schedules: schedules, password: savedPassword })
+        });
+        var data = await res.json();
+        if (data.success) showToast('Schedules saved to server', 'success');
+        else showToast('Failed: ' + (data.error || 'unknown'), 'error');
+      } catch (e) { showToast('Error saving schedules: ' + e.message, 'error'); }
+    }
 
     function renderSchedules() {
       var panel = document.getElementById('schedulePanel');
-      if (!apiEndpoint) { panel.style.display = 'none'; return; }
       panel.style.display = 'block';
 
       var groups = [
@@ -4741,6 +4966,8 @@
           '<div class="schedule-times">' +
           '<span class="schedule-time"><i class="fa-solid fa-sun"></i> Wake: <input type="time" value="' + (s.wake || '06:00') + '" onchange="updateScheduleTime(\'' + g.id + '\',\'wake\',this.value)"></span>' +
           '<span class="schedule-time"><i class="fa-solid fa-moon"></i> Sleep: <input type="time" value="' + (s.sleep || '23:00') + '" onchange="updateScheduleTime(\'' + g.id + '\',\'sleep\',this.value)"></span>' +
+          '<span class="schedule-time"><i class="fa-solid fa-pickaxe"></i> Mine Start: <input type="time" value="' + (s.miningStart || '') + '" onchange="updateScheduleTime(\'' + g.id + '\',\'miningStart\',this.value)" placeholder="--:--"></span>' +
+          '<span class="schedule-time"><i class="fa-solid fa-stop"></i> Mine Stop: <input type="time" value="' + (s.miningStop || '') + '" onchange="updateScheduleTime(\'' + g.id + '\',\'miningStop\',this.value)" placeholder="--:--"></span>' +
           '</div></div>';
       }).join('');
     }
@@ -4749,37 +4976,14 @@
       if (!schedules[id]) schedules[id] = { enabled: false, wake: '06:00', sleep: '23:00' };
       schedules[id].enabled = !schedules[id].enabled;
       btn.classList.toggle('active');
-      saveSchedules();
+      saveSchedulesToServer();
     }
 
     function updateScheduleTime(id, field, val) {
       if (!schedules[id]) schedules[id] = { enabled: false, wake: '06:00', sleep: '23:00' };
       schedules[id][field] = val;
+      saveSchedulesToServer();
     }
-
-    function saveSchedules() {
-      localStorage.setItem('clusterSchedules', JSON.stringify(schedules));
-      showToast('Schedules saved', 'success');
-    }
-
-    // Check schedules every minute
-    setInterval(function() {
-      var now = new Date();
-      var timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
-      Object.entries(schedules).forEach(function(entry) {
-        var id = entry[0];
-        var s = entry[1];
-        if (!s.enabled) return;
-        if (timeStr === s.wake) {
-          groupCmd(id, 'wake');
-          addNotification('info', 'Scheduled wake for ' + id);
-        }
-        if (timeStr === s.sleep) {
-          groupCmd(id, 'sleep');
-          addNotification('info', 'Scheduled sleep for ' + id);
-        }
-      });
-    }, 60000);
 
     // ─── Node Group Commands ─────────────────────────────────────────
     function groupCmd(group, cmd) {
@@ -4787,7 +4991,8 @@
       if (!pw) { requirePassword(function() { groupCmd(group, cmd); }); return; }
       sendToBackend({ command: cmd, target: group, password: pw })
         .then(function(data) {
-          showToast(data.message || 'Command sent to ' + group, data.success ? 'success' : 'error');
+          showToast((data.message || 'Command sent to ' + group) + ' — waiting for result...', data.success ? 'info' : 'error');
+          if (data.success && data.id) pollCommandCompletion(data.id, cmd, group);
           setTimeout(loadClusterStatus, 3000);
         })
         .catch(function(e) { showToast('Failed: ' + e.message, 'error'); });
@@ -5219,11 +5424,11 @@
     loadClusterStatus();
     measureApiLatency();
     connectSSE();
-    try { renderSchedules(); } catch(e) { console.warn('renderSchedules:', e); }
+    try { loadSchedules(); } catch(e) { console.warn('loadSchedules:', e); }
     loadHealthHistory();
     setInterval(loadClusterStatus, 10000);
     setInterval(measureApiLatency, 15000);
-    setInterval(function() { if (apiEndpoint) loadScreens(); }, 30000);
+    setInterval(function() { if (apiEndpoint) loadScreens(); else loadScreensViaRelay(); }, 60000);
     setInterval(function() { if (apiEndpoint) loadAlerts(); loadCommandLog(); }, 15000);
     loadEvents();
     loadDeployments();
