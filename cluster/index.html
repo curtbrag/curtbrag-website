@@ -1327,6 +1327,7 @@
       <button class="fav-btn" onclick="quickAction('mining-start','all')"><i class="fa-solid fa-play"></i> Start Mining</button>
       <button class="fav-btn" onclick="quickAction('mining-stop','all')"><i class="fa-solid fa-stop"></i> Stop Mining</button>
       <button class="fav-btn" onclick="quickAction('refresh-adb','all')"><i class="fa-solid fa-usb"></i> Refresh ADB</button>
+      <button class="fav-btn" onclick="showDashboardOnPhones()" style="background:rgba(59,130,246,0.15);border-color:rgba(59,130,246,0.3);"><i class="fa-solid fa-display"></i> Show Dashboard</button>
     </div>
 
     <!-- Node Group Actions -->
@@ -3243,6 +3244,31 @@
       } catch (e) { showToast('Error: ' + e.message, 'error'); }
     }
 
+    async function showDashboardOnPhones() {
+      if (!savedPassword) {
+        requirePassword(function() { showDashboardOnPhones(); });
+        return;
+      }
+      showToast('Waking phones & opening dashboard...', 'info');
+      try {
+        // Wake first
+        var wake = await sendToBackend({ command: 'wake', target: 'phones', password: savedPassword });
+        if (wake.success && wake.id) pollCommandCompletion(wake.id, 'wake', 'phones');
+        // Then browse to dashboard after short delay
+        setTimeout(async function() {
+          var browse = await sendToBackend({ command: 'browse', target: 'phones', url: 'https://www.curtbrag.com/cluster', password: savedPassword });
+          if (browse.success) {
+            showToast('Dashboard sent to all phones!', 'success');
+            if (browse.id) pollCommandCompletion(browse.id, 'browse', 'phones');
+          } else {
+            showToast('Browse failed: ' + (browse.error || 'Unknown'), 'error');
+          }
+        }, 3000);
+      } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+      }
+    }
+
     // ─── Node Detail Modal ───────────────────────────────────────────────
     var currentDetailNode = null;
 
@@ -4197,6 +4223,7 @@
       { icon: 'fa-satellite-dish', label: 'Run ping test', shortcut: 'P', action: function() { runPingTest(); } },
       { icon: 'fa-download', label: 'Export cluster snapshot', shortcut: 'E', action: function() { exportClusterState(); } },
       { icon: 'fa-camera', label: 'Capture phone screens via SSH', action: function() { requestScreenshotCapture(); } },
+      { icon: 'fa-display', label: 'Show dashboard on all phones', action: function() { showDashboardOnPhones(); } },
       { icon: 'fa-sun', label: 'Set phone brightness', action: function() { document.getElementById('brightnessSlider').focus(); } },
       { icon: 'fa-expand', label: 'Toggle fullscreen', shortcut: 'F', action: function() { toggleFullscreen(); } },
       { icon: 'fa-circle-half-stroke', label: 'Toggle theme', shortcut: 'T', action: function() { toggleTheme(); } },

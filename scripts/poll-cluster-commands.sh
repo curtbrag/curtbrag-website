@@ -246,10 +246,18 @@ execute_command() {
         # Sanitize URL: only allow safe characters
         safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!$&'()*+,;=%-]//g")
         log "Opening $safe_url on phones..."
+        # postmarketOS/Phosh: use xdg-open or direct browser, with Wayland display set
+        BROWSE_CMD="export XDG_RUNTIME_DIR=/run/user/\$(id -u); export WAYLAND_DISPLAY=wayland-0; export DISPLAY=:0
+if command -v xdg-open >/dev/null 2>&1; then xdg-open '$safe_url' 2>/dev/null
+elif command -v firefox >/dev/null 2>&1; then firefox '$safe_url' &
+elif command -v chromium >/dev/null 2>&1; then chromium --no-sandbox '$safe_url' &
+elif command -v chromium-browser >/dev/null 2>&1; then chromium-browser --no-sandbox '$safe_url' &
+elif command -v am >/dev/null 2>&1; then am start -a android.intent.action.VIEW -d '$safe_url'
+else echo 'NO_BROWSER' && exit 1; fi"
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-          run_on_all_tracked "am start -a android.intent.action.VIEW -d '$safe_url'" "$RESULT_DIR"
+          run_on_all_tracked "$BROWSE_CMD" "$RESULT_DIR"
         else
-          ssh_node_tracked "$(resolve_ip "$target")" "am start -a android.intent.action.VIEW -d '$safe_url'" "$RESULT_DIR" "$target"
+          ssh_node_tracked "$(resolve_ip "$target")" "$BROWSE_CMD" "$RESULT_DIR" "$target"
         fi
       fi
       RESULT=$(collect_results "$RESULT_DIR")
