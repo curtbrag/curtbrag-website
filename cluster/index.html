@@ -1403,6 +1403,12 @@
       <span>Demo Mode — No live data yet. Run <code style="background:rgba(255,255,255,0.1);padding:0 4px;border-radius:3px">push-cluster-status.sh</code> on node1 to push live data.</span>
     </div>
 
+    <!-- K3s Down Banner -->
+    <div class="demo-banner" id="k3sBanner" style="display:none;border-color:rgba(168,85,247,0.3);color:var(--purple);background:linear-gradient(135deg,rgba(168,85,247,0.1),rgba(168,85,247,0.05))">
+      <i class="fa-solid fa-triangle-exclamation"></i>
+      <span>K3s Offline — Nodes synthesized from SSH/metrics. Pods, services, and events unavailable. Use the Update button to deploy the latest push script.</span>
+    </div>
+
     <!-- Auto-Reconnect Banner -->
     <div class="reconnect-banner" id="reconnectBanner">
       <i class="fa-solid fa-wifi-slash"></i>
@@ -2185,8 +2191,39 @@
         const ready = summary.nodesReady || 0;
         readyEl.className = 'card-value ' + (ready === total && total > 0 ? 'green' : ready >= total * 0.7 ? 'yellow' : 'red');
 
-        renderHealthScore(summary.healthScore || 0);
         lastMetrics = data.metrics || {};
+
+        // Client-side node synthesis: if server returned empty nodes but has metrics
+        if ((!data.nodes || data.nodes.length === 0) && data.metrics && Object.keys(data.metrics).length > 0) {
+          var battMap = {};
+          if (data.battery && data.battery.phones) data.battery.phones.forEach(function(p) { battMap[p.name] = p; });
+          var tsMap = {};
+          if (data.network && data.network.tailscale && data.network.tailscale.peers) data.network.tailscale.peers.forEach(function(p) { tsMap[p.name] = p; });
+          var nodeIPs = {node1:'192.168.1.206',node2:'192.168.1.207',node3:'192.168.1.208',node4:'192.168.1.209',node5:'192.168.1.210',node6:'192.168.1.211',node7:'192.168.1.212',node8:'192.168.1.213',node9:'192.168.1.214',node10:'192.168.1.215'};
+          var synthNodes = [];
+          var synthReady = 0;
+          Object.keys(data.metrics).sort(function(a,b){ return parseInt(a.replace('node','')) - parseInt(b.replace('node','')); }).forEach(function(name) {
+            var m = data.metrics[name];
+            var b = battMap[name];
+            var t = tsMap[name];
+            var alive = (m.cpu && (m.cpu.usage > 0 || (m.memory && m.memory.totalMB > 0))) || (b && b.online) || (t && t.online);
+            if (alive) synthReady++;
+            synthNodes.push({ name: name, status: alive ? 'Ready' : 'NotReady', role: name === 'node1' ? 'control-plane' : 'worker', ip: nodeIPs[name] || '', kubeletVersion: 'N/A (K3s down)', osImage: 'postmarketOS', arch: 'aarch64' });
+          });
+          data.nodes = synthNodes;
+          data.k3sDown = true;
+          summary.nodesReady = synthReady;
+          summary.nodesTotal = synthNodes.length;
+          summary.healthScore = synthNodes.length > 0 ? Math.round(synthReady * 100 / synthNodes.length) : 0;
+          document.getElementById('nodesReady').textContent = summary.nodesReady;
+          document.getElementById('nodesTotal').textContent = summary.nodesTotal;
+        }
+
+        renderHealthScore(summary.healthScore || 0);
+
+        // Show/hide K3s Down banner
+        var k3sBanner = document.getElementById('k3sBanner');
+        if (k3sBanner) k3sBanner.style.display = (data.k3sDown) ? 'flex' : 'none';
 
         window._lastNodes = data.nodes || [];
         renderNodes(window._lastNodes);
@@ -2245,11 +2282,13 @@
           data.nodeScheduling.forEach(function(n) { nodeSchedulingData[n.name] = n; });
         }
 
+        // Mining history works via both Netlify relay and Direct API
+        loadMiningHistory();
+
         // Features that ONLY work with Direct API (live SSH/ADB)
         if (apiEndpoint && isDirectApi) {
           loadScreens();
           loadAlerts();
-          loadMiningHistory();
           loadNodeScheduling();
           loadPodResources();
           loadConfigMaps();
@@ -2527,6 +2566,41 @@
       }
     }
 
+    function pollCommandCompletion(cmdId, statusEl, cmdName, target) {
+      var attempts = 0;
+      var maxAttempts = 60; // 5 minutes at 5s intervals
+      var interval = setInterval(async function() {
+        attempts++;
+        if (attempts > maxAttempts) {
+          clearInterval(interval);
+          statusEl.textContent = cmdName + ' on ' + target + ': timed out waiting for completion';
+          statusEl.className = 'control-status visible error';
+          return;
+        }
+        try {
+          var res = await fetch('/.netlify/functions/cluster-control?action=command-status&id=' + cmdId);
+          var data = await res.json();
+          if (data.status === 'completed') {
+            clearInterval(interval);
+            var resultText = data.result || 'done';
+            var isError = resultText.startsWith('error');
+            var isPartial = resultText.startsWith('partial');
+            statusEl.textContent = cmdName + ' on ' + target + ': ' + resultText;
+            statusEl.className = 'control-status visible ' + (isError ? 'error' : isPartial ? 'warning' : 'success');
+            if (data.output) {
+              statusEl.textContent += ' | ' + data.output.substring(0, 200);
+            }
+            loadClusterStatus();
+            loadCommandLog();
+          } else if (data.status === 'queued') {
+            statusEl.textContent = cmdName + ' on ' + target + ': queued (waiting for node1 to pick up...)';
+          } else {
+            statusEl.textContent = cmdName + ' on ' + target + ': executing...';
+          }
+        } catch (e) { /* silent retry */ }
+      }, 5000);
+    }
+
     async function executeCommand(cmd, password) {
       const target = document.getElementById('targetSelect').value;
       const status = document.getElementById('controlStatus');
@@ -2536,9 +2610,11 @@
       try {
         const data = await sendToBackend({ command: cmd, target, password });
         if (data.success) {
-          status.textContent = data.message;
+          status.textContent = data.message + ' (waiting for execution...)';
           status.className = 'control-status visible success';
-          setTimeout(loadClusterStatus, 5000);
+          if (data.id) {
+            pollCommandCompletion(data.id, status, cmd, target);
+          }
         } else {
           status.textContent = `Error: ${data.error}`;
           status.className = 'control-status visible error';
@@ -2600,9 +2676,14 @@
 
     // ─── Mining History Chart ────────────────────────────────────────────
     async function loadMiningHistory() {
-      if (!apiEndpoint) return;
       try {
-        const data = await apiFetch('/api/mining/history');
+        var data;
+        if (apiEndpoint) {
+          data = await apiFetch('/api/mining/history');
+        } else {
+          var res = await fetch('/.netlify/functions/cluster-status?type=mining-history');
+          data = await res.json();
+        }
         renderMiningChart(data.history || []);
       } catch (e) { /* silent */ }
     }

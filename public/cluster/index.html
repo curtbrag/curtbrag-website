@@ -1411,6 +1411,12 @@
       <span>Demo Mode — No live data yet. Run <code style="background:rgba(255,255,255,0.1);padding:0 4px;border-radius:3px">push-cluster-status.sh</code> on node1 to push live data.</span>
     </div>
 
+    <!-- K3s Down Banner -->
+    <div class="demo-banner" id="k3sBanner" style="display:none;border-color:rgba(168,85,247,0.3);color:var(--purple);background:linear-gradient(135deg,rgba(168,85,247,0.1),rgba(168,85,247,0.05))">
+      <i class="fa-solid fa-triangle-exclamation"></i>
+      <span>K3s Offline — Nodes synthesized from SSH/metrics. Pods, services, and events unavailable. Use the Update button to deploy the latest push script.</span>
+    </div>
+
     <!-- Auto-Reconnect Banner -->
     <div class="reconnect-banner" id="reconnectBanner">
       <i class="fa-solid fa-wifi-slash"></i>
@@ -2198,22 +2204,41 @@
         const ready = summary.nodesReady || 0;
         readyEl.className = 'card-value ' + (ready === total && total > 0 ? 'green' : ready >= total * 0.7 ? 'yellow' : 'red');
 
-        renderHealthScore(summary.healthScore || 0);
         lastMetrics = data.metrics || {};
 
-        window._lastNodes = data.nodes || [];
-        // If K3s is down but metrics exist, synthesize nodes from metrics
-        if (window._lastNodes.length === 0 && data.metrics && Object.keys(data.metrics).length > 0) {
-          window._lastNodes = Object.keys(data.metrics).sort(function(a, b) {
-            var na = parseInt(a.replace('node', '')), nb = parseInt(b.replace('node', ''));
-            return na - nb;
-          }).map(function(name) {
+        // Client-side node synthesis: if server returned empty nodes but has metrics
+        if ((!data.nodes || data.nodes.length === 0) && data.metrics && Object.keys(data.metrics).length > 0) {
+          var battMap = {};
+          if (data.battery && data.battery.phones) data.battery.phones.forEach(function(p) { battMap[p.name] = p; });
+          var tsMap = {};
+          if (data.network && data.network.tailscale && data.network.tailscale.peers) data.network.tailscale.peers.forEach(function(p) { tsMap[p.name] = p; });
+          var synthNodes = [];
+          var synthReady = 0;
+          Object.keys(data.metrics).sort(function(a,b){ return parseInt(a.replace('node','')) - parseInt(b.replace('node','')); }).forEach(function(name) {
             var m = data.metrics[name];
-            var online = m && m.cpu && m.cpu.usage > 0;
+            var b = battMap[name];
+            var t = tsMap[name];
+            var alive = (m.cpu && (m.cpu.usage > 0 || (m.memory && m.memory.totalMB > 0))) || (b && b.online) || (t && t.online);
+            if (alive) synthReady++;
             var num = parseInt(name.replace('node', ''));
-            return { name: name, status: online ? 'Ready' : 'NotReady', role: num === 1 ? 'control-plane' : 'worker', ip: '192.168.1.' + (205 + num) };
+            synthNodes.push({ name: name, status: alive ? 'Ready' : 'NotReady', role: name === 'node1' ? 'control-plane' : 'worker', ip: '192.168.1.' + (205 + num), kubeletVersion: 'N/A (K3s down)', osImage: 'postmarketOS', arch: 'aarch64' });
           });
+          data.nodes = synthNodes;
+          data.k3sDown = true;
+          summary.nodesReady = synthReady;
+          summary.nodesTotal = synthNodes.length;
+          summary.healthScore = synthNodes.length > 0 ? Math.round(synthReady * 100 / synthNodes.length) : 0;
+          document.getElementById('nodesReady').textContent = summary.nodesReady;
+          document.getElementById('nodesTotal').textContent = summary.nodesTotal;
         }
+
+        renderHealthScore(summary.healthScore || 0);
+
+        // Show/hide K3s Down banner
+        var k3sBanner = document.getElementById('k3sBanner');
+        if (k3sBanner) k3sBanner.style.display = (data.k3sDown) ? 'flex' : 'none';
+
+        window._lastNodes = data.nodes || [];
         renderNodes(window._lastNodes);
         document.getElementById('nodeBadge').textContent = `${window._lastNodes.length} nodes`;
 
@@ -2270,11 +2295,13 @@
           data.nodeScheduling.forEach(function(n) { nodeSchedulingData[n.name] = n; });
         }
 
+        // Mining history works via both Netlify relay and Direct API
+        loadMiningHistory();
+
         // Features that ONLY work with Direct API (live SSH/ADB)
         if (apiEndpoint && isDirectApi) {
           loadScreens();
           loadAlerts();
-          loadMiningHistory();
           loadNodeScheduling();
           loadPodResources();
           loadConfigMaps();

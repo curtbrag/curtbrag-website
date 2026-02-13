@@ -290,6 +290,64 @@ exports.handler = async function(event, context) {
         status.stale = true;
         status.ageMinutes = Math.round(age / 60000);
       }
+
+      // Synthesize nodes from metrics/battery/tailscale when K3s is down
+      // (push script sends metrics but nodes array is empty)
+      if ((!status.nodes || status.nodes.length === 0) && status.metrics && Object.keys(status.metrics).length > 0) {
+        const batteryMap = {};
+        if (status.battery && status.battery.phones) {
+          status.battery.phones.forEach(p => { batteryMap[p.name] = p; });
+        }
+        const tailscaleMap = {};
+        if (status.network && status.network.tailscale && status.network.tailscale.peers) {
+          status.network.tailscale.peers.forEach(p => { tailscaleMap[p.name] = p; });
+        }
+
+        const nodeIPs = {
+          node1:'192.168.1.206', node2:'192.168.1.207', node3:'192.168.1.208',
+          node4:'192.168.1.209', node5:'192.168.1.210', node6:'192.168.1.211',
+          node7:'192.168.1.212', node8:'192.168.1.213', node9:'192.168.1.214',
+          node10:'192.168.1.215'
+        };
+
+        const synthNodes = [];
+        let nodesReady = 0;
+        for (const [name, m] of Object.entries(status.metrics)) {
+          const batt = batteryMap[name];
+          const ts = tailscaleMap[name];
+          // Node is "Ready" if it has non-zero CPU/memory or battery is online or tailscale is online
+          const hasMetrics = m.cpu && (m.cpu.usage > 0 || (m.memory && m.memory.totalMB > 0));
+          const battOnline = batt && batt.online;
+          const tsOnline = ts && ts.online;
+          const isReady = hasMetrics || battOnline || tsOnline;
+          if (isReady) nodesReady++;
+
+          synthNodes.push({
+            name,
+            status: isReady ? 'Ready' : 'NotReady',
+            role: name === 'node1' ? 'control-plane' : 'worker',
+            ip: nodeIPs[name] || '',
+            kubeletVersion: 'N/A (K3s down)',
+            osImage: 'postmarketOS',
+            arch: 'aarch64'
+          });
+        }
+
+        // Sort by name
+        synthNodes.sort((a, b) => {
+          const na = parseInt(a.name.replace('node', ''));
+          const nb = parseInt(b.name.replace('node', ''));
+          return na - nb;
+        });
+
+        status.nodes = synthNodes;
+        status.summary = status.summary || {};
+        status.summary.nodesReady = nodesReady;
+        status.summary.nodesTotal = synthNodes.length;
+        status.summary.healthScore = synthNodes.length > 0 ? Math.round(nodesReady * 100 / synthNodes.length) : 0;
+        status.k3sDown = true;
+      }
+
       return {
         statusCode: 200,
         headers,
