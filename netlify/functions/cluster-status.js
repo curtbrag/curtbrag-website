@@ -231,6 +231,24 @@ exports.handler = async function(event, context) {
 
       await saveStatus(statusData);
 
+      // Append mining history point
+      if (statusData.mining && statusData.mining.totalHashrateRaw > 0) {
+        try {
+          const histStore = getStore("cluster-data");
+          const existing = await histStore.get("mining-history", { type: "json" }) || [];
+          existing.push({
+            timestamp: statusData.lastUpdate,
+            totalHashrate: statusData.mining.totalHashrateRaw,
+            miners: statusData.mining.minersRunning
+          });
+          // Keep last 288 entries (24 hours at 5-min intervals)
+          const trimmed = existing.slice(-288);
+          await histStore.setJSON("mining-history", trimmed);
+        } catch (e) {
+          console.warn("Mining history append failed:", e.message);
+        }
+      }
+
       return {
         statusCode: 200,
         headers,
@@ -247,6 +265,23 @@ exports.handler = async function(event, context) {
 
   // GET - Return current cluster status
   if (event.httpMethod === 'GET') {
+    const params = event.queryStringParameters || {};
+
+    // Mining history query
+    if (params.type === 'mining-history') {
+      try {
+        const histStore = getStore("cluster-data");
+        const history = await histStore.get("mining-history", { type: "json" }) || [];
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ history })
+        };
+      } catch (e) {
+        return { statusCode: 200, headers, body: JSON.stringify({ history: [] }) };
+      }
+    }
+
     const status = await getStatus();
 
     if (status && status.lastUpdate) {
