@@ -178,12 +178,12 @@ for i in $(seq 1 10); do
 
   # CPU
   CPU_LINE=$(echo "$RAW" | grep "^CPU:" || echo "")
-  IDLE=$(echo "$CPU_LINE" | sed -n 's/.*[^0-9]\([0-9][0-9]*\)%[[:space:]]*id[le]*.*/\1/p' | head -1)
+  IDLE=$(echo "$CPU_LINE" | sed -n 's/.*[^0-9]\([0-9][0-9]*\)% *id[le]*.*/\1/p' | head -1)
   if [ -n "$IDLE" ]; then
     CPU_USAGE=$((100 - IDLE))
   else
-    USR=$(echo "$CPU_LINE" | sed -n 's/.*[^0-9]\([0-9][0-9]*\)%[[:space:]]*usr.*/\1/p' | head -1)
-    SYS=$(echo "$CPU_LINE" | sed -n 's/.*[^0-9]\([0-9][0-9]*\)%[[:space:]]*sys.*/\1/p' | head -1)
+    USR=$(echo "$CPU_LINE" | sed -n 's/.*[^0-9]\([0-9][0-9]*\)% *usr.*/\1/p' | head -1)
+    SYS=$(echo "$CPU_LINE" | sed -n 's/.*[^0-9]\([0-9][0-9]*\)% *sys.*/\1/p' | head -1)
     CPU_USAGE=$(( ${USR:-0} + ${SYS:-0} ))
   fi
 
@@ -247,7 +247,7 @@ for i in $(seq 1 10); do
     BATTERY_PHONES=$(echo "$BATTERY_PHONES" | jq \
       --arg n "$NODE_NAME" --argjson lv "${BATT_CAP:-0}" --arg st "$BATT_STATUS" --argjson ch "$BATT_CHARGING" \
       --argjson bt "${BATT_TEMP_RAW:-0}" --argjson vt "${BATT_VOLT:-0}" --arg hl "$BATT_HEALTH" \
-      '. + [{name:$n, online:true, level:$lv, status:$st, charging:$ch, temp:(if $bt > 0 then ($bt/10|floor|tostring) else null end), voltage:(if $vt > 0 then ($vt/1000000*100|round/100|tostring) else null end), health:$hl}]')
+      '. + [{name:$n, online:true, level:$lv, status:$st, charging:$ch, temp:(if $bt > 0 then ($bt/10|floor|tostring) else null end), voltage:(if $vt > 0 then (($vt/1000000*100|round)/100|tostring) else null end), health:$hl}]')
   else
     BATTERY_PHONES=$(echo "$BATTERY_PHONES" | jq --arg n "$NODE_NAME" '. + [{name:$n,online:true,level:null}]')
   fi
@@ -294,9 +294,9 @@ for i in $(seq 1 10); do
 
     HR_INT=$(printf '%.0f' "$HR" 2>/dev/null || echo 0)
     if [ "$HR_INT" -ge 1000000 ] 2>/dev/null; then
-      HR_FMT="$(echo "scale=2; $HR / 1000000" | bc 2>/dev/null || echo "$HR_INT") MH/s"
+      HR_FMT="$(awk "BEGIN{printf \"%.2f\", $HR/1000000}") MH/s"
     elif [ "$HR_INT" -ge 1000 ] 2>/dev/null; then
-      HR_FMT="$(echo "scale=2; $HR / 1000" | bc 2>/dev/null || echo "$HR_INT") KH/s"
+      HR_FMT="$(awk "BEGIN{printf \"%.2f\", $HR/1000}") KH/s"
     else
       HR_FMT="${HR_INT} H/s"
     fi
@@ -307,7 +307,7 @@ for i in $(seq 1 10); do
       --arg algo "$ALGO" --argjson thr "$THREADS" \
       '. + [{name:$n, hashrate:$hr, hashrateRaw:$hrr, status:"mining", accepted:$acc, rejected:$rej, uptime:$upt, algo:$algo, threads:$thr}]')
 
-    TOTAL_HR=$(echo "$TOTAL_HR + $HR" | bc 2>/dev/null || echo "$TOTAL_HR")
+    TOTAL_HR=$(awk "BEGIN{printf \"%.2f\", $TOTAL_HR + $HR}")
     TOTAL_ACC=$((TOTAL_ACC + ACC))
     TOTAL_REJ=$((TOTAL_REJ + REJ))
     log "  $NODE_NAME mining: $HR_FMT"
@@ -321,15 +321,15 @@ MINERS_RUNNING=$(echo "$MINING_WORKERS" | jq '[.[] | select(.status=="mining")] 
 # Format total hashrate
 THR_INT=$(printf '%.0f' "$TOTAL_HR" 2>/dev/null || echo 0)
 if [ "$THR_INT" -ge 1000000 ] 2>/dev/null; then
-  THR_FMT="$(echo "scale=2; $TOTAL_HR / 1000000" | bc 2>/dev/null) MH/s"
+  THR_FMT="$(awk "BEGIN{printf \"%.2f\", $TOTAL_HR/1000000}") MH/s"
 elif [ "$THR_INT" -ge 1000 ] 2>/dev/null; then
-  THR_FMT="$(echo "scale=2; $TOTAL_HR / 1000" | bc 2>/dev/null) KH/s"
+  THR_FMT="$(awk "BEGIN{printf \"%.2f\", $TOTAL_HR/1000}") KH/s"
 else
   THR_FMT="${THR_INT:-0} H/s"
 fi
 
-DAILY_USD=$(echo "scale=4; $TOTAL_HR * 0.00005" | bc 2>/dev/null || echo "0")
-MONTHLY_USD=$(echo "scale=2; $DAILY_USD * 30" | bc 2>/dev/null || echo "0")
+DAILY_USD=$(awk "BEGIN{printf \"%.4f\", $TOTAL_HR * 0.00005}")
+MONTHLY_USD=$(awk "BEGIN{printf \"%.2f\", $DAILY_USD * 30}")
 DAILY_FMT=$(printf '$%.2f' "$DAILY_USD" 2>/dev/null || echo '$0.00')
 MONTHLY_FMT=$(printf '$%.2f' "$MONTHLY_USD" 2>/dev/null || echo '$0.00')
 
