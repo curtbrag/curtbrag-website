@@ -142,10 +142,11 @@ execute_command() {
     wake)
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
+      WAKE_CMD="doas sh -c 'for f in /sys/class/backlight/*/bl_power; do echo 0 > \"\$f\"; done'"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "input keyevent KEYCODE_WAKEUP" "$RESULT_DIR"
+        run_on_all_tracked "$WAKE_CMD" "$RESULT_DIR"
       else
-        ssh_node_tracked "$(resolve_ip "$target")" "input keyevent KEYCODE_WAKEUP" "$RESULT_DIR" "$target"
+        ssh_node_tracked "$(resolve_ip "$target")" "$WAKE_CMD" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -153,10 +154,11 @@ execute_command() {
     sleep)
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
+      SLEEP_CMD="doas sh -c 'for f in /sys/class/backlight/*/bl_power; do echo 4 > \"\$f\"; done'"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "input keyevent KEYCODE_SLEEP" "$RESULT_DIR"
+        run_on_all_tracked "$SLEEP_CMD" "$RESULT_DIR"
       else
-        ssh_node_tracked "$(resolve_ip "$target")" "input keyevent KEYCODE_SLEEP" "$RESULT_DIR" "$target"
+        ssh_node_tracked "$(resolve_ip "$target")" "$SLEEP_CMD" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -244,7 +246,7 @@ execute_command() {
       mkdir -p "$RESULT_DIR"
       if [ -n "$url" ]; then
         # Sanitize URL: only allow safe characters
-        safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!$&'()*+,;=%-]//g")
+        safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!\$&()*+,;=%-]//g")
         log "Opening $safe_url on phones..."
         # postmarketOS/Phosh: use xdg-open or direct browser, with Wayland display set
         BROWSE_CMD="export XDG_RUNTIME_DIR=/run/user/\$(id -u); export WAYLAND_DISPLAY=wayland-0; export DISPLAY=:0
@@ -364,7 +366,8 @@ ${NODE_OUT}
       mkdir -p "$RESULT_DIR" "$SCREENSHOT_DIR"
 
       # Screenshot capture command - tries grim (Wayland), fbgrab, screencap
-      SCREEN_CMD='OUT=/tmp/screen_capture.png; rm -f "$OUT" /tmp/screen_capture.jpg
+      SCREEN_CMD='export XDG_RUNTIME_DIR=/run/user/$(id -u); export WAYLAND_DISPLAY=wayland-0; export DISPLAY=:0
+OUT=/tmp/screen_capture.png; rm -f "$OUT" /tmp/screen_capture.jpg
 if command -v grim >/dev/null 2>&1; then grim "$OUT" 2>/dev/null
 elif command -v fbgrab >/dev/null 2>&1; then fbgrab "$OUT" 2>/dev/null
 elif command -v screencap >/dev/null 2>&1; then screencap -p "$OUT" 2>/dev/null
@@ -438,7 +441,7 @@ else echo "CAPTURE_FAILED" && exit 1; fi'
         report_result "$cmd_id" "error: no brightness value" "" "$cmd" "$target"
       else
         log "Setting brightness to $BRIGHTNESS_VAL..."
-        BRIGHT_CMD="echo $BRIGHTNESS_VAL | doas tee /sys/class/backlight/*/brightness >/dev/null 2>&1 || echo $BRIGHTNESS_VAL | doas tee /sys/class/leds/lcd-backlight/brightness >/dev/null 2>&1"
+        BRIGHT_CMD="doas sh -c 'for f in /sys/class/backlight/*/brightness; do echo $BRIGHTNESS_VAL > \"\$f\"; done' 2>/dev/null || doas sh -c 'echo $BRIGHTNESS_VAL > /sys/class/leds/lcd-backlight/brightness' 2>/dev/null"
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
           run_on_all_tracked "$BRIGHT_CMD" "$RESULT_DIR"
         else

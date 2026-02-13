@@ -2033,6 +2033,7 @@
   </div>
 
   <script>
+    function escapeAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
     let allPods = [];
     let allServices = [];
     let currentNamespace = 'all';
@@ -2686,7 +2687,7 @@
             '<i class="fa-solid ' + (isOnline ? 'fa-circle-check' : 'fa-circle-xmark') + '" style="color: var(--' + (isOnline ? 'green' : 'red') + ')"></i>' +
             '<span>' + w.name + '</span>' +
             '<span class="rate">' + w.hashrate + uptimeStr + '</span>' +
-            '<button class="ssh-preset" onclick="sendMiningNodeCommand(\'' + toggleCmd + '\',\'' + w.name + '\')" title="' + toggleTitle + '" style="margin-left:4px"><i class="fa-solid ' + toggleIcon + '"></i></button></div>';
+            '<button class="ssh-preset" onclick="sendMiningNodeCommand(\'' + escapeAttr(toggleCmd) + '\',\'' + escapeAttr(w.name) + '\')" title="' + escapeAttr(toggleTitle) + '" style="margin-left:4px"><i class="fa-solid ' + toggleIcon + '"></i></button></div>';
         }).join('');
       } else {
         workerList.innerHTML = '<span class="worker-chip"><span>No workers</span></span>';
@@ -5211,7 +5212,7 @@
       var m = lastMetrics[node.name] || {};
       var title = node.name + ' (' + node.status + ')';
       if (m.cpu) title += ' CPU:' + m.cpu.usage + '%';
-      return '<g class="topo-node" onclick="openNodeDetail(\'' + node.name + '\')">' +
+      return '<g class="topo-node" onclick="openNodeDetail(\'' + escapeAttr(node.name) + '\')">' +
         '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="' + color + '" opacity="0.2" stroke="' + color + '" stroke-width="2"/>' +
         '<text x="' + x + '" y="' + (y + 4) + '" fill="var(--text)" font-size="9" text-anchor="middle">' + node.name.replace('node', 'n') + '</text>' +
         '<title>' + title + '</title></g>';
