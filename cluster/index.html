@@ -2597,41 +2597,6 @@
       }
     }
 
-    function pollCommandCompletion(cmdId, statusEl, cmdName, target) {
-      var attempts = 0;
-      var maxAttempts = 60; // 5 minutes at 5s intervals
-      var interval = setInterval(async function() {
-        attempts++;
-        if (attempts > maxAttempts) {
-          clearInterval(interval);
-          statusEl.textContent = cmdName + ' on ' + target + ': timed out waiting for completion';
-          statusEl.className = 'control-status visible error';
-          return;
-        }
-        try {
-          var res = await fetch('/.netlify/functions/cluster-control?action=command-status&id=' + cmdId);
-          var data = await res.json();
-          if (data.status === 'completed') {
-            clearInterval(interval);
-            var resultText = data.result || 'done';
-            var isError = resultText.startsWith('error');
-            var isPartial = resultText.startsWith('partial');
-            statusEl.textContent = cmdName + ' on ' + target + ': ' + resultText;
-            statusEl.className = 'control-status visible ' + (isError ? 'error' : isPartial ? 'warning' : 'success');
-            if (data.output) {
-              statusEl.textContent += ' | ' + data.output.substring(0, 200);
-            }
-            loadClusterStatus();
-            loadCommandLog();
-          } else if (data.status === 'queued') {
-            statusEl.textContent = cmdName + ' on ' + target + ': queued (waiting for node1 to pick up...)';
-          } else {
-            statusEl.textContent = cmdName + ' on ' + target + ': executing...';
-          }
-        } catch (e) { /* silent retry */ }
-      }, 5000);
-    }
-
     async function executeCommand(cmd, password) {
       const target = document.getElementById('targetSelect').value;
       const status = document.getElementById('controlStatus');
@@ -2647,9 +2612,8 @@
           setTimeout(loadClusterStatus, 5000);
           status.textContent = data.message + ' (waiting for execution...)';
           status.className = 'control-status visible success';
-          if (data.id) {
-            pollCommandCompletion(data.id, status, cmd, target);
-          }
+          if (data.id) pollCommandCompletion(data.id, cmd, target);
+          setTimeout(loadClusterStatus, 5000);
         } else {
           status.textContent = `Error: ${data.error}`;
           status.className = 'control-status visible error';

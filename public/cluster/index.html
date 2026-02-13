@@ -2224,6 +2224,7 @@
           if (data.battery && data.battery.phones) data.battery.phones.forEach(function(p) { battMap[p.name] = p; });
           var tsMap = {};
           if (data.network && data.network.tailscale && data.network.tailscale.peers) data.network.tailscale.peers.forEach(function(p) { tsMap[p.name] = p; });
+          var nodeIPs = {node1:'192.168.1.206',node2:'192.168.1.207',node3:'192.168.1.208',node4:'192.168.1.209',node5:'192.168.1.210',node6:'192.168.1.211',node7:'192.168.1.212',node8:'192.168.1.213',node9:'192.168.1.214',node10:'192.168.1.215'};
           var synthNodes = [];
           var synthReady = 0;
           Object.keys(data.metrics).sort(function(a,b){ return parseInt(a.replace('node','')) - parseInt(b.replace('node','')); }).forEach(function(name) {
@@ -2232,8 +2233,7 @@
             var t = tsMap[name];
             var alive = (m.cpu && (m.cpu.usage > 0 || (m.memory && m.memory.totalMB > 0))) || (b && b.online) || (t && t.online);
             if (alive) synthReady++;
-            var num = parseInt(name.replace('node', ''));
-            synthNodes.push({ name: name, status: alive ? 'Ready' : 'NotReady', role: name === 'node1' ? 'control-plane' : 'worker', ip: '192.168.1.' + (205 + num), kubeletVersion: 'N/A (K3s down)', osImage: 'postmarketOS', arch: 'aarch64' });
+            synthNodes.push({ name: name, status: alive ? 'Ready' : 'NotReady', role: name === 'node1' ? 'control-plane' : 'worker', ip: nodeIPs[name] || '', kubeletVersion: 'N/A (K3s down)', osImage: 'postmarketOS', arch: 'aarch64' });
           });
           data.nodes = synthNodes;
           data.k3sDown = true;
