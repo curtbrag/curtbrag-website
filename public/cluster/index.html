@@ -799,6 +799,11 @@
     .toast.success { border-color: var(--green); }
     .toast.error { border-color: var(--red); }
     .toast.info { border-color: var(--blue); }
+    .toast.warning { border-color: var(--yellow); }
+    .cmd-badge.partial { background: rgba(234, 179, 8, 0.15); color: var(--yellow); }
+    .cmd-badge.error { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+    .cmd-badge.queued { background: rgba(59, 130, 246, 0.15); color: var(--blue); }
+    .cmd-badge.executing { background: rgba(168, 85, 247, 0.15); color: #a855f7; }
 
     /* Node Detail Modal */
     .node-detail-modal-content { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; max-width: 600px; width: 95%; max-height: 80vh; display: flex; flex-direction: column; }
@@ -2197,6 +2202,18 @@
         lastMetrics = data.metrics || {};
 
         window._lastNodes = data.nodes || [];
+        // If K3s is down but metrics exist, synthesize nodes from metrics
+        if (window._lastNodes.length === 0 && data.metrics && Object.keys(data.metrics).length > 0) {
+          window._lastNodes = Object.keys(data.metrics).sort(function(a, b) {
+            var na = parseInt(a.replace('node', '')), nb = parseInt(b.replace('node', ''));
+            return na - nb;
+          }).map(function(name) {
+            var m = data.metrics[name];
+            var online = m && m.cpu && m.cpu.usage > 0;
+            var num = parseInt(name.replace('node', ''));
+            return { name: name, status: online ? 'Ready' : 'NotReady', role: num === 1 ? 'control-plane' : 'worker', ip: '192.168.1.' + (205 + num) };
+          });
+        }
         renderNodes(window._lastNodes);
         document.getElementById('nodeBadge').textContent = `${window._lastNodes.length} nodes`;
 
@@ -2548,8 +2565,9 @@
       try {
         const data = await sendToBackend({ command: cmd, target, password });
         if (data.success) {
-          status.textContent = data.message;
+          status.textContent = data.message + ' — waiting for result...';
           status.className = 'control-status visible success';
+          if (data.id) pollCommandCompletion(data.id, cmd, target);
           setTimeout(loadClusterStatus, 5000);
         } else {
           status.textContent = `Error: ${data.error}`;
@@ -2563,6 +2581,40 @@
         status.textContent = `Error: ${e.message}`;
         status.className = 'control-status visible error';
       }
+    }
+
+    // Poll for a specific command's completion after queueing
+    function pollCommandCompletion(cmdId, cmdName, target) {
+      var attempts = 0;
+      var maxAttempts = 40; // 40 * 3s = 120s max wait
+      var pollInterval = setInterval(async function() {
+        attempts++;
+        if (attempts > maxAttempts) {
+          clearInterval(pollInterval);
+          showToast(cmdName + ' on ' + target + ': timed out waiting for result', 'error');
+          loadCommandLog();
+          return;
+        }
+        try {
+          var url = apiEndpoint
+            ? apiEndpoint + '/api/commands/status?id=' + cmdId
+            : '/.netlify/functions/cluster-control?action=command-status&id=' + cmdId;
+          var res = await fetch(url, { headers: apiEndpoint ? apiHeaders() : {} });
+          var data = await res.json();
+          if (data.status === 'completed') {
+            clearInterval(pollInterval);
+            var result = data.result || 'completed';
+            var toastType = 'success';
+            if (result.indexOf('error') === 0) toastType = 'error';
+            else if (result.indexOf('partial') === 0) toastType = 'warning';
+            showToast(cmdName + ' on ' + target + ': ' + result, toastType);
+            loadCommandLog();
+          }
+          // If 'queued' or 'executing', keep polling
+        } catch (e) {
+          // Network error, keep trying
+        }
+      }, 3000);
     }
 
     // Mining functions
@@ -2625,7 +2677,8 @@
       try {
         var data = await sendToBackend({ command: cmd, target: node, password: savedPassword });
         if (data.success) {
-          showToast(data.message, 'success');
+          showToast(data.message + ' — waiting for result...', 'info');
+          if (data.id) pollCommandCompletion(data.id, cmd, node);
           setTimeout(loadClusterStatus, 5000);
         } else {
           showToast(data.error || 'Failed', 'error');
@@ -2687,8 +2740,9 @@
       try {
         const data = await sendToBackend({ command: cmd, target: 'all', password: savedPassword });
         if (data.success) {
-          msgEl.textContent = `${data.message} - Status will update shortly.`;
+          msgEl.textContent = `${data.message} — waiting for result...`;
           msgEl.className = 'mining-message success';
+          if (data.id) pollCommandCompletion(data.id, cmd, 'all');
           setTimeout(loadClusterStatus, 5000);
         } else {
           msgEl.textContent = `Error: ${data.error}`;
@@ -2729,8 +2783,9 @@
       try {
         const data = await sendToBackend({ command: 'browse', target: 'phones', url: url, password: savedPassword });
         if (data.success) {
-          status.textContent = `All phones navigating to ${url}`;
+          status.textContent = `All phones navigating to ${url} — waiting for result...`;
           status.className = 'control-status visible success';
+          if (data.id) pollCommandCompletion(data.id, 'browse', 'phones');
           urlInput.value = '';
         } else {
           status.textContent = `Error: ${data.error}`;
@@ -2831,7 +2886,11 @@
           var res = await fetch('/.netlify/functions/cluster-control');
           data = await res.json();
           var cmds = (data.history || []).map(function(h) {
-            return { id: h.id, command: h.command || h.id, target: h.target || '', status: h.result || 'completed', timestamp: h.completedAt, output: h.output || null };
+            var rawResult = h.result || 'completed';
+            var statusClass = 'success';
+            if (rawResult.indexOf('error') === 0) statusClass = 'error';
+            else if (rawResult.indexOf('partial') === 0) statusClass = 'partial';
+            return { id: h.id, command: h.command || h.id, target: h.target || '', status: statusClass, statusText: rawResult, timestamp: h.completedAt, output: h.output || null };
           });
           var queued = (data.queue || []).map(function(q) {
             return { id: q.id, command: q.command, target: q.target || 'all', status: 'queued', timestamp: q.queuedAt };
@@ -2856,7 +2915,7 @@
           outputBtn = ' <button class="ssh-preset" onclick="showCmdOutput(\'' + c.id + '\')" title="View output"><i class="fa-solid fa-terminal"></i></button>';
         }
         return '<div class="cmd-item">' +
-          '<span class="cmd-badge ' + c.status + '">' + c.status + '</span>' +
+          '<span class="cmd-badge ' + c.status + '">' + (c.statusText || c.status) + '</span>' +
           '<span style="flex:1"><strong>' + c.command + '</strong> &rarr; ' + (c.target || '') + urlStr + outputBtn + '</span>' +
           '<span class="cmd-time">' + time + '</span></div>';
       }).join('');
@@ -2976,13 +3035,15 @@
 
     async function wakeScreen() {
       if (!currentScreenDevice || !savedPassword) return;
-      await sendToBackend({ command: 'wake', target: currentScreenDevice, password: savedPassword });
+      var data = await sendToBackend({ command: 'wake', target: currentScreenDevice, password: savedPassword });
+      if (data.success && data.id) pollCommandCompletion(data.id, 'wake', currentScreenDevice);
       setTimeout(refreshSingleScreen, 2000);
     }
 
     async function sleepScreen() {
       if (!currentScreenDevice || !savedPassword) return;
-      await sendToBackend({ command: 'sleep', target: currentScreenDevice, password: savedPassword });
+      var data = await sendToBackend({ command: 'sleep', target: currentScreenDevice, password: savedPassword });
+      if (data.success && data.id) pollCommandCompletion(data.id, 'sleep', currentScreenDevice);
     }
 
     // Close screen modal on backdrop click
@@ -3035,7 +3096,7 @@
       showToast('Sending ' + cmd + ' to ' + target + '...', 'info');
       try {
         var data = await sendToBackend({ command: cmd, target: target, password: savedPassword });
-        if (data.success) { showToast(data.message, 'success'); setTimeout(loadClusterStatus, 3000); }
+        if (data.success) { showToast(data.message + ' — waiting for result...', 'info'); if (data.id) pollCommandCompletion(data.id, cmd, target); setTimeout(loadClusterStatus, 3000); }
         else { showToast(data.error || 'Failed', 'error'); if (data.error === 'Invalid password') { savedPassword = ''; localStorage.removeItem('clusterPassword'); } }
       } catch (e) { showToast('Error: ' + e.message, 'error'); }
     }
@@ -3452,7 +3513,10 @@
         });
         var results = await Promise.all(promises);
         var ok = results.filter(function(r) { return r.success; }).length;
-        showToast(cmd + ': ' + ok + '/' + targets.length + ' succeeded', ok > 0 ? 'success' : 'error');
+        showToast(cmd + ': ' + ok + '/' + targets.length + ' queued — waiting for results...', ok > 0 ? 'info' : 'error');
+        results.forEach(function(r, i) {
+          if (r.success && r.id) pollCommandCompletion(r.id, cmd, targets[i]);
+        });
         setTimeout(loadClusterStatus, 3000);
       } catch (e) { showToast('Error: ' + e.message, 'error'); }
     }
@@ -3722,8 +3786,9 @@
       try {
         var data = await sendToBackend({ command: 'ssh', target: target, sshCmd: cmd, password: savedPassword });
         if (data.success) {
-          status.textContent = data.message + ' (queued — check command log for output)';
+          status.textContent = data.message + ' — waiting for result...';
           status.className = 'control-status visible success';
+          if (data.id) pollCommandCompletion(data.id, 'ssh', target);
         } else {
           status.textContent = data.error || 'Failed';
           status.className = 'control-status visible error';
@@ -4783,7 +4848,8 @@
       if (!pw) { requirePassword(function() { groupCmd(group, cmd); }); return; }
       sendToBackend({ command: cmd, target: group, password: pw })
         .then(function(data) {
-          showToast(data.message || 'Command sent to ' + group, data.success ? 'success' : 'error');
+          showToast((data.message || 'Command sent to ' + group) + ' — waiting for result...', data.success ? 'info' : 'error');
+          if (data.success && data.id) pollCommandCompletion(data.id, cmd, group);
           setTimeout(loadClusterStatus, 3000);
         })
         .catch(function(e) { showToast('Failed: ' + e.message, 'error'); });

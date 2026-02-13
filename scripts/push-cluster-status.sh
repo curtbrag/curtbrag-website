@@ -91,12 +91,30 @@ if [ "$K3S_UP" = "true" ]; then
   }]' 2>/dev/null || echo '[]')
   log "Got $(echo "$EVENTS_JSON" | jq 'length') events"
 else
-  log "WARNING: K3s unavailable — pushing metrics/battery/mining only"
-  NODES_JSON='[]'
+  log "WARNING: K3s unavailable — synthesizing nodes from SSH reachability"
   NODE_SCHEDULING='[]'
   PODS_JSON='[]'
   SERVICES_JSON='[]'
   EVENTS_JSON='[]'
+  # Build a basic nodes array from what we know: 10 phones on 192.168.1.206-215
+  NODES_JSON='[]'
+  for i in $(seq 1 10); do
+    NODE_IP="192.168.1.$((205 + i))"
+    NODE_NAME="node$i"
+    NODE_ROLE="worker"
+    [ "$i" = "1" ] && NODE_ROLE="control-plane"
+    # Check SSH reachability (fast, 2s timeout)
+    if [ "$i" = "1" ]; then
+      NODE_STATUS="Ready"
+    elif ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then
+      NODE_STATUS="Ready"
+    else
+      NODE_STATUS="NotReady"
+    fi
+    NODES_JSON=$(echo "$NODES_JSON" | jq --arg name "$NODE_NAME" --arg status "$NODE_STATUS" --arg role "$NODE_ROLE" --arg ip "$NODE_IP" \
+      '. + [{name:$name, status:$status, role:$role, ip:$ip, kubeletVersion:"N/A (K3s down)", osImage:"postmarketOS", arch:"aarch64"}]')
+  done
+  log "Synthesized $(echo "$NODES_JSON" | jq 'length') nodes from SSH"
 fi
 
 # ── Network ─────────────────────────────────────────────────────────
@@ -367,9 +385,14 @@ if [ "$K3S_UP" = "true" ]; then
   [ "$PODS_FAILED" -gt 0 ] && HEALTH_SCORE=$((HEALTH_SCORE - PODS_FAILED * 5))
   [ "$HEALTH_SCORE" -lt 0 ] && HEALTH_SCORE=0
 else
-  NODES_READY=0; NODES_TOTAL=0
+  # Even without K3s, count synthesized nodes
+  NODES_READY=$(echo "$NODES_JSON" | jq '[.[] | select(.status=="Ready")] | length')
+  NODES_TOTAL=$(echo "$NODES_JSON" | jq 'length')
   PODS_RUNNING=0; PODS_TOTAL=0; PODS_PENDING=0; PODS_FAILED=0
-  TOTAL_RESTARTS=0; HEALTH_SCORE=0
+  TOTAL_RESTARTS=0
+  # Health score based on node reachability alone
+  NODE_PCT=0; [ "$NODES_TOTAL" -gt 0 ] && NODE_PCT=$((NODES_READY * 100 / NODES_TOTAL))
+  HEALTH_SCORE=$NODE_PCT
 fi
 
 log "Summary: $NODES_READY/$NODES_TOTAL nodes, $PODS_RUNNING/$PODS_TOTAL pods, health=$HEALTH_SCORE%"

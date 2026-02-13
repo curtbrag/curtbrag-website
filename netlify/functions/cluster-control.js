@@ -131,6 +131,24 @@ exports.handler = async (event) => {
       };
     }
 
+    // Command status check by ID (for dashboard polling)
+    if (params.action === 'command-status' && params.id) {
+      const queue = await getQueue();
+      const inQueue = queue.some(c => c.id === params.id);
+      if (inQueue) {
+        return { statusCode: 200, headers, body: JSON.stringify({ status: 'queued' }) };
+      }
+      const history = await getHistory();
+      const entry = history.find(h => h.id === params.id);
+      if (entry) {
+        return {
+          statusCode: 200, headers,
+          body: JSON.stringify({ status: 'completed', result: entry.result, output: entry.output || null, completedAt: entry.completedAt })
+        };
+      }
+      return { statusCode: 200, headers, body: JSON.stringify({ status: 'executing' }) };
+    }
+
     // Dashboard getting queue status
     const queue = await getQueue();
     const history = await getHistory();
