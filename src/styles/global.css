@@ -74,7 +74,8 @@ body {
   background-clip: text;
 }
 
-/* Animations */
+/* ═══════════════════════════════ ANIMATIONS ═══════════════════════════════ */
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -87,12 +88,50 @@ body {
   0%, 100% { box-shadow: 0 0 0 0 var(--color-brand-glow); }
   50% { box-shadow: 0 0 20px 4px var(--color-brand-glow); }
 }
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes border-glow {
+  0%, 100% { border-color: var(--color-border); }
+  50% { border-color: var(--color-brand); }
+}
+@keyframes particle-drift {
+  0% { transform: translate(0, 0) scale(1); opacity: 0; }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.6; }
+  100% { transform: translate(var(--drift-x, 40px), var(--drift-y, -60px)) scale(0.3); opacity: 0; }
+}
 
 .animate-fade-in {
   animation: fadeIn 0.5s ease-out forwards;
 }
 .animate-slide-up {
   animation: slideUp 0.6s ease-out forwards;
+}
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+.animate-shimmer {
+  background-size: 200% auto;
+  animation: shimmer 3s linear infinite;
+}
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient-shift 4s ease infinite;
 }
 
 /* Staggered animation delays */
@@ -101,3 +140,229 @@ body {
 .delay-3 { animation-delay: 0.3s; opacity: 0; }
 .delay-4 { animation-delay: 0.4s; opacity: 0; }
 .delay-5 { animation-delay: 0.5s; opacity: 0; }
+
+/* ═══════════════════════════════ SCROLL REVEAL ═══════════════════════════════ */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-left {
+  opacity: 0;
+  transform: translateX(-30px);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+.reveal-left.visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+.reveal-right {
+  opacity: 0;
+  transform: translateX(30px);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+.reveal-right.visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+.reveal-scale {
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+.reveal-scale.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* ═══════════════════════════════ CARD ENHANCEMENTS ═══════════════════════════════ */
+
+/* Gradient border card */
+.card-glow {
+  position: relative;
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  transition: all 0.4s ease;
+}
+.card-glow::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, transparent, transparent);
+  z-index: -1;
+  transition: all 0.4s ease;
+  opacity: 0;
+}
+.card-glow:hover {
+  border-color: transparent;
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(237, 35, 42, 0.15);
+}
+.card-glow:hover::before {
+  background: linear-gradient(135deg, var(--color-brand), #ff6b6b, var(--color-brand));
+  opacity: 1;
+}
+
+/* Icon pulse on card hover */
+.card-glow:hover .card-icon {
+  transform: scale(1.15);
+  filter: drop-shadow(0 0 8px currentColor);
+}
+.card-icon {
+  transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+/* ═══════════════════════════════ SOCIAL LINK HOVERS ═══════════════════════════════ */
+
+.social-link {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+.social-link::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  border-radius: inherit;
+}
+.social-link:hover {
+  border-color: transparent;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+.social-link:hover::before {
+  opacity: 1;
+}
+
+/* Brand-specific backgrounds */
+.social-instagram::before { background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); }
+.social-instagram:hover { color: white; }
+.social-facebook::before { background: #1877F2; }
+.social-facebook:hover { color: white; }
+.social-tiktok::before { background: linear-gradient(45deg, #010101, #69C9D0); }
+.social-tiktok:hover { color: white; }
+.social-youtube::before { background: #FF0000; }
+.social-youtube:hover { color: white; }
+.social-threads::before { background: #7C2E7A; }
+.social-threads:hover { color: white; }
+.social-snapchat::before { background: #FFFC00; }
+.social-snapchat:hover { color: #000; }
+.social-telegram::before { background: #26A4E3; }
+.social-telegram:hover { color: white; }
+.social-reddit::before { background: #FF4500; }
+.social-reddit:hover { color: white; }
+
+/* ═══════════════════════════════ BUTTON ENHANCEMENTS ═══════════════════════════════ */
+
+.btn-brand {
+  position: relative;
+  overflow: hidden;
+}
+.btn-brand::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.5s ease;
+}
+.btn-brand:hover::after {
+  transform: translateX(100%);
+}
+
+/* ═══════════════════════════════ HERO PARTICLES ═══════════════════════════════ */
+
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--color-brand);
+  opacity: 0;
+  animation: particle-drift var(--duration, 6s) ease-in-out infinite;
+  animation-delay: var(--delay, 0s);
+}
+
+/* ═══════════════════════════════ NAV GRADIENT LINE ═══════════════════════════════ */
+
+.nav-gradient-line {
+  background: linear-gradient(90deg, transparent, var(--color-brand), #ff6b6b, var(--color-brand), transparent);
+  height: 1px;
+  opacity: 0.6;
+}
+
+/* ═══════════════════════════════ SECTION DIVIDERS ═══════════════════════════════ */
+
+.section-divider {
+  position: relative;
+  height: 1px;
+  background: var(--color-border);
+  margin: 0 auto;
+  max-width: 72rem;
+}
+.section-divider::after {
+  content: '';
+  position: absolute;
+  top: -0.5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--color-brand), transparent);
+}
+
+/* ═══════════════════════════════ FOOTER GRADIENT ═══════════════════════════════ */
+
+.footer-gradient-border {
+  background: linear-gradient(90deg, transparent, var(--color-brand), #ff6b6b, var(--color-brand), transparent);
+  height: 2px;
+}
+
+/* ═══════════════════════════════ MISC EFFECTS ═══════════════════════════════ */
+
+/* Floating badge */
+.badge-glow {
+  box-shadow: 0 0 0 0 var(--color-brand-glow);
+  transition: box-shadow 0.3s ease;
+}
+.badge-glow:hover {
+  box-shadow: 0 0 12px 2px var(--color-brand-glow);
+}
+
+/* Text glow on hover */
+.text-glow:hover {
+  text-shadow: 0 0 20px var(--color-brand-glow);
+}
+
+/* Noise overlay for sections (subtle texture) */
+.bg-noise {
+  position: relative;
+}
+.bg-noise::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.02;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Stagger children for reveal */
+.stagger-children > *:nth-child(1) { transition-delay: 0s; }
+.stagger-children > *:nth-child(2) { transition-delay: 0.1s; }
+.stagger-children > *:nth-child(3) { transition-delay: 0.15s; }
+.stagger-children > *:nth-child(4) { transition-delay: 0.2s; }
+.stagger-children > *:nth-child(5) { transition-delay: 0.25s; }
+.stagger-children > *:nth-child(6) { transition-delay: 0.3s; }
+.stagger-children > *:nth-child(7) { transition-delay: 0.35s; }
+.stagger-children > *:nth-child(8) { transition-delay: 0.4s; }

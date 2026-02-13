@@ -17,7 +17,7 @@ function isActive(href: string): boolean {
 }
 ---
 
-<header class="fixed top-0 left-0 right-0 z-50 bg-bg/80 backdrop-blur-xl border-b border-border">
+<header class="fixed top-0 left-0 right-0 z-50 bg-bg/80 backdrop-blur-xl border-b border-transparent">
   <nav class="max-w-7xl mx-auto px-4 sm:px-6">
     <div class="flex items-center justify-between h-16">
       <!-- Logo -->
@@ -65,6 +65,7 @@ function isActive(href: string): boolean {
       </button>
     </div>
   </nav>
+  <div class="nav-gradient-line"></div>
 </header>
 
 <!-- Spacer to account for fixed header -->
