@@ -56,6 +56,14 @@ if [ -z "$WALLET" ]; then
   exit 1
 fi
 
+# Validate CPU_HINT is numeric 1-100
+case "$CPU_HINT" in
+  ''|*[!0-9]*) echo -e "${RED}Error: --cpu must be a number (1-100)${NC}"; exit 1;;
+esac
+if [ "$CPU_HINT" -lt 1 ] || [ "$CPU_HINT" -gt 100 ]; then
+  echo -e "${RED}Error: --cpu must be between 1 and 100${NC}"; exit 1
+fi
+
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}  XMR Mining Setup — Phone Cluster${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -151,12 +159,14 @@ command="/usr/local/bin/xmrig"
 command_args="--config=/etc/xmrig/config.json"
 command_background=true
 pidfile="/run/xmrig.pid"
-output_log="/var/log/xmrig.log"
-error_log="/var/log/xmrig.log"
 
 depend() {
   need net
   after firewall
+}
+
+start_pre() {
+  mkdir -p /var/log
 }
 INITSCRIPT
 

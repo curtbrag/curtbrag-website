@@ -1289,6 +1289,12 @@
         <button class="ctrl-btn sleep" onclick="sendCommand('sleep')" aria-label="Put selected nodes to sleep"><i class="fa-solid fa-moon" aria-hidden="true"></i> Sleep</button>
         <button class="ctrl-btn reboot" onclick="sendCommand('reboot')" aria-label="Reboot selected nodes"><i class="fa-solid fa-power-off" aria-hidden="true"></i> Reboot</button>
       </div>
+      <div style="display:flex;gap:0.5rem;align-items:center;padding:0.5rem 0;">
+        <i class="fa-solid fa-sun" style="color:var(--yellow);font-size:0.85rem" title="Brightness"></i>
+        <input type="range" id="brightnessSlider" min="0" max="255" value="128" style="flex:1;accent-color:var(--brand);cursor:pointer;" title="Phone screen brightness (0-255)">
+        <span id="brightnessValue" style="font-size:0.8rem;color:var(--muted);min-width:2.5rem;text-align:right;font-family:'JetBrains Mono',monospace;">128</span>
+        <button class="ctrl-btn" onclick="sendBrightness()" style="padding:0.4rem 0.8rem;font-size:0.8rem;"><i class="fa-solid fa-sun"></i> Set</button>
+      </div>
       <div class="custom-cmd">
         <input type="text" id="customCmdInput" placeholder="Custom SSH command (e.g. uptime, free -m, df -h)" onkeydown="if(event.key==='Enter')runCustomCommand()">
         <button class="ctrl-btn" onclick="runCustomCommand()"><i class="fa-solid fa-terminal"></i> Run</button>
@@ -1321,6 +1327,7 @@
       <button class="fav-btn" onclick="quickAction('mining-start','all')"><i class="fa-solid fa-play"></i> Start Mining</button>
       <button class="fav-btn" onclick="quickAction('mining-stop','all')"><i class="fa-solid fa-stop"></i> Stop Mining</button>
       <button class="fav-btn" onclick="quickAction('refresh-adb','all')"><i class="fa-solid fa-usb"></i> Refresh ADB</button>
+      <button class="fav-btn" onclick="showDashboardOnPhones()" style="background:rgba(59,130,246,0.15);border-color:rgba(59,130,246,0.3);"><i class="fa-solid fa-display"></i> Show Dashboard</button>
     </div>
 
     <!-- Node Group Actions -->
@@ -1556,13 +1563,16 @@
       <h2 class="section-title"><i class="fa-solid fa-display"></i> Phone Screens</h2>
       <div style="display: flex; gap: 0.5rem; align-items: center;">
         <span class="section-badge" id="screenBadge">0 screens</span>
-        <button class="refresh-btn" onclick="loadScreens()" id="screenRefreshBtn" title="Capture all screens">
+        <button class="refresh-btn" onclick="requestScreenshotCapture()" id="screenRefreshBtn" title="Capture all screens via SSH">
           <i class="fa-solid fa-camera"></i> Capture
+        </button>
+        <button class="refresh-btn" onclick="loadScreensViaRelay()" title="View saved screenshots">
+          <i class="fa-solid fa-images"></i> View Saved
         </button>
       </div>
     </div>
     <div class="screen-grid" id="screenGrid">
-      <div class="empty-state"><i class="fa-solid fa-display"></i><br>Configure API endpoint to view phone screens</div>
+      <div class="empty-state"><i class="fa-solid fa-display"></i><br>Click "Capture" to take phone screenshots via SSH</div>
     </div>
 
     <!-- Screen Modal -->
@@ -1575,6 +1585,7 @@
         <img id="screenModalImg" src="" alt="Phone screen">
         <div class="screen-modal-actions">
           <button onclick="refreshSingleScreen()"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+          <button onclick="requestSingleScreenshot()"><i class="fa-solid fa-camera"></i> Capture</button>
           <button onclick="wakeScreen()"><i class="fa-solid fa-sun"></i> Wake</button>
           <button onclick="sleepScreen()"><i class="fa-solid fa-moon"></i> Sleep</button>
         </div>
@@ -2022,6 +2033,7 @@
   </div>
 
   <script>
+    function escapeAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
     let allPods = [];
     let allServices = [];
     let currentNamespace = 'all';
@@ -2675,7 +2687,7 @@
             '<i class="fa-solid ' + (isOnline ? 'fa-circle-check' : 'fa-circle-xmark') + '" style="color: var(--' + (isOnline ? 'green' : 'red') + ')"></i>' +
             '<span>' + w.name + '</span>' +
             '<span class="rate">' + w.hashrate + uptimeStr + '</span>' +
-            '<button class="ssh-preset" onclick="sendMiningNodeCommand(\'' + toggleCmd + '\',\'' + w.name + '\')" title="' + toggleTitle + '" style="margin-left:4px"><i class="fa-solid ' + toggleIcon + '"></i></button></div>';
+            '<button class="ssh-preset" onclick="sendMiningNodeCommand(\'' + escapeAttr(toggleCmd) + '\',\'' + escapeAttr(w.name) + '\')" title="' + escapeAttr(toggleTitle) + '" style="margin-left:4px"><i class="fa-solid ' + toggleIcon + '"></i></button></div>';
         }).join('');
       } else {
         workerList.innerHTML = '<span class="worker-chip"><span>No workers</span></span>';
@@ -2991,28 +3003,98 @@
     // ─── Screen Viewer Functions ──────────────────────────────────────────
 
     async function loadScreens() {
-      if (!apiEndpoint) {
-        document.getElementById('screenGrid').innerHTML =
-          '<div class="empty-state"><i class="fa-solid fa-display"></i><br>Live screenshots require Direct API connection</div>';
+      if (apiEndpoint) {
+        // Direct API path (existing)
+        const btn = document.getElementById('screenRefreshBtn');
+        btn.disabled = true;
+        try {
+          const headers = {};
+          if (apiToken) headers['Authorization'] = 'Bearer ' + apiToken;
+          const res = await fetch(apiEndpoint + '/api/screens', { headers, signal: AbortSignal.timeout(30000) });
+          const data = await res.json();
+          renderScreens(data.screens || []);
+        } catch (e) {
+          console.warn('Direct API screens failed, trying relay:', e.message);
+          await loadScreensViaRelay();
+        } finally {
+          btn.disabled = false;
+        }
         return;
       }
+      await loadScreensViaRelay();
+    }
 
-      const btn = document.getElementById('screenRefreshBtn');
+    async function loadScreensViaRelay() {
+      var btn = document.getElementById('screenRefreshBtn');
       btn.disabled = true;
-
       try {
-        const headers = {};
-        if (apiToken) headers['Authorization'] = 'Bearer ' + apiToken;
-        const res = await fetch(apiEndpoint + '/api/screens', { headers, signal: AbortSignal.timeout(30000) });
-        const data = await res.json();
-        renderScreens(data.screens || []);
+        var res = await fetch('/.netlify/functions/cluster-control?action=screenshots');
+        var data = await res.json();
+        if (data.screens && data.screens.length > 0) {
+          renderScreens(data.screens);
+        } else {
+          document.getElementById('screenGrid').innerHTML =
+            '<div class="empty-state"><i class="fa-solid fa-display"></i><br>No screenshots yet. Click "Capture" to request screenshots via SSH.</div>';
+        }
       } catch (e) {
-        console.error('Screen load failed:', e);
         document.getElementById('screenGrid').innerHTML =
-          '<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><br>Failed to load screens</div>';
+          '<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><br>Failed to load screenshots</div>';
       } finally {
         btn.disabled = false;
       }
+    }
+
+    async function requestScreenshotCapture() {
+      if (!savedPassword) {
+        pendingCommand = 'screenshot';
+        pendingPasswordCallback = function() { requestScreenshotCapture(); };
+        document.getElementById('passwordModal').classList.add('visible');
+        document.getElementById('passwordInput').focus();
+        return;
+      }
+      var target = document.getElementById('targetSelect').value;
+      var screenshotTarget = (target === 'all' || target.startsWith('node')) ? target : 'all';
+      var btn = document.getElementById('screenRefreshBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Capturing...';
+      try {
+        var data = await sendToBackend({ command: 'screenshot', target: screenshotTarget, password: savedPassword });
+        if (data.success) {
+          showToast('Screenshot capture queued — results in ~15s...', 'success');
+          if (data.id) pollScreenshotCompletion(data.id);
+        } else {
+          showToast('Screenshot failed: ' + (data.error || 'Unknown'), 'error');
+        }
+      } catch (e) {
+        showToast('Screenshot error: ' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-camera"></i> Capture';
+      }
+    }
+
+    function pollScreenshotCompletion(cmdId) {
+      var attempts = 0;
+      var interval = setInterval(async function() {
+        attempts++;
+        if (attempts > 30) { clearInterval(interval); loadScreensViaRelay(); return; }
+        try {
+          var res = await fetch('/.netlify/functions/cluster-control?action=command-status&id=' + cmdId);
+          var data = await res.json();
+          if (data.status === 'completed') {
+            clearInterval(interval);
+            showToast('Screenshots captured!', 'success');
+            setTimeout(loadScreensViaRelay, 1000);
+          }
+        } catch (e) { /* keep polling */ }
+      }, 2000);
+    }
+
+    async function requestSingleScreenshot() {
+      if (!currentScreenDevice || !savedPassword) return;
+      showToast('Capturing ' + currentScreenDevice + '...', 'info');
+      var data = await sendToBackend({ command: 'screenshot', target: currentScreenDevice, password: savedPassword });
+      if (data.success && data.id) pollScreenshotCompletion(data.id);
     }
 
     function renderScreens(screens) {
@@ -3053,11 +3135,19 @@
       currentScreenDevice = null;
     }
 
-    function refreshSingleScreen() {
-      if (!currentScreenDevice || !apiEndpoint) return;
-      const img = document.getElementById('screenModalImg');
-      const tokenParam = apiToken ? '&token=' + encodeURIComponent(apiToken) : '';
-      img.src = apiEndpoint + '/api/screen/' + encodeURIComponent(currentScreenDevice) + '?t=' + Date.now() + tokenParam;
+    async function refreshSingleScreen() {
+      if (!currentScreenDevice) return;
+      var img = document.getElementById('screenModalImg');
+      if (apiEndpoint) {
+        var tokenParam = apiToken ? '&token=' + encodeURIComponent(apiToken) : '';
+        img.src = apiEndpoint + '/api/screen/' + encodeURIComponent(currentScreenDevice) + '?t=' + Date.now() + tokenParam;
+        return;
+      }
+      try {
+        var res = await fetch('/.netlify/functions/cluster-control?action=screenshot&node=' + encodeURIComponent(currentScreenDevice));
+        var data = await res.json();
+        if (data && data.image) img.src = data.image;
+      } catch (e) { console.warn('Failed to refresh screen:', e); }
     }
 
     async function wakeScreen() {
@@ -3077,6 +3167,33 @@
     document.getElementById('screenModal').addEventListener('click', function(e) {
       if (e.target === this) closeScreenModal();
     });
+
+    // ─── Brightness Control ──────────────────────────────────────────────
+    document.getElementById('brightnessSlider').addEventListener('input', function() {
+      document.getElementById('brightnessValue').textContent = this.value;
+    });
+
+    function sendBrightness() {
+      var level = document.getElementById('brightnessSlider').value;
+      if (!savedPassword) {
+        pendingCommand = 'brightness';
+        pendingPasswordCallback = function() { sendBrightness(); };
+        document.getElementById('passwordModal').classList.add('visible');
+        document.getElementById('passwordInput').focus();
+        return;
+      }
+      var target = document.getElementById('targetSelect').value;
+      sendToBackend({ command: 'brightness', target: target, sshCmd: level, password: savedPassword }).then(function(data) {
+        if (data.success) {
+          showToast('Brightness set to ' + level + ' on ' + target, 'success');
+          if (data.id) pollCommandCompletion(data.id, 'brightness', target);
+        } else {
+          showToast('Brightness failed: ' + (data.error || 'Unknown'), 'error');
+        }
+      }).catch(function(e) {
+        showToast('Brightness error: ' + e.message, 'error');
+      });
+    }
 
     // ─── Theme Toggle ────────────────────────────────────────────────────
     function toggleTheme() {
@@ -3126,6 +3243,31 @@
         if (data.success) { showToast(data.message + ' — waiting for result...', 'info'); if (data.id) pollCommandCompletion(data.id, cmd, target); setTimeout(loadClusterStatus, 3000); }
         else { showToast(data.error || 'Failed', 'error'); if (data.error === 'Invalid password') { savedPassword = ''; localStorage.removeItem('clusterPassword'); } }
       } catch (e) { showToast('Error: ' + e.message, 'error'); }
+    }
+
+    async function showDashboardOnPhones() {
+      if (!savedPassword) {
+        requirePassword(function() { showDashboardOnPhones(); });
+        return;
+      }
+      showToast('Waking phones & opening dashboard...', 'info');
+      try {
+        // Wake first
+        var wake = await sendToBackend({ command: 'wake', target: 'phones', password: savedPassword });
+        if (wake.success && wake.id) pollCommandCompletion(wake.id, 'wake', 'phones');
+        // Then browse to dashboard after short delay
+        setTimeout(async function() {
+          var browse = await sendToBackend({ command: 'browse', target: 'phones', url: 'https://www.curtbrag.com/cluster', password: savedPassword });
+          if (browse.success) {
+            showToast('Dashboard sent to all phones!', 'success');
+            if (browse.id) pollCommandCompletion(browse.id, 'browse', 'phones');
+          } else {
+            showToast('Browse failed: ' + (browse.error || 'Unknown'), 'error');
+          }
+        }, 3000);
+      } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+      }
     }
 
     // ─── Node Detail Modal ───────────────────────────────────────────────
@@ -4081,7 +4223,9 @@
       { icon: 'fa-stop', label: 'Stop all miners', action: function() { groupCmd('all', 'mining-stop'); } },
       { icon: 'fa-satellite-dish', label: 'Run ping test', shortcut: 'P', action: function() { runPingTest(); } },
       { icon: 'fa-download', label: 'Export cluster snapshot', shortcut: 'E', action: function() { exportClusterState(); } },
-      { icon: 'fa-camera', label: 'Capture phone screens', action: function() { loadScreens(); } },
+      { icon: 'fa-camera', label: 'Capture phone screens via SSH', action: function() { requestScreenshotCapture(); } },
+      { icon: 'fa-display', label: 'Show dashboard on all phones', action: function() { showDashboardOnPhones(); } },
+      { icon: 'fa-sun', label: 'Set phone brightness', action: function() { document.getElementById('brightnessSlider').focus(); } },
       { icon: 'fa-expand', label: 'Toggle fullscreen', shortcut: 'F', action: function() { toggleFullscreen(); } },
       { icon: 'fa-circle-half-stroke', label: 'Toggle theme', shortcut: 'T', action: function() { toggleTheme(); } },
       { icon: 'fa-magnifying-glass', label: 'Auto-detect API server', action: function() { autoDetectApi(); } },
@@ -5068,7 +5212,7 @@
       var m = lastMetrics[node.name] || {};
       var title = node.name + ' (' + node.status + ')';
       if (m.cpu) title += ' CPU:' + m.cpu.usage + '%';
-      return '<g class="topo-node" onclick="openNodeDetail(\'' + node.name + '\')">' +
+      return '<g class="topo-node" onclick="openNodeDetail(\'' + escapeAttr(node.name) + '\')">' +
         '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="' + color + '" opacity="0.2" stroke="' + color + '" stroke-width="2"/>' +
         '<text x="' + x + '" y="' + (y + 4) + '" fill="var(--text)" font-size="9" text-anchor="middle">' + node.name.replace('node', 'n') + '</text>' +
         '<title>' + title + '</title></g>';
@@ -5312,7 +5456,7 @@
     loadHealthHistory();
     setInterval(loadClusterStatus, 10000);
     setInterval(measureApiLatency, 15000);
-    setInterval(function() { if (apiEndpoint) loadScreens(); }, 30000);
+    setInterval(function() { if (apiEndpoint) loadScreens(); else loadScreensViaRelay(); }, 60000);
     setInterval(function() { if (apiEndpoint) loadAlerts(); loadCommandLog(); }, 15000);
     loadEvents();
     loadDeployments();

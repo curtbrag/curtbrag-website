@@ -142,10 +142,11 @@ execute_command() {
     wake)
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
+      WAKE_CMD="doas sh -c 'for f in /sys/class/backlight/*/bl_power; do echo 0 > \"\$f\"; done'"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "input keyevent KEYCODE_WAKEUP" "$RESULT_DIR"
+        run_on_all_tracked "$WAKE_CMD" "$RESULT_DIR"
       else
-        ssh_node_tracked "$(resolve_ip "$target")" "input keyevent KEYCODE_WAKEUP" "$RESULT_DIR" "$target"
+        ssh_node_tracked "$(resolve_ip "$target")" "$WAKE_CMD" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -153,10 +154,11 @@ execute_command() {
     sleep)
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
+      SLEEP_CMD="doas sh -c 'for f in /sys/class/backlight/*/bl_power; do echo 4 > \"\$f\"; done'"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "input keyevent KEYCODE_SLEEP" "$RESULT_DIR"
+        run_on_all_tracked "$SLEEP_CMD" "$RESULT_DIR"
       else
-        ssh_node_tracked "$(resolve_ip "$target")" "input keyevent KEYCODE_SLEEP" "$RESULT_DIR" "$target"
+        ssh_node_tracked "$(resolve_ip "$target")" "$SLEEP_CMD" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -168,13 +170,13 @@ execute_command() {
         for i in $(seq 1 10); do
           IP="192.168.1.$((205+i))"
           SVC=$(k3s_svc "node$i")
-          ssh_node_tracked "$IP" "doas systemctl restart $SVC" "$RESULT_DIR" "node$i" &
+          ssh_node_tracked "$IP" "doas rc-service $SVC restart" "$RESULT_DIR" "node$i" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        ssh_node_tracked "$IP" "doas systemctl restart $SVC" "$RESULT_DIR" "$target"
+        ssh_node_tracked "$IP" "doas rc-service $SVC restart" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -186,13 +188,13 @@ execute_command() {
         for i in $(seq 1 10); do
           IP="192.168.1.$((205+i))"
           SVC=$(k3s_svc "node$i")
-          ssh_node_tracked "$IP" "doas systemctl start $SVC" "$RESULT_DIR" "node$i" &
+          ssh_node_tracked "$IP" "doas rc-service $SVC start" "$RESULT_DIR" "node$i" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        ssh_node_tracked "$IP" "doas systemctl start $SVC" "$RESULT_DIR" "$target"
+        ssh_node_tracked "$IP" "doas rc-service $SVC start" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -204,13 +206,13 @@ execute_command() {
         for i in $(seq 1 10); do
           IP="192.168.1.$((205+i))"
           SVC=$(k3s_svc "node$i")
-          ssh_node_tracked "$IP" "doas systemctl stop $SVC" "$RESULT_DIR" "node$i" &
+          ssh_node_tracked "$IP" "doas rc-service $SVC stop" "$RESULT_DIR" "node$i" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        ssh_node_tracked "$IP" "doas systemctl stop $SVC" "$RESULT_DIR" "$target"
+        ssh_node_tracked "$IP" "doas rc-service $SVC stop" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -220,9 +222,9 @@ execute_command() {
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "doas systemctl start xmrig" "$RESULT_DIR"
+        run_on_all_tracked "doas rc-service xmrig start" "$RESULT_DIR"
       else
-        ssh_node_tracked "$(resolve_ip "$target")" "doas systemctl start xmrig" "$RESULT_DIR" "$target"
+        ssh_node_tracked "$(resolve_ip "$target")" "doas rc-service xmrig start" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -232,9 +234,9 @@ execute_command() {
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "doas systemctl stop xmrig" "$RESULT_DIR"
+        run_on_all_tracked "doas rc-service xmrig stop" "$RESULT_DIR"
       else
-        ssh_node_tracked "$(resolve_ip "$target")" "doas systemctl stop xmrig" "$RESULT_DIR" "$target"
+        ssh_node_tracked "$(resolve_ip "$target")" "doas rc-service xmrig stop" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -244,12 +246,20 @@ execute_command() {
       mkdir -p "$RESULT_DIR"
       if [ -n "$url" ]; then
         # Sanitize URL: only allow safe characters
-        safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!$&'()*+,;=%-]//g")
+        safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!\$&()*+,;=%-]//g")
         log "Opening $safe_url on phones..."
+        # postmarketOS/Phosh: use xdg-open or direct browser, with Wayland display set
+        BROWSE_CMD="export XDG_RUNTIME_DIR=/run/user/\$(id -u); export WAYLAND_DISPLAY=wayland-0; export DISPLAY=:0
+if command -v xdg-open >/dev/null 2>&1; then xdg-open '$safe_url' 2>/dev/null
+elif command -v firefox >/dev/null 2>&1; then firefox '$safe_url' &
+elif command -v chromium >/dev/null 2>&1; then chromium --no-sandbox '$safe_url' &
+elif command -v chromium-browser >/dev/null 2>&1; then chromium-browser --no-sandbox '$safe_url' &
+elif command -v am >/dev/null 2>&1; then am start -a android.intent.action.VIEW -d '$safe_url'
+else echo 'NO_BROWSER' && exit 1; fi"
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-          run_on_all_tracked "am start -a android.intent.action.VIEW -d '$safe_url'" "$RESULT_DIR"
+          run_on_all_tracked "$BROWSE_CMD" "$RESULT_DIR"
         else
-          ssh_node_tracked "$(resolve_ip "$target")" "am start -a android.intent.action.VIEW -d '$safe_url'" "$RESULT_DIR" "$target"
+          ssh_node_tracked "$(resolve_ip "$target")" "$BROWSE_CMD" "$RESULT_DIR" "$target"
         fi
       fi
       RESULT=$(collect_results "$RESULT_DIR")
@@ -347,6 +357,98 @@ ${NODE_OUT}
         # Truncate to 4000 chars for Netlify Blobs
         TRUNC_OUTPUT=$(printf '%.4000s' "$OUTPUT")
         report_result "$cmd_id" "$RESULT" "$TRUNC_OUTPUT" "$cmd" "$target"
+      fi
+      ;;
+    screenshot)
+      log "Capturing screenshots..."
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      SCREENSHOT_DIR="/tmp/screenshots-$cmd_id"
+      mkdir -p "$RESULT_DIR" "$SCREENSHOT_DIR"
+
+      # Screenshot capture command - tries grim (Wayland), fbgrab, screencap
+      SCREEN_CMD='export XDG_RUNTIME_DIR=/run/user/$(id -u); export WAYLAND_DISPLAY=wayland-0; export DISPLAY=:0
+OUT=/tmp/screen_capture.png; rm -f "$OUT" /tmp/screen_capture.jpg
+if command -v grim >/dev/null 2>&1; then grim "$OUT" 2>/dev/null
+elif command -v fbgrab >/dev/null 2>&1; then fbgrab "$OUT" 2>/dev/null
+elif command -v screencap >/dev/null 2>&1; then screencap -p "$OUT" 2>/dev/null
+else echo "NO_TOOL" && exit 1; fi
+if [ -f "$OUT" ]; then
+  if command -v convert >/dev/null 2>&1; then
+    convert "$OUT" -resize 540x1080\> -quality 60 /tmp/screen_capture.jpg 2>/dev/null
+    if [ -f /tmp/screen_capture.jpg ]; then base64 /tmp/screen_capture.jpg; rm -f "$OUT" /tmp/screen_capture.jpg; exit 0; fi
+  fi
+  if command -v pngquant >/dev/null 2>&1; then
+    pngquant --quality=40-60 --speed=1 --output /tmp/screen_q.png "$OUT" 2>/dev/null
+    if [ -f /tmp/screen_q.png ]; then base64 /tmp/screen_q.png; rm -f "$OUT" /tmp/screen_q.png; exit 0; fi
+  fi
+  base64 "$OUT"; rm -f "$OUT"
+else echo "CAPTURE_FAILED" && exit 1; fi'
+
+      capture_node() {
+        local i="$1"
+        local node_name="node$i"
+        local ip="192.168.1.$((205+i))"
+        local outfile="$SCREENSHOT_DIR/${node_name}.b64"
+
+        if [ "$i" = "1" ]; then
+          B64=$(sh -c "$SCREEN_CMD" 2>/dev/null)
+        else
+          B64=$(ssh -o ConnectTimeout=8 -o StrictHostKeyChecking=no -o BatchMode=yes \
+            "user@$ip" "$SCREEN_CMD" 2>/dev/null)
+        fi
+
+        if [ -n "$B64" ] && [ "$B64" != "NO_TOOL" ] && [ "$B64" != "CAPTURE_FAILED" ]; then
+          echo "$B64" > "$outfile"
+          echo "ok" > "$RESULT_DIR/$node_name"
+        else
+          echo "fail" > "$RESULT_DIR/$node_name"
+        fi
+      }
+
+      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
+        for i in $(seq 1 10); do capture_node "$i" & done
+        wait
+      else
+        NODE_NUM=$(echo "$target" | sed 's/node//')
+        capture_node "$NODE_NUM"
+      fi
+
+      # Upload each screenshot to Netlify Blobs
+      for b64file in "$SCREENSHOT_DIR"/*.b64; do
+        [ -f "$b64file" ] || continue
+        NODE_NAME=$(basename "$b64file" .b64)
+        B64_DATA=$(cat "$b64file")
+        # Detect JPEG (starts with /9j/) vs PNG
+        MIME="image/png"
+        case "$B64_DATA" in /9j/*) MIME="image/jpeg" ;; esac
+        curl -s -X POST "$API_URL" \
+          -H "Content-Type: application/json" \
+          -H "X-Cluster-Key: $API_KEY" \
+          -d "$(jq -n --arg node "$NODE_NAME" --arg img "data:${MIME};base64,${B64_DATA}" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{action:"screenshot-upload",node:$node,image:$img,timestamp:$ts}')" >/dev/null 2>&1 || true
+        log "  Uploaded screenshot for $NODE_NAME"
+      done
+
+      rm -rf "$SCREENSHOT_DIR"
+      RESULT=$(collect_results "$RESULT_DIR")
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
+      ;;
+    brightness)
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
+      BRIGHTNESS_VAL="$ssh_cmd"
+      if [ -z "$BRIGHTNESS_VAL" ]; then
+        report_result "$cmd_id" "error: no brightness value" "" "$cmd" "$target"
+      else
+        log "Setting brightness to $BRIGHTNESS_VAL..."
+        BRIGHT_CMD="doas sh -c 'for f in /sys/class/backlight/*/brightness; do echo $BRIGHTNESS_VAL > \"\$f\"; done' 2>/dev/null || doas sh -c 'echo $BRIGHTNESS_VAL > /sys/class/leds/lcd-backlight/brightness' 2>/dev/null"
+        if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
+          run_on_all_tracked "$BRIGHT_CMD" "$RESULT_DIR"
+        else
+          ssh_node_tracked "$(resolve_ip "$target")" "$BRIGHT_CMD" "$RESULT_DIR" "$target"
+        fi
+        RESULT=$(collect_results "$RESULT_DIR")
+        report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
       fi
       ;;
     *)
