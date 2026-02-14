@@ -5,7 +5,7 @@
 # Configuration
 SERVER_IP="192.168.1.206"
 NODES="8 9 10"
-NODE_IPS="213 214 215"  # Last octet of 192.168.1.x
+# NODE_IPS no longer needed — IPs are resolved in the case statement below
 
 echo "=== K3s Node Fix Script ==="
 echo "This will fix nodes 8-10 to use WiFi IPs instead of USB IPs"
@@ -35,27 +35,22 @@ for i in 8 9 10; do
     echo "=== Fixing node$i ($IP) ==="
 
     # SSH and fix the node
-    ssh user@$IP << EOF
-echo "Stopping k3s-agent..."
+    ssh "user@$IP" "
+echo 'Stopping k3s-agent...'
 doas rc-service k3s-agent stop 2>/dev/null || true
 
-echo "Cleaning old agent data..."
+echo 'Cleaning old agent data...'
 doas rm -rf /var/lib/rancher/k3s/agent/* 2>/dev/null || true
 
-echo "Creating k3s config..."
+echo 'Creating k3s config...'
 doas mkdir -p /etc/rancher/k3s
-cat << CONF | doas tee /etc/rancher/k3s/config.yaml
-server: https://$SERVER_IP:6443
-token: $TOKEN
-node-name: node$i
-node-ip: $IP
-CONF
+printf '%s\n' 'server: \"https://$SERVER_IP:6443\"' 'token: \"$TOKEN\"' 'node-name: \"node$i\"' 'node-ip: \"$IP\"' | doas tee /etc/rancher/k3s/config.yaml
 
-echo "Starting k3s-agent..."
+echo 'Starting k3s-agent...'
 doas rc-service k3s-agent start
 
-echo "Node$i fix complete!"
-EOF
+echo 'Node$i fix complete!'
+"
 
 done
 

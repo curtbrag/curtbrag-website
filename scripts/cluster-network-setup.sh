@@ -110,25 +110,34 @@ setup_wifi() {
 
   log "[$node_name] Configuring WiFi..."
 
-  ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "user@$node_ip" <<EOF
-    sudo apk add wpa_supplicant 2>/dev/null || true
-    sudo mkdir -p /etc/wpa_supplicant
-    cat <<WPAEOF | sudo tee /etc/wpa_supplicant/wpa_supplicant.conf
-ctrl_interface=/var/run/wpa_supplicant
+  # Generate hashed PSK locally, then deploy to node
+  local hashed_conf
+  if command -v wpa_passphrase >/dev/null 2>&1; then
+    hashed_conf=$(wpa_passphrase "$WIFI_SSID" "$WIFI_PASSWORD" | grep -v '#psk=')
+    hashed_conf="ctrl_interface=/var/run/wpa_supplicant
+update_config=1
+country=US
+$hashed_conf"
+  else
+    hashed_conf="ctrl_interface=/var/run/wpa_supplicant
 update_config=1
 country=US
 network={
-    ssid="$WIFI_SSID"
-    psk="$WIFI_PASSWORD"
+    ssid=\"$WIFI_SSID\"
+    psk=\"$WIFI_PASSWORD\"
     key_mgmt=WPA-PSK
-}
-WPAEOF
+}"
+  fi
+  printf '%s\n' "$hashed_conf" | ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "user@$node_ip" "
+    sudo apk add wpa_supplicant 2>/dev/null || true
+    sudo mkdir -p /etc/wpa_supplicant
+    sudo tee /etc/wpa_supplicant/wpa_supplicant.conf > /dev/null
     sudo chmod 600 /etc/wpa_supplicant/wpa_supplicant.conf
     sudo rc-update add wpa_supplicant default 2>/dev/null || true
     sudo rc-service wpa_supplicant restart 2>/dev/null || true
     sleep 3
-    iw dev wlan0 link 2>/dev/null || echo "WiFi status unknown"
-EOF
+    iw dev wlan0 link 2>/dev/null || echo 'WiFi status unknown'
+  "
 }
 
 # Show network status

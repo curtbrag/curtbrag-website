@@ -13,7 +13,7 @@ const os = require('os');
 
 const CONFIG = {
   port: parseInt(process.env.CLUSTER_API_PORT) || 3847,
-  password: process.env.CLUSTER_WEB_PASSWORD || '0735',
+  password: process.env.CLUSTER_WEB_PASSWORD || '',
   apiToken: process.env.CLUSTER_API_TOKEN || '',
   allowedOrigins: ['https://www.curtbrag.com', 'https://curtbrag.com', 'http://localhost'],
 
@@ -713,12 +713,20 @@ async function handleScreens(req, res) {
 async function handleCommand(req, res, body) {
   const { command, target, password: pwd, url: browseUrl } = body;
 
+  if (!CONFIG.password) {
+    return sendJson(res, 503, { error: 'Password not configured on server' });
+  }
   if (pwd !== CONFIG.password) {
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    const rateEntry = getRateLimit(clientIp, true);
+    if (rateEntry.failedAuth > RATE_LIMIT_AUTH_MAX) {
+      return sendJson(res, 429, { error: 'Too many failed attempts' });
+    }
     logCommand({ command, target, status: 'denied', reason: 'Invalid password' });
     return sendJson(res, 401, { error: 'Invalid password' });
   }
 
-  const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse', 'refresh-adb', 'custom'];
+  const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse', 'refresh-adb', 'custom', 'reboot'];
   if (!validCommands.includes(command)) {
     return sendJson(res, 400, { error: 'Invalid command: ' + command });
   }
@@ -737,6 +745,12 @@ async function handleCommand(req, res, body) {
     if (!/^[a-zA-Z0-9 _.\-/:=,+@]+$/.test(customCmd)) {
       logCommand({ command: 'custom', target, status: 'denied', reason: 'Invalid characters in customCmd' });
       return sendJson(res, 400, { error: 'customCmd contains disallowed characters. Only alphanumeric, spaces, and common safe characters (- _ . / : = , + @) are allowed.' });
+    }
+    // Block dangerous commands even if they pass the character filter
+    const dangerousPatterns = [/^rm\s/, /^dd\s/, /^mkfs/, /^shutdown/, /^halt/, /^poweroff/, /^kill\s+-9\s+1$/, /^init\s+0/, /^reboot$/];
+    if (dangerousPatterns.some(p => p.test(customCmd.trim()))) {
+      logCommand({ command: 'custom', target, status: 'denied', reason: 'Blocked dangerous command' });
+      return sendJson(res, 400, { error: 'Command blocked for safety' });
     }
     if (customCmd.length > 200) {
       return sendJson(res, 400, { error: 'customCmd too long (max 200 characters)' });
@@ -859,10 +873,14 @@ async function executeOnNode(name, command, browseUrl) {
       if (!isPhone) return { ok: false, error: 'Not a phone node' };
       try { new URL(browseUrl); } catch { return { ok: false, error: 'Invalid URL' }; }
       const safeUrl = browseUrl.replace(/[^a-zA-Z0-9:/.?&=%#@+~_-]/g, '');
-      let r = await adbExecAsync(name, `shell am start -a android.intent.action.VIEW -d '${safeUrl}'`);
+      let r = await adbExecAsync(name, `shell am start -a android.intent.action.VIEW -d ${shellEscape(safeUrl)}`);
       if (r.ok) return { ok: true, output: r.stdout };
-      r = await sshExecAsync(name, `DISPLAY=:0 xdg-open '${safeUrl}' 2>/dev/null || firefox '${safeUrl}' 2>/dev/null &`);
+      r = await sshExecAsync(name, `DISPLAY=:0 xdg-open ${shellEscape(safeUrl)} 2>/dev/null || firefox ${shellEscape(safeUrl)} 2>/dev/null &`);
       return { ok: r.ok, output: r.stdout || r.stderr };
+    }
+    case 'reboot': {
+      const r = await sshExecAsync(name, 'doas reboot');
+      return { ok: true, output: r.stdout || 'Reboot initiated' };
     }
     default:
       return { ok: false, error: 'Unhandled command' };
@@ -1873,6 +1891,33 @@ function readBody(req, maxBytes = 1024 * 1024) {
   });
 }
 
+// ─── Rate Limiting ───────────────────────────────────────────────────────────
+
+const rateLimitMap = new Map(); // ip -> { count, resetTime }
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const RATE_LIMIT_MAX = 120; // max requests per minute per IP
+const RATE_LIMIT_AUTH_MAX = 10; // max failed auth per minute per IP
+
+function getRateLimit(ip, isFailed) {
+  const now = Date.now();
+  let entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetTime) {
+    entry = { count: 0, failedAuth: 0, resetTime: now + RATE_LIMIT_WINDOW };
+    rateLimitMap.set(ip, entry);
+  }
+  entry.count++;
+  if (isFailed) entry.failedAuth++;
+  return entry;
+}
+
+// Clean up stale rate limit entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap) {
+    if (now > entry.resetTime) rateLimitMap.delete(ip);
+  }
+}, 300000);
+
 const server = http.createServer(async (req, res) => {
   const reqStart = Date.now();
   setCors(req, res);
@@ -1880,6 +1925,13 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
     return res.end();
+  }
+
+  // Rate limiting
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+  const rateEntry = getRateLimit(clientIp, false);
+  if (rateEntry.count > RATE_LIMIT_MAX) {
+    return sendJson(res, 429, { error: 'Too many requests' });
   }
 
   const parsed = url.parse(req.url, true);
@@ -1978,7 +2030,7 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 404, { error: 'Not found' });
   } catch (e) {
     console.error('[ERROR]', req.method, path, e.message);
-    sendJson(res, 500, { error: 'Internal server error: ' + e.message });
+    sendJson(res, 500, { error: 'Internal server error' });
   }
 });
 

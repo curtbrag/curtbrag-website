@@ -13,6 +13,11 @@
   to = "/cluster/index.html"
   status = 200
 
+[[redirects]]
+  from = "/cluster/"
+  to = "/cluster/index.html"
+  status = 200
+
 # Security and caching headers
 [[headers]]
   for = "/*"
@@ -21,7 +26,7 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.auctionnudge.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://www.auctionnudge.com; img-src 'self' https: data: blob:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; connect-src 'self' https: http://localhost:* http://192.168.*; frame-ancestors 'none';"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.auctionnudge.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://www.auctionnudge.com; img-src 'self' https: data: blob:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' https: http://localhost:* http://192.168.*; frame-src 'self' https://www.auctionnudge.com; frame-ancestors 'none';"
 
 [[headers]]
   for = "/assets/*"

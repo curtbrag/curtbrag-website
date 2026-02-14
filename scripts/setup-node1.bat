@@ -1,13 +1,13 @@
 @echo off
 echo === Setting up Cluster Dashboard on node1 ===
 echo.
-echo Enter password 0735 when prompted
+echo Enter password when prompted
 echo.
 
 echo [1/4] Creating push script on node1...
 ssh user@192.168.1.206 "echo '#!/bin/sh' > ~/push-cluster-status.sh"
 ssh user@192.168.1.206 "echo 'API_URL=\"https://www.curtbrag.com/.netlify/functions/cluster-status\"' >> ~/push-cluster-status.sh"
-ssh user@192.168.1.206 "echo 'API_KEY=\"curtbrag-cluster-2024\"' >> ~/push-cluster-status.sh"
+ssh user@192.168.1.206 "echo 'API_KEY=\"${CLUSTER_API_KEY}\"' >> ~/push-cluster-status.sh"
 ssh user@192.168.1.206 "echo 'NODES_JSON=$(doas kubectl get nodes -o json 2>/dev/null | jq -c \"[.items[] | {name: .metadata.name, status: (if .status.conditions[] | select(.type==\\\"Ready\\\") | .status == \\\"True\\\" then \\\"Ready\\\" else \\\"NotReady\\\" end), role: (if .metadata.labels[\\\"node-role.kubernetes.io/control-plane\\\"] then \\\"control-plane\\\" else \\\"worker\\\" end), ip: (.status.addresses[] | select(.type==\\\"InternalIP\\\") | .address)}]\")' >> ~/push-cluster-status.sh"
 ssh user@192.168.1.206 "echo 'NODES_READY=$(echo \"$NODES_JSON\" | jq \"[.[] | select(.status==\\\"Ready\\\")] | length\")' >> ~/push-cluster-status.sh"
 ssh user@192.168.1.206 "echo 'NODES_TOTAL=$(echo \"$NODES_JSON\" | jq \"length\")' >> ~/push-cluster-status.sh"

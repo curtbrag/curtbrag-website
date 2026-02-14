@@ -14,7 +14,7 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 API_DIR="$(dirname "$SCRIPT_DIR")/cluster/api"
 PORT=3847
-PASSWORD="${CLUSTER_WEB_PASSWORD:-0735}"
+PASSWORD="${CLUSTER_WEB_PASSWORD:-}"
 TOKEN=""
 WALLET=""
 
@@ -27,6 +27,12 @@ while [[ $# -gt 0 ]]; do
     *) shift;;
   esac
 done
+
+if [ -z "$PASSWORD" ]; then
+  echo -e "${RED}Error: --password is required (or set CLUSTER_WEB_PASSWORD env var)${NC}"
+  echo "Usage: bash setup-cluster-api.sh --password YOUR_PASSWORD"
+  exit 1
+fi
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}  CurtBrag Cluster API Server Setup${NC}"
@@ -81,8 +87,7 @@ echo ""
 
 if command -v adb &>/dev/null; then
   echo -e "${YELLOW}Discovering ADB devices...${NC}"
-  ADB_DEVICES=$(adb devices -l 2>/dev/null | grep -c "device " || echo 0)
-  # Subtract 1 for header line if present
+  ADB_DEVICES=$(adb devices -l 2>/dev/null | grep -v "^List" | grep -c "device " || echo 0)
   echo -e "  Found ${GREEN}${ADB_DEVICES}${NC} ADB devices"
   adb devices -l 2>/dev/null | grep "device " | while read -r line; do
     SERIAL=$(echo "$line" | awk '{print $1}')

@@ -1,10 +1,10 @@
-#!/bin/sh
+#!/bin/bash
 # Poll for queued commands from curtbrag.com and execute them
 # Run on node1: nohup /home/user/poll-cluster-commands.sh &
 # Or as a systemd service for auto-restart
 
 API_URL="https://curtbrag.com/.netlify/functions/cluster-control"
-API_KEY="${CLUSTER_API_KEY:-curtbrag-cluster-2024}"
+API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set}"
 POLL_INTERVAL=5  # seconds
 # Auto-detect our IP so local-exec works even if IP changes
 LOCAL_IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
@@ -276,16 +276,18 @@ fi'
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       if [ -n "$url" ]; then
-        # Sanitize URL: only allow safe characters
-        safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!\$&()*+,;=%-]//g")
+        # Sanitize URL: only allow safe URL characters (strip single/double quotes and backticks)
+        safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!\$&()*+,;=%-]//g" | sed "s/['\"\`]//g")
         log "Opening $safe_url on phones..."
         # postmarketOS/Phosh: use xdg-open or direct browser, with Wayland display set
+        # Use double quotes to prevent single-quote injection
         BROWSE_CMD="export XDG_RUNTIME_DIR=/run/user/\$(id -u); export WAYLAND_DISPLAY=wayland-0; export DISPLAY=:0
-if command -v xdg-open >/dev/null 2>&1; then xdg-open '$safe_url' 2>/dev/null
-elif command -v firefox >/dev/null 2>&1; then firefox '$safe_url' &
-elif command -v chromium >/dev/null 2>&1; then chromium --no-sandbox '$safe_url' &
-elif command -v chromium-browser >/dev/null 2>&1; then chromium-browser --no-sandbox '$safe_url' &
-elif command -v am >/dev/null 2>&1; then am start -a android.intent.action.VIEW -d '$safe_url'
+SAFE_URL=\"$safe_url\"
+if command -v xdg-open >/dev/null 2>&1; then xdg-open \"\$SAFE_URL\" 2>/dev/null
+elif command -v firefox >/dev/null 2>&1; then firefox \"\$SAFE_URL\" &
+elif command -v chromium >/dev/null 2>&1; then chromium --no-sandbox \"\$SAFE_URL\" &
+elif command -v chromium-browser >/dev/null 2>&1; then chromium-browser --no-sandbox \"\$SAFE_URL\" &
+elif command -v am >/dev/null 2>&1; then am start -a android.intent.action.VIEW -d \"\$SAFE_URL\"
 else echo 'NO_BROWSER' && exit 1; fi"
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
           run_on_all_tracked "$BROWSE_CMD" "$RESULT_DIR" "$PHONE_NODES"
@@ -372,6 +374,10 @@ HEAD_SCRIPT=$(head -12 $0 2>/dev/null)"
     ssh)
       if [ -z "$ssh_cmd" ]; then
         report_result "$cmd_id" "error: no command specified" "" "$cmd" "$target"
+      # Block shell metacharacters that could enable injection
+      elif printf '%s' "$ssh_cmd" | grep -qE '[;|&\$\`\\><]|\$\(|rm -rf /|mkfs|dd if=|:[(][)][{]|/dev/sd'; then
+        log "BLOCKED dangerous SSH command: $ssh_cmd"
+        report_result "$cmd_id" "error: command blocked for safety" "" "$cmd" "$target"
       else
         log "Running SSH command: $ssh_cmd"
         OUTPUT=""
@@ -482,8 +488,11 @@ else echo "CAPTURE_FAILED" && exit 1; fi'
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       BRIGHTNESS_VAL="$ssh_cmd"
+      # Validate brightness is a number 0-255
       if [ -z "$BRIGHTNESS_VAL" ]; then
         report_result "$cmd_id" "error: no brightness value" "" "$cmd" "$target"
+      elif ! printf '%s' "$BRIGHTNESS_VAL" | grep -qE '^[0-9]+$' || [ "$BRIGHTNESS_VAL" -gt 255 ]; then
+        report_result "$cmd_id" "error: brightness must be a number 0-255" "" "$cmd" "$target"
       else
         log "Setting brightness to $BRIGHTNESS_VAL..."
         BRIGHT_CMD="doas sh -c 'for f in /sys/class/backlight/*/brightness; do echo $BRIGHTNESS_VAL > \"\$f\"; done' 2>/dev/null || doas sh -c 'echo $BRIGHTNESS_VAL > /sys/class/leds/lcd-backlight/brightness' 2>/dev/null"
