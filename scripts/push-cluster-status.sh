@@ -300,12 +300,44 @@ TOTAL_HR=0
 TOTAL_ACC=0
 TOTAL_REJ=0
 
+# Check xmrig API on all nodes in parallel (faster than sequential)
+for i in $(seq 1 10); do
+  (
+    NODE_IP="192.168.1.$((205 + i))"
+    XMRIG=$(curl -s --connect-timeout 5 --max-time 8 "http://$NODE_IP:18080/1/summary" 2>/dev/null)
+    if [ -n "$XMRIG" ] && echo "$XMRIG" | jq . >/dev/null 2>&1; then
+      echo "$XMRIG" > "$TMP_DIR/mining_node${i}.tmp"
+    else
+      # HTTP API failed — check if xmrig process is actually running
+      PROC_CHECK=""
+      if [ "$i" = "1" ]; then
+        pgrep xmrig >/dev/null 2>&1 && PROC_CHECK="running"
+      else
+        ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes \
+          "user@$NODE_IP" "pgrep xmrig >/dev/null 2>&1 && echo running" 2>/dev/null | grep -q running && PROC_CHECK="running"
+      fi
+      if [ "$PROC_CHECK" = "running" ]; then
+        echo "PROC_RUNNING" > "$TMP_DIR/mining_node${i}.tmp"
+      else
+        echo "" > "$TMP_DIR/mining_node${i}.tmp"
+      fi
+    fi
+  ) &
+done
+wait
+
 for i in $(seq 1 10); do
   NODE_NAME="node$i"
-  NODE_IP="192.168.1.$((205 + i))"
-  XMRIG=$(curl -s --connect-timeout 3 --max-time 5 "http://$NODE_IP:18080/1/summary" 2>/dev/null)
+  TMPFILE="$TMP_DIR/mining_node${i}.tmp"
+  XMRIG=""
+  [ -f "$TMPFILE" ] && XMRIG=$(cat "$TMPFILE")
 
-  if [ -n "$XMRIG" ] && echo "$XMRIG" | jq . >/dev/null 2>&1; then
+  if [ "$XMRIG" = "PROC_RUNNING" ]; then
+    # Process is running but API didn't respond — report as mining with unknown hashrate
+    MINING_WORKERS=$(echo "$MINING_WORKERS" | jq --arg n "$NODE_NAME" \
+      '. + [{name:$n, hashrate:"? H/s", hashrateRaw:0, status:"mining", accepted:0, note:"api_timeout"}]')
+    log "  $NODE_NAME mining (process running, API unavailable)"
+  elif [ -n "$XMRIG" ] && echo "$XMRIG" | jq . >/dev/null 2>&1; then
     HR=$(echo "$XMRIG" | jq '.hashrate.total[0] // 0')
     ACC=$(echo "$XMRIG" | jq '.results.shares_good // 0')
     TOT_SH=$(echo "$XMRIG" | jq '.results.shares_total // 0')
@@ -337,6 +369,7 @@ for i in $(seq 1 10); do
     MINING_WORKERS=$(echo "$MINING_WORKERS" | jq --arg n "$NODE_NAME" '. + [{name:$n, hashrate:"0 H/s", hashrateRaw:0, status:"offline", accepted:0}]')
   fi
 done
+rm -f "$TMP_DIR"/mining_node*.tmp
 
 MINERS_RUNNING=$(echo "$MINING_WORKERS" | jq '[.[] | select(.status=="mining")] | length')
 

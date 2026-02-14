@@ -1,0 +1,15 @@
+[Unit]
+Description=Cluster Command Poller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=user
+ExecStart=/bin/sh /home/user/poll-cluster-commands.sh
+Restart=always
+RestartSec=10
+Environment=CLUSTER_API_KEY=curtbrag-cluster-2024
+
+[Install]
+WantedBy=multi-user.target
