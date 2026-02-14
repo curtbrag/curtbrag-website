@@ -10,8 +10,6 @@ POLL_INTERVAL=5  # seconds
 LOCAL_IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
 [ -z "$LOCAL_IP" ] && LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 [ -z "$LOCAL_IP" ] && LOCAL_IP="192.168.1.206"
-# Collect ALL local IPs so we reliably detect ourselves (wlan0, usb0, tailscale, etc.)
-ALL_LOCAL_IPS=$(ip -4 addr 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2 | tr '\n' ' ')
 trap 'rm -rf /tmp/cmdres-*' EXIT INT TERM
 
 # Check if an IP belongs to this machine
