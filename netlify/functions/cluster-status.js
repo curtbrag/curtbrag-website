@@ -180,10 +180,17 @@ async function saveStatus(data) {
   }
 }
 
+const ALLOWED_ORIGINS = ['https://www.curtbrag.com', 'https://curtbrag.com'];
+
+function getCorsOrigin(event) {
+  const origin = (event.headers || {}).origin || '';
+  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+}
+
 exports.handler = async function(event, context) {
   const headers = {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': getCorsOrigin(event),
     'Access-Control-Allow-Headers': 'Content-Type, X-Cluster-Key',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
   };
@@ -200,7 +207,6 @@ exports.handler = async function(event, context) {
     try {
       const apiKey = event.headers['x-cluster-key'];
       const expectedKey = process.env.CLUSTER_API_KEY || 'curtbrag-cluster-2024';
-
       if (apiKey !== expectedKey) {
         return {
           statusCode: 401,

@@ -95,7 +95,15 @@ if [ -n "$WIFI_SSID" ]; then
   WPA_CONF="/etc/wpa_supplicant/wpa_supplicant.conf"
   mkdir -p /etc/wpa_supplicant
 
-  cat > "$WPA_CONF" <<EOF
+  # Use wpa_passphrase to generate hashed PSK when possible
+  if command -v wpa_passphrase >/dev/null 2>&1; then
+    wpa_passphrase "$WIFI_SSID" "$WIFI_PASSWORD" > "$WPA_CONF"
+    # Add control_interface and country
+    sed -i '1i ctrl_interface=/var/run/wpa_supplicant\nupdate_config=1\ncountry=US' "$WPA_CONF"
+    # Remove plaintext password comment
+    sed -i '/#psk=/d' "$WPA_CONF"
+  else
+    cat > "$WPA_CONF" <<EOF
 ctrl_interface=/var/run/wpa_supplicant
 update_config=1
 country=US
@@ -107,6 +115,7 @@ network={
     priority=1
 }
 EOF
+  fi
   chmod 600 "$WPA_CONF"
 
   # Enable wpa_supplicant service
@@ -140,18 +149,30 @@ if [ -n "$STATIC_IP" ]; then
   ip route del default 2>/dev/null || true
   ip route add default via "$GATEWAY" dev "$INTERFACE"
 
-  # Configure DNS
-  echo "nameserver 8.8.8.8" > /etc/resolv.conf
-  echo "nameserver 8.8.4.4" >> /etc/resolv.conf
+  # Configure DNS (uses DNS variable, defaults to 8.8.8.8 8.8.4.4)
+  : > /etc/resolv.conf
+  for ns in $DNS; do
+    echo "nameserver $ns" >> /etc/resolv.conf
+  done
 
   # Create persistent config for /etc/network/interfaces
   IFACE_CONF="/etc/network/interfaces"
+  # Remove existing config for this interface to avoid duplicates
+  if grep -q "iface $INTERFACE" "$IFACE_CONF" 2>/dev/null; then
+    sed -i "/auto $INTERFACE/,/^$/d" "$IFACE_CONF"
+    sed -i "/iface $INTERFACE/,/^$/d" "$IFACE_CONF"
+  fi
+  # Calculate netmask from CIDR
+  if [ "$CIDR" = "24" ]; then NETMASK="255.255.255.0"
+  elif [ "$CIDR" = "16" ]; then NETMASK="255.255.0.0"
+  elif [ "$CIDR" = "8" ]; then NETMASK="255.0.0.0"
+  else NETMASK="255.255.255.0"; fi
   cat >> "$IFACE_CONF" <<EOF
 
 auto $INTERFACE
 iface $INTERFACE inet static
     address $IP_ADDR
-    netmask 255.255.255.0
+    netmask $NETMASK
     gateway $GATEWAY
 EOF
 

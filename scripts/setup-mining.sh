@@ -137,10 +137,10 @@ setup_node() {
   ],
   "http": {
     "enabled": true,
-    "host": "0.0.0.0",
+    "host": "127.0.0.1",
     "port": 18080,
     "access-token": "${HTTP_TOKEN}",
-    "restricted": false
+    "restricted": true
   },
   "log-file": "/var/log/xmrig.log",
   "print-time": 60

@@ -7,7 +7,7 @@ $script = @'
 #!/bin/sh
 # Push K3s cluster status to curtbrag.com
 API_URL="https://www.curtbrag.com/.netlify/functions/cluster-status"
-API_KEY="curtbrag-cluster-2024"
+API_KEY="${CLUSTER_API_KEY:-curtbrag-cluster-2024}"
 
 NODES_JSON=$(doas kubectl get nodes -o json 2>/dev/null | jq -c '[.items[] | {
   name: .metadata.name,
@@ -45,7 +45,7 @@ Write-Host "`n[1/4] Connecting to node1..." -ForegroundColor Yellow
 $script | ssh user@192.168.1.206 "cat > ~/push-cluster-status.sh && chmod +x ~/push-cluster-status.sh"
 
 Write-Host "[2/4] Installing dependencies (jq, curl)..." -ForegroundColor Yellow
-ssh user@192.168.1.206 "echo 0735 | doas -S apk add jq curl 2>/dev/null"
+ssh user@192.168.1.206 "doas apk add jq curl 2>/dev/null"
 
 Write-Host "[3/4] Running first push..." -ForegroundColor Yellow
 ssh user@192.168.1.206 "doas sh ~/push-cluster-status.sh"

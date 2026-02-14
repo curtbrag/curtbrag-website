@@ -2110,6 +2110,11 @@
     async function apiFetch(path, opts = {}) {
       if (!apiEndpoint) throw new Error('No API endpoint');
       const res = await fetch(apiEndpoint + path, { ...opts, headers: { ...apiHeaders(), ...(opts.headers || {}) } });
+      if (!res.ok) {
+        var errorText = '';
+        try { var errBody = await res.json(); errorText = errBody.error || res.statusText; } catch(e) { errorText = res.statusText; }
+        throw new Error('API error ' + res.status + ': ' + errorText);
+      }
       return await res.json();
     }
 
@@ -2120,6 +2125,11 @@
         headers: { 'Content-Type': 'application/json', ...apiHeaders() },
         body: JSON.stringify(body)
       });
+      if (!res.ok) {
+        var errorText = '';
+        try { var errBody = await res.json(); errorText = errBody.error || res.statusText; } catch(e) { errorText = res.statusText; }
+        throw new Error('API error ' + res.status + ': ' + errorText);
+      }
       return await res.json();
     }
 
@@ -2184,6 +2194,7 @@
 
         if (!data) {
           const res = await fetch('/.netlify/functions/cluster-status');
+          if (!res.ok) throw new Error('Netlify status ' + res.status);
           data = await res.json();
         }
 
@@ -2234,7 +2245,6 @@
             var alive = (m.cpu && (m.cpu.usage > 0 || (m.memory && m.memory.totalMB > 0))) || (b && b.online) || (t && t.online);
             if (alive) synthReady++;
             var num = parseInt(name.replace('node', ''));
-            synthNodes.push({ name: name, status: alive ? 'Ready' : 'NotReady', role: name === 'node1' ? 'control-plane' : 'worker', ip: '192.168.1.' + (205 + num), kubeletVersion: 'N/A (K3s down)', osImage: 'postmarketOS', arch: 'aarch64' });
             synthNodes.push({ name: name, status: alive ? 'Ready' : 'NotReady', role: name === 'node1' ? 'control-plane' : 'worker', ip: nodeIPs[name] || '', kubeletVersion: 'N/A (K3s down)', osImage: 'postmarketOS', arch: 'aarch64' });
           });
           data.nodes = synthNodes;

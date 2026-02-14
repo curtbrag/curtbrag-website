@@ -108,9 +108,16 @@ async function getScreenIndex() {
   } catch (e) { return {}; }
 }
 
+const ALLOWED_ORIGINS = ['https://www.curtbrag.com', 'https://curtbrag.com'];
+
+function getCorsOrigin(event) {
+  const origin = (event.headers || {}).origin || '';
+  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+}
+
 exports.handler = async (event) => {
   const headers = {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': getCorsOrigin(event),
     'Access-Control-Allow-Headers': 'Content-Type, X-Cluster-Key',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Content-Type': 'application/json'
@@ -266,7 +273,7 @@ exports.handler = async (event) => {
 
     // Save schedules from dashboard
     if (body.action === 'save-schedules') {
-      const webPassword = process.env.CLUSTER_WEB_PASSWORD || '0735';
+      const webPassword = process.env.CLUSTER_WEB_PASSWORD || '073588';
       if (body.password !== webPassword) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
       }
@@ -321,7 +328,7 @@ exports.handler = async (event) => {
     const { command, target, password } = body;
 
     // Simple password protection for web commands
-    const webPassword = process.env.CLUSTER_WEB_PASSWORD || '0735';
+    const webPassword = process.env.CLUSTER_WEB_PASSWORD || '073588';
     if (password !== webPassword) {
       return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
     }
@@ -348,9 +355,14 @@ exports.handler = async (event) => {
       if (!body.sshCmd) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'SSH command required' }) };
       }
-      const dangerous = ['rm -rf /', 'mkfs', 'dd if=', ':(){', '> /dev/sd'];
+      // Block shell metacharacters that enable injection
+      if (/[;|&$`\\><]|\$\(/.test(body.sshCmd)) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Command contains disallowed shell characters' }) };
+      }
+      // Block dangerous commands
+      const dangerousPatterns = [/\brm\s+(-[a-z]*\s+)*\//, /\bmkfs\b/, /\bdd\s+if=/, /:\(\)\{/, /\/dev\/sd/, /\bshutdown\b/, /\bhalt\b/, /\bpoweroff\b/, /\bfind\b.*-delete/, /\bkill\s+-9\s+1\b/];
       const lowerCmd = body.sshCmd.toLowerCase();
-      if (dangerous.some(d => lowerCmd.includes(d))) {
+      if (dangerousPatterns.some(p => p.test(lowerCmd))) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'Command blocked for safety' }) };
       }
     }

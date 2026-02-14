@@ -1,10 +1,15 @@
-#!/bin/sh
+#!/bin/bash
 # Push K3s cluster status to curtbrag.com
 # Run this on node1 via cron: */5 * * * * /home/user/push-cluster-status.sh >> /var/log/cluster-push.log 2>&1
 
+set -e
+
 API_URL="https://curtbrag.com/.netlify/functions/cluster-status"
 API_KEY="${CLUSTER_API_KEY:-curtbrag-cluster-2024}"
-TMP_DIR="/tmp/cluster-push"
+TMP_DIR="/tmp/cluster-push-$$"
+
+cleanup() { rm -rf "$TMP_DIR"; }
+trap cleanup EXIT
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
@@ -476,10 +481,10 @@ PAYLOAD_SIZE=$(echo "$PAYLOAD" | wc -c)
 log "Payload size: ${PAYLOAD_SIZE} bytes"
 
 log "Pushing to API..."
-RESPONSE=$(curl -sL -w "\n%{http_code}" -X POST "$API_URL" \
+RESPONSE=$(printf '%s' "$PAYLOAD" | curl -sL -w "\n%{http_code}" -X POST "$API_URL" \
   -H "Content-Type: application/json" \
   -H "X-Cluster-Key: $API_KEY" \
-  -d "$PAYLOAD")
+  -d @-)
 
 HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
 BODY=$(echo "$RESPONSE" | sed '$d')
