@@ -170,13 +170,13 @@ execute_command() {
         for i in $(seq 1 10); do
           IP="192.168.1.$((205+i))"
           SVC=$(k3s_svc "node$i")
-          ssh_node_tracked "$IP" "doas rc-service $SVC restart" "$RESULT_DIR" "node$i" &
+          ssh_node_tracked "$IP" "doas systemctl restart $SVC" "$RESULT_DIR" "node$i" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        ssh_node_tracked "$IP" "doas rc-service $SVC restart" "$RESULT_DIR" "$target"
+        ssh_node_tracked "$IP" "doas systemctl restart $SVC" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -188,13 +188,13 @@ execute_command() {
         for i in $(seq 1 10); do
           IP="192.168.1.$((205+i))"
           SVC=$(k3s_svc "node$i")
-          ssh_node_tracked "$IP" "doas rc-service $SVC start" "$RESULT_DIR" "node$i" &
+          ssh_node_tracked "$IP" "doas systemctl start $SVC" "$RESULT_DIR" "node$i" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        ssh_node_tracked "$IP" "doas rc-service $SVC start" "$RESULT_DIR" "$target"
+        ssh_node_tracked "$IP" "doas systemctl start $SVC" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -206,13 +206,13 @@ execute_command() {
         for i in $(seq 1 10); do
           IP="192.168.1.$((205+i))"
           SVC=$(k3s_svc "node$i")
-          ssh_node_tracked "$IP" "doas rc-service $SVC stop" "$RESULT_DIR" "node$i" &
+          ssh_node_tracked "$IP" "doas systemctl stop $SVC" "$RESULT_DIR" "node$i" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        ssh_node_tracked "$IP" "doas rc-service $SVC stop" "$RESULT_DIR" "$target"
+        ssh_node_tracked "$IP" "doas systemctl stop $SVC" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -221,13 +221,12 @@ execute_command() {
       log "Starting miners..."
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
-      # Start xmrig, wait for startup, verify process is running
-      # Also check if xmrig binary exists first
+      # Start xmrig via systemd, verify process is running
       MINING_START_CMD='
 if ! command -v xmrig >/dev/null 2>&1 && [ ! -f /usr/local/bin/xmrig ]; then
   echo "xmrig not installed" >&2; exit 1
 fi
-doas rc-service xmrig start 2>&1
+doas systemctl start xmrig 2>&1
 sleep 3
 if pgrep -x xmrig >/dev/null 2>&1; then
   exit 0
@@ -247,9 +246,9 @@ fi'
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "doas rc-service xmrig stop" "$RESULT_DIR"
+        run_on_all_tracked "doas systemctl stop xmrig" "$RESULT_DIR"
       else
-        ssh_node_tracked "$(resolve_ip "$target")" "doas rc-service xmrig stop" "$RESULT_DIR" "$target"
+        ssh_node_tracked "$(resolve_ip "$target")" "doas systemctl stop xmrig" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
