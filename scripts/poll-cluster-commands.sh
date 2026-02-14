@@ -50,13 +50,14 @@ k3s_svc() {
 }
 
 # Execute a command on a node — locally if node1, SSH otherwise
+# 30s timeout prevents commands from hanging the poller forever
 run_on_node() {
   local ip="$1"
   local cmd="$2"
   if [ "$ip" = "$LOCAL_IP" ]; then
-    sh -c "$cmd" 2>/dev/null
+    timeout 30 sh -c "$cmd" 2>/dev/null
   else
-    ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$ip" "$cmd" 2>/dev/null
+    timeout 30 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$ip" "$cmd" 2>/dev/null
   fi
 }
 
@@ -65,9 +66,9 @@ run_on_node_full() {
   local ip="$1"
   local cmd="$2"
   if [ "$ip" = "$LOCAL_IP" ]; then
-    sh -c "$cmd" 2>&1
+    timeout 30 sh -c "$cmd" 2>&1
   else
-    ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$ip" "$cmd" 2>&1
+    timeout 30 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$ip" "$cmd" 2>&1
   fi
 }
 
