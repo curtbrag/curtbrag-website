@@ -6,6 +6,7 @@
 API_URL="https://curtbrag.com/.netlify/functions/cluster-control"
 API_KEY="${CLUSTER_API_KEY:-curtbrag-cluster-2024}"
 POLL_INTERVAL=5  # seconds
+LOCAL_IP="192.168.1.206"  # node1 — we run here, so use local exec
 trap 'rm -rf /tmp/cmdres-*' EXIT INT TERM
 
 log() {
@@ -17,6 +18,11 @@ if ! command -v jq >/dev/null 2>&1; then
   log "ERROR: jq not found"
   exit 1
 fi
+
+# Node registry: phones + laptops
+# Format: name:ip
+ALL_NODES="node1:192.168.1.206 node2:192.168.1.207 node3:192.168.1.208 node4:192.168.1.209 node5:192.168.1.210 node6:192.168.1.211 node7:192.168.1.212 node8:192.168.1.213 node9:192.168.1.214 node10:192.168.1.215"
+PHONE_NODES="$ALL_NODES"
 
 # Resolve node name to IP
 resolve_ip() {
@@ -43,20 +49,35 @@ k3s_svc() {
   esac
 }
 
-# Run SSH on a single node
-ssh_node() {
+# Execute a command on a node — locally if node1, SSH otherwise
+run_on_node() {
   local ip="$1"
   local cmd="$2"
-  ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$ip" "$cmd" 2>/dev/null
+  if [ "$ip" = "$LOCAL_IP" ]; then
+    sh -c "$cmd" 2>/dev/null
+  else
+    ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$ip" "$cmd" 2>/dev/null
+  fi
 }
 
-# Run SSH on a single node, tracking success/failure via temp file
-ssh_node_tracked() {
+# Execute on a node and capture both stdout+stderr
+run_on_node_full() {
+  local ip="$1"
+  local cmd="$2"
+  if [ "$ip" = "$LOCAL_IP" ]; then
+    sh -c "$cmd" 2>&1
+  else
+    ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$ip" "$cmd" 2>&1
+  fi
+}
+
+# Run on a node, tracking success/failure via temp file
+run_on_node_tracked() {
   local ip="$1"
   local cmd="$2"
   local result_dir="$3"
   local label="$4"
-  if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$ip" "$cmd" >/dev/null 2>&1; then
+  if run_on_node "$ip" "$cmd" >/dev/null 2>&1; then
     echo "ok" > "$result_dir/$label"
   else
     echo "fail" > "$result_dir/$label"
@@ -89,21 +110,15 @@ collect_results() {
   fi
 }
 
-# Run command on all 10 phone nodes in parallel with tracking
+# Run command on all nodes in parallel with tracking
 run_on_all_tracked() {
   local cmd="$1"
   local result_dir="$2"
-  for i in $(seq 1 10); do
-    ssh_node_tracked "192.168.1.$((205+i))" "$cmd" "$result_dir" "node$i" &
-  done
-  wait
-}
-
-# Run on all phone nodes in parallel (fire-and-forget)
-all_phones() {
-  local cmd="$1"
-  for i in $(seq 1 10); do
-    ssh_node "192.168.1.$((205+i))" "$cmd" &
+  local nodes="${3:-$ALL_NODES}"
+  for entry in $nodes; do
+    local name="${entry%%:*}"
+    local ip="${entry##*:}"
+    run_on_node_tracked "$ip" "$cmd" "$result_dir" "$name" &
   done
   wait
 }
@@ -144,9 +159,9 @@ execute_command() {
       mkdir -p "$RESULT_DIR"
       WAKE_CMD="doas sh -c 'for f in /sys/class/backlight/*/bl_power; do echo 0 > \"\$f\"; done'"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "$WAKE_CMD" "$RESULT_DIR"
+        run_on_all_tracked "$WAKE_CMD" "$RESULT_DIR" "$PHONE_NODES"
       else
-        ssh_node_tracked "$(resolve_ip "$target")" "$WAKE_CMD" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$(resolve_ip "$target")" "$WAKE_CMD" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -156,9 +171,9 @@ execute_command() {
       mkdir -p "$RESULT_DIR"
       SLEEP_CMD="doas sh -c 'for f in /sys/class/backlight/*/bl_power; do echo 4 > \"\$f\"; done'"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "$SLEEP_CMD" "$RESULT_DIR"
+        run_on_all_tracked "$SLEEP_CMD" "$RESULT_DIR" "$PHONE_NODES"
       else
-        ssh_node_tracked "$(resolve_ip "$target")" "$SLEEP_CMD" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$(resolve_ip "$target")" "$SLEEP_CMD" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -167,16 +182,16 @@ execute_command() {
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        for i in $(seq 1 10); do
-          IP="192.168.1.$((205+i))"
-          SVC=$(k3s_svc "node$i")
-          ssh_node_tracked "$IP" "doas systemctl restart $SVC" "$RESULT_DIR" "node$i" &
+        for entry in $ALL_NODES; do
+          name="${entry%%:*}"; ip="${entry##*:}"
+          SVC=$(k3s_svc "$name")
+          run_on_node_tracked "$ip" "doas systemctl restart $SVC" "$RESULT_DIR" "$name" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        ssh_node_tracked "$IP" "doas systemctl restart $SVC" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$IP" "doas systemctl restart $SVC" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -185,16 +200,16 @@ execute_command() {
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        for i in $(seq 1 10); do
-          IP="192.168.1.$((205+i))"
-          SVC=$(k3s_svc "node$i")
-          ssh_node_tracked "$IP" "doas systemctl start $SVC" "$RESULT_DIR" "node$i" &
+        for entry in $ALL_NODES; do
+          name="${entry%%:*}"; ip="${entry##*:}"
+          SVC=$(k3s_svc "$name")
+          run_on_node_tracked "$ip" "doas systemctl start $SVC" "$RESULT_DIR" "$name" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        ssh_node_tracked "$IP" "doas systemctl start $SVC" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$IP" "doas systemctl start $SVC" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -203,16 +218,16 @@ execute_command() {
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        for i in $(seq 1 10); do
-          IP="192.168.1.$((205+i))"
-          SVC=$(k3s_svc "node$i")
-          ssh_node_tracked "$IP" "doas systemctl stop $SVC" "$RESULT_DIR" "node$i" &
+        for entry in $ALL_NODES; do
+          name="${entry%%:*}"; ip="${entry##*:}"
+          SVC=$(k3s_svc "$name")
+          run_on_node_tracked "$ip" "doas systemctl stop $SVC" "$RESULT_DIR" "$name" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        ssh_node_tracked "$IP" "doas systemctl stop $SVC" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$IP" "doas systemctl stop $SVC" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -227,16 +242,16 @@ if ! command -v xmrig >/dev/null 2>&1 && [ ! -f /usr/local/bin/xmrig ]; then
   echo "xmrig not installed" >&2; exit 1
 fi
 doas systemctl start xmrig 2>&1
-sleep 3
-if pgrep -x xmrig >/dev/null 2>&1; then
+sleep 2
+if pgrep xmrig >/dev/null 2>&1; then
   exit 0
 else
-  echo "xmrig process not running after start" >&2; exit 1
+  doas systemctl status xmrig >&2; exit 1
 fi'
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         run_on_all_tracked "$MINING_START_CMD" "$RESULT_DIR"
       else
-        ssh_node_tracked "$(resolve_ip "$target")" "$MINING_START_CMD" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$(resolve_ip "$target")" "$MINING_START_CMD" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -248,7 +263,7 @@ fi'
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         run_on_all_tracked "doas systemctl stop xmrig" "$RESULT_DIR"
       else
-        ssh_node_tracked "$(resolve_ip "$target")" "doas systemctl stop xmrig" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$(resolve_ip "$target")" "doas systemctl stop xmrig" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -269,9 +284,9 @@ elif command -v chromium-browser >/dev/null 2>&1; then chromium-browser --no-san
 elif command -v am >/dev/null 2>&1; then am start -a android.intent.action.VIEW -d '$safe_url'
 else echo 'NO_BROWSER' && exit 1; fi"
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-          run_on_all_tracked "$BROWSE_CMD" "$RESULT_DIR"
+          run_on_all_tracked "$BROWSE_CMD" "$RESULT_DIR" "$PHONE_NODES"
         else
-          ssh_node_tracked "$(resolve_ip "$target")" "$BROWSE_CMD" "$RESULT_DIR" "$target"
+          run_on_node_tracked "$(resolve_ip "$target")" "$BROWSE_CMD" "$RESULT_DIR" "$target"
         fi
       fi
       RESULT=$(collect_results "$RESULT_DIR")
@@ -310,27 +325,24 @@ else echo 'NO_BROWSER' && exit 1; fi"
       log "Rebooting $target..."
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
+      reboot_node() {
+        local name="$1" ip="$2"
+        if run_on_node "$ip" "echo ok" >/dev/null 2>&1; then
+          echo "ok" > "$RESULT_DIR/$name"
+          run_on_node "$ip" "doas reboot" >/dev/null 2>&1 || true
+        else
+          echo "fail" > "$RESULT_DIR/$name"
+        fi
+      }
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        for i in $(seq 1 10); do
-          IP="192.168.1.$((205+i))"
-          (
-            if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$IP" "echo ok" >/dev/null 2>&1; then
-              echo "ok" > "$RESULT_DIR/node$i"
-              ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$IP" "doas reboot" >/dev/null 2>&1 || true
-            else
-              echo "fail" > "$RESULT_DIR/node$i"
-            fi
-          ) &
+        for entry in $ALL_NODES; do
+          name="${entry%%:*}"; ip="${entry##*:}"
+          reboot_node "$name" "$ip" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
-        if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$IP" "echo ok" >/dev/null 2>&1; then
-          echo "ok" > "$RESULT_DIR/$target"
-          ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$IP" "doas reboot" >/dev/null 2>&1 || true
-        else
-          echo "fail" > "$RESULT_DIR/$target"
-        fi
+        reboot_node "$target" "$IP"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       if [ "$RESULT" = "success" ]; then
@@ -347,23 +359,23 @@ else echo 'NO_BROWSER' && exit 1; fi"
         FAIL=0
         TOTAL=0
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-          for i in $(seq 1 10); do
-            IP="192.168.1.$((205+i))"
+          for entry in $ALL_NODES; do
+            name="${entry%%:*}"; ip="${entry##*:}"
             TOTAL=$((TOTAL + 1))
-            NODE_OUT=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$IP" "$ssh_cmd" 2>&1)
+            NODE_OUT=$(run_on_node_full "$ip" "$ssh_cmd")
             NODE_RC=$?
             if [ "$NODE_RC" -ne 0 ]; then
               FAIL=$((FAIL + 1))
               NODE_OUT="[exit code $NODE_RC] $NODE_OUT"
             fi
-            OUTPUT="${OUTPUT}=== node${i} ===
+            OUTPUT="${OUTPUT}=== ${name} ===
 ${NODE_OUT}
 "
           done
         else
           IP=$(resolve_ip "$target")
           TOTAL=1
-          OUTPUT=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$IP" "$ssh_cmd" 2>&1)
+          OUTPUT=$(run_on_node_full "$IP" "$ssh_cmd")
           if [ $? -ne 0 ]; then FAIL=1; fi
         fi
         if [ "$FAIL" -eq 0 ]; then
@@ -462,9 +474,9 @@ else echo "CAPTURE_FAILED" && exit 1; fi'
         log "Setting brightness to $BRIGHTNESS_VAL..."
         BRIGHT_CMD="doas sh -c 'for f in /sys/class/backlight/*/brightness; do echo $BRIGHTNESS_VAL > \"\$f\"; done' 2>/dev/null || doas sh -c 'echo $BRIGHTNESS_VAL > /sys/class/leds/lcd-backlight/brightness' 2>/dev/null"
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-          run_on_all_tracked "$BRIGHT_CMD" "$RESULT_DIR"
+          run_on_all_tracked "$BRIGHT_CMD" "$RESULT_DIR" "$PHONE_NODES"
         else
-          ssh_node_tracked "$(resolve_ip "$target")" "$BRIGHT_CMD" "$RESULT_DIR" "$target"
+          run_on_node_tracked "$(resolve_ip "$target")" "$BRIGHT_CMD" "$RESULT_DIR" "$target"
         fi
         RESULT=$(collect_results "$RESULT_DIR")
         report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
