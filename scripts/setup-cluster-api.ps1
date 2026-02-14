@@ -1,7 +1,7 @@
 # CurtBrag Cluster API Server Setup — Windows (PowerShell)
 # Run this on AORUS: powershell -ExecutionPolicy Bypass -File scripts/setup-cluster-api.ps1
 param(
-    [string]$Password = "073588",
+    [string]$Password = "",
     [string]$Token = "",
     [string]$Wallet = "",
     [int]$Port = 3847

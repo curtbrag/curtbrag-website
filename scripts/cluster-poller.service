@@ -9,7 +9,8 @@ User=user
 ExecStart=/bin/sh /home/user/poll-cluster-commands.sh
 Restart=always
 RestartSec=10
-Environment=CLUSTER_API_KEY=curtbrag-cluster-2024
+# Set CLUSTER_API_KEY in /etc/environment or via EnvironmentFile=
+EnvironmentFile=-/etc/cluster-env
 
 [Install]
 WantedBy=multi-user.target
