@@ -221,10 +221,12 @@ execute_command() {
       log "Starting miners..."
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
+      # Start xmrig, wait briefly, then verify the process is actually running
+      MINING_START_CMD="doas rc-service xmrig start; sleep 2; pgrep -x xmrig >/dev/null 2>&1"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "doas rc-service xmrig start" "$RESULT_DIR"
+        run_on_all_tracked "$MINING_START_CMD" "$RESULT_DIR"
       else
-        ssh_node_tracked "$(resolve_ip "$target")" "doas rc-service xmrig start" "$RESULT_DIR" "$target"
+        ssh_node_tracked "$(resolve_ip "$target")" "$MINING_START_CMD" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
