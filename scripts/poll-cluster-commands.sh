@@ -325,6 +325,21 @@ else echo 'NO_BROWSER' && exit 1; fi"
         exec "$SCRIPT_DIR/poll-cluster-commands.sh"
       fi
       ;;
+    debug)
+      # Diagnostic command: report internal state of the running poller
+      DEBUG_INFO="LOCAL_IP=$LOCAL_IP
+SCRIPT_DIR=$SCRIPT_DIR
+SCRIPT_PATH=$0
+PID=$$
+HOSTNAME=$(hostname 2>/dev/null)
+IP_WLAN0=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
+IP_ALL=$(ip -4 addr 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2 | tr '\n' ' ')
+HOSTNAME_I=$(hostname -I 2>/dev/null)
+TEST_LOCAL_206=$([ "192.168.1.206" = "$LOCAL_IP" ] && echo MATCH || echo NOMATCH)
+BUSYBOX=$(busybox --help 2>/dev/null | head -1)
+HEAD_SCRIPT=$(head -12 $0 2>/dev/null)"
+      report_result "$cmd_id" "debug info" "$DEBUG_INFO" "$cmd" "$target"
+      ;;
     reboot)
       log "Rebooting $target..."
       RESULT_DIR="/tmp/cmdres-$cmd_id"
