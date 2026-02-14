@@ -148,27 +148,24 @@ setup_node() {
 XMRIG_CONFIG
   echo -e "  ${GREEN}✓${NC} Config written"
 
-  # Create OpenRC init script
+  # Create systemd service
   echo -e "  Creating service..."
-  ssh -o BatchMode=yes "$SSH" "doas tee /etc/init.d/xmrig > /dev/null && doas chmod +x /etc/init.d/xmrig" << 'INITSCRIPT'
-#!/sbin/openrc-run
+  ssh -o BatchMode=yes "$SSH" "doas tee /etc/systemd/system/xmrig.service > /dev/null" << 'SVCUNIT'
+[Unit]
+Description=XMRig Monero Miner
+After=network-online.target
+Wants=network-online.target
 
-name="xmrig"
-description="XMRig Monero Miner"
-command="/usr/local/bin/xmrig"
-command_args="--config=/etc/xmrig/config.json"
-command_background=true
-pidfile="/run/xmrig.pid"
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/xmrig --config=/etc/xmrig/config.json
+Restart=always
+RestartSec=10
+Nice=10
 
-depend() {
-  need net
-  after firewall
-}
-
-start_pre() {
-  mkdir -p /var/log
-}
-INITSCRIPT
+[Install]
+WantedBy=multi-user.target
+SVCUNIT
 
   # Also check if xmrig is at /usr/bin/xmrig (from apk)
   ssh -o BatchMode=yes "$SSH" "
@@ -178,7 +175,7 @@ INITSCRIPT
   " 2>/dev/null
 
   # Enable and start
-  ssh -o BatchMode=yes "$SSH" "doas rc-update add xmrig default 2>/dev/null; doas rc-service xmrig restart" 2>/dev/null
+  ssh -o BatchMode=yes "$SSH" "doas systemctl daemon-reload; doas systemctl enable xmrig 2>/dev/null; doas systemctl restart xmrig" 2>/dev/null
   echo -e "  ${GREEN}✓${NC} Service enabled and started"
 
   # Verify

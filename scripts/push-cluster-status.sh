@@ -311,10 +311,10 @@ for i in $(seq 1 10); do
       # HTTP API failed — check if xmrig process is actually running
       PROC_CHECK=""
       if [ "$i" = "1" ]; then
-        pgrep -x xmrig >/dev/null 2>&1 && PROC_CHECK="running"
+        pgrep xmrig >/dev/null 2>&1 && PROC_CHECK="running"
       else
         ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes \
-          "user@$NODE_IP" "pgrep -x xmrig >/dev/null 2>&1 && echo running" 2>/dev/null | grep -q running && PROC_CHECK="running"
+          "user@$NODE_IP" "pgrep xmrig >/dev/null 2>&1 && echo running" 2>/dev/null | grep -q running && PROC_CHECK="running"
       fi
       if [ "$PROC_CHECK" = "running" ]; then
         echo "PROC_RUNNING" > "$TMP_DIR/mining_node${i}.tmp"

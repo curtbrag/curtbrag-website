@@ -421,12 +421,7 @@ else echo "CAPTURE_FAILED" && exit 1; fi'
         local ip="192.168.1.$((205+i))"
         local outfile="$SCREENSHOT_DIR/${node_name}.b64"
 
-        if [ "$i" = "1" ]; then
-          B64=$(sh -c "$SCREEN_CMD" 2>/dev/null)
-        else
-          B64=$(ssh -o ConnectTimeout=8 -o StrictHostKeyChecking=no -o BatchMode=yes \
-            "user@$ip" "$SCREEN_CMD" 2>/dev/null)
-        fi
+        B64=$(run_on_node "$ip" "$SCREEN_CMD")
 
         if [ -n "$B64" ] && [ "$B64" != "NO_TOOL" ] && [ "$B64" != "CAPTURE_FAILED" ]; then
           echo "$B64" > "$outfile"
