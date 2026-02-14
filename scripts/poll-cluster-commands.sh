@@ -221,8 +221,19 @@ execute_command() {
       log "Starting miners..."
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
-      # Start xmrig, wait briefly, then verify the process is actually running
-      MINING_START_CMD="doas rc-service xmrig start; sleep 2; pgrep -x xmrig >/dev/null 2>&1"
+      # Start xmrig, wait for startup, verify process is running
+      # Also check if xmrig binary exists first
+      MINING_START_CMD='
+if ! command -v xmrig >/dev/null 2>&1 && [ ! -f /usr/local/bin/xmrig ]; then
+  echo "xmrig not installed" >&2; exit 1
+fi
+doas rc-service xmrig start 2>&1
+sleep 3
+if pgrep -x xmrig >/dev/null 2>&1; then
+  exit 0
+else
+  echo "xmrig process not running after start" >&2; exit 1
+fi'
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         run_on_all_tracked "$MINING_START_CMD" "$RESULT_DIR"
       else
@@ -272,11 +283,13 @@ else echo 'NO_BROWSER' && exit 1; fi"
       REPO_RAW="https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts"
       SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
       FAIL=""
+      SELF_UPDATED="false"
       for SCRIPT in push-cluster-status.sh poll-cluster-commands.sh; do
         if curl -sfL "$REPO_RAW/$SCRIPT" -o "$SCRIPT_DIR/$SCRIPT.new"; then
           chmod +x "$SCRIPT_DIR/$SCRIPT.new"
           mv "$SCRIPT_DIR/$SCRIPT.new" "$SCRIPT_DIR/$SCRIPT"
           log "  Updated $SCRIPT"
+          [ "$SCRIPT" = "poll-cluster-commands.sh" ] && SELF_UPDATED="true"
         else
           log "  Failed to download $SCRIPT"
           FAIL="$FAIL $SCRIPT"
@@ -287,6 +300,11 @@ else echo 'NO_BROWSER' && exit 1; fi"
         report_result "$cmd_id" "success: scripts updated" "" "$cmd" "$target"
       else
         report_result "$cmd_id" "partial: failed$FAIL" "" "$cmd" "$target"
+      fi
+      # Re-exec ourselves if the poller script was updated (picks up new code)
+      if [ "$SELF_UPDATED" = "true" ]; then
+        log "Poller script updated — restarting with exec..."
+        exec "$SCRIPT_DIR/poll-cluster-commands.sh"
       fi
       ;;
     reboot)
