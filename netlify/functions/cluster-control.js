@@ -274,6 +274,9 @@ exports.handler = async (event) => {
     // Save schedules from dashboard
     if (body.action === 'save-schedules') {
       const webPassword = process.env.CLUSTER_WEB_PASSWORD || '';
+      if (!webPassword) {
+        return { statusCode: 503, headers, body: JSON.stringify({ error: 'Password not configured on server' }) };
+      }
       if (body.password !== webPassword) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
       }

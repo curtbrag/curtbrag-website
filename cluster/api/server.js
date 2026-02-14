@@ -726,7 +726,7 @@ async function handleCommand(req, res, body) {
     return sendJson(res, 401, { error: 'Invalid password' });
   }
 
-  const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse', 'refresh-adb', 'custom', 'reboot'];
+  const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse', 'refresh-adb', 'custom', 'reboot', 'screenshot', 'brightness', 'ssh'];
   if (!validCommands.includes(command)) {
     return sendJson(res, 400, { error: 'Invalid command: ' + command });
   }
@@ -777,6 +777,52 @@ async function handleCommand(req, res, body) {
     return sendJson(res, 200, { success: r.ok, output: r.stdout || r.stderr });
   }
 
+  // SSH command: same as custom but uses sshCmd field (sent by dashboard Netlify-relay path)
+  if (command === 'ssh') {
+    const sshCmd = body.sshCmd;
+    if (!sshCmd || typeof sshCmd !== 'string') {
+      return sendJson(res, 400, { error: 'sshCmd is required for ssh command' });
+    }
+    if (!/^[a-zA-Z0-9 _.\-/:=,+@]+$/.test(sshCmd)) {
+      logCommand({ command: 'ssh', target, status: 'denied', reason: 'Invalid characters in sshCmd' });
+      return sendJson(res, 400, { error: 'sshCmd contains disallowed characters' });
+    }
+    const dangerousPatterns = [/^rm\s/, /^dd\s/, /^mkfs/, /^shutdown/, /^halt/, /^poweroff/, /^kill\s+-9\s+1$/, /^init\s+0/, /^reboot$/];
+    if (dangerousPatterns.some(p => p.test(sshCmd.trim()))) {
+      logCommand({ command: 'ssh', target, status: 'denied', reason: 'Blocked dangerous command' });
+      return sendJson(res, 400, { error: 'Command blocked for safety' });
+    }
+    if (sshCmd.length > 200) {
+      return sendJson(res, 400, { error: 'sshCmd too long (max 200 characters)' });
+    }
+    if (!target) {
+      return sendJson(res, 400, { error: 'Target is required for ssh command' });
+    }
+    let r;
+    if (CONFIG.phoneNodes[target]) {
+      r = await sshExecAsync(target, sshCmd);
+    } else if (CONFIG.otherNodes.includes(target)) {
+      r = await runAsync(`ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes ${target} ${shellEscape(sshCmd)}`, 15000);
+    } else {
+      return sendJson(res, 400, { error: 'Unknown target node: ' + target });
+    }
+    logCommand({ command: 'ssh', target, customCmd: sshCmd, status: r.ok ? 'success' : 'failed', message: r.ok ? r.stdout : r.stderr });
+    return sendJson(res, 200, { success: r.ok, output: r.stdout || r.stderr });
+  }
+
+  // Brightness: set screen brightness via ADB
+  if (command === 'brightness') {
+    const level = body.sshCmd || body.level;
+    if (level === undefined || level === null || !/^\d+$/.test(String(level))) {
+      return sendJson(res, 400, { error: 'Brightness level must be a number (0-255)' });
+    }
+    const brightnessVal = parseInt(level, 10);
+    if (brightnessVal < 0 || brightnessVal > 255) {
+      return sendJson(res, 400, { error: 'Brightness must be between 0 and 255' });
+    }
+    // Brightness is handled per-node via executeOnNode, let it fall through to resolveTargets
+  }
+
   // Special: refresh-adb
   if (command === 'refresh-adb') {
     initAdbDevices();
@@ -792,7 +838,7 @@ async function handleCommand(req, res, body) {
   const results = {};
   await Promise.all(targets.map(async name => {
     try {
-      results[name] = await executeOnNode(name, command, browseUrl);
+      results[name] = await executeOnNode(name, command, browseUrl, body);
     } catch (e) {
       results[name] = { ok: false, error: e.message };
     }
@@ -819,7 +865,7 @@ async function handleCommand(req, res, body) {
 }
 
 function resolveTargets(target, command) {
-  const miningBrowseCommands = ['mining-start', 'mining-stop', 'browse', 'wake', 'sleep'];
+  const miningBrowseCommands = ['mining-start', 'mining-stop', 'browse', 'wake', 'sleep', 'screenshot', 'brightness'];
 
   if (target === 'all') {
     return miningBrowseCommands.includes(command) ? [...CONFIG.phoneNodeNames] : [...CONFIG.phoneNodeNames, ...CONFIG.otherNodes];
@@ -830,7 +876,7 @@ function resolveTargets(target, command) {
   return [];
 }
 
-async function executeOnNode(name, command, browseUrl) {
+async function executeOnNode(name, command, browseUrl, body) {
   const isPhone = CONFIG.phoneNodeNames.includes(name);
 
   switch (command) {
@@ -881,6 +927,17 @@ async function executeOnNode(name, command, browseUrl) {
     case 'reboot': {
       const r = await sshExecAsync(name, 'doas reboot');
       return { ok: true, output: r.stdout || 'Reboot initiated' };
+    }
+    case 'screenshot': {
+      if (!isPhone) return { ok: false, error: 'Not a phone node' };
+      const r = await adbExecAsync(name, 'exec-out screencap -p /dev/null');
+      return { ok: true, output: 'Screenshot captured for ' + name };
+    }
+    case 'brightness': {
+      if (!isPhone) return { ok: false, error: 'Not a phone node' };
+      const level = parseInt(body && (body.sshCmd || body.level) || '128', 10);
+      const r = await adbExecAsync(name, 'shell settings put system screen_brightness ' + Math.max(0, Math.min(255, level)));
+      return { ok: r.ok, output: r.stdout || r.stderr || 'Brightness set to ' + level };
     }
     default:
       return { ok: false, error: 'Unhandled command' };
