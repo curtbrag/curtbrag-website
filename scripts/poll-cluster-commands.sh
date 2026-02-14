@@ -10,7 +10,18 @@ POLL_INTERVAL=5  # seconds
 LOCAL_IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
 [ -z "$LOCAL_IP" ] && LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 [ -z "$LOCAL_IP" ] && LOCAL_IP="192.168.1.206"
+# Collect ALL local IPs so we reliably detect ourselves (wlan0, usb0, tailscale, etc.)
+ALL_LOCAL_IPS=$(ip -4 addr 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2 | tr '\n' ' ')
 trap 'rm -rf /tmp/cmdres-*' EXIT INT TERM
+
+# Check if an IP belongs to this machine
+is_local_ip() {
+  [ "$1" = "$LOCAL_IP" ] && return 0
+  for _lip in $ALL_LOCAL_IPS; do
+    [ "$1" = "$_lip" ] && return 0
+  done
+  return 1
+}
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
@@ -57,7 +68,7 @@ k3s_svc() {
 run_on_node() {
   local ip="$1"
   local cmd="$2"
-  if [ "$ip" = "$LOCAL_IP" ]; then
+  if is_local_ip "$ip"; then
     timeout 30 sh -c "$cmd" 2>/dev/null
   else
     timeout 30 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$ip" "$cmd" 2>/dev/null
@@ -68,7 +79,7 @@ run_on_node() {
 run_on_node_full() {
   local ip="$1"
   local cmd="$2"
-  if [ "$ip" = "$LOCAL_IP" ]; then
+  if is_local_ip "$ip"; then
     timeout 30 sh -c "$cmd" 2>&1
   else
     timeout 30 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$ip" "$cmd" 2>&1
@@ -189,13 +200,13 @@ execute_command() {
         for entry in $ALL_NODES; do
           name="${entry%%:*}"; ip="${entry##*:}"
           SVC=$(k3s_svc "$name")
-          run_on_node_tracked "$ip" "doas systemctl restart $SVC" "$RESULT_DIR" "$name" &
+          run_on_node_tracked "$ip" "doas rc-service $SVC restart 2>/dev/null || doas systemctl restart $SVC" "$RESULT_DIR" "$name" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        run_on_node_tracked "$IP" "doas systemctl restart $SVC" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$IP" "doas rc-service $SVC restart 2>/dev/null || doas systemctl restart $SVC" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -207,13 +218,13 @@ execute_command() {
         for entry in $ALL_NODES; do
           name="${entry%%:*}"; ip="${entry##*:}"
           SVC=$(k3s_svc "$name")
-          run_on_node_tracked "$ip" "doas systemctl start $SVC" "$RESULT_DIR" "$name" &
+          run_on_node_tracked "$ip" "doas rc-service $SVC start 2>/dev/null || doas systemctl start $SVC" "$RESULT_DIR" "$name" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        run_on_node_tracked "$IP" "doas systemctl start $SVC" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$IP" "doas rc-service $SVC start 2>/dev/null || doas systemctl start $SVC" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -225,13 +236,13 @@ execute_command() {
         for entry in $ALL_NODES; do
           name="${entry%%:*}"; ip="${entry##*:}"
           SVC=$(k3s_svc "$name")
-          run_on_node_tracked "$ip" "doas systemctl stop $SVC" "$RESULT_DIR" "$name" &
+          run_on_node_tracked "$ip" "doas rc-service $SVC stop 2>/dev/null || doas systemctl stop $SVC" "$RESULT_DIR" "$name" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        run_on_node_tracked "$IP" "doas systemctl stop $SVC" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$IP" "doas rc-service $SVC stop 2>/dev/null || doas systemctl stop $SVC" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -240,17 +251,17 @@ execute_command() {
       log "Starting miners..."
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
-      # Start xmrig via systemd, verify process is running
+      # Start xmrig via rc-service (OpenRC) or systemctl, verify process is running
       MINING_START_CMD='
 if ! command -v xmrig >/dev/null 2>&1 && [ ! -f /usr/local/bin/xmrig ]; then
   echo "xmrig not installed" >&2; exit 1
 fi
-doas systemctl start xmrig 2>&1
+doas rc-service xmrig start 2>/dev/null || doas systemctl start xmrig 2>&1
 sleep 2
 if pgrep xmrig >/dev/null 2>&1; then
   exit 0
 else
-  doas systemctl status xmrig >&2; exit 1
+  doas rc-service xmrig status 2>/dev/null || doas systemctl status xmrig >&2; exit 1
 fi'
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         run_on_all_tracked "$MINING_START_CMD" "$RESULT_DIR"
@@ -265,9 +276,9 @@ fi'
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "doas systemctl stop xmrig" "$RESULT_DIR"
+        run_on_all_tracked "doas rc-service xmrig stop 2>/dev/null || doas systemctl stop xmrig" "$RESULT_DIR"
       else
-        run_on_node_tracked "$(resolve_ip "$target")" "doas systemctl stop xmrig" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$(resolve_ip "$target")" "doas rc-service xmrig stop 2>/dev/null || doas systemctl stop xmrig" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -330,6 +341,7 @@ else echo 'NO_BROWSER' && exit 1; fi"
     debug)
       # Diagnostic command: report internal state of the running poller
       DEBUG_INFO="LOCAL_IP=$LOCAL_IP
+ALL_LOCAL_IPS=$ALL_LOCAL_IPS
 SCRIPT_DIR=$SCRIPT_DIR
 SCRIPT_PATH=$0
 PID=$$
@@ -337,9 +349,9 @@ HOSTNAME=$(hostname 2>/dev/null)
 IP_WLAN0=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
 IP_ALL=$(ip -4 addr 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2 | tr '\n' ' ')
 HOSTNAME_I=$(hostname -I 2>/dev/null)
-TEST_LOCAL_206=$([ "192.168.1.206" = "$LOCAL_IP" ] && echo MATCH || echo NOMATCH)
+TEST_IS_LOCAL_206=$(is_local_ip 192.168.1.206 && echo YES || echo NO)
 BUSYBOX=$(busybox --help 2>/dev/null | head -1)
-HEAD_SCRIPT=$(head -12 $0 2>/dev/null)"
+HEAD_SCRIPT=$(head -15 $0 2>/dev/null)"
       report_result "$cmd_id" "debug info" "$DEBUG_INFO" "$cmd" "$target"
       ;;
     reboot)
