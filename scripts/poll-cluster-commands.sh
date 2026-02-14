@@ -4,7 +4,7 @@
 # Or as a systemd service for auto-restart
 
 API_URL="https://curtbrag.com/.netlify/functions/cluster-control"
-API_KEY="${CLUSTER_API_KEY:-curtbrag-cluster-2024}"
+API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set}"
 POLL_INTERVAL=5  # seconds
 # Auto-detect our IP so local-exec works even if IP changes
 LOCAL_IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
@@ -282,6 +282,10 @@ fi'
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
       ;;
     browse)
+      if [ -z "$url" ]; then
+        report_result "$cmd_id" "error: no URL specified" "" "$cmd" "$target"
+        return
+      fi
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       if [ -n "$url" ]; then
@@ -394,19 +398,31 @@ HEAD_SCRIPT=$(head -15 $0 2>/dev/null)"
         FAIL=0
         TOTAL=0
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
+          SSH_OUT_DIR="/tmp/sshout-$cmd_id"
+          mkdir -p "$SSH_OUT_DIR"
           for entry in $ALL_NODES; do
             name="${entry%%:*}"; ip="${entry##*:}"
             TOTAL=$((TOTAL + 1))
-            NODE_OUT=$(run_on_node_full "$ip" "$ssh_cmd")
-            NODE_RC=$?
-            if [ "$NODE_RC" -ne 0 ]; then
-              FAIL=$((FAIL + 1))
-              NODE_OUT="[exit code $NODE_RC] $NODE_OUT"
-            fi
+            ( NODE_OUT=$(run_on_node_full "$ip" "$ssh_cmd")
+              NODE_RC=$?
+              if [ "$NODE_RC" -ne 0 ]; then
+                NODE_OUT="[exit code $NODE_RC] $NODE_OUT"
+                echo "fail" > "$SSH_OUT_DIR/${name}.rc"
+              fi
+              echo "$NODE_OUT" > "$SSH_OUT_DIR/${name}.out"
+            ) &
+          done
+          wait
+          for entry in $ALL_NODES; do
+            name="${entry%%:*}"
+            NODE_OUT=""
+            [ -f "$SSH_OUT_DIR/${name}.out" ] && NODE_OUT=$(cat "$SSH_OUT_DIR/${name}.out")
+            [ -f "$SSH_OUT_DIR/${name}.rc" ] && FAIL=$((FAIL + 1))
             OUTPUT="${OUTPUT}=== ${name} ===
 ${NODE_OUT}
 "
           done
+          rm -rf "$SSH_OUT_DIR"
         else
           IP=$(resolve_ip "$target")
           TOTAL=1
@@ -453,7 +469,7 @@ else echo "CAPTURE_FAILED" && exit 1; fi'
       capture_node() {
         local i="$1"
         local node_name="node$i"
-        local ip="192.168.1.$((205+i))"
+        local ip=$(resolve_ip "$node_name")
         local outfile="$SCREENSHOT_DIR/${node_name}.b64"
 
         B64=$(run_on_node "$ip" "$SCREEN_CMD")
@@ -536,10 +552,11 @@ check_schedules() {
   LAST_SCHED_CHECK=$NOW
 
   LOCAL_TIME=$(date '+%H:%M')
+  LOCAL_DATE=$(date '+%Y-%m-%d')
   SCHED_RESP=$(curl -s -X POST "$API_URL" \
     -H "Content-Type: application/json" \
     -H "X-Cluster-Key: $API_KEY" \
-    -d "$(jq -n --arg t "$LOCAL_TIME" '{action:"check-schedule",localTime:$t}')" 2>/dev/null || echo '{"commands":[]}')
+    -d "$(jq -n --arg t "$LOCAL_TIME" --arg d "$LOCAL_DATE" '{action:"check-schedule",localTime:$t,localDate:$d}')" 2>/dev/null || echo '{"commands":[]}')
 
   SCHED_COUNT=$(echo "$SCHED_RESP" | jq '.commands | length' 2>/dev/null || echo 0)
 

@@ -5,7 +5,7 @@
 set -e
 
 API_URL="https://curtbrag.com/.netlify/functions/cluster-status"
-API_KEY="${CLUSTER_API_KEY:-curtbrag-cluster-2024}"
+API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set}"
 TMP_DIR="/tmp/cluster-push-$$"
 
 cleanup() { rm -rf "$TMP_DIR"; }

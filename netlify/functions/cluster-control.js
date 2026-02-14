@@ -132,7 +132,7 @@ exports.handler = async (event) => {
   connectLambda(event);
 
   const apiKey = event.headers['x-cluster-key'];
-  const validKey = process.env.CLUSTER_API_KEY || 'curtbrag-cluster-2024';
+  const validKey = process.env.CLUSTER_API_KEY;
 
   // GET - Poll for commands (from node1) or get status (from dashboard)
   if (event.httpMethod === 'GET') {
@@ -143,6 +143,12 @@ exports.handler = async (event) => {
       if (apiKey !== validKey) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
       }
+      // Record heartbeat so dashboard knows poller is alive
+      try {
+        const store = getStore("cluster-control");
+        await store.setJSON("poller-heartbeat", { lastPoll: new Date().toISOString() });
+      } catch (e) { /* best-effort */ }
+
       const queue = await getQueue();
       const cmd = queue.shift();
       if (cmd) {
@@ -153,6 +159,22 @@ exports.handler = async (event) => {
         headers,
         body: JSON.stringify(cmd || {})
       };
+    }
+
+    // Poller heartbeat check (for dashboard)
+    if (params.action === 'poller-status') {
+      try {
+        const store = getStore("cluster-control");
+        const heartbeat = await store.get("poller-heartbeat", { type: "json" });
+        if (heartbeat && heartbeat.lastPoll) {
+          const age = Date.now() - new Date(heartbeat.lastPoll).getTime();
+          return {
+            statusCode: 200, headers,
+            body: JSON.stringify({ alive: age < 30000, lastPoll: heartbeat.lastPoll, ageSeconds: Math.round(age / 1000) })
+          };
+        }
+      } catch (e) { /* fall through */ }
+      return { statusCode: 200, headers, body: JSON.stringify({ alive: false, lastPoll: null }) };
     }
 
     // Schedule retrieval
@@ -273,7 +295,7 @@ exports.handler = async (event) => {
 
     // Save schedules from dashboard
     if (body.action === 'save-schedules') {
-      const webPassword = process.env.CLUSTER_WEB_PASSWORD || '073588';
+      const webPassword = process.env.CLUSTER_WEB_PASSWORD;
       if (body.password !== webPassword) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
       }
@@ -291,9 +313,17 @@ exports.handler = async (event) => {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
       }
       const schedules = await getSchedules();
-      const timeStr = body.localTime || new Date().toISOString().slice(11, 16);
-      const lastExec = await getScheduleExec();
+      const now = new Date();
+      const timeStr = body.localTime || now.toISOString().slice(11, 16);
+      const dateStr = body.localDate || now.toISOString().slice(0, 10);
+      let lastExec = await getScheduleExec();
       const commands = [];
+
+      // Clear stale entries from previous days to prevent unbounded growth
+      const staleKeys = Object.keys(lastExec).filter(k => !k.endsWith(':' + dateStr));
+      if (staleKeys.length > 0) {
+        for (const k of staleKeys) delete lastExec[k];
+      }
 
       for (const [id, sched] of Object.entries(schedules)) {
         if (!sched.enabled) continue;
@@ -304,7 +334,8 @@ exports.handler = async (event) => {
 
         for (const rule of rules) {
           if (rule.time === timeStr) {
-            const key = rule.command + ':' + id + ':' + timeStr;
+            // Include date in key so schedules fire once per day, not once ever
+            const key = rule.command + ':' + id + ':' + timeStr + ':' + dateStr;
             if (!lastExec[key]) {
               commands.push({ command: rule.command, target: id });
               lastExec[key] = true;
@@ -313,7 +344,7 @@ exports.handler = async (event) => {
         }
       }
 
-      if (commands.length > 0) {
+      if (commands.length > 0 || staleKeys.length > 0) {
         await saveScheduleExec(lastExec);
       }
 
@@ -328,7 +359,7 @@ exports.handler = async (event) => {
     const { command, target, password } = body;
 
     // Simple password protection for web commands
-    const webPassword = process.env.CLUSTER_WEB_PASSWORD || '073588';
+    const webPassword = process.env.CLUSTER_WEB_PASSWORD;
     if (password !== webPassword) {
       return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
     }
