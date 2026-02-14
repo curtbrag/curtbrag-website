@@ -6,7 +6,10 @@
 API_URL="https://curtbrag.com/.netlify/functions/cluster-control"
 API_KEY="${CLUSTER_API_KEY:-curtbrag-cluster-2024}"
 POLL_INTERVAL=5  # seconds
-LOCAL_IP="192.168.1.206"  # node1 — we run here, so use local exec
+# Auto-detect our IP so local-exec works even if IP changes
+LOCAL_IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
+[ -z "$LOCAL_IP" ] && LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+[ -z "$LOCAL_IP" ] && LOCAL_IP="192.168.1.206"
 trap 'rm -rf /tmp/cmdres-*' EXIT INT TERM
 
 log() {
