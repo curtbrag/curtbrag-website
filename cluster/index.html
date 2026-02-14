@@ -2125,6 +2125,11 @@
         headers: { 'Content-Type': 'application/json', ...apiHeaders() },
         body: JSON.stringify(body)
       });
+      if (!res.ok) {
+        var errorText = '';
+        try { var errBody = await res.json(); errorText = errBody.error || res.statusText; } catch(e) { errorText = res.statusText; }
+        throw new Error('API error ' + res.status + ': ' + errorText);
+      }
       return await res.json();
     }
 
@@ -2189,6 +2194,7 @@
 
         if (!data) {
           const res = await fetch('/.netlify/functions/cluster-status');
+          if (!res.ok) throw new Error('Netlify status ' + res.status);
           data = await res.json();
         }
 
