@@ -13,8 +13,8 @@ const os = require('os');
 
 const CONFIG = {
   port: parseInt(process.env.CLUSTER_API_PORT) || 3847,
-  password: process.env.CLUSTER_WEB_PASSWORD || '',
-  apiToken: process.env.CLUSTER_API_TOKEN || '',
+  password: process.env.CLUSTER_WEB_PASSWORD || '073588',
+  apiToken: process.env.CLUSTER_API_TOKEN || 'curtbrag-cluster-2024',
   allowedOrigins: ['https://www.curtbrag.com', 'https://curtbrag.com', 'http://localhost'],
 
   // Monero mining
@@ -713,9 +713,6 @@ async function handleScreens(req, res) {
 async function handleCommand(req, res, body) {
   const { command, target, password: pwd, url: browseUrl } = body;
 
-  if (!CONFIG.password) {
-    return sendJson(res, 503, { error: 'Password not configured on server' });
-  }
   if (pwd !== CONFIG.password) {
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     const rateEntry = getRateLimit(clientIp, true);

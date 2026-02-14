@@ -132,7 +132,7 @@ exports.handler = async (event) => {
   connectLambda(event);
 
   const apiKey = event.headers['x-cluster-key'];
-  const validKey = process.env.CLUSTER_API_KEY || '';
+  const validKey = process.env.CLUSTER_API_KEY || 'curtbrag-cluster-2024';
 
   // GET - Poll for commands (from node1) or get status (from dashboard)
   if (event.httpMethod === 'GET') {
@@ -273,10 +273,7 @@ exports.handler = async (event) => {
 
     // Save schedules from dashboard
     if (body.action === 'save-schedules') {
-      const webPassword = process.env.CLUSTER_WEB_PASSWORD || '';
-      if (!webPassword) {
-        return { statusCode: 503, headers, body: JSON.stringify({ error: 'Password not configured on server' }) };
-      }
+      const webPassword = process.env.CLUSTER_WEB_PASSWORD || '073588';
       if (body.password !== webPassword) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
       }
@@ -331,10 +328,7 @@ exports.handler = async (event) => {
     const { command, target, password } = body;
 
     // Simple password protection for web commands
-    const webPassword = process.env.CLUSTER_WEB_PASSWORD || '';
-    if (!webPassword) {
-      return { statusCode: 503, headers, body: JSON.stringify({ error: 'Password not configured on server' }) };
-    }
+    const webPassword = process.env.CLUSTER_WEB_PASSWORD || '073588';
     if (password !== webPassword) {
       return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
     }
