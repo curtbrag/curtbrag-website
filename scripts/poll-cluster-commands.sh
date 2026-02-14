@@ -295,7 +295,7 @@ else echo 'NO_BROWSER' && exit 1; fi"
       ;;
     update)
       log "Updating scripts from GitHub..."
-      REPO_RAW="https://raw.githubusercontent.com/curtbrag/curtbrag-website/claude/cluster-capabilities-review-CNtba/scripts"
+      REPO_RAW="https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts"
       SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
       FAIL=""
       SELF_UPDATED="false"
