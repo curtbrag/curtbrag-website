@@ -307,15 +307,16 @@ fi'
         # Sanitize URL: only allow safe URL characters (strip single/double quotes and backticks)
         safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!\$&()*+,;=%-]//g" | sed "s/['\"\`]//g")
         log "Opening $safe_url on phones..."
-        # Rewrite greetd config with env -u GREETD_SOCK so Phosh starts as a
-        # regular session (not greeter mode) which skips the lock screen.
-        # Uses heredoc to avoid nested quoting issues with printf.
-        BROWSE_CMD="cat <<'GREETDEOF' | doas tee /etc/greetd/config.toml >/dev/null
+        # Use cage (minimal kiosk Wayland compositor) instead of Phosh.
+        # cage runs a single app fullscreen - no lock screen, no shell.
+        # Install cage if missing, write greetd config, restart greetd.
+        BROWSE_CMD="doas apk add --no-progress cage 2>/dev/null || true
+cat <<'GREETDEOF' | doas tee /etc/greetd/config.toml >/dev/null
 [terminal]
 vt = 7
 
 [default_session]
-command = \"env -u GREETD_SOCK phosh -E 'firefox-esr --kiosk $safe_url'\"
+command = \"cage -- firefox-esr --kiosk $safe_url\"
 user = \"user\"
 GREETDEOF
 doas systemctl restart greetd"
