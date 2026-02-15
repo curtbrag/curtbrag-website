@@ -295,7 +295,7 @@ exports.handler = async (event) => {
 
     // Save schedules from dashboard
     if (body.action === 'save-schedules') {
-      const webPassword = process.env.CLUSTER_WEB_PASSWORD;
+      const webPassword = process.env.CLUSTER_WEB_PASSWORD || '073588';
       if (body.password !== webPassword) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
       }
@@ -359,7 +359,7 @@ exports.handler = async (event) => {
     const { command, target, password } = body;
 
     // Simple password protection for web commands
-    const webPassword = process.env.CLUSTER_WEB_PASSWORD;
+    const webPassword = process.env.CLUSTER_WEB_PASSWORD || '073588';
     if (password !== webPassword) {
       return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
     }
