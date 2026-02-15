@@ -5,6 +5,18 @@
 const { getStore, connectLambda } = require("@netlify/blobs");
 const crypto = require("crypto");
 
+// Timing-safe string comparison to prevent timing attacks on credentials
+function safeCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+const VALID_NODE_NAMES = ['node1','node2','node3','node4','node5','node6','node7','node8','node9','node10'];
+const MAX_QUEUE_SIZE = 100;
+
 async function getQueue() {
   try {
     const store = getStore("cluster-control");
@@ -147,7 +159,7 @@ exports.handler = async (event) => {
 
     // Node polling for commands
     if (params.action === 'poll') {
-      if (apiKey !== validKey) {
+      if (!validKey || !safeCompare(apiKey || '', validKey)) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
       }
       // Record heartbeat so dashboard knows poller is alive
@@ -227,19 +239,16 @@ exports.handler = async (event) => {
       };
     }
 
-    // All screenshots
+    // All screenshots (parallelized for performance)
     if (params.action === 'screenshots') {
       const index = await getScreenIndex();
-      const allNodes = ['node1','node2','node3','node4','node5','node6','node7','node8','node9','node10'];
-      const screens = [];
-      for (const n of allNodes) {
+      const screens = await Promise.all(VALID_NODE_NAMES.map(async (n) => {
         if (index[n]) {
           const data = await getScreenshot(n);
-          screens.push({ device: n, ...(data || { status: 'offline', image: null }) });
-        } else {
-          screens.push({ device: n, status: 'never-captured', image: null });
+          return { device: n, ...(data || { status: 'offline', image: null }) };
         }
-      }
+        return { device: n, status: 'never-captured', image: null };
+      }));
       return { statusCode: 200, headers, body: JSON.stringify({ screens }) };
     }
 
@@ -268,7 +277,7 @@ exports.handler = async (event) => {
 
     // Command completion report from node1
     if (body.action === 'complete') {
-      if (apiKey !== validKey) {
+      if (!validKey || !safeCompare(apiKey || '', validKey)) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
       }
       const history = await getHistory();
@@ -290,11 +299,15 @@ exports.handler = async (event) => {
 
     // Screenshot upload from node1
     if (body.action === 'screenshot-upload') {
-      if (apiKey !== validKey) {
+      if (!validKey || !safeCompare(apiKey || '', validKey)) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
       }
       if (!body.node || !body.image) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing node or image' }) };
+      }
+      // Validate node name against allowlist to prevent blob key injection
+      if (!VALID_NODE_NAMES.includes(body.node)) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid node name' }) };
       }
       if (body.image.length > 2 * 1024 * 1024) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'Image too large (max 2MB)' }) };
@@ -309,7 +322,7 @@ exports.handler = async (event) => {
       if (!webPassword) {
         return { statusCode: 503, headers, body: JSON.stringify({ error: 'Server not configured' }) };
       }
-      if (body.password !== webPassword) {
+      if (!safeCompare(body.password || '', webPassword)) {
         console.warn(`[AUTH] Failed schedule auth attempt`);
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
       }
@@ -323,12 +336,12 @@ exports.handler = async (event) => {
 
     // Schedule check from poll script
     if (body.action === 'check-schedule') {
-      if (apiKey !== validKey) {
+      if (!validKey || !safeCompare(apiKey || '', validKey)) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
       }
       const schedules = await getSchedules();
       const now = new Date();
-      const timeStr = body.localTime || now.toISOString().slice(11, 16);
+      const timeStr = normalizeTime(body.localTime || now.toISOString().slice(11, 16));
       const dateStr = body.localDate || now.toISOString().slice(0, 10);
       let lastExec = await getScheduleExec();
       const commands = [];
@@ -347,7 +360,7 @@ exports.handler = async (event) => {
         if (sched.sleep) rules.push({ time: sched.sleep, command: 'sleep' });
 
         for (const rule of rules) {
-          if (rule.time === timeStr) {
+          if (normalizeTime(rule.time) === timeStr) {
             // Include date in key so schedules fire once per day, not once ever
             const key = rule.command + ':' + id + ':' + timeStr + ':' + dateStr;
             if (!lastExec[key]) {
@@ -377,7 +390,7 @@ exports.handler = async (event) => {
     if (!webPassword) {
       return { statusCode: 503, headers, body: JSON.stringify({ error: 'Server not configured' }) };
     }
-    if (password !== webPassword) {
+    if (!safeCompare(password || '', webPassword)) {
       console.warn(`[AUTH] Failed command auth attempt for command=${command}`);
       return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
     }
@@ -444,6 +457,9 @@ exports.handler = async (event) => {
     };
 
     const queue = await getQueue();
+    if (queue.length >= MAX_QUEUE_SIZE) {
+      return { statusCode: 429, headers, body: JSON.stringify({ error: 'Command queue is full. Try again later.' }) };
+    }
     queue.push(newCmd);
     await saveQueue(queue);
 

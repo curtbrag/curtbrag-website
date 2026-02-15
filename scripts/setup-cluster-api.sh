@@ -120,6 +120,18 @@ if command -v systemctl &>/dev/null && systemctl --version &>/dev/null 2>&1; the
   SERVICE_FILE="/etc/systemd/system/cluster-api.service"
   CURRENT_USER=$(whoami)
 
+  # Write credentials to a separate file with restricted permissions
+  ENV_FILE="/etc/cluster-api.env"
+  sudo tee "$ENV_FILE" > /dev/null << EOF
+CLUSTER_WEB_PASSWORD=${PASSWORD}
+CLUSTER_API_TOKEN=${TOKEN}
+XMR_WALLET=${WALLET}
+CLUSTER_API_PORT=${PORT}
+EOF
+  sudo chmod 600 "$ENV_FILE"
+  sudo chown "${CURRENT_USER}:${CURRENT_USER}" "$ENV_FILE" 2>/dev/null || true
+  echo -e "  ${GREEN}✓${NC} Credentials written to $ENV_FILE (mode 600)"
+
   sudo tee "$SERVICE_FILE" > /dev/null << EOF
 [Unit]
 Description=CurtBrag Cluster API Server
@@ -132,10 +144,7 @@ WorkingDirectory=${API_DIR}
 ExecStart=$(which node) server.js
 Restart=always
 RestartSec=5
-Environment=CLUSTER_WEB_PASSWORD=${PASSWORD}
-Environment=CLUSTER_API_TOKEN=${TOKEN}
-Environment=XMR_WALLET=${WALLET}
-Environment=CLUSTER_API_PORT=${PORT}
+EnvironmentFile=${ENV_FILE}
 
 [Install]
 WantedBy=multi-user.target

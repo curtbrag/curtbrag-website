@@ -57,14 +57,14 @@ for i in $(seq 1 10); do
   NODE="node$i"
   if [ "$i" = "1" ]; then
     # Local check
-    HAS_BIN="no"; command -v xmrig >/dev/null 2>&1 || [ -f /usr/local/bin/xmrig ] && HAS_BIN="yes"
+    HAS_BIN="no"; { command -v xmrig >/dev/null 2>&1 || [ -f /usr/local/bin/xmrig ]; } && HAS_BIN="yes"
     HAS_SVC="no"; [ -f /etc/systemd/system/xmrig.service ] && HAS_SVC="yes"
     HAS_CFG="no"; [ -f /etc/xmrig/config.json ] && HAS_CFG="yes"
     IS_RUN="no"; pgrep xmrig >/dev/null 2>&1 && IS_RUN="yes"
     echo "  $NODE: binary=$HAS_BIN service=$HAS_SVC config=$HAS_CFG running=$IS_RUN"
   else
     DIAG=$(ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" '
-      HAS_BIN="no"; command -v xmrig >/dev/null 2>&1 || [ -f /usr/local/bin/xmrig ] && HAS_BIN="yes"
+      HAS_BIN="no"; { command -v xmrig >/dev/null 2>&1 || [ -f /usr/local/bin/xmrig ]; } && HAS_BIN="yes"
       HAS_SVC="no"; [ -f /etc/systemd/system/xmrig.service ] && HAS_SVC="yes"
       HAS_CFG="no"; [ -f /etc/xmrig/config.json ] && HAS_CFG="yes"
       IS_RUN="no"; pgrep xmrig >/dev/null 2>&1 && IS_RUN="yes"
@@ -92,10 +92,13 @@ for i in $(seq 1 10); do
       echo "  $NODE: FAILED (check /var/log/xmrig.log)"
     fi
   else
-    ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" \
-      "doas systemctl start xmrig 2>/dev/null; sleep 2; pgrep xmrig >/dev/null 2>&1 && echo MINING || echo FAILED" 2>/dev/null | while read line; do
-      echo "  $NODE: $line"
-    done
+    REMOTE_RESULT=$(ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" \
+      "doas systemctl start xmrig 2>/dev/null; sleep 2; pgrep xmrig >/dev/null 2>&1 && echo MINING || echo FAILED" 2>/dev/null || echo "UNREACHABLE")
+    echo "  $NODE: $REMOTE_RESULT"
+    case "$REMOTE_RESULT" in
+      *MINING*) STARTED=$((STARTED + 1)) ;;
+      *) FAILED=$((FAILED + 1)) ;;
+    esac
   fi
 done
 

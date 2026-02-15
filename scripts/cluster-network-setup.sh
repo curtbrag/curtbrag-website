@@ -75,10 +75,13 @@ run_on_node() {
 # Run command on all nodes
 run_on_all() {
   cmd="$1"
-  echo "$NODES" | while IFS=: read -r name ip; do
+  # Avoid pipe-subshell: use heredoc so background jobs are children of this shell
+  while IFS=: read -r name ip; do
     [ -z "$name" ] && continue
     run_on_node "$name" "$ip" "$cmd" &
-  done
+  done <<EOF
+$NODES
+EOF
   wait
 }
 

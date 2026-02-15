@@ -5,6 +5,7 @@
 
 const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
 const { execSync, exec } = require('child_process');
 const url = require('url');
 const os = require('os');
@@ -80,6 +81,14 @@ function runAsyncBinary(cmd, timeoutMs = 10000) {
 
 function shellEscape(s) {
   return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
+function safeCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
 }
 
 function sshExec(nodeKey, cmd) {
@@ -411,10 +420,12 @@ async function gatherNodeMetrics() {
   }
 
   // AORUS (local) metrics
-  const localCpu = run("top -bn1 | head -3 | grep -i cpu | head -1", 5000);
-  const localMem = run("free -m | grep Mem", 3000);
-  const localTemp = run("cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0", 3000);
-  const localDisk = run("df -m / | tail -1", 3000);
+  const [localCpu, localMem, localTemp, localDisk] = await Promise.all([
+    runAsync("top -bn1 | head -3 | grep -i cpu | head -1", 5000),
+    runAsync("free -m | grep Mem", 3000),
+    runAsync("cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0", 3000),
+    runAsync("df -m / | tail -1", 3000),
+  ]);
 
   const aorus = { cpu: null, memory: null, temp: null, storage: null };
   if (localCpu.ok) {
@@ -716,12 +727,14 @@ async function handleScreens(req, res) {
 async function handleCommand(req, res, body) {
   const { command, target, password: pwd, url: browseUrl } = body;
 
-  if (pwd !== CONFIG.password) {
-    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
-    const rateEntry = getRateLimit(clientIp, true);
-    if (rateEntry.failedAuth > RATE_LIMIT_AUTH_MAX) {
-      return sendJson(res, 429, { error: 'Too many failed attempts' });
-    }
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+  const rateEntry = getRateLimit(clientIp, false);
+  if (rateEntry.failedAuth > RATE_LIMIT_AUTH_MAX) {
+    return sendJson(res, 429, { error: 'Too many failed attempts' });
+  }
+
+  if (!safeCompare(pwd, CONFIG.password)) {
+    getRateLimit(clientIp, true);
     logCommand({ command, target, status: 'denied', reason: 'Invalid password' });
     return sendJson(res, 401, { error: 'Invalid password' });
   }
@@ -892,7 +905,7 @@ async function executeOnNode(name, command, browseUrl, body) {
     }
     case 'reboot': {
       const r = await sshExecAsync(name, 'doas reboot');
-      return { ok: true, output: r.stdout || 'Reboot initiated' };
+      return { ok: r.ok, output: r.ok ? (r.stdout || 'Reboot initiated') : (r.stderr || 'Reboot failed') };
     }
     case 'screenshot': {
       if (!isPhone) return { ok: false, error: 'Not a phone node' };
@@ -1304,7 +1317,6 @@ async function handleConnectivity(req, res) {
 // ─── Latency Endpoint (lightweight for connection quality) ───────────────────
 
 async function handleLatency(req, res) {
-  const start = process.hrtime.bigint();
   sendJson(res, 200, { ts: Date.now(), serverUptime: process.uptime(), latencyTest: true });
 }
 
@@ -1678,7 +1690,7 @@ function handleApiLatencyHistory(req, res) {
 
 async function handleClusterSnapshot(req, res, body) {
   const { password: pwd } = body;
-  if (pwd !== CONFIG.password) return sendJson(res, 401, { error: 'Invalid password' });
+  if (!safeCompare(pwd, CONFIG.password)) return sendJson(res, 401, { error: 'Invalid password' });
 
   // Gather a full snapshot of the cluster state
   const [nodes, pods, svcs, deploys, cms] = await Promise.all([
@@ -1907,10 +1919,10 @@ function checkAuth(req) {
   if (!CONFIG.apiToken) return true;
   const authHeader = req.headers.authorization || '';
   if (authHeader.startsWith('Bearer ')) {
-    return authHeader.slice(7) === CONFIG.apiToken;
+    return safeCompare(authHeader.slice(7), CONFIG.apiToken);
   }
   const parsed = url.parse(req.url, true);
-  return parsed.query.token === CONFIG.apiToken;
+  return safeCompare(parsed.query.token, CONFIG.apiToken);
 }
 
 function readBody(req, maxBytes = 1024 * 1024) {

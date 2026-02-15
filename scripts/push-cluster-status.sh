@@ -330,11 +330,19 @@ TOTAL_REJ=0
 for i in $(seq 1 10); do
   (
     NODE_IP="192.168.1.$((205 + i))"
-    XMRIG=$(curl -s --connect-timeout 5 --max-time 8 "http://$NODE_IP:18080/1/summary" 2>/dev/null)
+    # Try local curl first (works for node1 where xmrig binds to 127.0.0.1)
+    XMRIG=""
+    if [ "$i" = "1" ]; then
+      XMRIG=$(curl -s --connect-timeout 5 --max-time 8 "http://127.0.0.1:18080/1/summary" 2>/dev/null)
+    else
+      # xmrig binds to localhost, so query via SSH tunnel to the remote node
+      XMRIG=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+        "user@$NODE_IP" "curl -s --connect-timeout 3 --max-time 5 http://127.0.0.1:18080/1/summary 2>/dev/null" 2>/dev/null)
+    fi
     if [ -n "$XMRIG" ] && echo "$XMRIG" | jq . >/dev/null 2>&1; then
       echo "$XMRIG" > "$TMP_DIR/mining_node${i}.tmp"
     else
-      # HTTP API failed — check if xmrig process is actually running
+      # API failed — check if xmrig process is actually running
       PROC_CHECK=""
       if [ "$i" = "1" ]; then
         pgrep xmrig >/dev/null 2>&1 && PROC_CHECK="running"
