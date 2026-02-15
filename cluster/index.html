@@ -3227,7 +3227,9 @@
           var res = await fetch(apiEndpoint + '/api/screen/' + encodeURIComponent(currentScreenDevice) + '?t=' + Date.now(), { headers: headers });
           if (res.ok) {
             var blob = await res.blob();
+            var oldSrc = img.src;
             img.src = URL.createObjectURL(blob);
+            if (oldSrc && oldSrc.startsWith('blob:')) URL.revokeObjectURL(oldSrc);
           }
         } catch (e) { console.warn('Failed to fetch screen via API:', e); }
         return;

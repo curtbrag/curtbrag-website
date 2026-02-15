@@ -160,7 +160,7 @@ const CACHE_TTL = 5000; // 5 seconds
 
 async function getStatus() {
   if (cachedStatus && Date.now() - cacheTime < CACHE_TTL) {
-    return cachedStatus;
+    return JSON.parse(JSON.stringify(cachedStatus));
   }
 
   try {
