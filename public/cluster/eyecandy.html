@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Cluster Eye Candy</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:none}
+canvas{display:block;width:100%;height:100%;position:absolute;top:0;left:0}
+#overlay{position:absolute;bottom:20px;left:0;right:0;text-align:center;
+  font-family:'Courier New',monospace;color:rgba(255,255,255,.15);font-size:10px;
+  pointer-events:none;z-index:10;letter-spacing:2px}
+#modeName{position:absolute;top:20px;left:0;right:0;text-align:center;
+  font-family:'Courier New',monospace;color:rgba(255,255,255,0);font-size:12px;
+  pointer-events:none;z-index:10;letter-spacing:4px;text-transform:uppercase;
+  transition:color .5s}
+#modeName.show{color:rgba(255,255,255,.3)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="overlay">CURTBRAG CLUSTER</div>
+<div id="modeName"></div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const modeLabel = document.getElementById('modeName');
+
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Shared state ──
+let currentMode = 0;
+const CYCLE_MS = 20000; // 20s per mode
+let lastSwitch = 0;
+
+// Tap to skip to next mode
+document.addEventListener('click', () => { lastSwitch = 0; });
+
+// ─────────────────────────────────────────────
+// MODE 0: Particle constellation
+// ─────────────────────────────────────────────
+const PCOUNT = 80;
+let particles = [];
+
+function initParticles() {
+  particles = [];
+  for (let i = 0; i < PCOUNT; i++) {
+    particles.push({
+      x: Math.random() * W, y: Math.random() * H,
+      vx: (Math.random() - .5) * .6, vy: (Math.random() - .5) * .6,
+      r: Math.random() * 2 + 1,
+      hue: Math.random() * 60 + 200 // blue-purple range
+    });
+  }
+}
+initParticles();
+
+function drawParticles(t) {
+  ctx.fillStyle = 'rgba(0,0,0,.08)';
+  ctx.fillRect(0, 0, W, H);
+  const pulse = Math.sin(t * .001) * .3 + .7;
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy;
+    if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+    if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+    // Draw connections
+    for (let j = i + 1; j < particles.length; j++) {
+      const q = particles[j];
+      const dx = p.x - q.x, dy = p.y - q.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 120) {
+        ctx.beginPath();
+        ctx.strokeStyle = `hsla(${p.hue},80%,60%,${(1 - dist / 120) * .4 * pulse})`;
+        ctx.lineWidth = .5;
+        ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y);
+        ctx.stroke();
+      }
+    }
+    // Draw particle
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * pulse, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${p.hue},80%,70%,${.8 * pulse})`;
+    ctx.fill();
+  }
+}
+
+// ─────────────────────────────────────────────
+// MODE 1: Matrix rain
+// ─────────────────────────────────────────────
+const CHARS = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEF';
+let columns, drops;
+
+function initMatrix() {
+  const sz = 14;
+  columns = Math.ceil(W / sz);
+  drops = new Array(columns).fill(0).map(() => Math.random() * -50 | 0);
+}
+initMatrix();
+
+function drawMatrix(t) {
+  ctx.fillStyle = 'rgba(0,0,0,.06)';
+  ctx.fillRect(0, 0, W, H);
+  const sz = 14;
+  ctx.font = sz + 'px monospace';
+  for (let i = 0; i < columns; i++) {
+    const ch = CHARS[Math.random() * CHARS.length | 0];
+    const y = drops[i] * sz;
+    // Head char is white-green, trail fades
+    ctx.fillStyle = `hsl(${120 + Math.sin(t * .002 + i) * 20},100%,70%)`;
+    ctx.fillText(ch, i * sz, y);
+    // Slightly dimmer secondary
+    if (drops[i] > 1) {
+      ctx.fillStyle = `hsla(120,80%,50%,.4)`;
+      const ch2 = CHARS[Math.random() * CHARS.length | 0];
+      ctx.fillText(ch2, i * sz, y - sz);
+    }
+    if (y > H && Math.random() > .975) drops[i] = 0;
+    drops[i]++;
+  }
+}
+
+// ─────────────────────────────────────────────
+// MODE 2: Plasma / lava lamp
+// ─────────────────────────────────────────────
+let plasmaImg;
+function initPlasma() {
+  plasmaImg = ctx.createImageData(W >> 2, H >> 2);
+}
+initPlasma();
+
+function drawPlasma(t) {
+  const s = t * .0008;
+  const pw = plasmaImg.width, ph = plasmaImg.height;
+  const d = plasmaImg.data;
+  for (let y = 0; y < ph; y++) {
+    for (let x = 0; x < pw; x++) {
+      const v1 = Math.sin(x * .04 + s);
+      const v2 = Math.sin(y * .05 + s * 1.3);
+      const v3 = Math.sin((x * .03 + y * .04) + s * .7);
+      const v4 = Math.sin(Math.sqrt(x * x + y * y) * .03 - s);
+      const v = (v1 + v2 + v3 + v4) * .25;
+      const i = (y * pw + x) * 4;
+      d[i]   = (Math.sin(v * Math.PI) * .5 + .5) * 255;
+      d[i+1] = (Math.sin(v * Math.PI + 2.094) * .5 + .5) * 180;
+      d[i+2] = (Math.sin(v * Math.PI + 4.188) * .5 + .5) * 255;
+      d[i+3] = 255;
+    }
+  }
+  // Draw scaled up
+  const off = document.createElement('canvas');
+  off.width = pw; off.height = ph;
+  off.getContext('2d').putImageData(plasmaImg, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(off, 0, 0, W, H);
+}
+
+// ─────────────────────────────────────────────
+// MODE 3: Audio-reactive rings (simulated)
+// ─────────────────────────────────────────────
+function drawRings(t) {
+  ctx.fillStyle = 'rgba(0,0,0,.1)';
+  ctx.fillRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2;
+  const maxR = Math.min(W, H) * .45;
+  for (let i = 0; i < 12; i++) {
+    const phase = t * .002 + i * .5;
+    const r = maxR * (.2 + i * .07) + Math.sin(phase) * 20;
+    const hue = (t * .05 + i * 30) % 360;
+    ctx.beginPath();
+    // Wobbly ring
+    for (let a = 0; a <= Math.PI * 2; a += .05) {
+      const wobble = Math.sin(a * 3 + phase) * (8 + i * 2) + Math.sin(a * 7 - phase * 1.5) * 4;
+      const px = cx + Math.cos(a) * (r + wobble);
+      const py = cy + Math.sin(a) * (r + wobble);
+      if (a === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = `hsla(${hue},80%,60%,.6)`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  // Center glow
+  const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxR * .3);
+  grd.addColorStop(0, `hsla(${(t * .08) % 360},70%,60%,.15)`);
+  grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, W, H);
+}
+
+// ─────────────────────────────────────────────
+// MODE 4: Starfield warp
+// ─────────────────────────────────────────────
+const STARS = 300;
+let stars = [];
+function initStars() {
+  stars = [];
+  for (let i = 0; i < STARS; i++) {
+    stars.push({
+      x: (Math.random() - .5) * W * 2,
+      y: (Math.random() - .5) * H * 2,
+      z: Math.random() * W
+    });
+  }
+}
+initStars();
+
+function drawStarfield(t) {
+  ctx.fillStyle = 'rgba(0,0,0,.15)';
+  ctx.fillRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2;
+  const speed = 4 + Math.sin(t * .001) * 2;
+  for (const s of stars) {
+    s.z -= speed;
+    if (s.z <= 0) {
+      s.x = (Math.random() - .5) * W * 2;
+      s.y = (Math.random() - .5) * H * 2;
+      s.z = W;
+    }
+    const sx = (s.x / s.z) * W + cx;
+    const sy = (s.y / s.z) * H + cy;
+    const r = Math.max(0, (1 - s.z / W) * 3);
+    const bright = 1 - s.z / W;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${bright})`;
+    ctx.fill();
+    // Streak line
+    const ox = ((s.x / (s.z + speed * 4)) * W + cx);
+    const oy = ((s.y / (s.z + speed * 4)) * H + cy);
+    ctx.beginPath();
+    ctx.moveTo(sx, sy); ctx.lineTo(ox, oy);
+    ctx.strokeStyle = `rgba(180,200,255,${bright * .5})`;
+    ctx.lineWidth = r * .5;
+    ctx.stroke();
+  }
+}
+
+// ─────────────────────────────────────────────
+// MODE 5: Fire / ember wall
+// ─────────────────────────────────────────────
+let embers = [];
+function initEmbers() {
+  embers = [];
+  for (let i = 0; i < 150; i++) {
+    embers.push(newEmber());
+  }
+}
+function newEmber() {
+  return {
+    x: Math.random() * W,
+    y: H + Math.random() * 40,
+    vx: (Math.random() - .5) * 1.5,
+    vy: -(Math.random() * 2 + 1.5),
+    life: 1,
+    decay: Math.random() * .008 + .004,
+    size: Math.random() * 4 + 2,
+    hue: Math.random() * 40 + 10 // orange-red
+  };
+}
+initEmbers();
+
+function drawFire(t) {
+  ctx.fillStyle = 'rgba(0,0,0,.08)';
+  ctx.fillRect(0, 0, W, H);
+  // Base glow at bottom
+  const grd = ctx.createLinearGradient(0, H, 0, H * .6);
+  grd.addColorStop(0, `hsla(15,90%,30%,.06)`);
+  grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, W, H);
+
+  for (let i = 0; i < embers.length; i++) {
+    const e = embers[i];
+    e.x += e.vx + Math.sin(t * .003 + i) * .3;
+    e.y += e.vy;
+    e.life -= e.decay;
+    if (e.life <= 0) {
+      embers[i] = newEmber();
+      continue;
+    }
+    const alpha = e.life * .8;
+    const s = e.size * e.life;
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, s, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${e.hue},100%,${50 + (1-e.life)*30}%,${alpha})`;
+    ctx.fill();
+    // Glow
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, s * 3, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${e.hue},100%,50%,${alpha * .1})`;
+    ctx.fill();
+  }
+}
+
+// ─────────────────────────────────────────────
+// MODE 6: DNA helix
+// ─────────────────────────────────────────────
+function drawDNA(t) {
+  ctx.fillStyle = 'rgba(0,0,0,.1)';
+  ctx.fillRect(0, 0, W, H);
+  const cx = W / 2;
+  const amp = W * .25;
+  const step = 20;
+  const count = Math.ceil(H / step) + 4;
+  const s = t * .002;
+
+  for (let i = 0; i < count; i++) {
+    const y = (i * step - (t * .05) % step);
+    const phase = i * .3 + s;
+    const x1 = cx + Math.sin(phase) * amp;
+    const x2 = cx + Math.sin(phase + Math.PI) * amp;
+    const depth1 = Math.cos(phase) * .5 + .5;
+    const depth2 = Math.cos(phase + Math.PI) * .5 + .5;
+    const hue1 = (i * 8 + t * .03) % 360;
+    const hue2 = (hue1 + 180) % 360;
+
+    // Connecting rung
+    ctx.beginPath();
+    ctx.moveTo(x1, y); ctx.lineTo(x2, y);
+    ctx.strokeStyle = `hsla(${hue1},50%,40%,.2)`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Strand 1
+    ctx.beginPath();
+    ctx.arc(x1, y, 4 + depth1 * 4, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${hue1},80%,${50+depth1*20}%,${.4+depth1*.5})`;
+    ctx.fill();
+
+    // Strand 2
+    ctx.beginPath();
+    ctx.arc(x2, y, 4 + depth2 * 4, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${hue2},80%,${50+depth2*20}%,${.4+depth2*.5})`;
+    ctx.fill();
+  }
+}
+
+// ─────────────────────────────────────────────
+// Main loop
+// ─────────────────────────────────────────────
+const modes = [
+  { name: 'constellation', draw: drawParticles },
+  { name: 'matrix', draw: drawMatrix },
+  { name: 'plasma', draw: drawPlasma },
+  { name: 'rings', draw: drawRings },
+  { name: 'warp', draw: drawStarfield },
+  { name: 'fire', draw: drawFire },
+  { name: 'helix', draw: drawDNA }
+];
+
+function showModeName(name) {
+  modeLabel.textContent = name;
+  modeLabel.classList.add('show');
+  setTimeout(() => modeLabel.classList.remove('show'), 2000);
+}
+
+// Offset each phone slightly based on random seed so they're not perfectly in sync
+const timeOffset = Math.random() * 5000;
+
+function loop(ts) {
+  const t = ts + timeOffset;
+
+  // Auto-cycle
+  if (ts - lastSwitch > CYCLE_MS || lastSwitch === 0) {
+    if (lastSwitch > 0) {
+      currentMode = (currentMode + 1) % modes.length;
+      // Re-init as needed
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+    }
+    initParticles();
+    initMatrix();
+    initPlasma();
+    initStars();
+    initEmbers();
+    lastSwitch = ts;
+    showModeName(modes[currentMode].name);
+  }
+
+  modes[currentMode].draw(t);
+  requestAnimationFrame(loop);
+}
+
+// Prevent screen sleep (if supported)
+if ('wakeLock' in navigator) {
+  navigator.wakeLock.request('screen').catch(() => {});
+}
+
+requestAnimationFrame(loop);
+
+// Re-init on resize
+window.addEventListener('resize', () => {
+  resize();
+  initParticles(); initMatrix(); initPlasma(); initStars(); initEmbers();
+});
+</script>
+</body>
+</html>
