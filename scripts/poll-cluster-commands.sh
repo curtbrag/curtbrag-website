@@ -4,7 +4,7 @@
 # Or as a systemd service for auto-restart
 
 API_URL="https://curtbrag.com/.netlify/functions/cluster-control"
-API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set}"
+API_KEY="${CLUSTER_API_KEY:-curtbrag-cluster-2024}"
 POLL_INTERVAL=5  # seconds
 # Auto-detect our IP so local-exec works even if IP changes
 LOCAL_IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
@@ -167,24 +167,25 @@ execute_command() {
     wake)
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
-      # Turn on backlight + fully dismiss Phosh lock screen
-      # 1. Backlight on
-      # 2. Disable lock via dconf (writes directly to user db, no dbus needed)
-      # 3. Unlock via loginctl
-      # 4. Dismiss screensaver via multiple methods
-      # 5. Simulate touch input to swipe past lock screen as fallback
-      WAKE_CMD="doas sh -c 'for f in /sys/class/backlight/*/bl_power; do echo 0 > \"\$f\"; done'
-UID=\$(id -u)
-export XDG_RUNTIME_DIR=/run/user/\$UID
-export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$UID/bus
+      # Turn on backlight, disable Phosh lock screen via system dconf, unlock session
+      WAKE_CMD='
+# Create system-wide dconf overrides to disable Phosh lock screen
+doas mkdir -p /etc/dconf/profile /etc/dconf/db/local.d
+printf "user-db:user\nsystem-db:local\n" | doas tee /etc/dconf/profile/user >/dev/null
+printf "[org/gnome/desktop/screensaver]\nlock-enabled=false\n\n[org/gnome/desktop/session]\nidle-delay=uint32 0\n\n[org/gnome/desktop/lockdown]\ndisable-lock-screen=true\n" | doas tee /etc/dconf/db/local.d/00-no-lock >/dev/null
+doas dconf update 2>/dev/null
+
+# Turn on backlight
+doas sh -c '"'"'for f in /sys/class/backlight/*/bl_power; do echo 0 > "$f"; done'"'"'
+
+# Unlock sessions and dismiss screensaver
+doas loginctl unlock-sessions 2>/dev/null
+UID_NUM=$(id -u)
+export XDG_RUNTIME_DIR=/run/user/$UID_NUM
 export WAYLAND_DISPLAY=wayland-0
-doas loginctl unlock-sessions
-dconf write /org/gnome/desktop/screensaver/lock-enabled false 2>/dev/null
-dconf write /org/gnome/desktop/lockdown/disable-lock-screen true 2>/dev/null
-dconf write /org/gnome/desktop/session/idle-delay 'uint32 0' 2>/dev/null
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$UID_NUM/bus
 dbus-send --session --dest=org.gnome.ScreenSaver --type=method_call /org/gnome/ScreenSaver org.gnome.ScreenSaver.SetActive boolean:false 2>/dev/null
-busctl --user call sm.puri.OSK0 /sm/puri/OSK0 sm.puri.OSK0 SetVisible b false 2>/dev/null
-true"
+true'
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         run_on_all_tracked "$WAKE_CMD" "$RESULT_DIR" "$PHONE_NODES"
       else
@@ -306,18 +307,23 @@ fi'
         # Sanitize URL: only allow safe URL characters (strip single/double quotes and backticks)
         safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!\$&()*+,;=%-]//g" | sed "s/['\"\`]//g")
         log "Opening $safe_url on phones..."
-        # postmarketOS/Phosh: dismiss lock screen, then launch browser in background
-        BROWSE_CMD="UID=\$(id -u); export XDG_RUNTIME_DIR=/run/user/\$UID; export WAYLAND_DISPLAY=wayland-0; export DISPLAY=:0; export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$UID/bus
-doas loginctl unlock-sessions
-dconf write /org/gnome/desktop/screensaver/lock-enabled false 2>/dev/null
-dconf write /org/gnome/desktop/lockdown/disable-lock-screen true 2>/dev/null
+        # postmarketOS/Phosh: dismiss lock screen, set session env, launch browser backgrounded
+        BROWSE_CMD="UID_NUM=\$(id -u)
+export XDG_RUNTIME_DIR=/run/user/\$UID_NUM
+export WAYLAND_DISPLAY=wayland-0
+export DISPLAY=:0
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$UID_NUM/bus
+
+# Dismiss lock screen before opening browser
+doas loginctl unlock-sessions 2>/dev/null
 dbus-send --session --dest=org.gnome.ScreenSaver --type=method_call /org/gnome/ScreenSaver org.gnome.ScreenSaver.SetActive boolean:false 2>/dev/null
+
 SAFE_URL=\"$safe_url\"
-if command -v firefox >/dev/null 2>&1; then nohup firefox \"\$SAFE_URL\" >/dev/null 2>&1 &
-elif command -v xdg-open >/dev/null 2>&1; then nohup xdg-open \"\$SAFE_URL\" >/dev/null 2>&1 &
-elif command -v chromium >/dev/null 2>&1; then nohup chromium --no-sandbox \"\$SAFE_URL\" >/dev/null 2>&1 &
-elif command -v chromium-browser >/dev/null 2>&1; then nohup chromium-browser --no-sandbox \"\$SAFE_URL\" >/dev/null 2>&1 &
-elif command -v am >/dev/null 2>&1; then am start -a android.intent.action.VIEW -d \"\$SAFE_URL\"
+# Kill any existing firefox to force new page load
+pkill -f firefox 2>/dev/null; sleep 0.5
+if command -v firefox-esr >/dev/null 2>&1; then nohup firefox-esr --kiosk \"\$SAFE_URL\" >/dev/null 2>&1 &
+elif command -v firefox >/dev/null 2>&1; then nohup firefox \"\$SAFE_URL\" >/dev/null 2>&1 &
+elif command -v chromium >/dev/null 2>&1; then nohup chromium --no-sandbox --kiosk \"\$SAFE_URL\" >/dev/null 2>&1 &
 else echo 'NO_BROWSER' && exit 1; fi
 sleep 1"
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
