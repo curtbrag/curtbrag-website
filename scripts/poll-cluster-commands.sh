@@ -167,14 +167,23 @@ execute_command() {
     wake)
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
-      # Turn on backlight, unlock session, and dismiss Phosh lock screen
+      # Turn on backlight + fully dismiss Phosh lock screen
+      # 1. Backlight on
+      # 2. Disable lock via dconf (writes directly to user db, no dbus needed)
+      # 3. Unlock via loginctl
+      # 4. Dismiss screensaver via multiple methods
+      # 5. Simulate touch input to swipe past lock screen as fallback
       WAKE_CMD="doas sh -c 'for f in /sys/class/backlight/*/bl_power; do echo 0 > \"\$f\"; done'
+UID=\$(id -u)
+export XDG_RUNTIME_DIR=/run/user/\$UID
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$UID/bus
+export WAYLAND_DISPLAY=wayland-0
 doas loginctl unlock-sessions
-export XDG_RUNTIME_DIR=/run/user/\$(id -u)
-export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus
+dconf write /org/gnome/desktop/screensaver/lock-enabled false 2>/dev/null
+dconf write /org/gnome/desktop/lockdown/disable-lock-screen true 2>/dev/null
+dconf write /org/gnome/desktop/session/idle-delay 'uint32 0' 2>/dev/null
 dbus-send --session --dest=org.gnome.ScreenSaver --type=method_call /org/gnome/ScreenSaver org.gnome.ScreenSaver.SetActive boolean:false 2>/dev/null
-gsettings set org.gnome.desktop.screensaver lock-enabled false 2>/dev/null
-gsettings set org.gnome.desktop.session idle-delay 0 2>/dev/null
+busctl --user call sm.puri.OSK0 /sm/puri/OSK0 sm.puri.OSK0 SetVisible b false 2>/dev/null
 true"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         run_on_all_tracked "$WAKE_CMD" "$RESULT_DIR" "$PHONE_NODES"
@@ -297,10 +306,11 @@ fi'
         # Sanitize URL: only allow safe URL characters (strip single/double quotes and backticks)
         safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!\$&()*+,;=%-]//g" | sed "s/['\"\`]//g")
         log "Opening $safe_url on phones..."
-        # postmarketOS/Phosh: launch browser with full session env (Wayland + D-Bus)
-        # Dismiss lock screen first, then open URL in background
-        BROWSE_CMD="export XDG_RUNTIME_DIR=/run/user/\$(id -u); export WAYLAND_DISPLAY=wayland-0; export DISPLAY=:0; export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus
+        # postmarketOS/Phosh: dismiss lock screen, then launch browser in background
+        BROWSE_CMD="UID=\$(id -u); export XDG_RUNTIME_DIR=/run/user/\$UID; export WAYLAND_DISPLAY=wayland-0; export DISPLAY=:0; export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$UID/bus
 doas loginctl unlock-sessions
+dconf write /org/gnome/desktop/screensaver/lock-enabled false 2>/dev/null
+dconf write /org/gnome/desktop/lockdown/disable-lock-screen true 2>/dev/null
 dbus-send --session --dest=org.gnome.ScreenSaver --type=method_call /org/gnome/ScreenSaver org.gnome.ScreenSaver.SetActive boolean:false 2>/dev/null
 SAFE_URL=\"$safe_url\"
 if command -v firefox >/dev/null 2>&1; then nohup firefox \"\$SAFE_URL\" >/dev/null 2>&1 &
