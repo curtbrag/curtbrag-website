@@ -53,12 +53,9 @@ resolve_ip() {
   esac
 }
 
-# K3s service name (control-plane vs agent)
+# K3s service name — all phones are agents; control-plane is on AORUS (192.168.1.181)
 k3s_svc() {
-  case "$1" in
-    node1|192.168.1.206) echo "k3s" ;;
-    *) echo "k3s-agent" ;;
-  esac
+  echo "k3s-agent"
 }
 
 # Execute a command on a node — locally if node1, SSH otherwise
