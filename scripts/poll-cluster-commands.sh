@@ -298,10 +298,9 @@ fi'
         safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!\$&()*+,;=%-]//g" | sed "s/['\"\`]//g")
         log "Opening $safe_url on phones..."
         # postmarketOS/Phosh: launch browser with full session env (Wayland + D-Bus)
-        # Dismiss lock screen first, then open URL in background
+        # Must set DBUS_SESSION_BUS_ADDRESS for xdg-open to work over SSH
+        # All browser commands run in background + nohup so SSH can exit cleanly
         BROWSE_CMD="export XDG_RUNTIME_DIR=/run/user/\$(id -u); export WAYLAND_DISPLAY=wayland-0; export DISPLAY=:0; export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus
-doas loginctl unlock-sessions
-dbus-send --session --dest=org.gnome.ScreenSaver --type=method_call /org/gnome/ScreenSaver org.gnome.ScreenSaver.SetActive boolean:false 2>/dev/null
 SAFE_URL=\"$safe_url\"
 if command -v firefox >/dev/null 2>&1; then nohup firefox \"\$SAFE_URL\" >/dev/null 2>&1 &
 elif command -v xdg-open >/dev/null 2>&1; then nohup xdg-open \"\$SAFE_URL\" >/dev/null 2>&1 &
