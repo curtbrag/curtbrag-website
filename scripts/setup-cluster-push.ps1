@@ -7,7 +7,7 @@ $script = @'
 #!/bin/sh
 # Push K3s cluster status to curtbrag.com
 API_URL="https://www.curtbrag.com/.netlify/functions/cluster-status"
-API_KEY="${CLUSTER_API_KEY:-curtbrag-cluster-2024}"
+API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY must be set}"
 
 NODES_JSON=$(doas kubectl get nodes -o json 2>/dev/null | jq -c '[.items[] | {
   name: .metadata.name,

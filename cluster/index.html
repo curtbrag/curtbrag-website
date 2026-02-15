@@ -1381,6 +1381,27 @@
       <div class="control-status" id="browseStatus"></div>
     </div>
 
+    <!-- Eye Candy Display -->
+    <div class="control-panel">
+      <div class="control-header">
+        <div class="control-title"><i class="fa-solid fa-wand-magic-sparkles"></i> Eye Candy Display</div>
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="eyecandyLock" style="accent-color:var(--brand)"> Lock mode
+        </label>
+      </div>
+      <div class="control-buttons" id="eyecandyModes">
+        <button class="ctrl-btn" onclick="sendEyeCandy('auto')" title="Auto-cycle all modes"><i class="fa-solid fa-shuffle"></i> Auto Cycle</button>
+        <button class="ctrl-btn" onclick="sendEyeCandy('constellation')" title="Particle constellation"><i class="fa-solid fa-stars" style="color:#7c8cf8"></i> Constellation</button>
+        <button class="ctrl-btn" onclick="sendEyeCandy('matrix')" title="Matrix rain"><i class="fa-solid fa-code" style="color:#22c55e"></i> Matrix</button>
+        <button class="ctrl-btn" onclick="sendEyeCandy('plasma')" title="Plasma waves"><i class="fa-solid fa-palette" style="color:#e879f9"></i> Plasma</button>
+        <button class="ctrl-btn" onclick="sendEyeCandy('rings')" title="Reactive rings"><i class="fa-solid fa-ring" style="color:#f59e0b"></i> Rings</button>
+        <button class="ctrl-btn" onclick="sendEyeCandy('warp')" title="Starfield warp"><i class="fa-solid fa-rocket" style="color:#93c5fd"></i> Warp</button>
+        <button class="ctrl-btn" onclick="sendEyeCandy('fire')" title="Rising embers"><i class="fa-solid fa-fire" style="color:#ef4444"></i> Fire</button>
+        <button class="ctrl-btn" onclick="sendEyeCandy('helix')" title="DNA double helix"><i class="fa-solid fa-dna" style="color:#2dd4bf"></i> Helix</button>
+      </div>
+      <div class="control-status" id="eyecandyStatus"></div>
+    </div>
+
     <!-- Health Score Bar -->
     <div class="health-bar" id="healthBar">
       <div class="health-label"><i class="fa-solid fa-heart-pulse"></i> Cluster Health</div>
@@ -2842,6 +2863,47 @@
           status.className = 'control-status visible success';
           if (data.id) pollCommandCompletion(data.id, 'browse', 'phones');
           urlInput.value = '';
+        } else {
+          status.textContent = `Error: ${data.error}`;
+          status.className = 'control-status visible error';
+          if (data.error === 'Invalid password') {
+            savedPassword = '';
+            localStorage.removeItem('clusterPassword');
+          }
+        }
+      } catch (e) {
+        status.textContent = `Error: ${e.message}`;
+        status.className = 'control-status visible error';
+      }
+    }
+
+    // Eye candy display function
+    async function sendEyeCandy(mode) {
+      const status = document.getElementById('eyecandyStatus');
+      const lock = document.getElementById('eyecandyLock').checked;
+      let hash = '';
+      if (mode !== 'auto') hash = '#' + mode + (lock ? '+lock' : '');
+      else if (lock) hash = '#lock';
+      const url = 'https://www.curtbrag.com/cluster/eyecandy' + hash;
+
+      if (!savedPassword) {
+        // Stash URL in browse input and trigger password flow
+        document.getElementById('browseUrl').value = url;
+        pendingCommand = 'browse';
+        document.getElementById('passwordModal').classList.add('visible');
+        document.getElementById('passwordInput').focus();
+        return;
+      }
+
+      status.textContent = `Sending ${mode} to all phones...`;
+      status.className = 'control-status visible';
+
+      try {
+        const data = await sendToBackend({ command: 'browse', target: 'phones', url: url, password: savedPassword });
+        if (data.success) {
+          status.textContent = `All phones showing ${mode}${lock ? ' (locked)' : ''}`;
+          status.className = 'control-status visible success';
+          if (data.id) pollCommandCompletion(data.id, 'browse', 'phones');
         } else {
           status.textContent = `Error: ${data.error}`;
           status.className = 'control-status visible error';
