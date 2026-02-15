@@ -307,10 +307,17 @@ fi'
         # Sanitize URL: only allow safe URL characters (strip single/double quotes and backticks)
         safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!\$&()*+,;=%-]//g" | sed "s/['\"\`]//g")
         log "Opening $safe_url on phones..."
-        # Update greetd config to launch Phosh with PHOSH_DEBUG=no-lockscreen
-        # (bypasses Phosh's built-in startup lock screen entirely)
-        # Then restart greetd so Phosh restarts with Firefox kiosk at the target URL
-        BROWSE_CMD="printf '[terminal]\nvt = 7\n\n[default_session]\ncommand = \"env PHOSH_DEBUG=no-lockscreen phosh -E '"'"'firefox-esr --kiosk $safe_url'"'"'\"\nuser = \"user\"\n' | doas tee /etc/greetd/config.toml >/dev/null
+        # Rewrite greetd config with env -u GREETD_SOCK so Phosh starts as a
+        # regular session (not greeter mode) which skips the lock screen.
+        # Uses heredoc to avoid nested quoting issues with printf.
+        BROWSE_CMD="cat <<'GREETDEOF' | doas tee /etc/greetd/config.toml >/dev/null
+[terminal]
+vt = 7
+
+[default_session]
+command = \"env -u GREETD_SOCK phosh -E 'firefox-esr --kiosk $safe_url'\"
+user = \"user\"
+GREETDEOF
 doas systemctl restart greetd"
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
           run_on_all_tracked "$BROWSE_CMD" "$RESULT_DIR" "$PHONE_NODES"
