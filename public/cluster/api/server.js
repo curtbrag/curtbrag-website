@@ -5,6 +5,7 @@
 
 const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
 const { execSync, exec } = require('child_process');
 const url = require('url');
 const os = require('os');
@@ -13,8 +14,8 @@ const os = require('os');
 
 const CONFIG = {
   port: parseInt(process.env.CLUSTER_API_PORT) || 3847,
-  password: process.env.CLUSTER_WEB_PASSWORD || '073588',
-  apiToken: process.env.CLUSTER_API_TOKEN || 'curtbrag-cluster-2024',
+  password: process.env.CLUSTER_WEB_PASSWORD,
+  apiToken: process.env.CLUSTER_API_TOKEN,
   allowedOrigins: ['https://www.curtbrag.com', 'https://curtbrag.com', 'http://localhost'],
 
   // Monero mining
@@ -80,6 +81,14 @@ function runAsyncBinary(cmd, timeoutMs = 10000) {
 
 function shellEscape(s) {
   return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
+function safeCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
 }
 
 function sshExec(nodeKey, cmd) {
@@ -411,10 +420,12 @@ async function gatherNodeMetrics() {
   }
 
   // AORUS (local) metrics
-  const localCpu = run("top -bn1 | head -3 | grep -i cpu | head -1", 5000);
-  const localMem = run("free -m | grep Mem", 3000);
-  const localTemp = run("cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0", 3000);
-  const localDisk = run("df -m / | tail -1", 3000);
+  const [localCpu, localMem, localTemp, localDisk] = await Promise.all([
+    runAsync("top -bn1 | head -3 | grep -i cpu | head -1", 5000),
+    runAsync("free -m | grep Mem", 3000),
+    runAsync("cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0", 3000),
+    runAsync("df -m / | tail -1", 3000),
+  ]);
 
   const aorus = { cpu: null, memory: null, temp: null, storage: null };
   if (localCpu.ok) {
@@ -684,10 +695,6 @@ async function handleScreens(req, res) {
 
       const result = await runAsyncBinary(`adb -s ${serial} exec-out screencap -p`, 8000);
       if (result.ok && result.data && result.data.length > 100) {
-        // Skip images larger than 2MB to prevent memory bloat
-        if (result.data.length > 2 * 1024 * 1024) {
-          return { device: name, status: 'too-large', image: null, timestamp: new Date().toISOString() };
-        }
         return {
           device: name,
           status: 'ok',
@@ -720,12 +727,14 @@ async function handleScreens(req, res) {
 async function handleCommand(req, res, body) {
   const { command, target, password: pwd, url: browseUrl } = body;
 
-  if (pwd !== CONFIG.password) {
-    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
-    const rateEntry = getRateLimit(clientIp, true);
-    if (rateEntry.failedAuth > RATE_LIMIT_AUTH_MAX) {
-      return sendJson(res, 429, { error: 'Too many failed attempts' });
-    }
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+  const rateEntry = getRateLimit(clientIp, false);
+  if (rateEntry.failedAuth > RATE_LIMIT_AUTH_MAX) {
+    return sendJson(res, 429, { error: 'Too many failed attempts' });
+  }
+
+  if (!safeCompare(pwd, CONFIG.password)) {
+    getRateLimit(clientIp, true);
     logCommand({ command, target, status: 'denied', reason: 'Invalid password' });
     return sendJson(res, 401, { error: 'Invalid password' });
   }
@@ -747,12 +756,10 @@ async function handleCommand(req, res, body) {
     if (!remoteCmd || typeof remoteCmd !== 'string') {
       return sendJson(res, 400, { error: `${fieldName} is required for ${command} command` });
     }
-    // Sanitize: only allow alphanumeric, spaces, dashes, underscores, dots, slashes, colons, equals
     if (!/^[a-zA-Z0-9 _.\-/:=,+@]+$/.test(remoteCmd)) {
       logCommand({ command, target, status: 'denied', reason: `Invalid characters in ${fieldName}` });
       return sendJson(res, 400, { error: `${fieldName} contains disallowed characters. Only alphanumeric, spaces, and common safe characters (- _ . / : = , + @) are allowed.` });
     }
-    // Block dangerous commands even if they pass the character filter
     const dangerousPatterns = [/\brm\s+(-[a-z]*\s+)*\//, /\bdd\s+if=/, /\bmkfs\b/, /\bshutdown\b/, /\bhalt\b/, /\bpoweroff\b/, /\bkill\s+-9\s+1\b/, /\binit\s+0/, /\breboot\b/, /\bcurl\b.*\|\s*\bsh\b/, /\bwget\b.*\|\s*\bsh\b/];
     if (dangerousPatterns.some(p => p.test(remoteCmd.trim()))) {
       logCommand({ command, target, status: 'denied', reason: 'Blocked dangerous command' });
@@ -898,7 +905,7 @@ async function executeOnNode(name, command, browseUrl, body) {
     }
     case 'reboot': {
       const r = await sshExecAsync(name, 'doas reboot');
-      return { ok: true, output: r.stdout || 'Reboot initiated' };
+      return { ok: r.ok, output: r.ok ? (r.stdout || 'Reboot initiated') : (r.stderr || 'Reboot failed') };
     }
     case 'screenshot': {
       if (!isPhone) return { ok: false, error: 'Not a phone node' };
@@ -1189,16 +1196,13 @@ async function gatherMiningStats() {
   }
 
   // Estimate XMR earnings from hashrate using network parameters
-  // Formula: daily_xmr = (hashrate / network_hashrate) * daily_block_reward
-  // Fallback: use approximate market rate if pool API unavailable
   let dailyUsd = 0;
   let monthlyUsd = 0;
   if (totalHashrate > 0) {
-    // Try to get live XMR price and network stats from pool API
-    let xmrPrice = 150; // fallback USD price
-    let networkHashrate = 2500000000; // ~2.5 GH/s fallback
-    const dailyBlocks = 720; // ~120s block time
-    const blockReward = 0.6; // approximate tail emission
+    let xmrPrice = 150;
+    let networkHashrate = 2500000000;
+    const dailyBlocks = 720;
+    const blockReward = 0.6;
     try {
       const networkResult = await httpGetJson('supportxmr.com', 443, '/api/network/stats', 5000);
       if (networkResult.ok && networkResult.data) {
@@ -1313,7 +1317,6 @@ async function handleConnectivity(req, res) {
 // ─── Latency Endpoint (lightweight for connection quality) ───────────────────
 
 async function handleLatency(req, res) {
-  const start = process.hrtime.bigint();
   sendJson(res, 200, { ts: Date.now(), serverUptime: process.uptime(), latencyTest: true });
 }
 
@@ -1687,7 +1690,7 @@ function handleApiLatencyHistory(req, res) {
 
 async function handleClusterSnapshot(req, res, body) {
   const { password: pwd } = body;
-  if (pwd !== CONFIG.password) return sendJson(res, 401, { error: 'Invalid password' });
+  if (!safeCompare(pwd, CONFIG.password)) return sendJson(res, 401, { error: 'Invalid password' });
 
   // Gather a full snapshot of the cluster state
   const [nodes, pods, svcs, deploys, cms] = await Promise.all([
@@ -1916,10 +1919,10 @@ function checkAuth(req) {
   if (!CONFIG.apiToken) return true;
   const authHeader = req.headers.authorization || '';
   if (authHeader.startsWith('Bearer ')) {
-    return authHeader.slice(7) === CONFIG.apiToken;
+    return safeCompare(authHeader.slice(7), CONFIG.apiToken);
   }
   const parsed = url.parse(req.url, true);
-  return parsed.query.token === CONFIG.apiToken;
+  return safeCompare(parsed.query.token, CONFIG.apiToken);
 }
 
 function readBody(req, maxBytes = 1024 * 1024) {

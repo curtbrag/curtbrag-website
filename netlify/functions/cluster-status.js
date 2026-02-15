@@ -3,6 +3,16 @@
 // Uses Netlify Blobs for persistence across cold starts
 
 const { getStore, connectLambda } = require("@netlify/blobs");
+const crypto = require("crypto");
+
+// Timing-safe string comparison to prevent timing attacks on credentials
+function safeCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 // Demo data for when no live data is available
 const DEMO_DATA = {
@@ -208,7 +218,7 @@ exports.handler = async function(event, context) {
     try {
       const apiKey = event.headers['x-cluster-key'];
       const expectedKey = process.env.CLUSTER_API_KEY;
-      if (apiKey !== expectedKey) {
+      if (!expectedKey || !safeCompare(apiKey || '', expectedKey)) {
         return {
           statusCode: 401,
           headers,
@@ -298,9 +308,11 @@ exports.handler = async function(event, context) {
       }
     }
 
-    const status = await getStatus();
+    const rawStatus = await getStatus();
 
-    if (status && status.lastUpdate) {
+    if (rawStatus && rawStatus.lastUpdate) {
+      // Clone to avoid mutating the cached object
+      const status = JSON.parse(JSON.stringify(rawStatus));
       const age = Date.now() - new Date(status.lastUpdate).getTime();
       if (age > 15 * 60 * 1000) {
         status.stale = true;

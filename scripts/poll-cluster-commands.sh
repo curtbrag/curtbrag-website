@@ -3,6 +3,8 @@
 # Run on node1: nohup /home/user/poll-cluster-commands.sh &
 # Or as a systemd service for auto-restart
 
+set -u
+
 API_URL="https://curtbrag.com/.netlify/functions/cluster-control"
 API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set}"
 POLL_INTERVAL=5  # seconds
@@ -10,7 +12,9 @@ POLL_INTERVAL=5  # seconds
 LOCAL_IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
 [ -z "$LOCAL_IP" ] && LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 [ -z "$LOCAL_IP" ] && LOCAL_IP="192.168.1.206"
-trap 'rm -rf /tmp/cmdres-*' EXIT INT TERM
+# Collect all local IPs so is_local_ip works for Tailscale/USB interfaces too
+ALL_LOCAL_IPS=$(ip -4 addr 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2 | tr '\n' ' ')
+trap 'rm -rf /tmp/cmdres-* /tmp/sshout-* /tmp/screenshots-* /tmp/cmdstderr-*' EXIT INT TERM
 
 # Check if an IP belongs to this machine
 is_local_ip() {
@@ -41,7 +45,8 @@ else
   ALL_NODES="node1:192.168.1.206 node2:192.168.1.207 node3:192.168.1.208 node4:192.168.1.209 node5:192.168.1.210 node6:192.168.1.211 node7:192.168.1.212 node8:192.168.1.213 node9:192.168.1.214 node10:192.168.1.215"
   log "WARN: cluster-nodes.conf not found, using hardcoded IPs"
 fi
-PHONE_NODES="$ALL_NODES"
+# Use PHONE_NODES from config (workers only); fall back to ALL_NODES if empty
+[ -z "${PHONE_NODES:-}" ] && PHONE_NODES="$ALL_NODES"
 
 # Resolve node name to IP
 resolve_ip() {
@@ -57,9 +62,14 @@ resolve_ip() {
   fi
 }
 
-# K3s service name — all phones are agents; control-plane is on AORUS (192.168.1.181)
+# K3s service name — check if node is control-plane or agent
 k3s_svc() {
-  echo "k3s-agent"
+  local name="$1"
+  # Check CONTROL_PLANE_NODES from cluster-nodes.conf
+  case " $CONTROL_PLANE_NODES " in
+    *" ${name}:"*) echo "k3s" ;;
+    *) echo "k3s-agent" ;;
+  esac
 }
 
 # Execute a command on a node — locally if node1, SSH otherwise
@@ -80,7 +90,7 @@ run_on_node() {
     log "WARN: command on $ip exited $_rc: $(head -c 200 "$_stderr_tmp")"
   fi
   rm -f "$_stderr_tmp"
-  return $_rc
+  return "$_rc"
 }
 
 # Execute on a node and capture both stdout+stderr
@@ -387,7 +397,7 @@ IP_ALL=$(ip -4 addr 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2 | tr '\
 HOSTNAME_I=$(hostname -I 2>/dev/null)
 TEST_IS_LOCAL_206=$(is_local_ip 192.168.1.206 && echo YES || echo NO)
 BUSYBOX=$(busybox --help 2>/dev/null | head -1)
-HEAD_SCRIPT=$(head -15 $0 2>/dev/null)"
+HEAD_SCRIPT=$(head -15 "$0" 2>/dev/null)"
       report_result "$cmd_id" "debug info" "$DEBUG_INFO" "$cmd" "$target"
       ;;
     reboot)

@@ -2059,6 +2059,7 @@
     let allServices = [];
     let currentNamespace = 'all';
     let pendingCommand = null;
+    let pendingMiningNode = null;
     let savedPassword = localStorage.getItem('clusterPassword') || '';
     let currentScreenDevice = null;
     let lastMetrics = {};
@@ -2623,6 +2624,11 @@
           pendingPasswordCallback = null;
           cb();
         } else if (pendingCommand === 'browse') sendBrowseCommand();
+        else if (pendingCommand && pendingCommand.startsWith('mining-') && pendingMiningNode) {
+          var node = pendingMiningNode;
+          pendingMiningNode = null;
+          sendMiningNodeCommand(pendingCommand, node);
+        }
         else if (pendingCommand && pendingCommand.startsWith('mining-')) sendMiningCommand(pendingCommand);
         else executeCommand(pendingCommand, pw);
       }
@@ -2638,10 +2644,6 @@
         const data = await sendToBackend({ command: cmd, target, password });
         if (data.success) {
           status.textContent = data.message + ' — waiting for result...';
-          status.className = 'control-status visible success';
-          if (data.id) pollCommandCompletion(data.id, cmd, target);
-          setTimeout(loadClusterStatus, 5000);
-          status.textContent = data.message + ' (waiting for execution...)';
           status.className = 'control-status visible success';
           if (data.id) pollCommandCompletion(data.id, cmd, target);
           setTimeout(loadClusterStatus, 5000);
@@ -2745,6 +2747,7 @@
     async function sendMiningNodeCommand(cmd, node) {
       if (!savedPassword) {
         pendingCommand = cmd;
+        pendingMiningNode = node;
         document.getElementById('passwordModal').classList.add('visible');
         document.getElementById('passwordInput').focus();
         return;
@@ -3018,6 +3021,7 @@
     }
 
     function renderCommandLog(commands) {
+      allCommands = commands;
       var panel = document.getElementById('cmdHistory');
       var body = document.getElementById('cmdHistoryBody');
       if (commands.length === 0) { panel.style.display = 'none'; return; }
@@ -3217,8 +3221,15 @@
       if (!currentScreenDevice) return;
       var img = document.getElementById('screenModalImg');
       if (apiEndpoint) {
-        var tokenParam = apiToken ? '&token=' + encodeURIComponent(apiToken) : '';
-        img.src = apiEndpoint + '/api/screen/' + encodeURIComponent(currentScreenDevice) + '?t=' + Date.now() + tokenParam;
+        try {
+          var headers = {};
+          if (apiToken) headers['Authorization'] = 'Bearer ' + apiToken;
+          var res = await fetch(apiEndpoint + '/api/screen/' + encodeURIComponent(currentScreenDevice) + '?t=' + Date.now(), { headers: headers });
+          if (res.ok) {
+            var blob = await res.blob();
+            img.src = URL.createObjectURL(blob);
+          }
+        } catch (e) { console.warn('Failed to fetch screen via API:', e); }
         return;
       }
       try {
@@ -3791,6 +3802,7 @@
       }
     }
 
+    // Track user activity
     ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'].forEach(function(evt) {
       document.addEventListener(evt, resetActivity, { passive: true });
     });
@@ -4860,13 +4872,20 @@
     // ─── API Auto-Detect ─────────────────────────────────────────────
     async function autoDetectApi() {
       showToast('Scanning for API server...', 'info');
+      var isSecure = location.protocol === 'https:';
       var candidates = [
         'http://localhost:3847',
         'http://127.0.0.1:3847',
-        'http://192.168.1.206:3847',
-        'http://aorus:3847',
-        'http://aorus.local:3847',
+        isSecure ? 'https://192.168.1.206:3847' : 'http://192.168.1.206:3847',
+        isSecure ? 'https://aorus:3847' : 'http://aorus:3847',
+        isSecure ? 'https://aorus.local:3847' : 'http://aorus.local:3847',
       ];
+      // When served over HTTPS, also try HTTP variants as fallback
+      if (isSecure) {
+        candidates.push('http://192.168.1.206:3847');
+        candidates.push('http://aorus:3847');
+        candidates.push('http://aorus.local:3847');
+      }
 
       // Also check if there's a saved Tailscale URL
       var tsUrl = localStorage.getItem('clusterTailscaleUrl');

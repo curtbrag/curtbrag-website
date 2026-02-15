@@ -33,7 +33,6 @@ function resize() {
   H = canvas.height = window.innerHeight;
 }
 resize();
-window.addEventListener('resize', resize);
 
 // ── Shared state ──
 let currentMode = 0;
@@ -137,8 +136,13 @@ function drawMatrix(t) {
 // MODE 2: Plasma / lava lamp
 // ─────────────────────────────────────────────
 let plasmaImg;
+let plasmaOffscreen, plasmaOffCtx;
 function initPlasma() {
   plasmaImg = ctx.createImageData(W >> 2, H >> 2);
+  plasmaOffscreen = document.createElement('canvas');
+  plasmaOffscreen.width = plasmaImg.width;
+  plasmaOffscreen.height = plasmaImg.height;
+  plasmaOffCtx = plasmaOffscreen.getContext('2d');
 }
 initPlasma();
 
@@ -160,12 +164,14 @@ function drawPlasma(t) {
       d[i+3] = 255;
     }
   }
-  // Draw scaled up
-  const off = document.createElement('canvas');
-  off.width = pw; off.height = ph;
-  off.getContext('2d').putImageData(plasmaImg, 0, 0);
+  // Draw scaled up using reusable offscreen canvas
+  if (plasmaOffscreen.width !== pw || plasmaOffscreen.height !== ph) {
+    plasmaOffscreen.width = pw;
+    plasmaOffscreen.height = ph;
+  }
+  plasmaOffCtx.putImageData(plasmaImg, 0, 0);
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(off, 0, 0, W, H);
+  ctx.drawImage(plasmaOffscreen, 0, 0, W, H);
 }
 
 // ─────────────────────────────────────────────
@@ -389,35 +395,53 @@ function loop(ts) {
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, W, H);
     }
-    initParticles();
-    initMatrix();
-    initPlasma();
-    initStars();
-    initEmbers();
+    initAllModes();
     lastSwitch = ts;
     showModeName(modes[currentMode].name);
   } else if (lockMode && lastSwitch === 0) {
     // First frame in lock mode — init once
-    initParticles(); initMatrix(); initPlasma(); initStars(); initEmbers();
+    initAllModes();
     lastSwitch = ts;
     showModeName(modes[currentMode].name);
   }
 
   modes[currentMode].draw(t);
-  requestAnimationFrame(loop);
+  if (!paused) requestAnimationFrame(loop);
 }
 
-// Prevent screen sleep (if supported)
-if ('wakeLock' in navigator) {
-  navigator.wakeLock.request('screen').catch(() => {});
+// Helper to init all modes at once
+function initAllModes() {
+  initParticles(); initMatrix(); initPlasma(); initStars(); initEmbers();
 }
+
+// Visibility-based pause/resume to save battery when backgrounded
+let paused = false;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    paused = true;
+  } else {
+    paused = false;
+    requestAnimationFrame(loop);
+    requestWakeLock();
+  }
+});
+
+// Prevent screen sleep (if supported) — store sentinel and re-acquire on visibility change
+let wakeLockSentinel = null;
+async function requestWakeLock() {
+  if ('wakeLock' in navigator) {
+    try { wakeLockSentinel = await navigator.wakeLock.request('screen'); }
+    catch (e) { /* not available */ }
+  }
+}
+requestWakeLock();
 
 requestAnimationFrame(loop);
 
 // Re-init on resize
 window.addEventListener('resize', () => {
   resize();
-  initParticles(); initMatrix(); initPlasma(); initStars(); initEmbers();
+  initAllModes();
 });
 </script>
 </body>
