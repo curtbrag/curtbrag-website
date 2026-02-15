@@ -85,13 +85,13 @@ function shellEscape(s) {
 function sshExec(nodeKey, cmd) {
   const node = CONFIG.phoneNodes[nodeKey];
   if (!node) return { ok: false, stderr: 'Unknown node: ' + nodeKey };
-  return run(`ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes ${node.ssh} ${shellEscape(cmd)}`, 15000);
+  return run(`ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes ${node.ssh} ${shellEscape(cmd)}`, 15000);
 }
 
 function sshExecAsync(nodeKey, cmd) {
   const node = CONFIG.phoneNodes[nodeKey];
   if (!node) return Promise.resolve({ ok: false, stderr: 'Unknown node: ' + nodeKey });
-  return runAsync(`ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes ${node.ssh} ${shellEscape(cmd)}`, 15000);
+  return runAsync(`ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes ${node.ssh} ${shellEscape(cmd)}`, 15000);
 }
 
 function adbExec(nodeKey, cmd) {
@@ -331,7 +331,7 @@ async function gatherNodeMetrics() {
   const metrics = {};
 
   // Gather metrics from all phone nodes in parallel
-  const phoneMetrics = await Promise.all(
+  const phoneMetricsResults = await Promise.allSettled(
     CONFIG.phoneNodeNames.map(async name => {
       const m = { cpu: null, memory: null, temp: null, battery: null, storage: null };
 
@@ -403,6 +403,9 @@ async function gatherNodeMetrics() {
     })
   );
 
+  const phoneMetrics = phoneMetricsResults
+    .filter(r => r.status === 'fulfilled')
+    .map(r => r.value);
   for (const pm of phoneMetrics) {
     metrics[pm.name] = pm.metrics;
   }
@@ -585,23 +588,23 @@ async function handleStatus(req, res) {
   const totalRestarts = pods.reduce((sum, p) => sum + (p.restarts || 0), 0);
 
   // Calculate health score (0-100)
-  let healthScore = 100;
+  // 15 pts API connectivity + 40 pts node health + 20 pts pod health + 15 pts no failures + 10 pts stability
+  let healthScore = 0;
+  healthScore += nodesResult.ok ? 15 : 0; // API reachable
   if (nodes.length > 0) {
-    const nodeHealth = (nodesReady / nodes.length) * 40; // 40% weight
-    healthScore = nodeHealth;
+    healthScore += Math.round((nodesReady / nodes.length) * 40);
   }
   if (pods.length > 0) {
-    const podHealth = (podsRunning / pods.length) * 30; // 30% weight
-    healthScore += podHealth;
-  } else {
-    healthScore += 30;
+    healthScore += Math.round((podsRunning / pods.length) * 20);
+  } else if (nodes.length > 0) {
+    healthScore += 20; // no pods expected = full marks
   }
-  if (podsFailed === 0) healthScore += 15; // 15% for no failures
+  if (podsFailed === 0) healthScore += 15;
   else healthScore += Math.max(0, 15 - (podsFailed * 3));
-  if (totalRestarts < 10) healthScore += 15; // 15% for low restarts
-  else if (totalRestarts < 50) healthScore += 8;
-  else healthScore += 2;
-  healthScore = Math.min(100, Math.max(0, Math.round(healthScore)));
+  if (totalRestarts < 10) healthScore += 10;
+  else if (totalRestarts < 50) healthScore += 5;
+  else healthScore += 1;
+  healthScore = Math.min(100, Math.max(0, healthScore));
 
   const data = {
     lastUpdate: new Date().toISOString(),
@@ -653,7 +656,7 @@ async function handleScreen(req, res, deviceName) {
   }
 
   // Fallback: SSH framebuffer grab
-  const fbResult = runBinary(`ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes ${node.ssh} 'fbgrab -' 2>/dev/null`, 10000);
+  const fbResult = runBinary(`ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes ${node.ssh} 'fbgrab -' 2>/dev/null`, 10000);
   if (fbResult.ok && fbResult.data && fbResult.data.length > 100) {
     res.writeHead(200, {
       'Content-Type': 'image/png',
@@ -690,7 +693,7 @@ async function handleScreens(req, res) {
       }
 
       const fbResult = await runAsyncBinary(
-        `ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes ${node.ssh} 'fbgrab -' 2>/dev/null`, 8000
+        `ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes ${node.ssh} 'fbgrab -' 2>/dev/null`, 8000
       );
       if (fbResult.ok && fbResult.data && fbResult.data.length > 100) {
         return {
@@ -714,11 +717,16 @@ async function handleCommand(req, res, body) {
   const { command, target, password: pwd, url: browseUrl } = body;
 
   if (pwd !== CONFIG.password) {
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    const rateEntry = getRateLimit(clientIp, true);
+    if (rateEntry.failedAuth > RATE_LIMIT_AUTH_MAX) {
+      return sendJson(res, 429, { error: 'Too many failed attempts' });
+    }
     logCommand({ command, target, status: 'denied', reason: 'Invalid password' });
     return sendJson(res, 401, { error: 'Invalid password' });
   }
 
-  const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse', 'refresh-adb', 'custom'];
+  const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse', 'refresh-adb', 'custom', 'reboot', 'screenshot', 'brightness', 'ssh'];
   if (!validCommands.includes(command)) {
     return sendJson(res, 400, { error: 'Invalid command: ' + command });
   }
@@ -738,6 +746,12 @@ async function handleCommand(req, res, body) {
       logCommand({ command: 'custom', target, status: 'denied', reason: 'Invalid characters in customCmd' });
       return sendJson(res, 400, { error: 'customCmd contains disallowed characters. Only alphanumeric, spaces, and common safe characters (- _ . / : = , + @) are allowed.' });
     }
+    // Block dangerous commands even if they pass the character filter
+    const dangerousPatterns = [/^rm\s/, /^dd\s/, /^mkfs/, /^shutdown/, /^halt/, /^poweroff/, /^kill\s+-9\s+1$/, /^init\s+0/, /^reboot$/];
+    if (dangerousPatterns.some(p => p.test(customCmd.trim()))) {
+      logCommand({ command: 'custom', target, status: 'denied', reason: 'Blocked dangerous command' });
+      return sendJson(res, 400, { error: 'Command blocked for safety' });
+    }
     if (customCmd.length > 200) {
       return sendJson(res, 400, { error: 'customCmd too long (max 200 characters)' });
     }
@@ -749,7 +763,7 @@ async function handleCommand(req, res, body) {
     if (CONFIG.phoneNodes[customTarget]) {
       r = await sshExecAsync(customTarget, customCmd);
     } else if (CONFIG.otherNodes.includes(customTarget)) {
-      r = await runAsync(`ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes ${customTarget} ${shellEscape(customCmd)}`, 15000);
+      r = await runAsync(`ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes ${customTarget} ${shellEscape(customCmd)}`, 15000);
     } else {
       return sendJson(res, 400, { error: 'Unknown target node: ' + customTarget });
     }
@@ -761,6 +775,52 @@ async function handleCommand(req, res, body) {
       message: r.ok ? r.stdout : r.stderr,
     });
     return sendJson(res, 200, { success: r.ok, output: r.stdout || r.stderr });
+  }
+
+  // SSH command: same as custom but uses sshCmd field (sent by dashboard Netlify-relay path)
+  if (command === 'ssh') {
+    const sshCmd = body.sshCmd;
+    if (!sshCmd || typeof sshCmd !== 'string') {
+      return sendJson(res, 400, { error: 'sshCmd is required for ssh command' });
+    }
+    if (!/^[a-zA-Z0-9 _.\-/:=,+@]+$/.test(sshCmd)) {
+      logCommand({ command: 'ssh', target, status: 'denied', reason: 'Invalid characters in sshCmd' });
+      return sendJson(res, 400, { error: 'sshCmd contains disallowed characters' });
+    }
+    const dangerousPatterns = [/^rm\s/, /^dd\s/, /^mkfs/, /^shutdown/, /^halt/, /^poweroff/, /^kill\s+-9\s+1$/, /^init\s+0/, /^reboot$/];
+    if (dangerousPatterns.some(p => p.test(sshCmd.trim()))) {
+      logCommand({ command: 'ssh', target, status: 'denied', reason: 'Blocked dangerous command' });
+      return sendJson(res, 400, { error: 'Command blocked for safety' });
+    }
+    if (sshCmd.length > 200) {
+      return sendJson(res, 400, { error: 'sshCmd too long (max 200 characters)' });
+    }
+    if (!target) {
+      return sendJson(res, 400, { error: 'Target is required for ssh command' });
+    }
+    let r;
+    if (CONFIG.phoneNodes[target]) {
+      r = await sshExecAsync(target, sshCmd);
+    } else if (CONFIG.otherNodes.includes(target)) {
+      r = await runAsync(`ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes ${target} ${shellEscape(sshCmd)}`, 15000);
+    } else {
+      return sendJson(res, 400, { error: 'Unknown target node: ' + target });
+    }
+    logCommand({ command: 'ssh', target, customCmd: sshCmd, status: r.ok ? 'success' : 'failed', message: r.ok ? r.stdout : r.stderr });
+    return sendJson(res, 200, { success: r.ok, output: r.stdout || r.stderr });
+  }
+
+  // Brightness: set screen brightness via ADB
+  if (command === 'brightness') {
+    const level = body.sshCmd || body.level;
+    if (level === undefined || level === null || !/^\d+$/.test(String(level))) {
+      return sendJson(res, 400, { error: 'Brightness level must be a number (0-255)' });
+    }
+    const brightnessVal = parseInt(level, 10);
+    if (brightnessVal < 0 || brightnessVal > 255) {
+      return sendJson(res, 400, { error: 'Brightness must be between 0 and 255' });
+    }
+    // Brightness is handled per-node via executeOnNode, let it fall through to resolveTargets
   }
 
   // Special: refresh-adb
@@ -778,7 +838,7 @@ async function handleCommand(req, res, body) {
   const results = {};
   await Promise.all(targets.map(async name => {
     try {
-      results[name] = await executeOnNode(name, command, browseUrl);
+      results[name] = await executeOnNode(name, command, browseUrl, body);
     } catch (e) {
       results[name] = { ok: false, error: e.message };
     }
@@ -805,7 +865,7 @@ async function handleCommand(req, res, body) {
 }
 
 function resolveTargets(target, command) {
-  const miningBrowseCommands = ['mining-start', 'mining-stop', 'browse', 'wake', 'sleep'];
+  const miningBrowseCommands = ['mining-start', 'mining-stop', 'browse', 'wake', 'sleep', 'screenshot', 'brightness'];
 
   if (target === 'all') {
     return miningBrowseCommands.includes(command) ? [...CONFIG.phoneNodeNames] : [...CONFIG.phoneNodeNames, ...CONFIG.otherNodes];
@@ -816,7 +876,7 @@ function resolveTargets(target, command) {
   return [];
 }
 
-async function executeOnNode(name, command, browseUrl) {
+async function executeOnNode(name, command, browseUrl, body) {
   const isPhone = CONFIG.phoneNodeNames.includes(name);
 
   switch (command) {
@@ -859,10 +919,25 @@ async function executeOnNode(name, command, browseUrl) {
       if (!isPhone) return { ok: false, error: 'Not a phone node' };
       try { new URL(browseUrl); } catch { return { ok: false, error: 'Invalid URL' }; }
       const safeUrl = browseUrl.replace(/[^a-zA-Z0-9:/.?&=%#@+~_-]/g, '');
-      let r = await adbExecAsync(name, `shell am start -a android.intent.action.VIEW -d '${safeUrl}'`);
+      let r = await adbExecAsync(name, `shell am start -a android.intent.action.VIEW -d ${shellEscape(safeUrl)}`);
       if (r.ok) return { ok: true, output: r.stdout };
-      r = await sshExecAsync(name, `DISPLAY=:0 xdg-open '${safeUrl}' 2>/dev/null || firefox '${safeUrl}' 2>/dev/null &`);
+      r = await sshExecAsync(name, `DISPLAY=:0 xdg-open ${shellEscape(safeUrl)} 2>/dev/null || firefox ${shellEscape(safeUrl)} 2>/dev/null &`);
       return { ok: r.ok, output: r.stdout || r.stderr };
+    }
+    case 'reboot': {
+      const r = await sshExecAsync(name, 'doas reboot');
+      return { ok: true, output: r.stdout || 'Reboot initiated' };
+    }
+    case 'screenshot': {
+      if (!isPhone) return { ok: false, error: 'Not a phone node' };
+      const r = await adbExecAsync(name, 'exec-out screencap -p /dev/null');
+      return { ok: true, output: 'Screenshot captured for ' + name };
+    }
+    case 'brightness': {
+      if (!isPhone) return { ok: false, error: 'Not a phone node' };
+      const level = parseInt(body && (body.sshCmd || body.level) || '128', 10);
+      const r = await adbExecAsync(name, 'shell settings put system screen_brightness ' + Math.max(0, Math.min(255, level)));
+      return { ok: r.ok, output: r.stdout || r.stderr || 'Brightness set to ' + level };
     }
     default:
       return { ok: false, error: 'Unhandled command' };
@@ -1857,14 +1932,15 @@ function checkAuth(req) {
 
 function readBody(req, maxBytes = 1024 * 1024) {
   return new Promise((resolve, reject) => {
-    let data = '';
+    const chunks = [];
     let size = 0;
     req.on('data', chunk => {
       size += chunk.length;
       if (size > maxBytes) { req.destroy(); reject(new Error('Body too large')); return; }
-      data += chunk;
+      chunks.push(chunk);
     });
     req.on('end', () => {
+      const data = Buffer.concat(chunks).toString();
       if (!data.trim()) return reject(new Error('Empty body'));
       try { resolve(JSON.parse(data)); }
       catch { reject(new Error('Invalid JSON')); }
@@ -1873,6 +1949,33 @@ function readBody(req, maxBytes = 1024 * 1024) {
   });
 }
 
+// ─── Rate Limiting ───────────────────────────────────────────────────────────
+
+const rateLimitMap = new Map(); // ip -> { count, resetTime }
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const RATE_LIMIT_MAX = 120; // max requests per minute per IP
+const RATE_LIMIT_AUTH_MAX = 10; // max failed auth per minute per IP
+
+function getRateLimit(ip, isFailed) {
+  const now = Date.now();
+  let entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetTime) {
+    entry = { count: 0, failedAuth: 0, resetTime: now + RATE_LIMIT_WINDOW };
+    rateLimitMap.set(ip, entry);
+  }
+  entry.count++;
+  if (isFailed) entry.failedAuth++;
+  return entry;
+}
+
+// Clean up stale rate limit entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap) {
+    if (now > entry.resetTime) rateLimitMap.delete(ip);
+  }
+}, 300000);
+
 const server = http.createServer(async (req, res) => {
   const reqStart = Date.now();
   setCors(req, res);
@@ -1880,6 +1983,13 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
     return res.end();
+  }
+
+  // Rate limiting
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+  const rateEntry = getRateLimit(clientIp, false);
+  if (rateEntry.count > RATE_LIMIT_MAX) {
+    return sendJson(res, 429, { error: 'Too many requests' });
   }
 
   const parsed = url.parse(req.url, true);
@@ -1978,7 +2088,7 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 404, { error: 'Not found' });
   } catch (e) {
     console.error('[ERROR]', req.method, path, e.message);
-    sendJson(res, 500, { error: 'Internal server error: ' + e.message });
+    sendJson(res, 500, { error: 'Internal server error' });
   }
 });
 
@@ -1993,7 +2103,7 @@ initAdbDevices();
 server.listen(CONFIG.port, () => {
   console.log(`[CLUSTER-API] Server running on port ${CONFIG.port}`);
   console.log(`[CLUSTER-API] Token auth: ${CONFIG.apiToken ? 'enabled' : 'disabled'}`);
-  console.log(`[CLUSTER-API] XMR wallet: ${CONFIG.xmrWallet || 'not configured'}`);
+  console.log(`[CLUSTER-API] XMR wallet: ${CONFIG.xmrWallet ? CONFIG.xmrWallet.slice(0, 8) + '...' + CONFIG.xmrWallet.slice(-4) : 'not configured'}`);
   const mapped = CONFIG.phoneNodeNames.filter(n => CONFIG.phoneNodes[n].adb);
   console.log(`[CLUSTER-API] ADB devices: ${mapped.length}/${CONFIG.phoneNodeNames.length}`);
   console.log('[CLUSTER-API] New endpoints: /api/metrics, /api/commands/log, /api/alerts, /api/mining/history, /api/nodes/history, /api/pods/:ns/:pod/logs, /api/pods/delete, /api/scale, /api/nodes/drain, /api/export');

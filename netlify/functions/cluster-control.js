@@ -3,6 +3,7 @@
 // Uses Netlify Blobs for persistence across cold starts
 
 const { getStore, connectLambda } = require("@netlify/blobs");
+const crypto = require("crypto");
 
 async function getQueue() {
   try {
@@ -112,16 +113,22 @@ const ALLOWED_ORIGINS = ['https://www.curtbrag.com', 'https://curtbrag.com'];
 
 function getCorsOrigin(event) {
   const origin = (event.headers || {}).origin || '';
-  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return ALLOWED_ORIGINS.includes(origin) ? origin : null;
+}
+
+function normalizeTime(t) {
+  const parts = String(t).split(':');
+  return parts[0].padStart(2, '0') + ':' + (parts[1] || '00').padStart(2, '0');
 }
 
 exports.handler = async (event) => {
+  const corsOrigin = getCorsOrigin(event);
   const headers = {
-    'Access-Control-Allow-Origin': getCorsOrigin(event),
     'Access-Control-Allow-Headers': 'Content-Type, X-Cluster-Key',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Content-Type': 'application/json'
   };
+  if (corsOrigin) headers['Access-Control-Allow-Origin'] = corsOrigin;
 
   // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
@@ -289,14 +296,21 @@ exports.handler = async (event) => {
       if (!body.node || !body.image) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing node or image' }) };
       }
+      if (body.image.length > 2 * 1024 * 1024) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Image too large (max 2MB)' }) };
+      }
       await saveScreenshot(body.node, body.image, body.timestamp || new Date().toISOString());
       return { statusCode: 200, headers, body: JSON.stringify({ success: true, node: body.node }) };
     }
 
     // Save schedules from dashboard
     if (body.action === 'save-schedules') {
-      const webPassword = process.env.CLUSTER_WEB_PASSWORD || '073588';
+      const webPassword = process.env.CLUSTER_WEB_PASSWORD;
+      if (!webPassword) {
+        return { statusCode: 503, headers, body: JSON.stringify({ error: 'Server not configured' }) };
+      }
       if (body.password !== webPassword) {
+        console.warn(`[AUTH] Failed schedule auth attempt`);
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
       }
       await saveSchedules(body.schedules || {});
@@ -359,8 +373,12 @@ exports.handler = async (event) => {
     const { command, target, password } = body;
 
     // Simple password protection for web commands
-    const webPassword = process.env.CLUSTER_WEB_PASSWORD || '073588';
+    const webPassword = process.env.CLUSTER_WEB_PASSWORD;
+    if (!webPassword) {
+      return { statusCode: 503, headers, body: JSON.stringify({ error: 'Server not configured' }) };
+    }
     if (password !== webPassword) {
+      console.warn(`[AUTH] Failed command auth attempt for command=${command}`);
       return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
     }
 
@@ -398,7 +416,7 @@ exports.handler = async (event) => {
       }
     }
 
-    const cmdId = Date.now().toString(36);
+    const cmdId = crypto.randomBytes(8).toString('hex');
     const newCmd = {
       id: cmdId,
       command,

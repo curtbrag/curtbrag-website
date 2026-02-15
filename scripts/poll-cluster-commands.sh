@@ -4,7 +4,7 @@
 # Or as a systemd service for auto-restart
 
 API_URL="https://curtbrag.com/.netlify/functions/cluster-control"
-API_KEY="${CLUSTER_API_KEY:-curtbrag-cluster-2024}"
+API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set}"
 POLL_INTERVAL=5  # seconds
 # Auto-detect our IP so local-exec works even if IP changes
 LOCAL_IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
@@ -66,7 +66,7 @@ run_on_node() {
   if is_local_ip "$ip"; then
     timeout 30 sh -c "$cmd" 2>/dev/null
   else
-    timeout 30 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$ip" "$cmd" 2>/dev/null
+    timeout 30 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$ip" "$cmd" 2>/dev/null
   fi
 }
 
@@ -77,7 +77,7 @@ run_on_node_full() {
   if is_local_ip "$ip"; then
     timeout 30 sh -c "$cmd" 2>&1
   else
-    timeout 30 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$ip" "$cmd" 2>&1
+    timeout 30 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$ip" "$cmd" 2>&1
   fi
 }
 

@@ -66,7 +66,7 @@ run_on_node() {
   cmd="$3"
 
   log "[$node_name] Running: $cmd"
-  ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "user@$node_ip" "$cmd" 2>&1 || {
+  ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "user@$node_ip" "$cmd" 2>&1 || {
     log "[$node_name] Failed to connect"
     return 1
   }
@@ -89,7 +89,7 @@ setup_tailscale() {
 
   log "[$node_name] Installing Tailscale..."
 
-  ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "user@$node_ip" <<EOF
+  ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "user@$node_ip" <<EOF
     sudo apk add tailscale 2>/dev/null || true
     sudo rc-update add tailscale default 2>/dev/null || true
     sudo rc-service tailscale start 2>/dev/null || true
@@ -128,7 +128,7 @@ network={
     key_mgmt=WPA-PSK
 }"
   fi
-  printf '%s\n' "$hashed_conf" | ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "user@$node_ip" "
+  printf '%s\n' "$hashed_conf" | ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "user@$node_ip" "
     sudo apk add wpa_supplicant 2>/dev/null || true
     sudo mkdir -p /etc/wpa_supplicant
     sudo tee /etc/wpa_supplicant/wpa_supplicant.conf > /dev/null
@@ -146,7 +146,7 @@ show_status() {
   node_ip="$2"
 
   log "[$node_name @ $node_ip]"
-  ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "user@$node_ip" 2>/dev/null <<'EOF' || echo "  Connection failed"
+  ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "user@$node_ip" 2>/dev/null <<'EOF' || echo "  Connection failed"
     echo "  Interfaces: $(ip -br addr | grep -v lo | tr '\n' ' ')"
     echo "  Tailscale: $(tailscale status --self 2>/dev/null | head -1 || echo 'Not running')"
     echo "  WiFi: $(iw dev wlan0 link 2>/dev/null | grep SSID || echo 'Not connected')"

@@ -85,13 +85,13 @@ function shellEscape(s) {
 function sshExec(nodeKey, cmd) {
   const node = CONFIG.phoneNodes[nodeKey];
   if (!node) return { ok: false, stderr: 'Unknown node: ' + nodeKey };
-  return run(`ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes ${node.ssh} ${shellEscape(cmd)}`, 15000);
+  return run(`ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes ${node.ssh} ${shellEscape(cmd)}`, 15000);
 }
 
 function sshExecAsync(nodeKey, cmd) {
   const node = CONFIG.phoneNodes[nodeKey];
   if (!node) return Promise.resolve({ ok: false, stderr: 'Unknown node: ' + nodeKey });
-  return runAsync(`ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes ${node.ssh} ${shellEscape(cmd)}`, 15000);
+  return runAsync(`ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes ${node.ssh} ${shellEscape(cmd)}`, 15000);
 }
 
 function adbExec(nodeKey, cmd) {
@@ -331,7 +331,7 @@ async function gatherNodeMetrics() {
   const metrics = {};
 
   // Gather metrics from all phone nodes in parallel
-  const phoneMetrics = await Promise.all(
+  const phoneMetricsResults = await Promise.allSettled(
     CONFIG.phoneNodeNames.map(async name => {
       const m = { cpu: null, memory: null, temp: null, battery: null, storage: null };
 
@@ -403,6 +403,9 @@ async function gatherNodeMetrics() {
     })
   );
 
+  const phoneMetrics = phoneMetricsResults
+    .filter(r => r.status === 'fulfilled')
+    .map(r => r.value);
   for (const pm of phoneMetrics) {
     metrics[pm.name] = pm.metrics;
   }
@@ -585,23 +588,23 @@ async function handleStatus(req, res) {
   const totalRestarts = pods.reduce((sum, p) => sum + (p.restarts || 0), 0);
 
   // Calculate health score (0-100)
-  let healthScore = 100;
+  // 15 pts API connectivity + 40 pts node health + 20 pts pod health + 15 pts no failures + 10 pts stability
+  let healthScore = 0;
+  healthScore += nodesResult.ok ? 15 : 0; // API reachable
   if (nodes.length > 0) {
-    const nodeHealth = (nodesReady / nodes.length) * 40; // 40% weight
-    healthScore = nodeHealth;
+    healthScore += Math.round((nodesReady / nodes.length) * 40);
   }
   if (pods.length > 0) {
-    const podHealth = (podsRunning / pods.length) * 30; // 30% weight
-    healthScore += podHealth;
-  } else {
-    healthScore += 30;
+    healthScore += Math.round((podsRunning / pods.length) * 20);
+  } else if (nodes.length > 0) {
+    healthScore += 20; // no pods expected = full marks
   }
-  if (podsFailed === 0) healthScore += 15; // 15% for no failures
+  if (podsFailed === 0) healthScore += 15;
   else healthScore += Math.max(0, 15 - (podsFailed * 3));
-  if (totalRestarts < 10) healthScore += 15; // 15% for low restarts
-  else if (totalRestarts < 50) healthScore += 8;
-  else healthScore += 2;
-  healthScore = Math.min(100, Math.max(0, Math.round(healthScore)));
+  if (totalRestarts < 10) healthScore += 10;
+  else if (totalRestarts < 50) healthScore += 5;
+  else healthScore += 1;
+  healthScore = Math.min(100, Math.max(0, healthScore));
 
   const data = {
     lastUpdate: new Date().toISOString(),
@@ -653,7 +656,7 @@ async function handleScreen(req, res, deviceName) {
   }
 
   // Fallback: SSH framebuffer grab
-  const fbResult = runBinary(`ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes ${node.ssh} 'fbgrab -' 2>/dev/null`, 10000);
+  const fbResult = runBinary(`ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes ${node.ssh} 'fbgrab -' 2>/dev/null`, 10000);
   if (fbResult.ok && fbResult.data && fbResult.data.length > 100) {
     res.writeHead(200, {
       'Content-Type': 'image/png',
@@ -690,7 +693,7 @@ async function handleScreens(req, res) {
       }
 
       const fbResult = await runAsyncBinary(
-        `ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes ${node.ssh} 'fbgrab -' 2>/dev/null`, 8000
+        `ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes ${node.ssh} 'fbgrab -' 2>/dev/null`, 8000
       );
       if (fbResult.ok && fbResult.data && fbResult.data.length > 100) {
         return {
@@ -760,7 +763,7 @@ async function handleCommand(req, res, body) {
     if (CONFIG.phoneNodes[customTarget]) {
       r = await sshExecAsync(customTarget, customCmd);
     } else if (CONFIG.otherNodes.includes(customTarget)) {
-      r = await runAsync(`ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes ${customTarget} ${shellEscape(customCmd)}`, 15000);
+      r = await runAsync(`ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes ${customTarget} ${shellEscape(customCmd)}`, 15000);
     } else {
       return sendJson(res, 400, { error: 'Unknown target node: ' + customTarget });
     }
@@ -799,7 +802,7 @@ async function handleCommand(req, res, body) {
     if (CONFIG.phoneNodes[target]) {
       r = await sshExecAsync(target, sshCmd);
     } else if (CONFIG.otherNodes.includes(target)) {
-      r = await runAsync(`ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes ${target} ${shellEscape(sshCmd)}`, 15000);
+      r = await runAsync(`ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes ${target} ${shellEscape(sshCmd)}`, 15000);
     } else {
       return sendJson(res, 400, { error: 'Unknown target node: ' + target });
     }
@@ -1929,14 +1932,15 @@ function checkAuth(req) {
 
 function readBody(req, maxBytes = 1024 * 1024) {
   return new Promise((resolve, reject) => {
-    let data = '';
+    const chunks = [];
     let size = 0;
     req.on('data', chunk => {
       size += chunk.length;
       if (size > maxBytes) { req.destroy(); reject(new Error('Body too large')); return; }
-      data += chunk;
+      chunks.push(chunk);
     });
     req.on('end', () => {
+      const data = Buffer.concat(chunks).toString();
       if (!data.trim()) return reject(new Error('Empty body'));
       try { resolve(JSON.parse(data)); }
       catch { reject(new Error('Invalid JSON')); }
@@ -2099,7 +2103,7 @@ initAdbDevices();
 server.listen(CONFIG.port, () => {
   console.log(`[CLUSTER-API] Server running on port ${CONFIG.port}`);
   console.log(`[CLUSTER-API] Token auth: ${CONFIG.apiToken ? 'enabled' : 'disabled'}`);
-  console.log(`[CLUSTER-API] XMR wallet: ${CONFIG.xmrWallet || 'not configured'}`);
+  console.log(`[CLUSTER-API] XMR wallet: ${CONFIG.xmrWallet ? CONFIG.xmrWallet.slice(0, 8) + '...' + CONFIG.xmrWallet.slice(-4) : 'not configured'}`);
   const mapped = CONFIG.phoneNodeNames.filter(n => CONFIG.phoneNodes[n].adb);
   console.log(`[CLUSTER-API] ADB devices: ${mapped.length}/${CONFIG.phoneNodeNames.length}`);
   console.log('[CLUSTER-API] New endpoints: /api/metrics, /api/commands/log, /api/alerts, /api/mining/history, /api/nodes/history, /api/pods/:ns/:pod/logs, /api/pods/delete, /api/scale, /api/nodes/drain, /api/export');

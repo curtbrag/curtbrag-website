@@ -44,12 +44,12 @@ doas rm -rf /var/lib/rancher/k3s/agent/* 2>/dev/null || true
 
 echo 'Creating k3s config...'
 doas mkdir -p /etc/rancher/k3s
-printf '%s\n' 'server: \"https://$SERVER_IP:6443\"' 'token: \"$TOKEN\"' 'node-name: \"node$i\"' 'node-ip: \"$IP\"' | doas tee /etc/rancher/k3s/config.yaml
+printf '%s\n' \"server: \\\"https://${SERVER_IP}:6443\\\"\" \"token: \\\"${TOKEN}\\\"\" \"node-name: \\\"node${i}\\\"\" \"node-ip: \\\"${IP}\\\"\" | doas tee /etc/rancher/k3s/config.yaml
 
 echo 'Starting k3s-agent...'
 doas rc-service k3s-agent start
 
-echo 'Node$i fix complete!'
+echo 'Node${i} fix complete!'
 "
 
 done

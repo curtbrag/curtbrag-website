@@ -184,16 +184,17 @@ const ALLOWED_ORIGINS = ['https://www.curtbrag.com', 'https://curtbrag.com'];
 
 function getCorsOrigin(event) {
   const origin = (event.headers || {}).origin || '';
-  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return ALLOWED_ORIGINS.includes(origin) ? origin : null;
 }
 
 exports.handler = async function(event, context) {
+  const corsOrigin = getCorsOrigin(event);
   const headers = {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': getCorsOrigin(event),
     'Access-Control-Allow-Headers': 'Content-Type, X-Cluster-Key',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
   };
+  if (corsOrigin) headers['Access-Control-Allow-Origin'] = corsOrigin;
 
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
@@ -216,6 +217,15 @@ exports.handler = async function(event, context) {
       }
 
       const data = JSON.parse(event.body);
+      if (data.nodes && !Array.isArray(data.nodes)) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'nodes must be an array' }) };
+      }
+      if (data.pods && !Array.isArray(data.pods)) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'pods must be an array' }) };
+      }
+      if (data.summary && typeof data.summary !== 'object') {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'summary must be an object' }) };
+      }
       const statusData = {
         lastUpdate: new Date().toISOString(),
         nodes: data.nodes || [],
@@ -339,11 +349,14 @@ exports.handler = async function(event, context) {
           });
         }
 
-        // Sort by name
+        // Sort by name (numeric for nodeN, alphabetical for others)
         synthNodes.sort((a, b) => {
           const na = parseInt(a.name.replace('node', ''));
           const nb = parseInt(b.name.replace('node', ''));
-          return na - nb;
+          if (!isNaN(na) && !isNaN(nb)) return na - nb;
+          if (!isNaN(na)) return -1;
+          if (!isNaN(nb)) return 1;
+          return a.name.localeCompare(b.name);
         });
 
         status.nodes = synthNodes;
