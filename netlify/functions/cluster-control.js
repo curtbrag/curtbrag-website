@@ -400,6 +400,11 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid command' }) };
     }
 
+    // Validate target node name
+    if (target && target !== 'all' && !VALID_NODE_NAMES.includes(target)) {
+      return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid target node' }) };
+    }
+
     // Validate URL for browse command
     if (command === 'browse' && !body.url) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'URL required for browse command' }) };

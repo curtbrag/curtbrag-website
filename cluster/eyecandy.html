@@ -139,7 +139,10 @@ let plasmaImg;
 let plasmaOffscreen, plasmaOffCtx;
 function initPlasma() {
   plasmaImg = ctx.createImageData(W >> 2, H >> 2);
-  plasmaOffscreen = document.createElement('canvas');
+  // Reuse existing offscreen canvas or create once
+  if (!plasmaOffscreen) {
+    plasmaOffscreen = document.createElement('canvas');
+  }
   plasmaOffscreen.width = plasmaImg.width;
   plasmaOffscreen.height = plasmaImg.height;
   plasmaOffCtx = plasmaOffscreen.getContext('2d');

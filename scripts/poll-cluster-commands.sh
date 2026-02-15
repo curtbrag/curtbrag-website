@@ -14,7 +14,7 @@ LOCAL_IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' 
 [ -z "$LOCAL_IP" ] && LOCAL_IP="192.168.1.206"
 # Collect all local IPs so is_local_ip works for Tailscale/USB interfaces too
 ALL_LOCAL_IPS=$(ip -4 addr 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2 | tr '\n' ' ')
-trap 'rm -rf /tmp/cmdres-* /tmp/sshout-* /tmp/screenshots-* /tmp/cmdstderr-*' EXIT INT TERM
+trap 'kill $(jobs -p) 2>/dev/null; rm -rf /tmp/cmdres-* /tmp/sshout-* /tmp/screenshots-* /tmp/cmdstderr-*' EXIT INT TERM
 
 # Check if an IP belongs to this machine
 is_local_ip() {
