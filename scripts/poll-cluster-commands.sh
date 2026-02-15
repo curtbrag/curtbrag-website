@@ -167,7 +167,15 @@ execute_command() {
     wake)
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
-      WAKE_CMD="doas sh -c 'for f in /sys/class/backlight/*/bl_power; do echo 0 > \"\$f\"; done'"
+      # Turn on backlight, unlock session, and dismiss Phosh lock screen
+      WAKE_CMD="doas sh -c 'for f in /sys/class/backlight/*/bl_power; do echo 0 > \"\$f\"; done'
+doas loginctl unlock-sessions
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus
+dbus-send --session --dest=org.gnome.ScreenSaver --type=method_call /org/gnome/ScreenSaver org.gnome.ScreenSaver.SetActive boolean:false 2>/dev/null
+gsettings set org.gnome.desktop.screensaver lock-enabled false 2>/dev/null
+gsettings set org.gnome.desktop.session idle-delay 0 2>/dev/null
+true"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         run_on_all_tracked "$WAKE_CMD" "$RESULT_DIR" "$PHONE_NODES"
       else
