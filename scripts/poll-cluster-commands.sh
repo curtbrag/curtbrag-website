@@ -307,25 +307,11 @@ fi'
         # Sanitize URL: only allow safe URL characters (strip single/double quotes and backticks)
         safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!\$&()*+,;=%-]//g" | sed "s/['\"\`]//g")
         log "Opening $safe_url on phones..."
-        # postmarketOS/Phosh: dismiss lock screen, set session env, launch browser backgrounded
-        BROWSE_CMD="UID_NUM=\$(id -u)
-export XDG_RUNTIME_DIR=/run/user/\$UID_NUM
-export WAYLAND_DISPLAY=wayland-0
-export DISPLAY=:0
-export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$UID_NUM/bus
-
-# Dismiss lock screen before opening browser
-doas loginctl unlock-sessions 2>/dev/null
-dbus-send --session --dest=org.gnome.ScreenSaver --type=method_call /org/gnome/ScreenSaver org.gnome.ScreenSaver.SetActive boolean:false 2>/dev/null
-
-SAFE_URL=\"$safe_url\"
-# Kill any existing firefox to force new page load
-pkill -f firefox 2>/dev/null; sleep 0.5
-if command -v firefox-esr >/dev/null 2>&1; then nohup firefox-esr --kiosk \"\$SAFE_URL\" >/dev/null 2>&1 &
-elif command -v firefox >/dev/null 2>&1; then nohup firefox \"\$SAFE_URL\" >/dev/null 2>&1 &
-elif command -v chromium >/dev/null 2>&1; then nohup chromium --no-sandbox --kiosk \"\$SAFE_URL\" >/dev/null 2>&1 &
-else echo 'NO_BROWSER' && exit 1; fi
-sleep 1"
+        # Update greetd config to launch Firefox kiosk with this URL, then restart greetd
+        # This is the most reliable approach: greetd starts Phosh which starts Firefox
+        # The dconf overrides (set by wake) ensure no lock screen appears
+        BROWSE_CMD="printf '[terminal]\nvt = 7\n\n[default_session]\ncommand = \"phosh -E '"'"'firefox-esr --kiosk $safe_url'"'"'\"\nuser = \"user\"\n' | doas tee /etc/greetd/config.toml >/dev/null
+doas systemctl restart greetd"
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
           run_on_all_tracked "$BROWSE_CMD" "$RESULT_DIR" "$PHONE_NODES"
         else
