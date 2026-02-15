@@ -307,10 +307,10 @@ fi'
         # Sanitize URL: only allow safe URL characters (strip single/double quotes and backticks)
         safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!\$&()*+,;=%-]//g" | sed "s/['\"\`]//g")
         log "Opening $safe_url on phones..."
-        # Update greetd config to launch Firefox kiosk with this URL, then restart greetd
-        # This is the most reliable approach: greetd starts Phosh which starts Firefox
-        # The dconf overrides (set by wake) ensure no lock screen appears
-        BROWSE_CMD="printf '[terminal]\nvt = 7\n\n[default_session]\ncommand = \"phosh -E '"'"'firefox-esr --kiosk $safe_url'"'"'\"\nuser = \"user\"\n' | doas tee /etc/greetd/config.toml >/dev/null
+        # Update greetd config to launch Phosh with PHOSH_DEBUG=no-lockscreen
+        # (bypasses Phosh's built-in startup lock screen entirely)
+        # Then restart greetd so Phosh restarts with Firefox kiosk at the target URL
+        BROWSE_CMD="printf '[terminal]\nvt = 7\n\n[default_session]\ncommand = \"env PHOSH_DEBUG=no-lockscreen phosh -E '"'"'firefox-esr --kiosk $safe_url'"'"'\"\nuser = \"user\"\n' | doas tee /etc/greetd/config.toml >/dev/null
 doas systemctl restart greetd"
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
           run_on_all_tracked "$BROWSE_CMD" "$RESULT_DIR" "$PHONE_NODES"
