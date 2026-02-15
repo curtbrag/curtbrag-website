@@ -2,7 +2,7 @@
 # Push K3s cluster status to curtbrag.com
 # Run this on node1 via cron: */5 * * * * /home/user/push-cluster-status.sh >> /var/log/cluster-push.log 2>&1
 
-set -e
+set -eu
 
 API_URL="https://curtbrag.com/.netlify/functions/cluster-status"
 API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set}"
@@ -111,7 +111,7 @@ else
     # Check SSH reachability (fast, 2s timeout)
     if [ "$i" = "1" ]; then
       NODE_STATUS="Ready"
-    elif ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no -o BatchMode=yes "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then
+    elif ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then
       NODE_STATUS="Ready"
     else
       NODE_STATUS="NotReady"
@@ -181,7 +181,7 @@ for i in $(seq 1 10); do
       RAW=$(sh -c "$METRICS_CMD" 2>/dev/null)
     else
       NODE_IP="192.168.1.$((205 + i))"
-      RAW=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes \
+      RAW=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
         "user@$NODE_IP" "$METRICS_CMD" 2>/dev/null)
     fi
     echo "$RAW" > "$TMP_DIR/node${i}.tmp"
@@ -318,7 +318,7 @@ for i in $(seq 1 10); do
       if [ "$i" = "1" ]; then
         pgrep xmrig >/dev/null 2>&1 && PROC_CHECK="running"
       else
-        ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes \
+        ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
           "user@$NODE_IP" "pgrep xmrig >/dev/null 2>&1 && echo running" 2>/dev/null | grep -q running && PROC_CHECK="running"
       fi
       if [ "$PROC_CHECK" = "running" ]; then

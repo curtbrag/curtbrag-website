@@ -80,7 +80,7 @@ setup_node() {
   echo -e "${YELLOW}[${NAME}]${NC} Setting up xmrig on ${IP}..."
 
   # Check SSH access
-  if ! ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes "$SSH" "echo ok" &>/dev/null; then
+  if ! ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$SSH" "echo ok" &>/dev/null; then
     echo -e "  ${RED}✗${NC} Cannot SSH to ${NAME} (${IP})"
     return 1
   fi
@@ -98,7 +98,11 @@ setup_node() {
       ssh -o BatchMode=yes "$SSH" bash -c "'
         cd /tmp
         XMRIG_VER=6.21.1
+        XMRIG_SHA256=\"5c22ffb3a849cbe9b4cb1b8b39ddddb9e2ca7613a8a018e1db52a8dbe0caa04e\"
         wget -q https://github.com/xmrig/xmrig/releases/download/v\${XMRIG_VER}/xmrig-\${XMRIG_VER}-linux-static-aarch64.tar.gz -O xmrig.tar.gz
+        if command -v sha256sum >/dev/null 2>&1; then
+          echo \"\${XMRIG_SHA256}  xmrig.tar.gz\" | sha256sum -c - || { echo \"Checksum verification failed!\"; rm -f xmrig.tar.gz; exit 1; }
+        fi
         tar xzf xmrig.tar.gz
         doas cp xmrig-\${XMRIG_VER}/xmrig /usr/local/bin/xmrig
         doas chmod +x /usr/local/bin/xmrig
