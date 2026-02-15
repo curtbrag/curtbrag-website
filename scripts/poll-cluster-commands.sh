@@ -31,26 +31,30 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-# Node registry: phones + laptops
-# Format: name:ip
-ALL_NODES="node1:192.168.1.206 node2:192.168.1.207 node3:192.168.1.208 node4:192.168.1.209 node5:192.168.1.210 node6:192.168.1.211 node7:192.168.1.212 node8:192.168.1.213 node9:192.168.1.214 node10:192.168.1.215"
+# Load node configuration from shared config file
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/cluster-nodes.conf" ]; then
+  . "$SCRIPT_DIR/cluster-nodes.conf"
+  load_node_config
+else
+  # Fallback if config file not found
+  ALL_NODES="node1:192.168.1.206 node2:192.168.1.207 node3:192.168.1.208 node4:192.168.1.209 node5:192.168.1.210 node6:192.168.1.211 node7:192.168.1.212 node8:192.168.1.213 node9:192.168.1.214 node10:192.168.1.215"
+  log "WARN: cluster-nodes.conf not found, using hardcoded IPs"
+fi
 PHONE_NODES="$ALL_NODES"
 
 # Resolve node name to IP
 resolve_ip() {
-  case "$1" in
-    node1)  echo "192.168.1.206" ;;
-    node2)  echo "192.168.1.207" ;;
-    node3)  echo "192.168.1.208" ;;
-    node4)  echo "192.168.1.209" ;;
-    node5)  echo "192.168.1.210" ;;
-    node6)  echo "192.168.1.211" ;;
-    node7)  echo "192.168.1.212" ;;
-    node8)  echo "192.168.1.213" ;;
-    node9)  echo "192.168.1.214" ;;
-    node10) echo "192.168.1.215" ;;
-    *)      echo "$1" ;;
-  esac
+  if [ -f "$SCRIPT_DIR/cluster-nodes.conf" ]; then
+    resolve_ip_from_config "$1"
+  else
+    case "$1" in
+      node1)  echo "192.168.1.206" ;; node2) echo "192.168.1.207" ;; node3) echo "192.168.1.208" ;;
+      node4)  echo "192.168.1.209" ;; node5) echo "192.168.1.210" ;; node6) echo "192.168.1.211" ;;
+      node7)  echo "192.168.1.212" ;; node8) echo "192.168.1.213" ;; node9) echo "192.168.1.214" ;;
+      node10) echo "192.168.1.215" ;; *) echo "$1" ;;
+    esac
+  fi
 }
 
 # K3s service name — all phones are agents; control-plane is on AORUS (192.168.1.181)
@@ -63,11 +67,20 @@ k3s_svc() {
 run_on_node() {
   local ip="$1"
   local cmd="$2"
+  local _stderr_tmp="/tmp/cmdstderr-$$"
+  local _rc
   if is_local_ip "$ip"; then
-    timeout 30 sh -c "$cmd" 2>/dev/null
+    timeout 30 sh -c "$cmd" 2>"$_stderr_tmp"
+    _rc=$?
   else
-    timeout 30 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$ip" "$cmd" 2>/dev/null
+    timeout 30 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$ip" "$cmd" 2>"$_stderr_tmp"
+    _rc=$?
   fi
+  if [ "$_rc" -ne 0 ] && [ -s "$_stderr_tmp" ]; then
+    log "WARN: command on $ip exited $_rc: $(head -c 200 "$_stderr_tmp")"
+  fi
+  rm -f "$_stderr_tmp"
+  return $_rc
 }
 
 # Execute on a node and capture both stdout+stderr
@@ -87,9 +100,12 @@ run_on_node_tracked() {
   local cmd="$2"
   local result_dir="$3"
   local label="$4"
-  if run_on_node "$ip" "$cmd" >/dev/null 2>&1; then
+  local _out
+  _out=$(run_on_node "$ip" "$cmd" 2>&1)
+  if [ $? -eq 0 ]; then
     echo "ok" > "$result_dir/$label"
   else
+    log "WARN: tracked command failed on $label ($ip): $(printf '%.200s' "$_out")"
     echo "fail" > "$result_dir/$label"
   fi
 }
@@ -407,7 +423,7 @@ HEAD_SCRIPT=$(head -15 $0 2>/dev/null)"
       if [ -z "$ssh_cmd" ]; then
         report_result "$cmd_id" "error: no command specified" "" "$cmd" "$target"
       # Block shell metacharacters that could enable injection
-      elif printf '%s' "$ssh_cmd" | grep -qE '[;|&\$\`\\><]|\$\(|rm -rf /|mkfs|dd if=|:[(][)][{]|/dev/sd'; then
+      elif printf '%s' "$ssh_cmd" | grep -qE '[;|&\$\`\\><\{\}\(\)!]|\$\(|rm -rf /|mkfs|dd if=|:[(][)][{]|/dev/sd|shutdown|halt|poweroff|init 0|kill -9 1'; then
         log "BLOCKED dangerous SSH command: $ssh_cmd"
         report_result "$cmd_id" "error: command blocked for safety" "" "$cmd" "$target"
       else
@@ -493,8 +509,15 @@ else echo "CAPTURE_FAILED" && exit 1; fi'
         B64=$(run_on_node "$ip" "$SCREEN_CMD")
 
         if [ -n "$B64" ] && [ "$B64" != "NO_TOOL" ] && [ "$B64" != "CAPTURE_FAILED" ]; then
-          echo "$B64" > "$outfile"
-          echo "ok" > "$RESULT_DIR/$node_name"
+          # Validate size: base64 data should be under 1.5MB (2MB limit on Netlify side)
+          B64_SIZE=$(printf '%s' "$B64" | wc -c)
+          if [ "$B64_SIZE" -gt 1500000 ] 2>/dev/null; then
+            log "  WARN: screenshot for $node_name too large (${B64_SIZE} bytes), skipping"
+            echo "fail" > "$RESULT_DIR/$node_name"
+          else
+            echo "$B64" > "$outfile"
+            echo "ok" > "$RESULT_DIR/$node_name"
+          fi
         else
           echo "fail" > "$RESULT_DIR/$node_name"
         fi
@@ -549,6 +572,28 @@ else echo "CAPTURE_FAILED" && exit 1; fi'
         report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
       fi
       ;;
+    pod-logs)
+      # Fetch pod logs via kubectl (runs on node1 which has kubectl access)
+      POD_NS="$NAMESPACE"
+      POD_NAME="$POD_NAME_Q"
+      POD_TAIL="$TAIL_LINES"
+      if [ -z "$POD_NS" ] || [ -z "$POD_NAME" ]; then
+        report_result "$cmd_id" "error: namespace and podName required" "" "$cmd" "$target"
+      elif ! printf '%s' "$POD_NS" | grep -qE '^[a-zA-Z0-9._-]+$' || ! printf '%s' "$POD_NAME" | grep -qE '^[a-zA-Z0-9._-]+$'; then
+        report_result "$cmd_id" "error: invalid namespace or pod name" "" "$cmd" "$target"
+      else
+        # Clamp tail lines
+        [ "$POD_TAIL" -gt 500 ] 2>/dev/null && POD_TAIL=500
+        [ "$POD_TAIL" -lt 1 ] 2>/dev/null && POD_TAIL=100
+        LOG_OUTPUT=$(kubectl logs "$POD_NAME" -n "$POD_NS" --tail="$POD_TAIL" 2>&1)
+        if [ $? -eq 0 ]; then
+          TRUNC_LOG=$(printf '%.4000s' "$LOG_OUTPUT")
+          report_result "$cmd_id" "success" "$TRUNC_LOG" "$cmd" "$target"
+        else
+          report_result "$cmd_id" "error: $LOG_OUTPUT" "" "$cmd" "$target"
+        fi
+      fi
+      ;;
     *)
       log "Unknown command: $cmd"
       report_result "$cmd_id" "error: unknown command" "" "$cmd" "$target"
@@ -557,6 +602,21 @@ else echo "CAPTURE_FAILED" && exit 1; fi'
 }
 
 log "Starting command poller (interval: ${POLL_INTERVAL}s)"
+
+# Backoff state for API failures
+CONSECUTIVE_FAILURES=0
+MAX_BACKOFF=120  # max backoff interval in seconds
+
+get_poll_delay() {
+  if [ "$CONSECUTIVE_FAILURES" -eq 0 ]; then
+    echo "$POLL_INTERVAL"
+  else
+    # Exponential backoff: 10, 20, 40, 80, 120 (capped)
+    local delay=$((POLL_INTERVAL * 2 * CONSECUTIVE_FAILURES))
+    [ "$delay" -gt "$MAX_BACKOFF" ] && delay=$MAX_BACKOFF
+    echo "$delay"
+  fi
+}
 
 # Schedule checking state
 LAST_SCHED_CHECK=0
@@ -595,8 +655,23 @@ while true; do
   check_schedules
 
   # Poll for queued commands
-  RESPONSE=$(curl -sL "$API_URL?action=poll" \
-    -H "X-Cluster-Key: $API_KEY" 2>/dev/null || echo '{}')
+  RESPONSE=$(curl -sL --max-time 15 "$API_URL?action=poll" \
+    -H "X-Cluster-Key: $API_KEY" 2>/dev/null)
+  CURL_RC=$?
+
+  if [ "$CURL_RC" -ne 0 ] || [ -z "$RESPONSE" ]; then
+    CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
+    DELAY=$(get_poll_delay)
+    log "WARN: API poll failed (attempt $CONSECUTIVE_FAILURES), backing off ${DELAY}s"
+    sleep "$DELAY"
+    continue
+  fi
+
+  # Reset backoff on successful response
+  if [ "$CONSECUTIVE_FAILURES" -gt 0 ]; then
+    log "API connection restored after $CONSECUTIVE_FAILURES failures"
+  fi
+  CONSECUTIVE_FAILURES=0
 
   CMD=$(echo "$RESPONSE" | jq -r '.command // empty')
 
@@ -605,6 +680,9 @@ while true; do
     URL=$(echo "$RESPONSE" | jq -r '.url // empty')
     CMD_ID=$(echo "$RESPONSE" | jq -r '.id // empty')
     SSH_CMD=$(echo "$RESPONSE" | jq -r '.sshCmd // empty')
+    NAMESPACE=$(echo "$RESPONSE" | jq -r '.namespace // empty')
+    POD_NAME_Q=$(echo "$RESPONSE" | jq -r '.podName // empty')
+    TAIL_LINES=$(echo "$RESPONSE" | jq -r '.tail // "100"')
     log "Got command: $CMD target=$TARGET id=$CMD_ID"
     execute_command "$CMD" "$TARGET" "$URL" "$CMD_ID" "$SSH_CMD"
   fi

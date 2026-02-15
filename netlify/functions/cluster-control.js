@@ -382,7 +382,7 @@ exports.handler = async (event) => {
       return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
     }
 
-    const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse', 'update', 'reboot', 'ssh', 'screenshot', 'brightness', 'debug'];
+    const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse', 'update', 'reboot', 'ssh', 'screenshot', 'brightness', 'debug', 'pod-logs'];
     if (!validCommands.includes(command)) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid command' }) };
     }
@@ -399,17 +399,31 @@ exports.handler = async (event) => {
       }
     }
 
+    // Validate pod-logs command
+    if (command === 'pod-logs') {
+      if (!body.namespace || !body.podName) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'namespace and podName required for pod-logs' }) };
+      }
+      if (!/^[a-zA-Z0-9._-]+$/.test(body.namespace) || !/^[a-zA-Z0-9._-]+$/.test(body.podName)) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid namespace or pod name' }) };
+      }
+    }
+
     // Validate and sanitize SSH command
     if (command === 'ssh') {
       if (!body.sshCmd) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'SSH command required' }) };
       }
-      // Block shell metacharacters that enable injection
-      if (/[;|&$`\\><]|\$\(/.test(body.sshCmd)) {
+      // Block shell metacharacters that enable injection (includes globs, subshells, redirects)
+      if (/[;|&$`\\><\{\}\(\)!~\[\]*?]|\$\(/.test(body.sshCmd)) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'Command contains disallowed shell characters' }) };
       }
+      // Enforce max length
+      if (body.sshCmd.length > 200) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Command too long (max 200 characters)' }) };
+      }
       // Block dangerous commands
-      const dangerousPatterns = [/\brm\s+(-[a-z]*\s+)*\//, /\bmkfs\b/, /\bdd\s+if=/, /:\(\)\{/, /\/dev\/sd/, /\bshutdown\b/, /\bhalt\b/, /\bpoweroff\b/, /\bfind\b.*-delete/, /\bkill\s+-9\s+1\b/];
+      const dangerousPatterns = [/\brm\s+(-[a-z]*\s+)*\//, /\bmkfs\b/, /\bdd\s+if=/, /:\(\)\{/, /\/dev\/sd/, /\bshutdown\b/, /\bhalt\b/, /\bpoweroff\b/, /\bfind\b.*-delete/, /\bkill\s+-9\s+1\b/, /\binit\s+0\b/, /\bcurl\b.*\|\s*\bsh\b/, /\bwget\b.*\|\s*\bsh\b/];
       const lowerCmd = body.sshCmd.toLowerCase();
       if (dangerousPatterns.some(p => p.test(lowerCmd))) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'Command blocked for safety' }) };
@@ -423,6 +437,9 @@ exports.handler = async (event) => {
       target: target || 'all',
       url: body.url || null,
       sshCmd: body.sshCmd || null,
+      namespace: body.namespace || null,
+      podName: body.podName || null,
+      tail: body.tail || null,
       queuedAt: new Date().toISOString()
     };
 

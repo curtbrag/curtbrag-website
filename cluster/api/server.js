@@ -735,78 +735,44 @@ async function handleCommand(req, res, body) {
     return sendJson(res, 400, { error: 'URL required for browse command' });
   }
 
-  // Custom command: SSH into target and run a sanitized command
-  if (command === 'custom') {
-    const { customCmd } = body;
-    if (!customCmd || typeof customCmd !== 'string') {
-      return sendJson(res, 400, { error: 'customCmd is required for custom command' });
+  // SSH/Custom command: run a sanitized command on target node via SSH
+  // Both 'custom' (uses customCmd) and 'ssh' (uses sshCmd) share the same logic
+  if (command === 'custom' || command === 'ssh') {
+    const remoteCmd = command === 'custom' ? body.customCmd : body.sshCmd;
+    const fieldName = command === 'custom' ? 'customCmd' : 'sshCmd';
+    if (!remoteCmd || typeof remoteCmd !== 'string') {
+      return sendJson(res, 400, { error: `${fieldName} is required for ${command} command` });
     }
-    // Sanitize: only allow alphanumeric, spaces, dashes, underscores, dots, slashes, colons, equals
-    if (!/^[a-zA-Z0-9 _.\-/:=,+@]+$/.test(customCmd)) {
-      logCommand({ command: 'custom', target, status: 'denied', reason: 'Invalid characters in customCmd' });
-      return sendJson(res, 400, { error: 'customCmd contains disallowed characters. Only alphanumeric, spaces, and common safe characters (- _ . / : = , + @) are allowed.' });
+    if (!/^[a-zA-Z0-9 _.\-/:=,+@]+$/.test(remoteCmd)) {
+      logCommand({ command, target, status: 'denied', reason: `Invalid characters in ${fieldName}` });
+      return sendJson(res, 400, { error: `${fieldName} contains disallowed characters. Only alphanumeric, spaces, and common safe characters (- _ . / : = , + @) are allowed.` });
     }
-    // Block dangerous commands even if they pass the character filter
-    const dangerousPatterns = [/^rm\s/, /^dd\s/, /^mkfs/, /^shutdown/, /^halt/, /^poweroff/, /^kill\s+-9\s+1$/, /^init\s+0/, /^reboot$/];
-    if (dangerousPatterns.some(p => p.test(customCmd.trim()))) {
-      logCommand({ command: 'custom', target, status: 'denied', reason: 'Blocked dangerous command' });
+    const dangerousPatterns = [/\brm\s+(-[a-z]*\s+)*\//, /\bdd\s+if=/, /\bmkfs\b/, /\bshutdown\b/, /\bhalt\b/, /\bpoweroff\b/, /\bkill\s+-9\s+1\b/, /\binit\s+0/, /\breboot\b/, /\bcurl\b.*\|\s*\bsh\b/, /\bwget\b.*\|\s*\bsh\b/];
+    if (dangerousPatterns.some(p => p.test(remoteCmd.trim()))) {
+      logCommand({ command, target, status: 'denied', reason: 'Blocked dangerous command' });
       return sendJson(res, 400, { error: 'Command blocked for safety' });
     }
-    if (customCmd.length > 200) {
-      return sendJson(res, 400, { error: 'customCmd too long (max 200 characters)' });
-    }
-    const customTarget = target;
-    if (!customTarget) {
-      return sendJson(res, 400, { error: 'Target is required for custom command' });
-    }
-    let r;
-    if (CONFIG.phoneNodes[customTarget]) {
-      r = await sshExecAsync(customTarget, customCmd);
-    } else if (CONFIG.otherNodes.includes(customTarget)) {
-      r = await runAsync(`ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes ${customTarget} ${shellEscape(customCmd)}`, 15000);
-    } else {
-      return sendJson(res, 400, { error: 'Unknown target node: ' + customTarget });
-    }
-    logCommand({
-      command: 'custom',
-      target: customTarget,
-      customCmd,
-      status: r.ok ? 'success' : 'failed',
-      message: r.ok ? r.stdout : r.stderr,
-    });
-    return sendJson(res, 200, { success: r.ok, output: r.stdout || r.stderr });
-  }
-
-  // SSH command: same as custom but uses sshCmd field (sent by dashboard Netlify-relay path)
-  if (command === 'ssh') {
-    const sshCmd = body.sshCmd;
-    if (!sshCmd || typeof sshCmd !== 'string') {
-      return sendJson(res, 400, { error: 'sshCmd is required for ssh command' });
-    }
-    if (!/^[a-zA-Z0-9 _.\-/:=,+@]+$/.test(sshCmd)) {
-      logCommand({ command: 'ssh', target, status: 'denied', reason: 'Invalid characters in sshCmd' });
-      return sendJson(res, 400, { error: 'sshCmd contains disallowed characters' });
-    }
-    const dangerousPatterns = [/^rm\s/, /^dd\s/, /^mkfs/, /^shutdown/, /^halt/, /^poweroff/, /^kill\s+-9\s+1$/, /^init\s+0/, /^reboot$/];
-    if (dangerousPatterns.some(p => p.test(sshCmd.trim()))) {
-      logCommand({ command: 'ssh', target, status: 'denied', reason: 'Blocked dangerous command' });
-      return sendJson(res, 400, { error: 'Command blocked for safety' });
-    }
-    if (sshCmd.length > 200) {
-      return sendJson(res, 400, { error: 'sshCmd too long (max 200 characters)' });
+    if (remoteCmd.length > 200) {
+      return sendJson(res, 400, { error: `${fieldName} too long (max 200 characters)` });
     }
     if (!target) {
-      return sendJson(res, 400, { error: 'Target is required for ssh command' });
+      return sendJson(res, 400, { error: `Target is required for ${command} command` });
     }
     let r;
     if (CONFIG.phoneNodes[target]) {
-      r = await sshExecAsync(target, sshCmd);
+      r = await sshExecAsync(target, remoteCmd);
     } else if (CONFIG.otherNodes.includes(target)) {
-      r = await runAsync(`ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes ${target} ${shellEscape(sshCmd)}`, 15000);
+      r = await runAsync(`ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes ${target} ${shellEscape(remoteCmd)}`, 15000);
     } else {
       return sendJson(res, 400, { error: 'Unknown target node: ' + target });
     }
-    logCommand({ command: 'ssh', target, customCmd: sshCmd, status: r.ok ? 'success' : 'failed', message: r.ok ? r.stdout : r.stderr });
+    logCommand({
+      command,
+      target,
+      customCmd: remoteCmd,
+      status: r.ok ? 'success' : 'failed',
+      message: r.ok ? r.stdout : r.stderr,
+    });
     return sendJson(res, 200, { success: r.ok, output: r.stdout || r.stderr });
   }
 
@@ -1216,8 +1182,25 @@ async function gatherMiningStats() {
     }
   }
 
-  const dailyUsd = totalHashrate * 0.00005;
-  const monthlyUsd = dailyUsd * 30;
+  // Estimate XMR earnings from hashrate using network parameters
+  let dailyUsd = 0;
+  let monthlyUsd = 0;
+  if (totalHashrate > 0) {
+    let xmrPrice = 150;
+    let networkHashrate = 2500000000;
+    const dailyBlocks = 720;
+    const blockReward = 0.6;
+    try {
+      const networkResult = await httpGetJson('supportxmr.com', 443, '/api/network/stats', 5000);
+      if (networkResult.ok && networkResult.data) {
+        if (networkResult.data.difficulty) networkHashrate = networkResult.data.difficulty / 120;
+        if (networkResult.data.value) xmrPrice = networkResult.data.value;
+      }
+    } catch { /* use fallbacks */ }
+    const dailyXmr = (totalHashrate / networkHashrate) * dailyBlocks * blockReward;
+    dailyUsd = dailyXmr * xmrPrice;
+    monthlyUsd = dailyUsd * 30;
+  }
 
   return {
     enabled: minersRunning > 0,

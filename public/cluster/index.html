@@ -3775,12 +3775,46 @@
       document.getElementById('fullscreenBtn').innerHTML = '<i class="fa-solid ' + (isFs ? 'fa-compress' : 'fa-expand') + '"></i>';
     }
 
+    // ─── Inactivity Timeout ────────────────────────────────────────────
+    var INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+    var lastActivityTime = Date.now();
+    var dashboardPaused = false;
+
+    function resetActivity() {
+      lastActivityTime = Date.now();
+      if (dashboardPaused) {
+        dashboardPaused = false;
+        var el = document.getElementById('refreshCountdown');
+        if (el) el.textContent = refreshInterval + 's';
+        console.log('[Dashboard] Resuming polling after user activity');
+        loadClusterStatus();
+      }
+    }
+
+    ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'].forEach(function(evt) {
+      document.addEventListener(evt, resetActivity, { passive: true });
+    });
+
+    function isInactive() {
+      if (Date.now() - lastActivityTime > INACTIVITY_TIMEOUT) {
+        if (!dashboardPaused) {
+          dashboardPaused = true;
+          console.log('[Dashboard] Pausing polling due to inactivity');
+          var el = document.getElementById('refreshCountdown');
+          if (el) el.textContent = 'paused';
+        }
+        return true;
+      }
+      return false;
+    }
+
     // ─── Auto-Refresh Countdown ─────────────────────────────────────────
     var refreshInterval = 10;
     var refreshCountdownVal = refreshInterval;
     var connStatus = 'connected';
 
     function updateRefreshCountdown() {
+      if (isInactive()) return;
       refreshCountdownVal--;
       if (refreshCountdownVal < 0) refreshCountdownVal = refreshInterval;
       var el = document.getElementById('refreshCountdown');
@@ -5532,10 +5566,10 @@
     connectSSE();
     try { loadSchedules(); } catch(e) { console.warn('loadSchedules:', e); }
     loadHealthHistory();
-    setInterval(loadClusterStatus, 10000);
-    setInterval(measureApiLatency, 15000);
-    setInterval(function() { if (apiEndpoint) loadScreens(); else loadScreensViaRelay(); }, 60000);
-    setInterval(function() { if (apiEndpoint) loadAlerts(); loadCommandLog(); }, 15000);
+    setInterval(function() { if (!isInactive()) loadClusterStatus(); }, 10000);
+    setInterval(function() { if (!isInactive()) measureApiLatency(); }, 15000);
+    setInterval(function() { if (!isInactive()) { if (apiEndpoint) loadScreens(); else loadScreensViaRelay(); } }, 60000);
+    setInterval(function() { if (!isInactive()) { if (apiEndpoint) loadAlerts(); loadCommandLog(); } }, 15000);
     loadEvents();
     loadDeployments();
     loadNamespaceUsage();
@@ -5545,7 +5579,7 @@
     loadIngresses();
     loadCronJobs();
     loadApiLatency();
-    setInterval(function() { if (apiEndpoint) { loadEvents(); loadDeployments(); loadNodeMetricsHistory(); loadNamespaceUsage(); loadResourceQuotas(); loadPVCs(); loadIngresses(); loadCronJobs(); loadApiLatency(); } }, 30000);
+    setInterval(function() { if (!isInactive() && apiEndpoint) { loadEvents(); loadDeployments(); loadNodeMetricsHistory(); loadNamespaceUsage(); loadResourceQuotas(); loadPVCs(); loadIngresses(); loadCronJobs(); loadApiLatency(); } }, 30000);
   </script>
 </body>
 </html>
