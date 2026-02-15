@@ -289,16 +289,18 @@ fi'
         # Sanitize URL: only allow safe URL characters (strip single/double quotes and backticks)
         safe_url=$(printf '%s' "$url" | sed "s/[^a-zA-Z0-9:\/._~?#@!\$&()*+,;=%-]//g" | sed "s/['\"\`]//g")
         log "Opening $safe_url on phones..."
-        # postmarketOS/Phosh: use xdg-open or direct browser, with Wayland display set
-        # Use double quotes to prevent single-quote injection
-        BROWSE_CMD="export XDG_RUNTIME_DIR=/run/user/\$(id -u); export WAYLAND_DISPLAY=wayland-0; export DISPLAY=:0
+        # postmarketOS/Phosh: launch browser with full session env (Wayland + D-Bus)
+        # Must set DBUS_SESSION_BUS_ADDRESS for xdg-open to work over SSH
+        # All browser commands run in background + nohup so SSH can exit cleanly
+        BROWSE_CMD="export XDG_RUNTIME_DIR=/run/user/\$(id -u); export WAYLAND_DISPLAY=wayland-0; export DISPLAY=:0; export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus
 SAFE_URL=\"$safe_url\"
-if command -v xdg-open >/dev/null 2>&1; then xdg-open \"\$SAFE_URL\" 2>/dev/null
-elif command -v firefox >/dev/null 2>&1; then firefox \"\$SAFE_URL\" &
-elif command -v chromium >/dev/null 2>&1; then chromium --no-sandbox \"\$SAFE_URL\" &
-elif command -v chromium-browser >/dev/null 2>&1; then chromium-browser --no-sandbox \"\$SAFE_URL\" &
+if command -v firefox >/dev/null 2>&1; then nohup firefox \"\$SAFE_URL\" >/dev/null 2>&1 &
+elif command -v xdg-open >/dev/null 2>&1; then nohup xdg-open \"\$SAFE_URL\" >/dev/null 2>&1 &
+elif command -v chromium >/dev/null 2>&1; then nohup chromium --no-sandbox \"\$SAFE_URL\" >/dev/null 2>&1 &
+elif command -v chromium-browser >/dev/null 2>&1; then nohup chromium-browser --no-sandbox \"\$SAFE_URL\" >/dev/null 2>&1 &
 elif command -v am >/dev/null 2>&1; then am start -a android.intent.action.VIEW -d \"\$SAFE_URL\"
-else echo 'NO_BROWSER' && exit 1; fi"
+else echo 'NO_BROWSER' && exit 1; fi
+sleep 1"
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
           run_on_all_tracked "$BROWSE_CMD" "$RESULT_DIR" "$PHONE_NODES"
         else
