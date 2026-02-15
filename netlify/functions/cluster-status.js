@@ -206,7 +206,7 @@ exports.handler = async function(event, context) {
   if (event.httpMethod === 'POST') {
     try {
       const apiKey = event.headers['x-cluster-key'];
-      const expectedKey = process.env.CLUSTER_API_KEY || 'curtbrag-cluster-2024';
+      const expectedKey = process.env.CLUSTER_API_KEY;
       if (apiKey !== expectedKey) {
         return {
           statusCode: 401,

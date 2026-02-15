@@ -132,7 +132,7 @@ exports.handler = async (event) => {
   connectLambda(event);
 
   const apiKey = event.headers['x-cluster-key'];
-  const validKey = process.env.CLUSTER_API_KEY || 'curtbrag-cluster-2024';
+  const validKey = process.env.CLUSTER_API_KEY;
 
   // GET - Poll for commands (from node1) or get status (from dashboard)
   if (event.httpMethod === 'GET') {

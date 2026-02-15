@@ -18,6 +18,11 @@
   to = "/cluster/index.html"
   status = 200
 
+[[redirects]]
+  from = "/cluster/eyecandy"
+  to = "/cluster/eyecandy.html"
+  status = 200
+
 # Security and caching headers
 [[headers]]
   for = "/*"
