@@ -13,8 +13,8 @@ const os = require('os');
 
 const CONFIG = {
   port: parseInt(process.env.CLUSTER_API_PORT) || 3847,
-  password: process.env.CLUSTER_WEB_PASSWORD || '0735',
-  apiToken: process.env.CLUSTER_API_TOKEN || '',
+  password: process.env.CLUSTER_WEB_PASSWORD || '073588',
+  apiToken: process.env.CLUSTER_API_TOKEN || 'curtbrag-cluster-2024',
   allowedOrigins: ['https://www.curtbrag.com', 'https://curtbrag.com', 'http://localhost'],
 
   // Monero mining

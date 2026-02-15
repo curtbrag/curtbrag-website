@@ -14,7 +14,7 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 API_DIR="$(dirname "$SCRIPT_DIR")/cluster/api"
 PORT=3847
-PASSWORD="${CLUSTER_WEB_PASSWORD:-}"
+PASSWORD="${CLUSTER_WEB_PASSWORD:-073588}"
 TOKEN=""
 WALLET=""
 
@@ -29,8 +29,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$PASSWORD" ]; then
-  echo -e "${RED}ERROR: No password set. Use --password or CLUSTER_WEB_PASSWORD env var.${NC}"
-  exit 1
+  PASSWORD="073588"
 fi
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
