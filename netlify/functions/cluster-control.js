@@ -347,7 +347,7 @@ exports.handler = async (event) => {
         if (sched.sleep) rules.push({ time: sched.sleep, command: 'sleep' });
 
         for (const rule of rules) {
-          if (normalizeTime(rule.time) === normalizeTime(timeStr)) {
+          if (rule.time === timeStr) {
             // Include date in key so schedules fire once per day, not once ever
             const key = rule.command + ':' + id + ':' + timeStr + ':' + dateStr;
             if (!lastExec[key]) {
