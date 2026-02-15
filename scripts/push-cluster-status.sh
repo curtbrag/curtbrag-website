@@ -17,6 +17,16 @@ log() {
 
 log "Starting cluster status push..."
 
+# Load shared node configuration
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/cluster-nodes.conf" ]; then
+  . "$SCRIPT_DIR/cluster-nodes.conf"
+  load_node_config
+  log "Loaded $NODE_COUNT nodes from cluster-nodes.conf"
+else
+  log "WARN: cluster-nodes.conf not found, using hardcoded IPs"
+fi
+
 # Check prerequisites
 for cmd in jq curl; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -167,7 +177,18 @@ echo "MEM:$(free -m 2>/dev/null | grep Mem)"
 echo "TEMP:$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0)"
 echo "DISK:$(df -m / 2>/dev/null | tail -1)"
 BD=""; for d in /sys/class/power_supply/*; do [ "$(cat "$d/type" 2>/dev/null)" = "Battery" ] && BD="$d" && break; done
-echo "BATT_CAP:$(cat "$BD/capacity" 2>/dev/null || echo -1)"
+_CAP=$(cat "$BD/capacity" 2>/dev/null || echo -1)
+# If capacity > 100, device reports raw charge (µAh) — try to compute % from charge_now/charge_full
+if [ "$_CAP" -gt 100 ] 2>/dev/null; then
+  _CNOW=$(cat "$BD/charge_now" 2>/dev/null || echo 0)
+  _CFULL=$(cat "$BD/charge_full" 2>/dev/null || echo 0)
+  if [ "$_CFULL" -gt 0 ] 2>/dev/null; then
+    _CAP=$(( _CNOW * 100 / _CFULL ))
+  else
+    _CAP=-1
+  fi
+fi
+echo "BATT_CAP:$_CAP"
 echo "BATT_STATUS:$(cat "$BD/status" 2>/dev/null || echo Unknown)"
 echo "BATT_TEMP:$(cat "$BD/temp" 2>/dev/null || echo 0)"
 echo "BATT_VOLT:$(cat "$BD/voltage_now" 2>/dev/null || echo 0)"
@@ -239,8 +260,8 @@ for i in $(seq 1 10); do
 
   # Battery
   BATT_CAP=$(echo "$RAW" | grep "^BATT_CAP:" | sed 's/^BATT_CAP://' | tr -d ' ')
-  # Sanity check: capacity must be 0-100 (some devices report µAh instead of %)
-  if [ "${BATT_CAP:--1}" -gt 100 ] 2>/dev/null; then BATT_CAP="-1"; fi
+  # Clamp to valid range (conversion from µAh is now done at collection time)
+  if [ "${BATT_CAP:--1}" -gt 100 ] 2>/dev/null; then BATT_CAP="100"; fi
   BATT_STATUS=$(echo "$RAW" | grep "^BATT_STATUS:" | sed 's/^BATT_STATUS://' | tr -d ' ')
   BATT_TEMP_RAW=$(echo "$RAW" | grep "^BATT_TEMP:" | sed 's/^BATT_TEMP://' | tr -d ' ')
   BATT_VOLT=$(echo "$RAW" | grep "^BATT_VOLT:" | sed 's/^BATT_VOLT://' | tr -d ' ')
@@ -388,7 +409,19 @@ else
   THR_FMT="${THR_INT:-0} H/s"
 fi
 
-DAILY_USD=$(awk "BEGIN{printf \"%.4f\", $TOTAL_HR * 0.00005}")
+# Estimate XMR earnings: (hashrate / network_hashrate) * daily_blocks * block_reward * xmr_price
+# Try live network stats, fall back to approximate values
+XMR_PRICE=150
+NET_HR=2500000000
+NET_STATS=$(curl -s --connect-timeout 5 --max-time 8 "https://supportxmr.com/api/network/stats" 2>/dev/null)
+if [ -n "$NET_STATS" ] && echo "$NET_STATS" | jq . >/dev/null 2>&1; then
+  _DIFF=$(echo "$NET_STATS" | jq '.difficulty // 0')
+  _PRICE=$(echo "$NET_STATS" | jq '.value // 0')
+  [ "$_DIFF" -gt 0 ] 2>/dev/null && NET_HR=$(awk "BEGIN{printf \"%.0f\", $_DIFF / 120}")
+  [ "$(echo "$_PRICE" | awk '{print ($1 > 0)}')" = "1" ] && XMR_PRICE="$_PRICE"
+fi
+DAILY_XMR=$(awk "BEGIN{printf \"%.8f\", ($TOTAL_HR / $NET_HR) * 720 * 0.6}")
+DAILY_USD=$(awk "BEGIN{printf \"%.4f\", $DAILY_XMR * $XMR_PRICE}")
 MONTHLY_USD=$(awk "BEGIN{printf \"%.2f\", $DAILY_USD * 30}")
 DAILY_FMT=$(printf '$%.2f' "$DAILY_USD" 2>/dev/null || echo '$0.00')
 MONTHLY_FMT=$(printf '$%.2f' "$MONTHLY_USD" 2>/dev/null || echo '$0.00')
