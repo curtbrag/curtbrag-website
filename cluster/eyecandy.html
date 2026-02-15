@@ -39,9 +39,15 @@ window.addEventListener('resize', resize);
 let currentMode = 0;
 const CYCLE_MS = 20000; // 20s per mode
 let lastSwitch = 0;
+let lockMode = false; // If true, don't auto-cycle
 
-// Tap to skip to next mode
-document.addEventListener('click', () => { lastSwitch = 0; });
+// Parse hash: #matrix, #plasma, #lock, #matrix+lock
+const hash = location.hash.replace('#','');
+const hashParts = hash.split('+').map(s => s.trim().toLowerCase());
+if (hashParts.includes('lock')) lockMode = true;
+
+// Tap to skip to next mode (unless locked)
+document.addEventListener('click', () => { if (!lockMode) lastSwitch = 0; });
 
 // ─────────────────────────────────────────────
 // MODE 0: Particle constellation
@@ -363,17 +369,23 @@ function showModeName(name) {
   setTimeout(() => modeLabel.classList.remove('show'), 2000);
 }
 
+// Pick starting mode from hash (e.g. #matrix or #fire+lock)
+const modeFromHash = hashParts.find(p => p !== 'lock' && p !== '');
+if (modeFromHash) {
+  const idx = modes.findIndex(m => m.name === modeFromHash);
+  if (idx !== -1) currentMode = idx;
+}
+
 // Offset each phone slightly based on random seed so they're not perfectly in sync
 const timeOffset = Math.random() * 5000;
 
 function loop(ts) {
   const t = ts + timeOffset;
 
-  // Auto-cycle
-  if (ts - lastSwitch > CYCLE_MS || lastSwitch === 0) {
+  // Auto-cycle (skip if locked to single mode)
+  if (!lockMode && (ts - lastSwitch > CYCLE_MS || lastSwitch === 0)) {
     if (lastSwitch > 0) {
       currentMode = (currentMode + 1) % modes.length;
-      // Re-init as needed
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, W, H);
     }
@@ -382,6 +394,11 @@ function loop(ts) {
     initPlasma();
     initStars();
     initEmbers();
+    lastSwitch = ts;
+    showModeName(modes[currentMode].name);
+  } else if (lockMode && lastSwitch === 0) {
+    // First frame in lock mode — init once
+    initParticles(); initMatrix(); initPlasma(); initStars(); initEmbers();
     lastSwitch = ts;
     showModeName(modes[currentMode].name);
   }
