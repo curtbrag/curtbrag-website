@@ -102,9 +102,12 @@ async function fetchTeamRecord(league, teamId) {
 }
 
 export async function handler(event, context) {
+  const origin = (event.headers?.origin || '');
+  const allowedOrigin = origin.endsWith('curtbrag.com') ? origin : 'https://www.curtbrag.com';
+
   const headers = {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': allowedOrigin,
     'Cache-Control': 'public, max-age=300'
   };
 

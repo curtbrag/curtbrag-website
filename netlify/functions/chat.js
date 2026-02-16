@@ -119,7 +119,7 @@ async function callClaude(message, conversationHistory = []) {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 256,
         system: SYSTEM_PROMPT,
         messages: messages
@@ -141,9 +141,12 @@ async function callClaude(message, conversationHistory = []) {
 }
 
 exports.handler = async function(event, context) {
+  const origin = (event.headers?.origin || '');
+  const allowedOrigin = origin.endsWith('curtbrag.com') ? origin : 'https://www.curtbrag.com';
+
   const headers = {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS'
   };
