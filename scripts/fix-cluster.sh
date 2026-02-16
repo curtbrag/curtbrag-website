@@ -36,8 +36,8 @@ pkill -f "poll-cluster-commands" 2>/dev/null || true
 sleep 1
 
 if [ "$INIT_SYSTEM" = "systemd" ]; then
-  if [ ! -f /etc/systemd/system/cluster-poll.service ]; then
-    doas tee /etc/systemd/system/cluster-poll.service > /dev/null << 'SVC'
+  # Always write service file (ensures EnvironmentFile is present)
+  doas tee /etc/systemd/system/cluster-poll.service > /dev/null << 'SVC'
 [Unit]
 Description=curtbrag.com Cluster Command Poller
 After=network-online.target
@@ -56,9 +56,25 @@ StandardError=append:/home/user/cluster-poll.log
 [Install]
 WantedBy=multi-user.target
 SVC
-    doas systemctl daemon-reload
-    doas systemctl enable cluster-poll 2>/dev/null || true
-  fi
+
+  # Also fix the push timer service to include EnvironmentFile
+  doas tee /etc/systemd/system/cluster-push.service > /dev/null << 'SVC'
+[Unit]
+Description=curtbrag.com Cluster Status Push
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=user
+EnvironmentFile=-/home/user/.cluster-env
+ExecStart=/home/user/push-cluster-status.sh
+StandardOutput=append:/home/user/cluster-push.log
+StandardError=append:/home/user/cluster-push.log
+SVC
+
+  doas systemctl daemon-reload
+  doas systemctl enable cluster-poll 2>/dev/null || true
   doas systemctl restart cluster-poll
   echo "  Poller restarted (systemd)"
 elif [ "$INIT_SYSTEM" = "openrc" ]; then
