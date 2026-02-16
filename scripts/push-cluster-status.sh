@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Push K3s cluster status to curtbrag.com
 # Run this on node1 via cron: */5 * * * * /home/user/push-cluster-status.sh >> /var/log/cluster-push.log 2>&1
 
