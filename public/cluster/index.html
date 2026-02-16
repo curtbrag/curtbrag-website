@@ -1317,6 +1317,10 @@
         <pre id="sshOutputPre"></pre>
       </div>
       <div class="control-status" id="controlStatus"></div>
+      <div id="pollerStatus" style="display:none;padding:0.5rem 0.75rem;border-radius:6px;font-size:0.8rem;margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;">
+        <i class="fa-solid fa-satellite-dish"></i>
+        <span id="pollerStatusText">Checking poller...</span>
+      </div>
     </div>
 
     <!-- Quick Actions -->
@@ -2129,6 +2133,36 @@
       return h;
     }
 
+    // ─── Poller Health ──────────────────────────────────────────────────
+    var pollerAlive = null; // null = unknown, true = alive, false = dead
+
+    async function checkPollerHealth() {
+      var el = document.getElementById('pollerStatus');
+      var txt = document.getElementById('pollerStatusText');
+      if (!el || !txt) return;
+      try {
+        var res = await fetch('/.netlify/functions/cluster-control?action=poller-status');
+        var data = await res.json();
+        pollerAlive = data.alive;
+        el.style.display = 'flex';
+        if (data.alive) {
+          el.style.background = 'rgba(34, 197, 94, 0.1)';
+          el.style.color = 'var(--green)';
+          txt.textContent = 'Poller online — commands will execute';
+        } else {
+          var age = data.ageSeconds || 0;
+          var ageStr = age >= 3600 ? Math.floor(age / 3600) + 'h ' + Math.floor((age % 3600) / 60) + 'm' : Math.floor(age / 60) + 'm';
+          el.style.background = 'rgba(239, 68, 68, 0.1)';
+          el.style.color = 'var(--red)';
+          txt.textContent = data.lastPoll
+            ? 'Poller offline (last seen ' + ageStr + ' ago) — commands will queue but NOT execute'
+            : 'Poller never connected — commands will queue but NOT execute';
+        }
+      } catch (e) {
+        el.style.display = 'none';
+      }
+    }
+
     async function apiFetch(path, opts = {}) {
       if (!apiEndpoint) throw new Error('No API endpoint');
       const res = await fetch(apiEndpoint + path, { ...opts, headers: { ...apiHeaders(), ...(opts.headers || {}) } });
@@ -2226,9 +2260,18 @@
           if (demoBanner) demoBanner.classList.add('visible');
         } else if (data.stale && !isDirectApi) {
           statusDot.className = 'status-dot demo';
-          statusText.textContent = 'Stale (' + (data.ageMinutes || '?') + 'm ago)';
+          const ageStr = (data.ageMinutes || 0) >= 60
+            ? Math.floor(data.ageMinutes / 60) + 'h ' + (data.ageMinutes % 60) + 'm ago'
+            : (data.ageMinutes || '?') + 'm ago';
+          const level = data.staleLevel || 'warning';
+          const levelLabels = { warning: 'Stale Data', critical: 'Stale Data (Critical)', dead: 'Cluster Offline' };
+          statusText.textContent = (levelLabels[level] || 'Stale') + ' (' + ageStr + ')';
           if (demoBanner) {
-            demoBanner.innerHTML = '<i class="fa-solid fa-clock"></i><span>Stale Data — Last update was ' + (data.ageMinutes || '?') + ' minutes ago. Cluster may be offline.</span>';
+            const icon = level === 'dead' ? 'fa-skull-crossbones' : level === 'critical' ? 'fa-triangle-exclamation' : 'fa-clock';
+            const msg = level === 'dead'
+              ? 'Cluster appears offline — no status update in over 2 hours. Check node1 connectivity and cron job.'
+              : 'Last update was ' + ageStr + '. Cluster may be experiencing issues.';
+            demoBanner.innerHTML = '<i class="fa-solid ' + icon + '"></i><span>' + msg + '</span>';
             demoBanner.classList.add('visible');
           }
         } else {
@@ -2590,6 +2633,9 @@
       if (cmd === 'reboot') {
         var target = document.getElementById('targetSelect').value;
         if (!confirm('Are you sure you want to REBOOT ' + target + '? This will cause downtime.')) return;
+      }
+      if (pollerAlive === false && !apiEndpoint) {
+        if (!confirm('The command poller on node1 is OFFLINE. This command will be queued but will NOT execute until the poller is restarted.\n\nSend anyway?')) return;
       }
       pendingCommand = cmd;
       if (savedPassword) {
@@ -5585,9 +5631,11 @@
     loadClusterStatus();
     measureApiLatency();
     connectSSE();
+    checkPollerHealth();
     try { loadSchedules(); } catch(e) { console.warn('loadSchedules:', e); }
     loadHealthHistory();
     setInterval(function() { if (!isInactive()) loadClusterStatus(); }, 10000);
+    setInterval(function() { if (!isInactive()) checkPollerHealth(); }, 30000);
     setInterval(function() { if (!isInactive()) measureApiLatency(); }, 15000);
     setInterval(function() { if (!isInactive()) { if (apiEndpoint) loadScreens(); else loadScreensViaRelay(); } }, 60000);
     setInterval(function() { if (!isInactive()) { if (apiEndpoint) loadAlerts(); loadCommandLog(); } }, 15000);
