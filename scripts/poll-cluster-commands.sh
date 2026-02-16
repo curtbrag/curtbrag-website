@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Poll for queued commands from curtbrag.com and execute them
 # Run on node1: nohup /home/user/poll-cluster-commands.sh &
 # Or as a systemd service for auto-restart
