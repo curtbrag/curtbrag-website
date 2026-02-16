@@ -21,8 +21,39 @@ elif command -v rc-service >/dev/null 2>&1; then
 fi
 echo "Init system: $INIT_SYSTEM"
 
-# Load environment
+# ── Ensure CLUSTER_API_KEY is available ──────────────────────────
+# Priority: current env > .cluster-env file > running poller process > prompt
+echo ""
+echo "[0/5] Checking API key..."
 [ -f "$ENV_FILE" ] && . "$ENV_FILE"
+
+if [ -z "${CLUSTER_API_KEY:-}" ]; then
+  # Try to recover from a running poller process (it has the key in its env)
+  POLLER_PID=$(pgrep -f "poll-cluster-commands" 2>/dev/null | head -1 || true)
+  if [ -n "$POLLER_PID" ] && [ -r "/proc/$POLLER_PID/environ" ]; then
+    RECOVERED_KEY=$(tr '\0' '\n' < "/proc/$POLLER_PID/environ" 2>/dev/null | grep '^CLUSTER_API_KEY=' | cut -d= -f2-)
+    if [ -n "$RECOVERED_KEY" ]; then
+      export CLUSTER_API_KEY="$RECOVERED_KEY"
+      echo "  Recovered API key from running poller (PID $POLLER_PID)"
+    fi
+  fi
+fi
+
+if [ -z "${CLUSTER_API_KEY:-}" ]; then
+  echo "  ERROR: CLUSTER_API_KEY not found"
+  echo "  The API key is needed for push/poll scripts to authenticate."
+  echo ""
+  echo "  Set it with:  export CLUSTER_API_KEY=your-key && sh fix-cluster.sh"
+  echo "  Or create:    echo 'export CLUSTER_API_KEY=your-key' > $ENV_FILE"
+  echo ""
+  echo "  Check Netlify site settings for the key value."
+  exit 1
+fi
+
+# Save/update the env file
+echo "export CLUSTER_API_KEY=\"$CLUSTER_API_KEY\"" > "$ENV_FILE"
+chmod 600 "$ENV_FILE"
+echo "  API key saved to $ENV_FILE"
 
 # Step 1: Download fixed scripts
 echo "[1/5] Downloading fixed scripts..."
@@ -174,15 +205,27 @@ echo "Mining: $STARTED running, $FAILED failed"
 # Push fresh status
 echo ""
 echo "Pushing fresh status..."
-"$DIR/push-cluster-status.sh" 2>/dev/null && echo "Status pushed!" || echo "Status push had errors"
+if "$DIR/push-cluster-status.sh" 2>&1; then
+  echo "  Status pushed!"
+else
+  echo "  Status push had errors (check $DIR/cluster-push.log)"
+fi
 
 # Verify services are running
 echo ""
 echo "=== Service Status ==="
+sleep 2
 POLL_PID=$(pgrep -f "poll-cluster-commands" 2>/dev/null | head -1 || echo "NOT RUNNING")
-PUSH_PID=$(pgrep -f "cluster-push-loop" 2>/dev/null | head -1 || echo "NOT RUNNING")
 echo "Poller PID:    $POLL_PID"
-echo "Push loop PID: $PUSH_PID"
+if [ "$INIT_SYSTEM" = "systemd" ]; then
+  PUSH_STATUS=$(systemctl is-active cluster-push.timer 2>/dev/null || echo "inactive")
+  echo "Push timer:    $PUSH_STATUS"
+else
+  PUSH_PID=$(pgrep -f "cluster-push-loop" 2>/dev/null | head -1 || echo "NOT RUNNING")
+  echo "Push loop PID: $PUSH_PID"
+fi
+echo "Env file:      $ENV_FILE ($([ -f "$ENV_FILE" ] && echo "exists" || echo "MISSING"))"
+echo "API key:       ${CLUSTER_API_KEY:0:8}..."
 
 echo ""
 echo "=== Done ==="

@@ -69,20 +69,33 @@ fi
 
 # ── Step 3: Persist environment variables ─────────────────────────
 echo "[3/6] Setting up environment..."
+
+# Try to find CLUSTER_API_KEY: env > file > running poller process
+if [ -z "${CLUSTER_API_KEY:-}" ] && [ -f "$ENV_FILE" ]; then
+  . "$ENV_FILE"
+  [ -n "${CLUSTER_API_KEY:-}" ] && echo "  Loaded from $ENV_FILE"
+fi
 if [ -z "${CLUSTER_API_KEY:-}" ]; then
-  if [ -f "$ENV_FILE" ]; then
-    . "$ENV_FILE"
-    echo "  Loaded from $ENV_FILE"
-  else
-    echo "  WARNING: CLUSTER_API_KEY not set"
-    echo "  Create $ENV_FILE with:"
-    echo "    export CLUSTER_API_KEY=your-key-here"
+  # Recover from a running poller that has the key in its env
+  POLLER_PID=$(pgrep -f "poll-cluster-commands" 2>/dev/null | head -1 || true)
+  if [ -n "$POLLER_PID" ] && [ -r "/proc/$POLLER_PID/environ" ]; then
+    RECOVERED_KEY=$(tr '\0' '\n' < "/proc/$POLLER_PID/environ" 2>/dev/null | grep '^CLUSTER_API_KEY=' | cut -d= -f2-)
+    if [ -n "$RECOVERED_KEY" ]; then
+      export CLUSTER_API_KEY="$RECOVERED_KEY"
+      echo "  Recovered API key from running poller (PID $POLLER_PID)"
+    fi
   fi
-else
+fi
+
+if [ -n "${CLUSTER_API_KEY:-}" ]; then
   # Save current env for future use (background processes, reboots)
   echo "export CLUSTER_API_KEY=\"$CLUSTER_API_KEY\"" > "$ENV_FILE"
   chmod 600 "$ENV_FILE"
   echo "  Saved to $ENV_FILE"
+else
+  echo "  WARNING: CLUSTER_API_KEY not found anywhere"
+  echo "  Set it with: export CLUSTER_API_KEY=your-key"
+  echo "  Or create $ENV_FILE with: export CLUSTER_API_KEY=your-key"
 fi
 
 # Ensure .profile sources the env file on login
