@@ -14,7 +14,7 @@ import Layout from '../../layouts/Layout.astro';
     </div>
 
     <!-- ═══════════════════════════════════════ GALLERY CARDS ═══════════════════════════════════════ -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto stagger-children">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto stagger-children">
 
       <!-- Cars Gallery -->
       <a href="/gallery/cars" class="card-glow overflow-hidden group block reveal">
@@ -53,6 +53,26 @@ import Layout from '../../layouts/Layout.astro';
           </h2>
           <p class="text-text-secondary text-sm">Tools, truck photos, and Snap-on memories</p>
           <span class="inline-block bg-surface text-muted text-xs px-3 py-1 rounded-full mt-3 badge-glow">250+ photos</span>
+        </div>
+      </a>
+
+      <!-- PC Build Gallery -->
+      <a href="/rig#rig-hero-img" class="card-glow overflow-hidden group block reveal">
+        <div class="relative overflow-hidden">
+          <img
+            src="/assets/pc/01_full_dual_system_rgb.webp"
+            alt="CYBERDYNE PC Build Gallery"
+            class="w-full h-52 object-cover transition-transform duration-500 group-hover:scale-110"
+            loading="lazy"
+          />
+          <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+        </div>
+        <div class="p-6">
+          <h2 class="text-xl font-bold mb-2 group-hover:text-blue transition">
+            <i class="fa-solid fa-microchip mr-2"></i>PC Build
+          </h2>
+          <p class="text-text-secondary text-sm">CYBERDYNE dual-system build photos and detail shots</p>
+          <span class="inline-block bg-surface text-muted text-xs px-3 py-1 rounded-full mt-3 badge-glow">35 photos</span>
         </div>
       </a>
 

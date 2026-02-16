@@ -447,7 +447,7 @@ import Layout from '../layouts/Layout.astro';
   <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
   <div class="section-divider mx-4"></div>
 
-  <!-- ═══════════════════════ THE CASE ═══════════════════════ -->
+  <!-- ═══════════════════════ THE BUILD ═══════════════════════ -->
   <section class="py-14 md:py-20 reveal">
     <div class="max-w-6xl mx-auto px-4 sm:px-6">
       <div class="mb-8">
@@ -459,6 +459,22 @@ import Layout from '../layouts/Layout.astro';
       <p class="text-text-secondary max-w-3xl leading-relaxed mb-8">
         Designed for one system. Now housing two motherboards, three GPUs, two AIOs, a PiKVM, a dual-port Ethernet NIC, 18 fans, RGB hubs, sensor arrays, and an internal display. The dual-chamber design provides PSU space in the rear while the main chamber accommodates a layout no case manufacturer ever intended.
       </p>
+
+      <!-- Featured Hero Image -->
+      <div id="rig-hero-img" class="mb-6 rounded-xl overflow-hidden border border-border cursor-pointer hover:border-blue transition-colors duration-300">
+        <img
+          src="/assets/pc/01_full_dual_system_rgb.webp"
+          alt="CYBERDYNE dual system full build — RGB"
+          class="w-full h-64 sm:h-80 md:h-[28rem] object-cover"
+          loading="lazy"
+        />
+      </div>
+
+      <!-- Photo Count -->
+      <div class="flex items-center gap-3 mb-4">
+        <span class="font-mono text-xs tracking-[3px] uppercase text-blue">// Build Photos</span>
+        <span class="inline-block bg-blue/10 text-blue text-xs font-semibold px-3 py-1 rounded-full">35 photos</span>
+      </div>
 
       <!-- Gallery Grid -->
       <div id="rig-gallery" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -511,7 +527,7 @@ import Layout from '../layouts/Layout.astro';
     <button id="rig-lb-next" class="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-blue text-white flex items-center justify-center hover:bg-blue/80 transition z-10" aria-label="Next photo">
       <i class="fa-solid fa-chevron-right"></i>
     </button>
-    <div id="rig-lb-counter" class="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/70 text-sm font-medium font-mono"></div>
+    <div id="rig-lb-counter" class="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/70 text-white/90 text-sm font-medium font-mono px-4 py-2 rounded-full"></div>
   </div>
 
 </Layout>
@@ -647,10 +663,19 @@ import Layout from '../layouts/Layout.astro';
     var basePath = "/assets/pc/";
     var currentIndex = 0;
 
-    // ── Build Gallery Grid ──
+    // ── Hero image opens lightbox at index 0 ──
+    var heroImg = document.getElementById("rig-hero-img");
+    if (heroImg) {
+      heroImg.addEventListener("click", function() {
+        openLightbox(0);
+      });
+    }
+
+    // ── Build Gallery Grid (skip first image, shown as hero) ──
     var grid = document.getElementById("rig-gallery");
     if (grid) {
       images.forEach(function(img, idx) {
+        if (idx === 0) return; // already shown as hero
         var div = document.createElement("div");
         div.className = "rig-thumb";
         div.setAttribute("data-index", idx);
