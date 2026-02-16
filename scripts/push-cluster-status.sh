@@ -10,7 +10,7 @@ if [ -z "${CLUSTER_API_KEY:-}" ] && [ -f /home/user/.cluster-env ]; then
 fi
 
 API_URL="https://curtbrag.com/.netlify/functions/cluster-status"
-API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set. Create /home/user/.cluster-env with: export CLUSTER_API_KEY=your-key}"
+API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set. Create /home/user/.cluster-env with: CLUSTER_API_KEY=your-key}"
 TMP_DIR="/tmp/cluster-push-$$"
 
 cleanup() { rm -rf "$TMP_DIR"; }

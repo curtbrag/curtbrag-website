@@ -73,8 +73,8 @@ if [ -z "${CLUSTER_API_KEY:-}" ]; then
   exit 1
 fi
 
-# Save/update the env file
-echo "export CLUSTER_API_KEY=\"$CLUSTER_API_KEY\"" > "$ENV_FILE"
+# Save/update the env file (no 'export' — systemd EnvironmentFile can't parse it)
+echo "CLUSTER_API_KEY=\"$CLUSTER_API_KEY\"" > "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 echo "  API key saved to $ENV_FILE"
 
@@ -248,7 +248,7 @@ else
   echo "Push loop PID: $PUSH_PID"
 fi
 echo "Env file:      $ENV_FILE ($([ -f "$ENV_FILE" ] && echo "exists" || echo "MISSING"))"
-echo "API key:       ${CLUSTER_API_KEY:0:8}..."
+echo "API key:       $(printf '%.8s' "$CLUSTER_API_KEY")..."
 
 echo ""
 echo "=== Done ==="
