@@ -1,0 +1,572 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="CYBERDYNE-V2 — Dual System Build | CurtBrag" description="From diesel tech to infrastructure operator. A dual-motherboard, triple-GPU compute platform built from scratch — no guide, no tutorial, just vision.">
+
+  <!-- ═══════════════════════ HERO ═══════════════════════ -->
+  <section class="relative min-h-[90vh] flex flex-col justify-center items-center text-center py-32 px-4 sm:px-6 overflow-hidden">
+    <!-- Background effects -->
+    <div class="absolute inset-0 pointer-events-none" aria-hidden="true">
+      <div class="absolute inset-0 bg-gradient-to-b from-blue/5 via-transparent to-transparent"></div>
+      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full bg-blue/5 blur-[150px]"></div>
+      <div class="absolute top-1/4 right-1/4 w-[300px] h-[300px] rounded-full bg-[#8b5cf6]/5 blur-[100px]"></div>
+      <div class="absolute bottom-1/4 left-1/4 w-[200px] h-[200px] rounded-full bg-brand/5 blur-[80px]"></div>
+    </div>
+    <!-- Grid overlay -->
+    <div class="absolute inset-0 pointer-events-none" aria-hidden="true" style="background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px); background-size: 60px 60px; mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);"></div>
+
+    <div class="relative z-10 animate-fade-in">
+      <div class="rig-badge inline-block font-mono text-xs tracking-[4px] uppercase text-blue border border-blue/30 px-5 py-2 rounded-sm mb-8">
+        Build Log &mdash; Est. 2025
+      </div>
+    </div>
+
+    <h1 class="relative z-10 animate-fade-in delay-1">
+      <span class="block rig-title text-[clamp(3rem,8vw,7rem)] font-black tracking-wider leading-none rig-gradient-text">CYBERDYNE</span>
+      <span class="block text-text text-[clamp(1rem,3vw,2rem)] tracking-[8px] font-bold mt-2">VERSION 2</span>
+    </h1>
+
+    <p class="relative z-10 text-text-secondary max-w-2xl mx-auto mt-6 text-lg leading-relaxed animate-fade-in delay-2">
+      From diesel wrenching to distributed infrastructure. A dual-system compute platform built from scratch inside a single case. No guide. No tutorial. No one else's ideas.
+    </p>
+
+    <div class="relative z-10 flex flex-wrap justify-center gap-6 sm:gap-12 mt-10 animate-fade-in delay-3">
+      <div class="text-center">
+        <div class="rig-title text-3xl sm:text-4xl font-extrabold text-blue">2</div>
+        <div class="text-xs tracking-[2px] uppercase text-muted mt-1">Motherboards</div>
+      </div>
+      <div class="text-center">
+        <div class="rig-title text-3xl sm:text-4xl font-extrabold text-blue">44</div>
+        <div class="text-xs tracking-[2px] uppercase text-muted mt-1">CPU Cores</div>
+      </div>
+      <div class="text-center">
+        <div class="rig-title text-3xl sm:text-4xl font-extrabold text-blue">3</div>
+        <div class="text-xs tracking-[2px] uppercase text-muted mt-1">GPUs</div>
+      </div>
+      <div class="text-center">
+        <div class="rig-title text-3xl sm:text-4xl font-extrabold text-blue">1300W</div>
+        <div class="text-xs tracking-[2px] uppercase text-muted mt-1">Single PSU</div>
+      </div>
+      <div class="text-center">
+        <div class="rig-title text-3xl sm:text-4xl font-extrabold text-blue">0</div>
+        <div class="text-xs tracking-[2px] uppercase text-muted mt-1">Guides Followed</div>
+      </div>
+    </div>
+
+    <!-- Scroll indicator -->
+    <div class="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-muted text-xs tracking-[3px] uppercase animate-pulse">
+      <span>Scroll</span>
+      <i class="fa-solid fa-chevron-down text-sm"></i>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
+  <!-- ═══════════════════════ ORIGIN STORY ═══════════════════════ -->
+  <section class="py-14 md:py-20 reveal">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6">
+      <div class="mb-8">
+        <div class="font-mono text-xs tracking-[4px] uppercase text-blue mb-2">// Origin</div>
+        <h2 class="text-2xl md:text-3xl font-bold">Where This Came From</h2>
+        <div class="w-16 h-0.5 bg-gradient-to-r from-blue to-transparent mt-3"></div>
+      </div>
+
+      <div class="text-text-secondary text-base sm:text-lg leading-relaxed space-y-6">
+        <p>
+          This didn't start as <span class="text-blue font-semibold">"I want a cool PC."</span>
+        </p>
+        <p>
+          It started as wanting control. Wanting automation. Wanting leverage. Wanting income from idle hardware. Wanting zero dependence on anyone.
+        </p>
+        <p>
+          I'm a diesel tech turned Snap-on franchise owner in Lynn, Massachusetts. I already think in systems &mdash; trucks, routes, margins, uptime. The PC just became the digital version of that.
+        </p>
+        <blockquote class="rig-title text-xl sm:text-2xl font-semibold text-text border-l-3 border-blue pl-6 my-8 leading-snug">
+          "I don't build toys. I build platforms."
+        </blockquote>
+        <p>
+          Sure, dual-system cases exist. Companies like Cougar, Phanteks, and Thermaltake sell cases designed for two motherboards. Those follow instructions. I took a case designed for one system and put two entire computers inside it &mdash; held together with magnets, VHB tape, and audacity. There was no manual for any of this.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
+  <!-- ═══════════════════════ EVOLUTION ═══════════════════════ -->
+  <section class="py-14 md:py-20 reveal">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6">
+      <div class="mb-8">
+        <div class="font-mono text-xs tracking-[4px] uppercase text-blue mb-2">// Evolution</div>
+        <h2 class="text-2xl md:text-3xl font-bold">How It Escalated</h2>
+        <div class="w-16 h-0.5 bg-gradient-to-r from-blue to-transparent mt-3"></div>
+      </div>
+
+      <div class="relative pl-10 sm:pl-14">
+        <!-- Timeline line -->
+        <div class="absolute left-4 sm:left-5 top-0 bottom-0 w-0.5 bg-gradient-to-b from-blue via-[#8b5cf6] to-brand"></div>
+
+        <div class="space-y-10">
+          <div class="relative reveal">
+            <div class="absolute -left-6 sm:-left-9 top-1 w-4 h-4 rounded-full border-2 border-blue bg-bg"></div>
+            <div class="font-mono text-[0.65rem] tracking-[3px] uppercase text-blue mb-1">Phase 01</div>
+            <h3 class="rig-title font-semibold text-base sm:text-lg mb-2">One Board, One GPU, Push It Hard</h3>
+            <p class="text-text-secondary text-sm leading-relaxed">Started with a Z790 Hero and a single GPU. Stress tested it. Learned the hardware. Pushed it to its limits. Found the limits weren't enough.</p>
+          </div>
+          <div class="relative reveal">
+            <div class="absolute -left-6 sm:-left-9 top-1 w-4 h-4 rounded-full border-2 border-blue bg-bg"></div>
+            <div class="font-mono text-[0.65rem] tracking-[3px] uppercase text-blue mb-1">Phase 02</div>
+            <h3 class="rig-title font-semibold text-base sm:text-lg mb-2">Second Board In The Same Case</h3>
+            <p class="text-text-secondary text-sm leading-relaxed">Mounted a Mini-ITX B760i on magnetic standoffs and VHB tape. Built a custom power solution with a Pico DC-ATX converter. Two independent computers, one chassis.</p>
+          </div>
+          <div class="relative reveal">
+            <div class="absolute -left-6 sm:-left-9 top-1 w-4 h-4 rounded-full border-2 border-[#8b5cf6] bg-bg"></div>
+            <div class="font-mono text-[0.65rem] tracking-[3px] uppercase text-[#8b5cf6] mb-1">Phase 03</div>
+            <h3 class="rig-title font-semibold text-base sm:text-lg mb-2">Triple GPU + PiKVM + Internal Network</h3>
+            <p class="text-text-secondary text-sm leading-relaxed">Three GPUs driving 7+ monitors. PiKVM for remote BIOS control. Dual-port Ethernet NIC creating a direct backbone between both systems. ICS for internet sharing. Everything accessible remotely.</p>
+          </div>
+          <div class="relative reveal">
+            <div class="absolute -left-6 sm:-left-9 top-1 w-4 h-4 rounded-full border-2 border-[#8b5cf6] bg-bg"></div>
+            <div class="font-mono text-[0.65rem] tracking-[3px] uppercase text-[#8b5cf6] mb-1">Phase 04</div>
+            <h3 class="rig-title font-semibold text-base sm:text-lg mb-2">Distributed Compute Network</h3>
+            <p class="text-text-secondary text-sm leading-relaxed">Added 10 Linux phones running K3s Kubernetes. Ethernet over USB-C. Tailscale mesh. Remote wake, remote shutdown, SSH orchestration. Built a personal edge compute grid.</p>
+          </div>
+          <div class="relative reveal">
+            <div class="absolute -left-6 sm:-left-9 top-1 w-4 h-4 rounded-full border-2 border-brand bg-bg"></div>
+            <div class="font-mono text-[0.65rem] tracking-[3px] uppercase text-brand mb-1">Phase 05</div>
+            <h3 class="rig-title font-semibold text-base sm:text-lg mb-2">Automation &amp; Business Integration</h3>
+            <p class="text-text-secondary text-sm leading-relaxed">PowerShell automation for everything. Custom scripts, batch execution, timestamped logs. The rig became the backbone for Snap-on operations, website deployment, AI experiments, and monetization platforms.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
+  <!-- ═══════════════════════ DUAL SYSTEMS ═══════════════════════ -->
+  <section class="py-14 md:py-20 bg-bg-elevated reveal">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="mb-8">
+        <div class="font-mono text-xs tracking-[4px] uppercase text-blue mb-2">// Hardware</div>
+        <h2 class="text-2xl md:text-3xl font-bold">Dual Systems, One Case</h2>
+        <div class="w-16 h-0.5 bg-gradient-to-r from-blue to-transparent mt-3"></div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- PRIMARY SYSTEM -->
+        <div class="relative bg-panel border border-border rounded-xl p-6 hover:border-border-hover transition-all duration-300 reveal overflow-hidden">
+          <div class="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue to-[#00e5ff]"></div>
+          <div class="font-mono text-[0.65rem] tracking-[3px] uppercase text-blue mb-2">System 01 &mdash; Command Node</div>
+          <h3 class="rig-title text-xl font-bold mb-1">CYBERDYNE Primary</h3>
+          <p class="text-text-secondary text-sm mb-6">ASUS ROG Maximus Z790 Hero &bull; ATX &bull; LGA1700</p>
+
+          <div class="space-y-5">
+            <div>
+              <div class="rig-spec-header">Processor</div>
+              <div class="rig-spec-row"><span class="text-text-secondary">CPU</span><span class="text-blue font-semibold">Intel Core i9-14900KF</span></div>
+              <div class="rig-spec-row"><span class="text-text-secondary">Cores / Threads</span><span class="font-semibold">24C / 32T (8P + 16E)</span></div>
+              <div class="rig-spec-row"><span class="text-text-secondary">Boost</span><span class="font-semibold">6.0 GHz</span></div>
+            </div>
+            <div>
+              <div class="rig-spec-header">Memory</div>
+              <div class="rig-spec-row"><span class="text-text-secondary">RAM</span><span class="font-semibold">DDR5 6000+ MHz &bull; XMP</span></div>
+              <div class="rig-spec-row"><span class="text-text-secondary">Modules</span><span class="font-semibold">T-Force RGB</span></div>
+            </div>
+            <div>
+              <div class="rig-spec-header">Graphics</div>
+              <div class="rig-spec-row"><span class="text-text-secondary">GPU 1 (Slot 2)</span><span class="font-semibold">EVGA RTX 3070 Ti FTW3</span></div>
+              <div class="rig-spec-row"><span class="text-text-secondary">GPU 2 (Slot 3)</span><span class="font-semibold">NVIDIA RTX 3060</span></div>
+              <div class="rig-spec-row"><span class="text-text-secondary">Slot 1</span><span class="font-semibold">Dual-Port Ethernet NIC</span></div>
+            </div>
+            <div>
+              <div class="rig-spec-header">Storage</div>
+              <div class="rig-spec-row"><span class="text-text-secondary">OS</span><span class="font-semibold">Samsung 990 Pro 2TB</span></div>
+              <div class="rig-spec-row"><span class="text-text-secondary">Workspace</span><span class="font-semibold">WD Black SN570 1TB</span></div>
+              <div class="rig-spec-row"><span class="text-text-secondary">Tertiary</span><span class="font-semibold">WD Blue NVMe</span></div>
+            </div>
+            <div>
+              <div class="rig-spec-header">Cooling</div>
+              <div class="rig-spec-row"><span class="text-text-secondary">AIO</span><span class="font-semibold">NZXT Kraken Elite 360</span></div>
+              <div class="rig-spec-row"><span class="text-text-secondary">Display</span><span class="font-semibold">LCD Pump Head</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECONDARY SYSTEM -->
+        <div class="relative bg-panel border border-border rounded-xl p-6 hover:border-border-hover transition-all duration-300 reveal overflow-hidden">
+          <div class="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#8b5cf6] to-blue"></div>
+          <div class="font-mono text-[0.65rem] tracking-[3px] uppercase text-[#8b5cf6] mb-2">System 02 &mdash; AI Node</div>
+          <h3 class="rig-title text-xl font-bold mb-1">CYBERDYNE Secondary</h3>
+          <p class="text-text-secondary text-sm mb-6">Gigabyte B760I AORUS Pro DDR4 &bull; Mini-ITX &bull; LGA1700</p>
+
+          <div class="space-y-5">
+            <div>
+              <div class="rig-spec-header">Processor</div>
+              <div class="rig-spec-row"><span class="text-text-secondary">CPU</span><span class="text-[#8b5cf6] font-semibold">Intel Core i7-14700KF</span></div>
+              <div class="rig-spec-row"><span class="text-text-secondary">Cores / Threads</span><span class="font-semibold">20C / 28T (8P + 12E)</span></div>
+            </div>
+            <div>
+              <div class="rig-spec-header">Memory</div>
+              <div class="rig-spec-row"><span class="text-text-secondary">RAM</span><span class="font-semibold">DDR4 4000 MHz &bull; XMP</span></div>
+              <div class="rig-spec-row"><span class="text-text-secondary">Modules</span><span class="font-semibold">G.Skill Trident Z RGB 32GB</span></div>
+            </div>
+            <div>
+              <div class="rig-spec-header">Graphics</div>
+              <div class="rig-spec-row"><span class="text-text-secondary">GPU</span><span class="font-semibold">MSI RTX 3060 Ventus 2X 12G OC</span></div>
+            </div>
+            <div>
+              <div class="rig-spec-header">Storage</div>
+              <div class="rig-spec-row"><span class="text-text-secondary">NVMe</span><span class="font-semibold">WD Black SN850X 4TB</span></div>
+            </div>
+            <div>
+              <div class="rig-spec-header">Cooling</div>
+              <div class="rig-spec-row"><span class="text-text-secondary">AIO</span><span class="font-semibold">Cooler Master 120mm</span></div>
+              <div class="rig-spec-row"><span class="text-text-secondary">Canary Fan</span><span class="font-semibold">Dedicated thermal alert</span></div>
+            </div>
+            <div>
+              <div class="rig-spec-header">Mounting</div>
+              <div class="rig-spec-row"><span class="text-text-secondary">Method</span><span class="font-semibold">3M VHB + Magnetic Standoffs</span></div>
+              <div class="rig-spec-row"><span class="text-text-secondary">Power Switch</span><span class="font-semibold">Independent manual toggle</span></div>
+            </div>
+            <div>
+              <div class="rig-spec-header">BIOS Backup</div>
+              <div class="rig-spec-row"><span class="text-text-secondary">Input</span><span class="font-semibold">Wireless USB dongle</span></div>
+              <div class="rig-spec-row"><span class="text-text-secondary">Daily Use</span><span class="font-semibold">Bluetooth Profile 2/3</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
+  <!-- ═══════════════════════ POWER SYSTEM ═══════════════════════ -->
+  <section class="py-14 md:py-20 reveal">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="mb-8">
+        <div class="font-mono text-xs tracking-[4px] uppercase text-yellow mb-2">// Power Delivery</div>
+        <h2 class="text-2xl md:text-3xl font-bold">The PSU Hack</h2>
+        <div class="w-16 h-0.5 bg-gradient-to-r from-yellow to-transparent mt-3"></div>
+      </div>
+
+      <p class="text-text-secondary max-w-3xl leading-relaxed mb-8">
+        Both systems run off a single 1300W PSU. The main board connects normally. The ITX board is powered by a Pico DC-ATX converter that receives 12V through a custom adapter chain. No second PSU. No sync board. No external power brick. Not standard. Not normal.
+      </p>
+
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-0 reveal">
+        <div class="rig-power-node">
+          <div class="font-mono text-[0.6rem] tracking-[2px] uppercase text-yellow mb-1">Source</div>
+          <div class="rig-title text-sm font-semibold">Lian Li Edge 1300W</div>
+        </div>
+        <div class="rig-power-arrow">
+          <i class="fa-solid fa-arrow-right sm:rotate-0 rotate-90"></i>
+        </div>
+        <div class="rig-power-node">
+          <div class="font-mono text-[0.6rem] tracking-[2px] uppercase text-yellow mb-1">Cable</div>
+          <div class="rig-title text-sm font-semibold">12VHPWR 600W</div>
+        </div>
+        <div class="rig-power-arrow">
+          <i class="fa-solid fa-arrow-right sm:rotate-0 rotate-90"></i>
+        </div>
+        <div class="rig-power-node">
+          <div class="font-mono text-[0.6rem] tracking-[2px] uppercase text-yellow mb-1">Adapter</div>
+          <div class="rig-title text-sm font-semibold">12VHPWR &rarr; 2&times;8-Pin</div>
+        </div>
+        <div class="rig-power-arrow">
+          <i class="fa-solid fa-arrow-right sm:rotate-0 rotate-90"></i>
+        </div>
+        <div class="rig-power-node">
+          <div class="font-mono text-[0.6rem] tracking-[2px] uppercase text-yellow mb-1">Converter</div>
+          <div class="rig-title text-sm font-semibold">dreeong Pico DC-ATX</div>
+        </div>
+        <div class="rig-power-arrow">
+          <i class="fa-solid fa-arrow-right sm:rotate-0 rotate-90"></i>
+        </div>
+        <div class="rig-power-node">
+          <div class="font-mono text-[0.6rem] tracking-[2px] uppercase text-yellow mb-1">Output</div>
+          <div class="rig-title text-sm font-semibold">24-Pin + EPS + PCIe</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
+  <!-- ═══════════════════════ WHAT IT DOES ═══════════════════════ -->
+  <section class="py-14 md:py-20 bg-bg-elevated reveal">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="mb-8">
+        <div class="font-mono text-xs tracking-[4px] uppercase text-blue mb-2">// Purpose</div>
+        <h2 class="text-2xl md:text-3xl font-bold">This Is Not A Gaming PC</h2>
+        <div class="w-16 h-0.5 bg-gradient-to-r from-blue to-transparent mt-3"></div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-blue card-icon"><i class="fa-solid fa-microchip"></i></div>
+          <h3 class="rig-title font-semibold mb-2">Compute Lab</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">Mining tests, AI inference, automation scripts, remote orchestration, SSH clusters, WOL/Moonlight/PiKVM control. The question was always: "Can I make money with this thing when it's idle?"</p>
+        </div>
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-[#8b5cf6] card-icon"><i class="fa-solid fa-network-wired"></i></div>
+          <h3 class="rig-title font-semibold mb-2">Distributed Network</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">10 Linux phones on Ethernet over USB-C. Tailscale mesh. K3s Kubernetes. Node shutdown scripts. Remote power control. A personal edge compute grid.</p>
+        </div>
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-green card-icon"><i class="fa-solid fa-display"></i></div>
+          <h3 class="rig-title font-semibold mb-2">Control Hub</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">Snap-on ops machine. Monitoring dashboards. Multi-display command center. PowerShell automation with audit mode, fix mode, timestamped logs, batch execution.</p>
+        </div>
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-brand card-icon"><i class="fa-solid fa-chart-line"></i></div>
+          <h3 class="rig-title font-semibold mb-2">Business Platform</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">Website deployment. Link hub management. Traffic control. eBay card shop automation. AI workloads. Every idle cycle is a missed opportunity.</p>
+        </div>
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-yellow card-icon"><i class="fa-solid fa-satellite-dish"></i></div>
+          <h3 class="rig-title font-semibold mb-2">Remote Access</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">PiKVM v4 Mini for BIOS-level control. Tailscale mesh across all devices. Moonlight streaming. Steam Deck WOL integration. Accessible from anywhere, always.</p>
+        </div>
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-[#00e5ff] card-icon"><i class="fa-solid fa-film"></i></div>
+          <h3 class="rig-title font-semibold mb-2">Content Engine</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">7+ monitors. 15+ display outputs. SignalRGB coordinated lighting. AIDA64 sensor panel. Eyoyo internal display. Built to create, not just consume.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
+  <!-- ═══════════════════════ INFRASTRUCTURE ═══════════════════════ -->
+  <section class="py-14 md:py-20 reveal">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="mb-8">
+        <div class="font-mono text-xs tracking-[4px] uppercase text-blue mb-2">// Infrastructure</div>
+        <h2 class="text-2xl md:text-3xl font-bold">The Stack</h2>
+        <div class="w-16 h-0.5 bg-gradient-to-r from-blue to-transparent mt-3"></div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-brand card-icon"><i class="fa-solid fa-video"></i></div>
+          <h3 class="rig-title font-semibold mb-2">PiKVM v4 Mini</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">Remote BIOS-level access. Full keyboard, mouse, display capture over IP. Connected to the Z790 Hero. Boot, configure, troubleshoot &mdash; from anywhere.</p>
+        </div>
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-blue card-icon"><i class="fa-solid fa-ethernet"></i></div>
+          <h3 class="rig-title font-semibold mb-2">Dual-Port Ethernet NIC</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">PCIe card in Slot 1 creates a direct internal backbone. Port 1 &rarr; PiKVM. Port 2 &rarr; B760i. ICS for internet sharing. No external switch needed.</p>
+        </div>
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-[#8b5cf6] card-icon"><i class="fa-solid fa-desktop"></i></div>
+          <h3 class="rig-title font-semibold mb-2">Multi-Display Array</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">7+ monitors. Two Alienware AW2725DM on the 3070 Ti. Remaining screens on the second GPU. ITX board gets its own dedicated display. 15+ outputs available.</p>
+        </div>
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-green card-icon"><i class="fa-solid fa-shield-halved"></i></div>
+          <h3 class="rig-title font-semibold mb-2">Tailscale Mesh</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">Encrypted mesh VPN connecting both boards, Steam Deck, phone cluster nodes. Accessible from anywhere. No port forwarding.</p>
+        </div>
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-[#00e5ff] card-icon"><i class="fa-solid fa-fan"></i></div>
+          <h3 class="rig-title font-semibold mb-2">18 Fans + RGB Stack</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">SignalRGB + L-Connect + FanControl. 3 RGB hubs (1 internal, 2 external runs). Custom 12V&rarr;6V buck-converted mini fans. Aggressive airflow tuning.</p>
+        </div>
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-yellow card-icon"><i class="fa-solid fa-temperature-half"></i></div>
+          <h3 class="rig-title font-semibold mb-2">Monitoring Suite</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">AIDA64 sensor panel. Multi-channel temp sensors. Eyoyo internal display. FanControl managing all 18 PWM curves. Armoury Crate. Nothing runs unmonitored.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
+  <!-- ═══════════════════════ BY THE NUMBERS ═══════════════════════ -->
+  <section class="py-14 md:py-20 bg-bg-elevated reveal">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="mb-8">
+        <div class="font-mono text-xs tracking-[4px] uppercase text-blue mb-2">// By The Numbers</div>
+        <h2 class="text-2xl md:text-3xl font-bold">At A Glance</h2>
+        <div class="w-16 h-0.5 bg-gradient-to-r from-blue to-transparent mt-3"></div>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 stagger-children">
+        <div class="bg-panel border border-border rounded-xl p-5 text-center reveal hover:border-border-hover transition-colors">
+          <div class="rig-title text-3xl font-extrabold rig-gradient-text">2</div>
+          <div class="text-xs tracking-[2px] uppercase text-muted mt-2">Motherboards</div>
+        </div>
+        <div class="bg-panel border border-border rounded-xl p-5 text-center reveal hover:border-border-hover transition-colors">
+          <div class="rig-title text-3xl font-extrabold rig-gradient-text">44</div>
+          <div class="text-xs tracking-[2px] uppercase text-muted mt-2">CPU Cores</div>
+        </div>
+        <div class="bg-panel border border-border rounded-xl p-5 text-center reveal hover:border-border-hover transition-colors">
+          <div class="rig-title text-3xl font-extrabold rig-gradient-text">60</div>
+          <div class="text-xs tracking-[2px] uppercase text-muted mt-2">Threads</div>
+        </div>
+        <div class="bg-panel border border-border rounded-xl p-5 text-center reveal hover:border-border-hover transition-colors">
+          <div class="rig-title text-3xl font-extrabold rig-gradient-text">3</div>
+          <div class="text-xs tracking-[2px] uppercase text-muted mt-2">GPUs</div>
+        </div>
+        <div class="bg-panel border border-border rounded-xl p-5 text-center reveal hover:border-border-hover transition-colors">
+          <div class="rig-title text-3xl font-extrabold rig-gradient-text">18</div>
+          <div class="text-xs tracking-[2px] uppercase text-muted mt-2">Fans</div>
+        </div>
+        <div class="bg-panel border border-border rounded-xl p-5 text-center reveal hover:border-border-hover transition-colors">
+          <div class="rig-title text-3xl font-extrabold rig-gradient-text">1300W</div>
+          <div class="text-xs tracking-[2px] uppercase text-muted mt-2">Single PSU</div>
+        </div>
+        <div class="bg-panel border border-border rounded-xl p-5 text-center reveal hover:border-border-hover transition-colors">
+          <div class="rig-title text-3xl font-extrabold rig-gradient-text">7+</div>
+          <div class="text-xs tracking-[2px] uppercase text-muted mt-2">Displays</div>
+        </div>
+        <div class="bg-panel border border-border rounded-xl p-5 text-center reveal hover:border-border-hover transition-colors">
+          <div class="rig-title text-3xl font-extrabold rig-gradient-text">10</div>
+          <div class="text-xs tracking-[2px] uppercase text-muted mt-2">Phone Nodes</div>
+        </div>
+        <div class="bg-panel border border-border rounded-xl p-5 text-center reveal hover:border-border-hover transition-colors col-span-2 sm:col-span-1">
+          <div class="rig-title text-3xl font-extrabold rig-gradient-text">0</div>
+          <div class="text-xs tracking-[2px] uppercase text-muted mt-2">Guides Followed</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
+  <!-- ═══════════════════════ THE CASE ═══════════════════════ -->
+  <section class="py-14 md:py-20 reveal">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="mb-8">
+        <div class="font-mono text-xs tracking-[4px] uppercase text-blue mb-2">// The Build</div>
+        <h2 class="text-2xl md:text-3xl font-bold">Lian Li O11 Dynamic XL</h2>
+        <div class="w-16 h-0.5 bg-gradient-to-r from-blue to-transparent mt-3"></div>
+      </div>
+
+      <p class="text-text-secondary max-w-3xl leading-relaxed mb-8">
+        Designed for one system. Now housing two motherboards, three GPUs, two AIOs, a PiKVM, a dual-port Ethernet NIC, 18 fans, RGB hubs, sensor arrays, and an internal display. The dual-chamber design provides PSU space in the rear while the main chamber accommodates a layout no case manufacturer ever intended.
+      </p>
+
+      <div class="bg-panel border border-border border-dashed rounded-xl p-10 sm:p-16 text-center reveal">
+        <i class="fa-solid fa-camera text-4xl text-muted mb-4 block opacity-50"></i>
+        <p class="text-muted text-sm">
+          Build photos coming soon &mdash; full assembly documentation, internal layout, cable management progress, power system detail shots, and final glamour shots.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
+  <!-- ═══════════════════════ THE REAL TALK ═══════════════════════ -->
+  <section class="py-14 md:py-20 reveal">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6">
+      <div class="mb-8">
+        <div class="font-mono text-xs tracking-[4px] uppercase text-blue mb-2">// The Real Talk</div>
+        <h2 class="text-2xl md:text-3xl font-bold">The Bigger Picture</h2>
+        <div class="w-16 h-0.5 bg-gradient-to-r from-blue to-transparent mt-3"></div>
+      </div>
+
+      <div class="relative bg-panel border border-border rounded-xl p-6 sm:p-8 overflow-hidden">
+        <div class="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue via-[#8b5cf6] to-brand"></div>
+        <div class="text-text-secondary text-base sm:text-lg leading-relaxed space-y-5">
+          <p>
+            This whole system is a way of <span class="text-text font-semibold">scaling beyond physical labor</span>.
+          </p>
+          <p>
+            From diesel wrenching to tool truck owner to automated infrastructure operator. That's the real evolution. CYBERDYNE isn't about RGB or benchmarks. It's about <span class="text-text font-semibold">autonomy, capability, optionality, control, and scalability</span>.
+          </p>
+          <p>
+            It can run scripts 24/7. Host AI models. Monitor live platforms. Automate business operations. Deploy websites. Manage distributed nodes. Control machines remotely. All from one case that was never designed to do any of it.
+          </p>
+          <p>
+            <span class="text-text font-semibold">I didn't build a PC. I built infrastructure.</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</Layout>
+
+<!-- ═══════════════════════ RIG PAGE STYLES ═══════════════════════ -->
+<style>
+  /* Orbitron for CYBERDYNE headings only */
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap');
+
+  .rig-title {
+    font-family: 'Orbitron', sans-serif;
+  }
+
+  .rig-gradient-text {
+    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #ef4444 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .rig-badge {
+    animation: fadeInDown 0.8s ease;
+  }
+
+  /* Spec table styles */
+  .rig-spec-header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .rig-spec-header::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--color-border);
+  }
+
+  .rig-spec-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 0.3rem 0;
+    font-size: 0.85rem;
+  }
+
+  /* Power flow nodes */
+  .rig-power-node {
+    background: var(--color-panel);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1.25rem;
+    text-align: center;
+    min-width: 140px;
+  }
+  .rig-power-arrow {
+    color: var(--color-yellow);
+    font-size: 1rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  @keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
