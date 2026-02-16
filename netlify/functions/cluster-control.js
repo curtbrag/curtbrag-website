@@ -188,10 +188,26 @@ exports.handler = async (event) => {
       } catch (e) { /* best-effort */ }
 
       const queue = await getQueue();
-      const cmd = queue.shift();
-      if (cmd) {
-        await saveQueue(queue);
+      // Auto-expire commands older than 10 minutes
+      const now = Date.now();
+      const expiredIds = [];
+      const liveQueue = queue.filter(c => {
+        const age = now - new Date(c.queuedAt).getTime();
+        if (age > 10 * 60 * 1000) { expiredIds.push(c.id); return false; }
+        return true;
+      });
+      // Move expired commands to history
+      if (expiredIds.length > 0) {
+        const history = await getHistory();
+        for (const c of queue) {
+          if (expiredIds.includes(c.id)) {
+            history.push({ id: c.id, command: c.command, target: c.target, result: 'expired: command timed out in queue', completedAt: new Date().toISOString() });
+          }
+        }
+        await saveHistory(history);
       }
+      const cmd = liveQueue.shift();
+      await saveQueue(liveQueue);
       return {
         statusCode: 200,
         headers,
@@ -213,6 +229,21 @@ exports.handler = async (event) => {
         }
       } catch (e) { /* fall through */ }
       return { statusCode: 200, headers, body: JSON.stringify({ alive: false, lastPoll: null }) };
+    }
+
+    // Flush stale commands from the queue (dashboard action)
+    if (params.action === 'flush-queue') {
+      const queue = await getQueue();
+      if (queue.length === 0) {
+        return { statusCode: 200, headers, body: JSON.stringify({ flushed: 0, message: 'Queue already empty' }) };
+      }
+      const history = await getHistory();
+      for (const c of queue) {
+        history.push({ id: c.id, command: c.command, target: c.target, result: 'flushed: manually cleared from queue', completedAt: new Date().toISOString() });
+      }
+      await saveHistory(history);
+      await saveQueue([]);
+      return { statusCode: 200, headers, body: JSON.stringify({ flushed: queue.length, message: `Flushed ${queue.length} commands from queue` }) };
     }
 
     // Schedule retrieval
