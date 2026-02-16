@@ -17,6 +17,25 @@ function safeCompare(a, b) {
 const VALID_NODE_NAMES = ['node1','node2','node3','node4','node5','node6','node7','node8','node9','node10'];
 const MAX_QUEUE_SIZE = 100;
 
+// Credential helpers — check env var first, fall back to Netlify Blobs
+async function getWebPassword() {
+  const env = process.env.CLUSTER_WEB_PASSWORD;
+  if (env) return env;
+  try {
+    const store = getStore("cluster-config");
+    return await store.get("web-password", { type: "text" }) || null;
+  } catch { return null; }
+}
+
+async function getApiKey() {
+  const env = process.env.CLUSTER_API_KEY;
+  if (env) return env;
+  try {
+    const store = getStore("cluster-config");
+    return await store.get("api-key", { type: "text" }) || null;
+  } catch { return null; }
+}
+
 async function getQueue() {
   try {
     const store = getStore("cluster-control");
@@ -151,7 +170,6 @@ exports.handler = async (event) => {
   connectLambda(event);
 
   const apiKey = event.headers['x-cluster-key'];
-  const validKey = process.env.CLUSTER_API_KEY;
 
   // GET - Poll for commands (from node1) or get status (from dashboard)
   if (event.httpMethod === 'GET') {
@@ -159,6 +177,7 @@ exports.handler = async (event) => {
 
     // Node polling for commands
     if (params.action === 'poll') {
+      const validKey = await getApiKey();
       if (!validKey || !safeCompare(apiKey || '', validKey)) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
       }
@@ -277,6 +296,7 @@ exports.handler = async (event) => {
 
     // Command completion report from node1
     if (body.action === 'complete') {
+      const validKey = await getApiKey();
       if (!validKey || !safeCompare(apiKey || '', validKey)) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
       }
@@ -299,6 +319,7 @@ exports.handler = async (event) => {
 
     // Screenshot upload from node1
     if (body.action === 'screenshot-upload') {
+      const validKey = await getApiKey();
       if (!validKey || !safeCompare(apiKey || '', validKey)) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
       }
@@ -318,7 +339,7 @@ exports.handler = async (event) => {
 
     // Save schedules from dashboard
     if (body.action === 'save-schedules') {
-      const webPassword = process.env.CLUSTER_WEB_PASSWORD;
+      const webPassword = await getWebPassword();
       if (!webPassword) {
         return { statusCode: 503, headers, body: JSON.stringify({ error: 'Server not configured' }) };
       }
@@ -334,8 +355,29 @@ exports.handler = async (event) => {
       };
     }
 
+    // One-time credential setup — only works when credentials are missing
+    if (body.action === 'setup-credentials') {
+      const existingPassword = await getWebPassword();
+      const existingKey = await getApiKey();
+      const store = getStore("cluster-config");
+      let set = [];
+      if (!existingPassword && body.webPassword) {
+        await store.set("web-password", body.webPassword);
+        set.push('webPassword');
+      }
+      if (!existingKey && body.apiKey) {
+        await store.set("api-key", body.apiKey);
+        set.push('apiKey');
+      }
+      if (set.length === 0) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Credentials already configured or no values provided' }) };
+      }
+      return { statusCode: 200, headers, body: JSON.stringify({ success: true, configured: set }) };
+    }
+
     // Schedule check from poll script
     if (body.action === 'check-schedule') {
+      const validKey = await getApiKey();
       if (!validKey || !safeCompare(apiKey || '', validKey)) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
       }
@@ -386,7 +428,7 @@ exports.handler = async (event) => {
     const { command, target, password } = body;
 
     // Simple password protection for web commands
-    const webPassword = process.env.CLUSTER_WEB_PASSWORD;
+    const webPassword = await getWebPassword();
     if (!webPassword) {
       return { statusCode: 503, headers, body: JSON.stringify({ error: 'Server not configured' }) };
     }
