@@ -91,41 +91,12 @@ sleep 1
 
 if [ "$INIT_SYSTEM" = "systemd" ]; then
   # Always write service file (ensures EnvironmentFile is present)
-  doas tee /etc/systemd/system/cluster-poll.service > /dev/null << 'SVC'
-[Unit]
-Description=curtbrag.com Cluster Command Poller
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=user
-EnvironmentFile=-/home/user/.cluster-env
-ExecStart=/home/user/poll-cluster-commands.sh
-Restart=always
-RestartSec=5
-StandardOutput=append:/home/user/cluster-poll.log
-StandardError=append:/home/user/cluster-poll.log
-
-[Install]
-WantedBy=multi-user.target
-SVC
+  # NOTE: using printf instead of heredoc because heredocs break in busybox ash
+  # when the script is piped through curl | sh (pipe buffering issue)
+  printf '%s\n' '[Unit]' 'Description=curtbrag.com Cluster Command Poller' 'After=network-online.target' 'Wants=network-online.target' '' '[Service]' 'Type=simple' 'User=user' 'EnvironmentFile=-/home/user/.cluster-env' 'ExecStart=/home/user/poll-cluster-commands.sh' 'Restart=always' 'RestartSec=5' 'StandardOutput=append:/home/user/cluster-poll.log' 'StandardError=append:/home/user/cluster-poll.log' '' '[Install]' 'WantedBy=multi-user.target' | doas tee /etc/systemd/system/cluster-poll.service > /dev/null
 
   # Also fix the push timer service to include EnvironmentFile
-  doas tee /etc/systemd/system/cluster-push.service > /dev/null << 'SVC'
-[Unit]
-Description=curtbrag.com Cluster Status Push
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-User=user
-EnvironmentFile=-/home/user/.cluster-env
-ExecStart=/home/user/push-cluster-status.sh
-StandardOutput=append:/home/user/cluster-push.log
-StandardError=append:/home/user/cluster-push.log
-SVC
+  printf '%s\n' '[Unit]' 'Description=curtbrag.com Cluster Status Push' 'After=network-online.target' 'Wants=network-online.target' '' '[Service]' 'Type=oneshot' 'User=user' 'EnvironmentFile=-/home/user/.cluster-env' 'ExecStart=/home/user/push-cluster-status.sh' 'StandardOutput=append:/home/user/cluster-push.log' 'StandardError=append:/home/user/cluster-push.log' | doas tee /etc/systemd/system/cluster-push.service > /dev/null
 
   doas systemctl daemon-reload
   doas systemctl enable cluster-poll 2>/dev/null || true
@@ -156,14 +127,7 @@ if [ "$INIT_SYSTEM" = "systemd" ]; then
   echo "  Push timer restarted (systemd)"
 else
   # Create/update the push loop wrapper
-  cat > "$DIR/cluster-push-loop.sh" << 'LOOP'
-#!/bin/sh
-[ -f /home/user/.cluster-env ] && . /home/user/.cluster-env
-while true; do
-  /home/user/push-cluster-status.sh >> /home/user/cluster-push.log 2>&1 || true
-  sleep 300
-done
-LOOP
+  printf '%s\n' '#!/bin/sh' '[ -f /home/user/.cluster-env ] && . /home/user/.cluster-env' 'while true; do' '  /home/user/push-cluster-status.sh >> /home/user/cluster-push.log 2>&1 || true' '  sleep 300' 'done' > "$DIR/cluster-push-loop.sh"
   chmod +x "$DIR/cluster-push-loop.sh"
   nohup "$DIR/cluster-push-loop.sh" >> "$DIR/cluster-push.log" 2>&1 &
   echo "  Push loop started (PID: $!)"
