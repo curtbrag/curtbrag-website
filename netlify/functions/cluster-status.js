@@ -14,6 +14,16 @@ function safeCompare(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+// Credential helper — check env var first, fall back to Netlify Blobs
+async function getApiKey() {
+  const env = process.env.CLUSTER_API_KEY;
+  if (env) return env;
+  try {
+    const store = getStore("cluster-config");
+    return await store.get("api-key", { type: "text" }) || null;
+  } catch { return null; }
+}
+
 // Demo data for when no live data is available
 const DEMO_DATA = {
   nodes: [
@@ -217,7 +227,7 @@ exports.handler = async function(event, context) {
   if (event.httpMethod === 'POST') {
     try {
       const apiKey = event.headers['x-cluster-key'];
-      const expectedKey = process.env.CLUSTER_API_KEY;
+      const expectedKey = await getApiKey();
       if (!expectedKey || !safeCompare(apiKey || '', expectedKey)) {
         return {
           statusCode: 401,
