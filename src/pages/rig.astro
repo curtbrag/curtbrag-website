@@ -599,6 +599,7 @@ import Layout from '../layouts/Layout.astro';
     overflow: hidden;
     border-radius: 0.75rem;
     border: 1px solid var(--color-border);
+    background: var(--color-panel);
     cursor: pointer;
     transition: border-color 0.3s, transform 0.3s;
   }
@@ -611,7 +612,9 @@ import Layout from '../layouts/Layout.astro';
     height: 12rem;
     object-fit: cover;
     display: block;
-    transition: opacity 0.3s;
+  }
+  .rig-thumb.col-span-2 img {
+    height: 16rem;
   }
 
   @keyframes fadeInDown {
@@ -663,6 +666,15 @@ import Layout from '../layouts/Layout.astro';
     var basePath = "/assets/pc/";
     var currentIndex = 0;
 
+    // ── Derive readable alt text from filename ──
+    function altFromFilename(filename) {
+      return filename
+        .replace(/\.\w+$/, "")        // strip extension
+        .replace(/^\d+_/, "")          // strip leading number prefix
+        .replace(/_/g, " ")            // underscores to spaces
+        .replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+    }
+
     // ── Hero image opens lightbox at index 0 ──
     var heroImg = document.getElementById("rig-hero-img");
     if (heroImg) {
@@ -679,10 +691,14 @@ import Layout from '../layouts/Layout.astro';
         var div = document.createElement("div");
         div.className = "rig-thumb";
         div.setAttribute("data-index", idx);
+        // span last image across 2 columns
+        if (idx === images.length - 1) {
+          div.classList.add("col-span-2");
+        }
 
         var imgEl = document.createElement("img");
         imgEl.src = basePath + img;
-        imgEl.alt = "CYBERDYNE build photo " + (idx + 1);
+        imgEl.alt = altFromFilename(img);
         imgEl.loading = "lazy";
 
         div.appendChild(imgEl);
@@ -718,7 +734,7 @@ import Layout from '../layouts/Layout.astro';
 
     function updateLightboxImage() {
       lbImg.src = basePath + images[currentIndex];
-      lbImg.alt = "CYBERDYNE build photo " + (currentIndex + 1) + " of " + images.length;
+      lbImg.alt = altFromFilename(images[currentIndex]);
       lbCounter.textContent = (currentIndex + 1) + " / " + images.length;
     }
 
