@@ -314,9 +314,19 @@ exports.handler = async function(event, context) {
       // Clone to avoid mutating the cached object
       const status = JSON.parse(JSON.stringify(rawStatus));
       const age = Date.now() - new Date(status.lastUpdate).getTime();
-      if (age > 15 * 60 * 1000) {
+      const ageMinutes = Math.round(age / 60000);
+      // Stale after 6 minutes (one cron interval + 1 min buffer)
+      if (age > 6 * 60 * 1000) {
         status.stale = true;
-        status.ageMinutes = Math.round(age / 60000);
+        status.ageMinutes = ageMinutes;
+        // Severity levels for UI to display appropriately
+        if (age > 2 * 60 * 60 * 1000) {
+          status.staleLevel = 'dead';      // 2+ hours - cluster likely offline
+        } else if (age > 30 * 60 * 1000) {
+          status.staleLevel = 'critical';  // 30+ min - something is wrong
+        } else {
+          status.staleLevel = 'warning';   // 6-30 min - may be transient
+        }
       }
 
       // Synthesize nodes from metrics/battery/tailscale when K3s is down
@@ -343,8 +353,9 @@ exports.handler = async function(event, context) {
         for (const [name, m] of Object.entries(status.metrics)) {
           const batt = batteryMap[name];
           const ts = tailscaleMap[name];
-          // Node is "Ready" if it has non-zero CPU/memory or battery is online or tailscale is online
-          const hasMetrics = m.cpu && (m.cpu.usage > 0 || (m.memory && m.memory.totalMB > 0));
+          // Node is "Ready" if it reported memory (always > 0 when alive), battery is online, or tailscale is online
+          // CPU usage can be 0 during idle, so memory is a more reliable indicator
+          const hasMetrics = m.memory && m.memory.totalMB > 0;
           const battOnline = batt && batt.online;
           const tsOnline = ts && ts.online;
           const isReady = hasMetrics || battOnline || tsOnline;
@@ -394,6 +405,7 @@ exports.handler = async function(event, context) {
         lastUpdate: null,
         message: 'No cluster data received yet. Run push-cluster-status.sh on node1 to push live data.',
         demo: true,
+        isDemo: true,
         ...DEMO_DATA
       })
     };
