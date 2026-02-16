@@ -248,7 +248,7 @@ else
   echo "Push loop PID: $PUSH_PID"
 fi
 echo "Env file:      $ENV_FILE ($([ -f "$ENV_FILE" ] && echo "exists" || echo "MISSING"))"
-echo "API key:       $(printf '%.8s' "$CLUSTER_API_KEY")..."
+echo "API key:       ${CLUSTER_API_KEY:0:8}..."
 
 echo ""
 echo "=== Done ==="
