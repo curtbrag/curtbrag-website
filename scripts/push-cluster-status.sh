@@ -2,7 +2,7 @@
 # Push K3s cluster status to curtbrag.com
 # Run this on node1 via cron: */5 * * * * /home/user/push-cluster-status.sh >> /var/log/cluster-push.log 2>&1
 
-set -eu
+set -u
 
 # Source env file if CLUSTER_API_KEY not already set (systemd, cron, nohup contexts)
 if [ -z "${CLUSTER_API_KEY:-}" ] && [ -f /home/user/.cluster-env ]; then

@@ -89,6 +89,7 @@ fi
 # Save/update the env file (no 'export' — systemd EnvironmentFile can't parse it)
 echo "CLUSTER_API_KEY=\"$CLUSTER_API_KEY\"" > "$ENV_FILE"
 chmod 600 "$ENV_FILE"
+export CLUSTER_API_KEY
 echo "  API key saved to $ENV_FILE"
 
 # Step 1: Download fixed scripts
@@ -205,10 +206,12 @@ echo "Mining: $STARTED running, $FAILED failed"
 # Push fresh status
 echo ""
 echo "Pushing fresh status..."
-if "$DIR/push-cluster-status.sh" 2>&1; then
+PUSH_OUTPUT=$("$DIR/push-cluster-status.sh" 2>&1) && PUSH_RC=0 || PUSH_RC=$?
+if [ "$PUSH_RC" -eq 0 ]; then
   echo "  Status pushed!"
 else
-  echo "  Status push had errors (check $DIR/cluster-push.log)"
+  echo "  Status push FAILED (exit code $PUSH_RC):"
+  echo "$PUSH_OUTPUT" | tail -20
 fi
 
 # Verify services are running
