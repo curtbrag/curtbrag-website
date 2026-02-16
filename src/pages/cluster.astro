@@ -1,0 +1,261 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Phone Cluster — Edge Compute Grid | CurtBrag" description="10 Linux phones running K3s Kubernetes over Ethernet USB-C. Tailscale mesh, SSH orchestration, remote power control. A personal edge compute grid." ogImage="https://www.curtbrag.com/assets/pc/14_phone_cluster_raw_chaos.webp">
+
+  <!-- ═══════════════════════ HERO ═══════════════════════ -->
+  <section class="relative min-h-[70vh] flex flex-col justify-center items-center text-center py-32 px-4 sm:px-6 overflow-hidden">
+    <div class="absolute inset-0 pointer-events-none" aria-hidden="true">
+      <div class="absolute inset-0 bg-gradient-to-b from-green/5 via-transparent to-transparent"></div>
+      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full bg-green/5 blur-[150px]"></div>
+      <div class="absolute top-1/4 right-1/4 w-[300px] h-[300px] rounded-full bg-[#00e5ff]/5 blur-[100px]"></div>
+    </div>
+    <div class="absolute inset-0 pointer-events-none" aria-hidden="true" style="background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px); background-size: 60px 60px; mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);"></div>
+
+    <div class="relative z-10 animate-fade-in">
+      <div class="inline-block font-mono text-xs tracking-[4px] uppercase text-green border border-green/30 px-5 py-2 rounded-sm mb-8">
+        Edge Compute &mdash; 10 Nodes
+      </div>
+    </div>
+
+    <h1 class="relative z-10 animate-fade-in delay-1">
+      <span class="block text-[clamp(2.5rem,7vw,5rem)] font-black tracking-wider leading-none" style="background: linear-gradient(135deg, #22c55e 0%, #00e5ff 50%, #3b82f6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">PHONE CLUSTER</span>
+      <span class="block text-text text-[clamp(0.9rem,2.5vw,1.5rem)] tracking-[6px] font-bold mt-2">DISTRIBUTED COMPUTE GRID</span>
+    </h1>
+
+    <p class="relative z-10 text-text-secondary max-w-2xl mx-auto mt-6 text-lg leading-relaxed animate-fade-in delay-2">
+      10 Linux phones wired over Ethernet USB-C. Running K3s Kubernetes. Managed via Tailscale mesh and SSH orchestration. A personal edge compute grid that fits in a drawer.
+    </p>
+
+    <div class="relative z-10 flex flex-wrap justify-center gap-6 sm:gap-12 mt-10 animate-fade-in delay-3">
+      <div class="text-center">
+        <div class="text-3xl sm:text-4xl font-extrabold text-green">10</div>
+        <div class="text-xs tracking-[2px] uppercase text-muted mt-1">Phone Nodes</div>
+      </div>
+      <div class="text-center">
+        <div class="text-3xl sm:text-4xl font-extrabold text-green">K3s</div>
+        <div class="text-xs tracking-[2px] uppercase text-muted mt-1">Kubernetes</div>
+      </div>
+      <div class="text-center">
+        <div class="text-3xl sm:text-4xl font-extrabold text-green">USB-C</div>
+        <div class="text-xs tracking-[2px] uppercase text-muted mt-1">Ethernet</div>
+      </div>
+      <div class="text-center">
+        <div class="text-3xl sm:text-4xl font-extrabold text-green">0</div>
+        <div class="text-xs tracking-[2px] uppercase text-muted mt-1">Cloud Bills</div>
+      </div>
+    </div>
+
+    <div class="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-muted text-xs tracking-[3px] uppercase animate-pulse">
+      <span>Scroll</span>
+      <i class="fa-solid fa-chevron-down text-sm"></i>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
+  <!-- ═══════════════════════ HERO IMAGE ═══════════════════════ -->
+  <section class="py-14 md:py-20 reveal">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6">
+      <div class="rounded-xl overflow-hidden border border-border">
+        <img
+          src="/assets/pc/14_phone_cluster_raw_chaos.webp"
+          alt="Phone cluster — 10 Linux phones wired with Ethernet USB-C adapters"
+          class="w-full h-64 sm:h-80 md:h-[28rem] object-cover"
+          loading="lazy"
+        />
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
+  <!-- ═══════════════════════ WHY ═══════════════════════ -->
+  <section class="py-14 md:py-20 reveal">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6">
+      <div class="mb-8">
+        <div class="font-mono text-xs tracking-[4px] uppercase text-green mb-2">// Why</div>
+        <h2 class="text-2xl md:text-3xl font-bold">The Idea</h2>
+        <div class="w-16 h-0.5 bg-gradient-to-r from-green to-transparent mt-3"></div>
+      </div>
+
+      <div class="text-text-secondary text-base sm:text-lg leading-relaxed space-y-6">
+        <p>
+          Old phones sit in drawers. They have CPUs, RAM, storage, WiFi, and batteries. That's a computer. <span class="text-green font-semibold">Why throw away free compute?</span>
+        </p>
+        <p>
+          I took 10 phones, installed Linux via UserLAnd and Termux, wired each one over Ethernet USB-C adapters, and connected them into a mesh network. No WiFi. No cloud. No monthly bill.
+        </p>
+        <blockquote class="text-xl sm:text-2xl font-semibold text-text border-l-3 border-green pl-6 my-8 leading-snug">
+          "Every idle device is wasted compute."
+        </blockquote>
+        <p>
+          The cluster runs K3s (lightweight Kubernetes), managed by Tailscale for encrypted mesh connectivity and SSH for direct orchestration. Each node can be powered on, shut down, or tasked remotely.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
+  <!-- ═══════════════════════ ARCHITECTURE ═══════════════════════ -->
+  <section class="py-14 md:py-20 bg-bg-elevated reveal">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="mb-8">
+        <div class="font-mono text-xs tracking-[4px] uppercase text-green mb-2">// Architecture</div>
+        <h2 class="text-2xl md:text-3xl font-bold">How It Works</h2>
+        <div class="w-16 h-0.5 bg-gradient-to-r from-green to-transparent mt-3"></div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-green card-icon"><i class="fa-solid fa-mobile-screen"></i></div>
+          <h3 class="font-semibold mb-2">Phone Hardware</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">10 Android phones running Linux via UserLAnd/Termux. ARM processors, 3-6GB RAM each. Batteries act as built-in UPS.</p>
+        </div>
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-[#00e5ff] card-icon"><i class="fa-solid fa-ethernet"></i></div>
+          <h3 class="font-semibold mb-2">Wired Ethernet</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">USB-C to Ethernet adapters on every phone. No WiFi dependency. Direct wired connections for reliability and speed.</p>
+        </div>
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-blue card-icon"><i class="fa-brands fa-docker"></i></div>
+          <h3 class="font-semibold mb-2">K3s Kubernetes</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">Lightweight Kubernetes distribution designed for edge and IoT. Container orchestration across all 10 nodes with automatic scheduling.</p>
+        </div>
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-[#8b5cf6] card-icon"><i class="fa-solid fa-shield-halved"></i></div>
+          <h3 class="font-semibold mb-2">Tailscale Mesh</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">Encrypted WireGuard mesh VPN connecting every node. Accessible from anywhere. No port forwarding, no firewall holes.</p>
+        </div>
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-yellow card-icon"><i class="fa-solid fa-terminal"></i></div>
+          <h3 class="font-semibold mb-2">SSH Orchestration</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">Batch SSH commands across all nodes. Remote wake, shutdown, deploy, and monitor. PowerShell scripts manage the fleet.</p>
+        </div>
+        <div class="card-glow p-5 reveal">
+          <div class="text-2xl mb-3 text-brand card-icon"><i class="fa-solid fa-plug"></i></div>
+          <h3 class="font-semibold mb-2">Power Management</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">Remote power control per node. Built-in batteries mean graceful shutdowns. USB hub charging. Zero downtime transitions.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
+  <!-- ═══════════════════════ USE CASES ═══════════════════════ -->
+  <section class="py-14 md:py-20 reveal">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="mb-8">
+        <div class="font-mono text-xs tracking-[4px] uppercase text-green mb-2">// Purpose</div>
+        <h2 class="text-2xl md:text-3xl font-bold">What It Does</h2>
+        <div class="w-16 h-0.5 bg-gradient-to-r from-green to-transparent mt-3"></div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 stagger-children">
+        <div class="relative bg-panel border border-border rounded-xl p-6 hover:border-border-hover transition-all duration-300 reveal overflow-hidden">
+          <div class="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-green to-[#00e5ff]"></div>
+          <h3 class="font-semibold text-lg mb-3"><i class="fa-solid fa-robot text-green mr-2"></i>Distributed Workloads</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">Spread tasks across 10 nodes. Scraping, monitoring, data collection, lightweight inference. Each phone handles its slice.</p>
+        </div>
+        <div class="relative bg-panel border border-border rounded-xl p-6 hover:border-border-hover transition-all duration-300 reveal overflow-hidden">
+          <div class="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#00e5ff] to-blue"></div>
+          <h3 class="font-semibold text-lg mb-3"><i class="fa-solid fa-flask text-[#00e5ff] mr-2"></i>Learning Lab</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">Real multi-node Kubernetes cluster for learning container orchestration, networking, and distributed systems. Not a simulation.</p>
+        </div>
+        <div class="relative bg-panel border border-border rounded-xl p-6 hover:border-border-hover transition-all duration-300 reveal overflow-hidden">
+          <div class="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#8b5cf6] to-brand"></div>
+          <h3 class="font-semibold text-lg mb-3"><i class="fa-solid fa-network-wired text-[#8b5cf6] mr-2"></i>Network Testing</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">10 independent endpoints for testing network configs, firewall rules, mesh VPN topologies, and DNS setups.</p>
+        </div>
+        <div class="relative bg-panel border border-border rounded-xl p-6 hover:border-border-hover transition-all duration-300 reveal overflow-hidden">
+          <div class="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-brand to-yellow"></div>
+          <h3 class="font-semibold text-lg mb-3"><i class="fa-solid fa-money-bill-trend-up text-brand mr-2"></i>Idle Monetization</h3>
+          <p class="text-text-secondary text-sm leading-relaxed">Bandwidth sharing, passive compute tasks, lightweight mining experiments. The phones run 24/7 on pennies of electricity.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
+  <!-- ═══════════════════════ BY THE NUMBERS ═══════════════════════ -->
+  <section class="py-14 md:py-20 bg-bg-elevated reveal">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="mb-8">
+        <div class="font-mono text-xs tracking-[4px] uppercase text-green mb-2">// By The Numbers</div>
+        <h2 class="text-2xl md:text-3xl font-bold">At A Glance</h2>
+        <div class="w-16 h-0.5 bg-gradient-to-r from-green to-transparent mt-3"></div>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 stagger-children">
+        <div class="bg-panel border border-border rounded-xl p-5 text-center reveal hover:border-border-hover transition-colors">
+          <div class="text-3xl font-extrabold" style="background: linear-gradient(135deg, #22c55e, #00e5ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">10</div>
+          <div class="text-xs tracking-[2px] uppercase text-muted mt-2">Phone Nodes</div>
+        </div>
+        <div class="bg-panel border border-border rounded-xl p-5 text-center reveal hover:border-border-hover transition-colors">
+          <div class="text-3xl font-extrabold" style="background: linear-gradient(135deg, #22c55e, #00e5ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">K3s</div>
+          <div class="text-xs tracking-[2px] uppercase text-muted mt-2">Kubernetes</div>
+        </div>
+        <div class="bg-panel border border-border rounded-xl p-5 text-center reveal hover:border-border-hover transition-colors">
+          <div class="text-3xl font-extrabold" style="background: linear-gradient(135deg, #22c55e, #00e5ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">$0</div>
+          <div class="text-xs tracking-[2px] uppercase text-muted mt-2">Cloud Cost</div>
+        </div>
+        <div class="bg-panel border border-border rounded-xl p-5 text-center reveal hover:border-border-hover transition-colors">
+          <div class="text-3xl font-extrabold" style="background: linear-gradient(135deg, #22c55e, #00e5ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">24/7</div>
+          <div class="text-xs tracking-[2px] uppercase text-muted mt-2">Uptime</div>
+        </div>
+        <div class="bg-panel border border-border rounded-xl p-5 text-center reveal hover:border-border-hover transition-colors col-span-2 sm:col-span-1">
+          <div class="text-3xl font-extrabold" style="background: linear-gradient(135deg, #22c55e, #00e5ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">0</div>
+          <div class="text-xs tracking-[2px] uppercase text-muted mt-2">Cloud Vendors</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
+  <!-- ═══════════════════════ CLOSING ═══════════════════════ -->
+  <section class="py-14 md:py-20 reveal">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6">
+      <div class="mb-8">
+        <div class="font-mono text-xs tracking-[4px] uppercase text-green mb-2">// The Point</div>
+        <h2 class="text-2xl md:text-3xl font-bold">Why This Matters</h2>
+        <div class="w-16 h-0.5 bg-gradient-to-r from-green to-transparent mt-3"></div>
+      </div>
+
+      <div class="relative bg-panel border border-border rounded-xl p-6 sm:p-8 overflow-hidden">
+        <div class="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-green via-[#00e5ff] to-blue"></div>
+        <div class="text-text-secondary text-base sm:text-lg leading-relaxed space-y-5">
+          <p>
+            Cloud compute costs money. Old phones cost nothing. The math is simple.
+          </p>
+          <p>
+            This isn't about replacing AWS. It's about <span class="text-text font-semibold">learning distributed systems with real hardware</span>, not simulators. It's about squeezing value from hardware that would otherwise rot in a drawer.
+          </p>
+          <p>
+            10 phones. Wired networking. Kubernetes. Mesh VPN. SSH fleet management. All running on hardware most people throw away.
+          </p>
+          <p>
+            <span class="text-text font-semibold">That's the whole point.</span>
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-10 text-center reveal">
+        <a href="/rig" class="inline-flex items-center gap-2 bg-green/10 text-green border border-green/30 rounded-xl px-6 py-3 font-semibold hover:bg-green/20 transition">
+          <i class="fa-solid fa-microchip"></i> See the CYBERDYNE-V2 Build
+        </a>
+      </div>
+    </div>
+  </section>
+
+</Layout>
