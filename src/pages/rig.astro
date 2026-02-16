@@ -460,11 +460,9 @@ import Layout from '../layouts/Layout.astro';
         Designed for one system. Now housing two motherboards, three GPUs, two AIOs, a PiKVM, a dual-port Ethernet NIC, 18 fans, RGB hubs, sensor arrays, and an internal display. The dual-chamber design provides PSU space in the rear while the main chamber accommodates a layout no case manufacturer ever intended.
       </p>
 
-      <div class="bg-panel border border-border border-dashed rounded-xl p-10 sm:p-16 text-center reveal">
-        <i class="fa-solid fa-camera text-4xl text-muted mb-4 block opacity-50"></i>
-        <p class="text-muted text-sm">
-          Build photos coming soon &mdash; full assembly documentation, internal layout, cable management progress, power system detail shots, and final glamour shots.
-        </p>
+      <!-- Gallery Grid -->
+      <div id="rig-gallery" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        <!-- Images injected by JavaScript -->
       </div>
     </div>
   </section>
@@ -500,6 +498,21 @@ import Layout from '../layouts/Layout.astro';
       </div>
     </div>
   </section>
+
+  <!-- ═══════════════════════ LIGHTBOX ═══════════════════════ -->
+  <div id="rig-lightbox" class="fixed inset-0 bg-black/95 z-50 hidden items-center justify-center">
+    <button id="rig-lb-close" class="absolute top-4 right-4 text-white text-3xl hover:text-blue transition z-10" aria-label="Close lightbox">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+    <button id="rig-lb-prev" class="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-blue text-white flex items-center justify-center hover:bg-blue/80 transition z-10" aria-label="Previous photo">
+      <i class="fa-solid fa-chevron-left"></i>
+    </button>
+    <img id="rig-lb-img" src="" alt="Build photo" class="max-h-[85vh] max-w-[90vw] object-contain select-none" />
+    <button id="rig-lb-next" class="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-blue text-white flex items-center justify-center hover:bg-blue/80 transition z-10" aria-label="Next photo">
+      <i class="fa-solid fa-chevron-right"></i>
+    </button>
+    <div id="rig-lb-counter" class="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/70 text-sm font-medium font-mono"></div>
+  </div>
 
 </Layout>
 
@@ -565,8 +578,165 @@ import Layout from '../layouts/Layout.astro';
     padding: 0.5rem 0.75rem;
   }
 
+  /* Gallery thumbnail styles */
+  .rig-thumb {
+    overflow: hidden;
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-border);
+    cursor: pointer;
+    transition: border-color 0.3s, transform 0.3s;
+  }
+  .rig-thumb:hover {
+    border-color: #3b82f6;
+    transform: scale(1.03);
+  }
+  .rig-thumb img {
+    width: 100%;
+    height: 12rem;
+    object-fit: cover;
+    display: block;
+    transition: opacity 0.3s;
+  }
+
   @keyframes fadeInDown {
     from { opacity: 0; transform: translateY(-20px); }
     to { opacity: 1; transform: translateY(0); }
   }
 </style>
+
+<script is:inline>
+  (function() {
+    var images = [
+      "01_full_dual_system_rgb.webp",
+      "02_test_bench_dark_moody.png",
+      "03_itx_coolermaster_pink_rgb.webp",
+      "04_rgb_interior_aio27_evga_rainbow.webp",
+      "05_pikvm_oled_purple_blue.webp",
+      "06_evga_3070ti_natural_light.webp",
+      "07_rgb_interior_wide_angle.webp",
+      "08_warm_gold_green_rgb.webp",
+      "09_side_angle_ribbons_cm_blue.webp",
+      "10_low_angle_evga_bottom_fans.webp",
+      "11_i7_14700kf_socket.webp",
+      "12_topdown_dual_system.webp",
+      "13_both_gpus_everything_shot.webp",
+      "14_phone_cluster_raw_chaos.webp",
+      "15_rgb_teal_cyan_variant.webp",
+      "16_itx_coolermaster_detail.webp",
+      "17_green_wash_full_front.webp",
+      "18_prusa_mini_midprint.webp",
+      "19_rog_z790_hero_pikvm.webp",
+      "20_aorus_b760i_rear_io.webp",
+      "21_nzxt_aio_rainbow_interior.jpg",
+      "22_pikvm_tablet_green_rgb.jpg",
+      "23_rgb_teal_ribbons_alt.webp",
+      "24_working_shot_cm_orange.webp",
+      "25_back_panel_fans_hub_psu.webp",
+      "26_case_rear_exterior.webp",
+      "27_prusa_printing_54pct.webp",
+      "28_pikvm_rgb_backlit.webp",
+      "29_crown_vic_mobile_office.jpg",
+      "30_b760i_ram_pico_board.jpg",
+      "31_derogue_pico_closeup.jpg",
+      "32_xmax_slicer_cluster_parts.webp",
+      "33_back_panel_alt_lianli.webp",
+      "34_b760i_cm_copper_base.webp",
+      "35_battlestation_multimonitor.webp"
+    ];
+
+    var basePath = "/assets/pc/";
+    var currentIndex = 0;
+
+    // ── Build Gallery Grid ──
+    var grid = document.getElementById("rig-gallery");
+    if (grid) {
+      images.forEach(function(img, idx) {
+        var div = document.createElement("div");
+        div.className = "rig-thumb";
+        div.setAttribute("data-index", idx);
+
+        var imgEl = document.createElement("img");
+        imgEl.src = basePath + img;
+        imgEl.alt = "CYBERDYNE build photo " + (idx + 1);
+        imgEl.loading = "lazy";
+
+        div.appendChild(imgEl);
+        grid.appendChild(div);
+
+        div.addEventListener("click", function() {
+          openLightbox(idx);
+        });
+      });
+    }
+
+    // ── Lightbox ──
+    var lightbox = document.getElementById("rig-lightbox");
+    var lbImg = document.getElementById("rig-lb-img");
+    var lbCounter = document.getElementById("rig-lb-counter");
+    var lbClose = document.getElementById("rig-lb-close");
+    var lbPrev = document.getElementById("rig-lb-prev");
+    var lbNext = document.getElementById("rig-lb-next");
+
+    function openLightbox(idx) {
+      currentIndex = idx;
+      updateLightboxImage();
+      lightbox.classList.remove("hidden");
+      lightbox.classList.add("flex");
+      document.body.style.overflow = "hidden";
+    }
+
+    function closeLightbox() {
+      lightbox.classList.add("hidden");
+      lightbox.classList.remove("flex");
+      document.body.style.overflow = "";
+    }
+
+    function updateLightboxImage() {
+      lbImg.src = basePath + images[currentIndex];
+      lbImg.alt = "CYBERDYNE build photo " + (currentIndex + 1) + " of " + images.length;
+      lbCounter.textContent = (currentIndex + 1) + " / " + images.length;
+    }
+
+    function prevImage() {
+      currentIndex = (currentIndex - 1 + images.length) % images.length;
+      updateLightboxImage();
+    }
+
+    function nextImage() {
+      currentIndex = (currentIndex + 1) % images.length;
+      updateLightboxImage();
+    }
+
+    if (lbClose) lbClose.addEventListener("click", closeLightbox);
+    if (lbPrev) lbPrev.addEventListener("click", prevImage);
+    if (lbNext) lbNext.addEventListener("click", nextImage);
+
+    if (lightbox) {
+      lightbox.addEventListener("click", function(e) {
+        if (e.target === lightbox) closeLightbox();
+      });
+    }
+
+    document.addEventListener("keydown", function(e) {
+      if (!lightbox || lightbox.classList.contains("hidden")) return;
+      if (e.key === "Escape") closeLightbox();
+      if (e.key === "ArrowLeft") prevImage();
+      if (e.key === "ArrowRight") nextImage();
+    });
+
+    // Touch / Swipe
+    var touchStartX = 0;
+    if (lightbox) {
+      lightbox.addEventListener("touchstart", function(e) {
+        touchStartX = e.changedTouches[0].screenX;
+      }, { passive: true });
+
+      lightbox.addEventListener("touchend", function(e) {
+        var diff = touchStartX - e.changedTouches[0].screenX;
+        if (Math.abs(diff) > 50) {
+          if (diff > 0) nextImage(); else prevImage();
+        }
+      }, { passive: true });
+    }
+  })();
+</script>
