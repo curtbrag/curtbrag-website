@@ -4,6 +4,19 @@
 # Or: sh fix-cluster.sh
 # Works with systemd, OpenRC, or bare Alpine (no init system)
 
+# Bootstrap: busybox ash has pipe-buffering bugs that corrupt parsing when
+# a script is piped via curl|sh. Detect piped execution, re-download to a
+# temp file, and exec from there so the shell reads from a seekable file.
+if [ ! -t 0 ] && [ "${_FCS:-}" != "1" ]; then
+  _f="/tmp/fix-cluster.sh"
+  curl -sfL "https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/fix-cluster.sh" -o "$_f"
+  if [ -s "$_f" ]; then
+    _FCS=1 exec sh "$_f"
+  fi
+  echo "Bootstrap download failed" >&2
+  exit 1
+fi
+
 set -e
 BRANCH="main"
 BASE="https://raw.githubusercontent.com/curtbrag/curtbrag-website/$BRANCH/scripts"
