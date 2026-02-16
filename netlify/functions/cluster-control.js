@@ -303,6 +303,22 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify({ screens }) };
     }
 
+    // Retrieve API key (authenticated by web password) — for node setup scripts
+    if (params.action === 'get-api-key') {
+      const webPassword = await getWebPassword();
+      if (!webPassword) {
+        return { statusCode: 503, headers, body: JSON.stringify({ error: 'Server not configured' }) };
+      }
+      if (!safeCompare(params.password || '', webPassword)) {
+        return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
+      }
+      const key = await getApiKey();
+      if (!key) {
+        return { statusCode: 404, headers, body: JSON.stringify({ error: 'API key not configured' }) };
+      }
+      return { statusCode: 200, headers, body: JSON.stringify({ apiKey: key }) };
+    }
+
     // Dashboard getting queue status
     const queue = await getQueue();
     const history = await getHistory();

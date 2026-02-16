@@ -87,15 +87,34 @@ if [ -z "${CLUSTER_API_KEY:-}" ]; then
   fi
 fi
 
+if [ -z "${CLUSTER_API_KEY:-}" ]; then
+  # Last resort: fetch via web dashboard password
+  echo "  API key not found. Trying to fetch from API..."
+  if [ -n "${CLUSTER_WEB_PASSWORD:-}" ]; then
+    WEB_PW="$CLUSTER_WEB_PASSWORD"
+  else
+    printf "  Enter dashboard password (or Ctrl+C to skip): "
+    read -r WEB_PW || true
+  fi
+  if [ -n "${WEB_PW:-}" ]; then
+    ENCODED_PW=$(printf '%s' "$WEB_PW" | curl -Gso /dev/null -w '%{url_effective}' --data-urlencode @- '' 2>/dev/null | cut -c3- || printf '%s' "$WEB_PW")
+    FETCHED_KEY=$(curl -sf "https://curtbrag.com/.netlify/functions/cluster-control?action=get-api-key&password=$ENCODED_PW" 2>/dev/null | jq -r '.apiKey // empty' 2>/dev/null)
+    if [ -n "$FETCHED_KEY" ]; then
+      export CLUSTER_API_KEY="$FETCHED_KEY"
+      echo "  Retrieved API key from server"
+    fi
+  fi
+fi
+
 if [ -n "${CLUSTER_API_KEY:-}" ]; then
-  # Save current env for future use (background processes, reboots)
   echo "export CLUSTER_API_KEY=\"$CLUSTER_API_KEY\"" > "$ENV_FILE"
   chmod 600 "$ENV_FILE"
   echo "  Saved to $ENV_FILE"
 else
-  echo "  WARNING: CLUSTER_API_KEY not found anywhere"
-  echo "  Set it with: export CLUSTER_API_KEY=your-key"
-  echo "  Or create $ENV_FILE with: export CLUSTER_API_KEY=your-key"
+  echo "  WARNING: CLUSTER_API_KEY not found"
+  echo "  Options:"
+  echo "    export CLUSTER_API_KEY=your-key && sh setup-node1.sh"
+  echo "    CLUSTER_WEB_PASSWORD=your-pw sh setup-node1.sh"
 fi
 
 # Ensure .profile sources the env file on login

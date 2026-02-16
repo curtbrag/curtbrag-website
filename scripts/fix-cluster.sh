@@ -40,13 +40,36 @@ if [ -z "${CLUSTER_API_KEY:-}" ]; then
 fi
 
 if [ -z "${CLUSTER_API_KEY:-}" ]; then
+  # Try to fetch API key using the web dashboard password
+  echo "  API key not found locally. Trying to fetch from API..."
+  if [ -n "${CLUSTER_WEB_PASSWORD:-}" ]; then
+    WEB_PW="$CLUSTER_WEB_PASSWORD"
+  else
+    printf "  Enter dashboard password (or Ctrl+C to cancel): "
+    read -r WEB_PW
+  fi
+  if [ -n "$WEB_PW" ]; then
+    # URL-encode the password for the query parameter
+    ENCODED_PW=$(printf '%s' "$WEB_PW" | curl -Gso /dev/null -w '%{url_effective}' --data-urlencode @- '' 2>/dev/null | cut -c3- || printf '%s' "$WEB_PW")
+    FETCH_RESP=$(curl -sf "https://curtbrag.com/.netlify/functions/cluster-control?action=get-api-key&password=$ENCODED_PW" 2>/dev/null)
+    FETCHED_KEY=$(echo "$FETCH_RESP" | jq -r '.apiKey // empty' 2>/dev/null)
+    if [ -n "$FETCHED_KEY" ]; then
+      export CLUSTER_API_KEY="$FETCHED_KEY"
+      echo "  Retrieved API key from server"
+    else
+      ERROR_MSG=$(echo "$FETCH_RESP" | jq -r '.error // empty' 2>/dev/null)
+      echo "  Failed to retrieve key: ${ERROR_MSG:-no response}"
+    fi
+  fi
+fi
+
+if [ -z "${CLUSTER_API_KEY:-}" ]; then
   echo "  ERROR: CLUSTER_API_KEY not found"
-  echo "  The API key is needed for push/poll scripts to authenticate."
   echo ""
-  echo "  Set it with:  export CLUSTER_API_KEY=your-key && sh fix-cluster.sh"
-  echo "  Or create:    echo 'export CLUSTER_API_KEY=your-key' > $ENV_FILE"
-  echo ""
-  echo "  Check Netlify site settings for the key value."
+  echo "  Options:"
+  echo "    export CLUSTER_API_KEY=your-key && sh fix-cluster.sh"
+  echo "    CLUSTER_WEB_PASSWORD=your-pw sh fix-cluster.sh"
+  echo "    Check Netlify site settings for the key value"
   exit 1
 fi
 
