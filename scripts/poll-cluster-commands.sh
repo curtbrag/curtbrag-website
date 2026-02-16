@@ -11,7 +11,7 @@ if [ -z "${CLUSTER_API_KEY:-}" ] && [ -f /home/user/.cluster-env ]; then
 fi
 
 API_URL="https://curtbrag.com/.netlify/functions/cluster-control"
-API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set. Create /home/user/.cluster-env with: export CLUSTER_API_KEY=your-key}"
+API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set. Create /home/user/.cluster-env with: CLUSTER_API_KEY=your-key}"
 POLL_INTERVAL=5  # seconds
 # Auto-detect our IP so local-exec works even if IP changes
 LOCAL_IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
