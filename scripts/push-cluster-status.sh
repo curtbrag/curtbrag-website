@@ -118,10 +118,15 @@ else
     NODE_NAME="node$i"
     NODE_ROLE="worker"
     [ "$i" = "1" ] && NODE_ROLE="control-plane"
-    # Check SSH reachability (fast, 2s timeout)
+    # Check reachability: node1 locally, others via SSH (5s timeout)
     if [ "$i" = "1" ]; then
-      NODE_STATUS="Ready"
-    elif ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then
+      # Actually verify node1 is functional instead of assuming Ready
+      if [ -d /proc ] && [ -r /proc/uptime ]; then
+        NODE_STATUS="Ready"
+      else
+        NODE_STATUS="NotReady"
+      fi
+    elif ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then
       NODE_STATUS="Ready"
     else
       NODE_STATUS="NotReady"

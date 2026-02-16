@@ -2226,9 +2226,18 @@
           if (demoBanner) demoBanner.classList.add('visible');
         } else if (data.stale && !isDirectApi) {
           statusDot.className = 'status-dot demo';
-          statusText.textContent = 'Stale (' + (data.ageMinutes || '?') + 'm ago)';
+          const ageStr = (data.ageMinutes || 0) >= 60
+            ? Math.floor(data.ageMinutes / 60) + 'h ' + (data.ageMinutes % 60) + 'm ago'
+            : (data.ageMinutes || '?') + 'm ago';
+          const level = data.staleLevel || 'warning';
+          const levelLabels = { warning: 'Stale Data', critical: 'Stale Data (Critical)', dead: 'Cluster Offline' };
+          statusText.textContent = (levelLabels[level] || 'Stale') + ' (' + ageStr + ')';
           if (demoBanner) {
-            demoBanner.innerHTML = '<i class="fa-solid fa-clock"></i><span>Stale Data — Last update was ' + (data.ageMinutes || '?') + ' minutes ago. Cluster may be offline.</span>';
+            const icon = level === 'dead' ? 'fa-skull-crossbones' : level === 'critical' ? 'fa-triangle-exclamation' : 'fa-clock';
+            const msg = level === 'dead'
+              ? 'Cluster appears offline — no status update in over 2 hours. Check node1 connectivity and cron job.'
+              : 'Last update was ' + ageStr + '. Cluster may be experiencing issues.';
+            demoBanner.innerHTML = '<i class="fa-solid ' + icon + '"></i><span>' + msg + '</span>';
             demoBanner.classList.add('visible');
           }
         } else {
