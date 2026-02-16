@@ -14,7 +14,8 @@ function safeCompare(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-const VALID_NODE_NAMES = ['node1','node2','node3','node4','node5','node6','node7','node8','node9','node10'];
+const VALID_NODE_NAMES = ['node1','node2','node3','node4','node5','node6','node7','node8','node9','node10','neo','vikixii','aorus-node','steamdeck','pikvm-main','pikvm-2'];
+const VALID_GROUP_TARGETS = ['all', 'phones', 'pcs'];
 const MAX_QUEUE_SIZE = 100;
 
 // Credential helpers — check env var first, fall back to Netlify Blobs
@@ -474,7 +475,7 @@ exports.handler = async (event) => {
     }
 
     // Validate target node name
-    if (target && target !== 'all' && !VALID_NODE_NAMES.includes(target)) {
+    if (target && !VALID_GROUP_TARGETS.includes(target) && !VALID_NODE_NAMES.includes(target)) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid target node' }) };
     }
 
