@@ -14,7 +14,8 @@ function safeCompare(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-const VALID_NODE_NAMES = ['node1','node2','node3','node4','node5','node6','node7','node8','node9','node10'];
+const VALID_NODE_NAMES = ['node1','node2','node3','node4','node5','node6','node7','node8','node9','node10','neo','vikixii','aorus-node','steamdeck','pikvm-main','pikvm-2'];
+const VALID_GROUP_TARGETS = ['all', 'phones', 'pcs'];
 const MAX_QUEUE_SIZE = 100;
 
 // Credential helpers — check env var first, fall back to Netlify Blobs
@@ -188,10 +189,26 @@ exports.handler = async (event) => {
       } catch (e) { /* best-effort */ }
 
       const queue = await getQueue();
-      const cmd = queue.shift();
-      if (cmd) {
-        await saveQueue(queue);
+      // Auto-expire commands older than 10 minutes
+      const now = Date.now();
+      const expiredIds = [];
+      const liveQueue = queue.filter(c => {
+        const age = now - new Date(c.queuedAt).getTime();
+        if (age > 10 * 60 * 1000) { expiredIds.push(c.id); return false; }
+        return true;
+      });
+      // Move expired commands to history
+      if (expiredIds.length > 0) {
+        const history = await getHistory();
+        for (const c of queue) {
+          if (expiredIds.includes(c.id)) {
+            history.push({ id: c.id, command: c.command, target: c.target, result: 'expired: command timed out in queue', completedAt: new Date().toISOString() });
+          }
+        }
+        await saveHistory(history);
       }
+      const cmd = liveQueue.shift();
+      await saveQueue(liveQueue);
       return {
         statusCode: 200,
         headers,
@@ -213,6 +230,21 @@ exports.handler = async (event) => {
         }
       } catch (e) { /* fall through */ }
       return { statusCode: 200, headers, body: JSON.stringify({ alive: false, lastPoll: null }) };
+    }
+
+    // Flush stale commands from the queue (dashboard action)
+    if (params.action === 'flush-queue') {
+      const queue = await getQueue();
+      if (queue.length === 0) {
+        return { statusCode: 200, headers, body: JSON.stringify({ flushed: 0, message: 'Queue already empty' }) };
+      }
+      const history = await getHistory();
+      for (const c of queue) {
+        history.push({ id: c.id, command: c.command, target: c.target, result: 'flushed: manually cleared from queue', completedAt: new Date().toISOString() });
+      }
+      await saveHistory(history);
+      await saveQueue([]);
+      return { statusCode: 200, headers, body: JSON.stringify({ flushed: queue.length, message: `Flushed ${queue.length} commands from queue` }) };
     }
 
     // Schedule retrieval
@@ -269,6 +301,22 @@ exports.handler = async (event) => {
         return { device: n, status: 'never-captured', image: null };
       }));
       return { statusCode: 200, headers, body: JSON.stringify({ screens }) };
+    }
+
+    // Retrieve API key (authenticated by web password) — for node setup scripts
+    if (params.action === 'get-api-key') {
+      const webPassword = await getWebPassword();
+      if (!webPassword) {
+        return { statusCode: 503, headers, body: JSON.stringify({ error: 'Server not configured' }) };
+      }
+      if (!safeCompare(params.password || '', webPassword)) {
+        return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
+      }
+      const key = await getApiKey();
+      if (!key) {
+        return { statusCode: 404, headers, body: JSON.stringify({ error: 'API key not configured' }) };
+      }
+      return { statusCode: 200, headers, body: JSON.stringify({ apiKey: key }) };
     }
 
     // Dashboard getting queue status
@@ -443,7 +491,7 @@ exports.handler = async (event) => {
     }
 
     // Validate target node name
-    if (target && target !== 'all' && !VALID_NODE_NAMES.includes(target)) {
+    if (target && !VALID_GROUP_TARGETS.includes(target) && !VALID_NODE_NAMES.includes(target)) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid target node' }) };
     }
 
