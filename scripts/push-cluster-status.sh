@@ -202,7 +202,8 @@ echo "BATT_CAP:$_CAP"
 echo "BATT_STATUS:$(cat "$BD/status" 2>/dev/null || echo Unknown)"
 echo "BATT_TEMP:$(cat "$BD/temp" 2>/dev/null || echo 0)"
 echo "BATT_VOLT:$(cat "$BD/voltage_now" 2>/dev/null || echo 0)"
-echo "BATT_HEALTH:$(cat "$BD/health" 2>/dev/null || echo Unknown)"'
+echo "BATT_HEALTH:$(cat "$BD/health" 2>/dev/null || echo Unknown)"
+echo "DISPLAY_MODE:$(cat /home/user/display/.mode 2>/dev/null || echo unknown)"'
 
 # Gather from all phone nodes in parallel
 for i in $(seq 1 10); do
@@ -291,12 +292,16 @@ for i in $(seq 1 10); do
   TEMP_BLOCK="null"
   [ "$TEMP_C" -gt 0 ] 2>/dev/null && TEMP_BLOCK=$(jq -n --argjson c "$TEMP_C" '{celsius:$c}')
 
+  # Display mode
+  DISP_MODE=$(echo "$RAW" | grep "^DISPLAY_MODE:" | sed 's/^DISPLAY_MODE://' | tr -d ' ')
+  [ -z "$DISP_MODE" ] && DISP_MODE="unknown"
+
   NODE_M=$(jq -n \
     --argjson cu "${CPU_USAGE:-0}" \
     --argjson mt "${MEM_TOTAL:-0}" --argjson mu "${MEM_USED:-0}" --argjson mp "${MEM_PCT:-0}" \
     --argjson dt "${DISK_TOTAL:-0}" --argjson du "${DISK_USED:-0}" --argjson da "${DISK_AVAIL:-0}" --argjson dp "${DISK_PCT:-0}" \
-    --argjson temp "$TEMP_BLOCK" --argjson batt "$BATT_BLOCK" \
-    '{cpu:{usage:$cu,cores:null},memory:{totalMB:$mt,usedMB:$mu,percent:$mp},temp:$temp,storage:{totalMB:$dt,usedMB:$du,availMB:$da,percent:$dp},battery:$batt}')
+    --argjson temp "$TEMP_BLOCK" --argjson batt "$BATT_BLOCK" --arg dm "$DISP_MODE" \
+    '{cpu:{usage:$cu,cores:null},memory:{totalMB:$mt,usedMB:$mu,percent:$mp},temp:$temp,storage:{totalMB:$dt,usedMB:$du,availMB:$da,percent:$dp},battery:$batt,displayMode:$dm}')
 
   METRICS_JSON=$(echo "$METRICS_JSON" | jq --arg n "$NODE_NAME" --argjson m "$NODE_M" '.[$n] = $m')
 
@@ -431,7 +436,7 @@ fi
 # Try live network stats, fall back to approximate values
 XMR_PRICE=150
 NET_HR=2500000000
-NET_STATS=$(curl -s --connect-timeout 5 --max-time 8 "https://supportxmr.com/api/network/stats" 2>/dev/null)
+NET_STATS=$(curl -s --connect-timeout 5 --max-time 8 "https://moneroj.net/api/v1/network" 2>/dev/null)
 if [ -n "$NET_STATS" ] && echo "$NET_STATS" | jq . >/dev/null 2>&1; then
   _DIFF=$(echo "$NET_STATS" | jq '.difficulty // 0')
   _PRICE=$(echo "$NET_STATS" | jq '.value // 0')
@@ -453,7 +458,7 @@ MINING_JSON=$(jq -n \
   --argjson tacc "$TOTAL_ACC" --argjson trej "$TOTAL_REJ" \
   --arg ed "$DAILY_FMT" --arg em "$MONTHLY_FMT" \
   --argjson wk "$MINING_WORKERS" \
-  '{enabled:$en, minersRunning:$mr, minersTotal:10, totalHashrate:$thr, totalHashrateRaw:$thrr, totalAccepted:$tacc, totalRejected:$trej, coin:"XMR", pool:"supportxmr.com", estimatedDaily:$ed, estimatedMonthly:$em, workers:$wk}')
+  '{enabled:$en, minersRunning:$mr, minersTotal:10, totalHashrate:$thr, totalHashrateRaw:$thrr, totalAccepted:$tacc, totalRejected:$trej, coin:"XMR", pool:"MoneroOcean", estimatedDaily:$ed, estimatedMonthly:$em, workers:$wk}')
 log "Mining: $MINERS_RUNNING running, total $THR_FMT"
 
 # ── Summary ─────────────────────────────────────────────────────────
