@@ -191,6 +191,8 @@ execute_command() {
   local url="$3"
   local cmd_id="$4"
   local ssh_cmd="$5"
+  local display_mode="${DISPLAY_MODE:-}"
+  local mining_level="${MINING_LEVEL:-}"
 
   log "Executing: $cmd on $target"
 
@@ -244,13 +246,13 @@ true'
         for entry in $ALL_NODES; do
           name="${entry%%:*}"; ip="${entry##*:}"
           SVC=$(k3s_svc "$name")
-          run_on_node_tracked "$ip" "doas rc-service $SVC restart 2>/dev/null || doas systemctl restart $SVC" "$RESULT_DIR" "$name" &
+          run_on_node_tracked "$ip" "doas systemctl restart $SVC 2>/dev/null || doas rc-service $SVC restart" "$RESULT_DIR" "$name" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        run_on_node_tracked "$IP" "doas rc-service $SVC restart 2>/dev/null || doas systemctl restart $SVC" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$IP" "doas systemctl restart $SVC 2>/dev/null || doas rc-service $SVC restart" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -262,13 +264,13 @@ true'
         for entry in $ALL_NODES; do
           name="${entry%%:*}"; ip="${entry##*:}"
           SVC=$(k3s_svc "$name")
-          run_on_node_tracked "$ip" "doas rc-service $SVC start 2>/dev/null || doas systemctl start $SVC" "$RESULT_DIR" "$name" &
+          run_on_node_tracked "$ip" "doas systemctl start $SVC 2>/dev/null || doas rc-service $SVC start" "$RESULT_DIR" "$name" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        run_on_node_tracked "$IP" "doas rc-service $SVC start 2>/dev/null || doas systemctl start $SVC" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$IP" "doas systemctl start $SVC 2>/dev/null || doas rc-service $SVC start" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -280,13 +282,13 @@ true'
         for entry in $ALL_NODES; do
           name="${entry%%:*}"; ip="${entry##*:}"
           SVC=$(k3s_svc "$name")
-          run_on_node_tracked "$ip" "doas rc-service $SVC stop 2>/dev/null || doas systemctl stop $SVC" "$RESULT_DIR" "$name" &
+          run_on_node_tracked "$ip" "doas systemctl stop $SVC 2>/dev/null || doas rc-service $SVC stop" "$RESULT_DIR" "$name" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        run_on_node_tracked "$IP" "doas rc-service $SVC stop 2>/dev/null || doas systemctl stop $SVC" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$IP" "doas systemctl stop $SVC 2>/dev/null || doas rc-service $SVC stop" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -295,17 +297,17 @@ true'
       log "Starting miners..."
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
-      # Start xmrig via rc-service (OpenRC) or systemctl, verify process is running
+      # Start xmrig via systemctl (systemd) first, fall back to rc-service (OpenRC)
       MINING_START_CMD='
 if ! command -v xmrig >/dev/null 2>&1 && [ ! -f /usr/local/bin/xmrig ]; then
   echo "xmrig not installed" >&2; exit 1
 fi
-doas rc-service xmrig start 2>/dev/null || doas systemctl start xmrig 2>&1
+doas systemctl start xmrig 2>/dev/null || doas rc-service xmrig start 2>&1
 sleep 2
 if pgrep xmrig >/dev/null 2>&1; then
   exit 0
 else
-  doas rc-service xmrig status 2>/dev/null || doas systemctl status xmrig >&2; exit 1
+  doas systemctl status xmrig 2>/dev/null || doas rc-service xmrig status >&2; exit 1
 fi'
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         run_on_all_tracked "$MINING_START_CMD" "$RESULT_DIR"
@@ -320,9 +322,79 @@ fi'
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "doas rc-service xmrig stop 2>/dev/null || doas systemctl stop xmrig" "$RESULT_DIR"
+        run_on_all_tracked "doas systemctl stop xmrig 2>/dev/null || doas rc-service xmrig stop" "$RESULT_DIR"
       else
-        run_on_node_tracked "$(resolve_ip "$target")" "doas rc-service xmrig stop 2>/dev/null || doas systemctl stop xmrig" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$(resolve_ip "$target")" "doas systemctl stop xmrig 2>/dev/null || doas rc-service xmrig stop" "$RESULT_DIR" "$target"
+      fi
+      RESULT=$(collect_results "$RESULT_DIR")
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
+      ;;
+    mining-level)
+      log "Setting mining level to $mining_level..."
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
+      # Mining levels: 0=off, 1=12% CPU, 2=25% CPU, 3=50% CPU, 4=100% CPU
+      case "$mining_level" in
+        0)
+          LEVEL_CMD="doas systemctl stop xmrig 2>/dev/null; doas systemctl disable xmrig 2>/dev/null; echo 'mining off'"
+          ;;
+        1)
+          LEVEL_CMD='doas mkdir -p /etc/systemd/system/xmrig.service.d
+printf "[Service]\nCPUQuota=12%%\nNice=19\n" | doas tee /etc/systemd/system/xmrig.service.d/override.conf >/dev/null
+doas systemctl daemon-reload
+doas systemctl enable xmrig 2>/dev/null
+doas systemctl restart xmrig
+echo "mining level 1 (12% CPU)"'
+          ;;
+        2)
+          LEVEL_CMD='doas mkdir -p /etc/systemd/system/xmrig.service.d
+printf "[Service]\nCPUQuota=25%%\nNice=19\n" | doas tee /etc/systemd/system/xmrig.service.d/override.conf >/dev/null
+doas systemctl daemon-reload
+doas systemctl enable xmrig 2>/dev/null
+doas systemctl restart xmrig
+echo "mining level 2 (25% CPU)"'
+          ;;
+        3)
+          LEVEL_CMD='doas mkdir -p /etc/systemd/system/xmrig.service.d
+printf "[Service]\nCPUQuota=50%%\nNice=10\n" | doas tee /etc/systemd/system/xmrig.service.d/override.conf >/dev/null
+doas systemctl daemon-reload
+doas systemctl enable xmrig 2>/dev/null
+doas systemctl restart xmrig
+echo "mining level 3 (50% CPU)"'
+          ;;
+        4)
+          LEVEL_CMD='doas rm -f /etc/systemd/system/xmrig.service.d/override.conf
+doas systemctl daemon-reload
+doas systemctl enable xmrig 2>/dev/null
+doas systemctl restart xmrig
+echo "mining level 4 (full CPU)"'
+          ;;
+        *)
+          report_result "$cmd_id" "error: invalid mining level $mining_level" "" "$cmd" "$target"
+          return
+          ;;
+      esac
+      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
+        run_on_all_tracked "$LEVEL_CMD" "$RESULT_DIR"
+      else
+        run_on_node_tracked "$(resolve_ip "$target")" "$LEVEL_CMD" "$RESULT_DIR" "$target"
+      fi
+      RESULT=$(collect_results "$RESULT_DIR")
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
+      ;;
+    display-mode)
+      log "Setting display mode to $display_mode..."
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
+      if [ "$display_mode" = "off" ]; then
+        DISPLAY_CMD="doas systemctl stop cage@tty7 2>/dev/null; echo 'display off'"
+      else
+        DISPLAY_CMD="mkdir -p /home/user/display && echo '$display_mode' > /home/user/display/.mode && doas systemctl restart cage@tty7 2>/dev/null && echo 'display mode set to $display_mode'"
+      fi
+      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
+        run_on_all_tracked "$DISPLAY_CMD" "$RESULT_DIR" "$PHONE_NODES"
+      else
+        run_on_node_tracked "$(resolve_ip "$target")" "$DISPLAY_CMD" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -698,6 +770,8 @@ while true; do
     NAMESPACE=$(echo "$RESPONSE" | jq -r '.namespace // empty')
     POD_NAME_Q=$(echo "$RESPONSE" | jq -r '.podName // empty')
     TAIL_LINES=$(echo "$RESPONSE" | jq -r '.tail // "100"')
+    DISPLAY_MODE=$(echo "$RESPONSE" | jq -r '.displayMode // empty')
+    MINING_LEVEL=$(echo "$RESPONSE" | jq -r '.miningLevel // empty')
     log "Got command: $CMD target=$TARGET id=$CMD_ID"
     execute_command "$CMD" "$TARGET" "$URL" "$CMD_ID" "$SSH_CMD"
   fi

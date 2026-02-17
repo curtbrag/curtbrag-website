@@ -485,7 +485,7 @@ exports.handler = async (event) => {
       return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
     }
 
-    const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse', 'update', 'reboot', 'ssh', 'screenshot', 'brightness', 'debug', 'pod-logs'];
+    const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'mining-level', 'display-mode', 'browse', 'update', 'reboot', 'ssh', 'screenshot', 'brightness', 'debug', 'pod-logs'];
     if (!validCommands.includes(command)) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid command' }) };
     }
@@ -498,6 +498,22 @@ exports.handler = async (event) => {
     // Validate URL for browse command
     if (command === 'browse' && !body.url) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'URL required for browse command' }) };
+    }
+
+    // Validate display-mode command
+    if (command === 'display-mode') {
+      const validModes = ['matrix', 'stats', 'bonsai', 'cycle', 'off'];
+      if (!body.displayMode || !validModes.includes(body.displayMode)) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'displayMode required, must be one of: ' + validModes.join(', ') }) };
+      }
+    }
+
+    // Validate mining-level command
+    if (command === 'mining-level') {
+      const level = parseInt(body.miningLevel);
+      if (isNaN(level) || level < 0 || level > 4) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'miningLevel required, must be 0-4' }) };
+      }
     }
 
     // Validate brightness command
@@ -545,6 +561,8 @@ exports.handler = async (event) => {
       target: target || 'all',
       url: body.url || null,
       sshCmd: body.sshCmd || null,
+      displayMode: body.displayMode || null,
+      miningLevel: body.miningLevel != null ? parseInt(body.miningLevel) : null,
       namespace: body.namespace || null,
       podName: body.podName || null,
       tail: body.tail || null,
