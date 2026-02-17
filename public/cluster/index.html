@@ -1407,6 +1407,22 @@
       <div class="control-status" id="eyecandyStatus"></div>
     </div>
 
+    <!-- Terminal Display Mode -->
+    <div class="control-panel">
+      <div class="control-header">
+        <div class="control-title"><i class="fa-solid fa-terminal"></i> Terminal Display</div>
+        <span style="font-size:0.75rem;color:var(--muted)" id="currentDisplayMode"></span>
+      </div>
+      <div class="control-buttons">
+        <button class="ctrl-btn" onclick="sendDisplayMode('matrix')" title="cmatrix green rain"><i class="fa-solid fa-code" style="color:#22c55e"></i> Matrix</button>
+        <button class="ctrl-btn" onclick="sendDisplayMode('stats')" title="System stats dashboard"><i class="fa-solid fa-chart-bar" style="color:#3b82f6"></i> Stats</button>
+        <button class="ctrl-btn" onclick="sendDisplayMode('bonsai')" title="cbonsai tree animation"><i class="fa-solid fa-tree" style="color:#a3e635"></i> Bonsai</button>
+        <button class="ctrl-btn" onclick="sendDisplayMode('cycle')" title="Auto-cycle all modes"><i class="fa-solid fa-shuffle" style="color:#f59e0b"></i> Cycle</button>
+        <button class="ctrl-btn" onclick="sendDisplayMode('off')" title="Turn off display"><i class="fa-solid fa-power-off" style="color:#ef4444"></i> Off</button>
+      </div>
+      <div class="control-status" id="displayModeStatus"></div>
+    </div>
+
     <!-- Health Score Bar -->
     <div class="health-bar" id="healthBar">
       <div class="health-label"><i class="fa-solid fa-heart-pulse"></i> Cluster Health</div>
@@ -1550,6 +1566,20 @@
         <button class="mining-btn stop" onclick="sendMiningCommand('mining-stop')" aria-label="Stop all mining workers">
           <i class="fa-solid fa-stop" aria-hidden="true"></i> Stop All Miners
         </button>
+      </div>
+      <div style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border)">
+        <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem">
+          <i class="fa-solid fa-gauge" style="color:var(--yellow)"></i> Mining Level
+          <span id="currentMiningLevel" style="font-weight:400;color:var(--muted);font-size:0.75rem"></span>
+        </div>
+        <div class="control-buttons">
+          <button class="ctrl-btn" onclick="sendMiningLevel(0)" title="Stop mining"><i class="fa-solid fa-power-off" style="color:#ef4444"></i> Off</button>
+          <button class="ctrl-btn" onclick="sendMiningLevel(1)" title="12% CPU - minimal"><i class="fa-solid fa-battery-quarter" style="color:#eab308"></i> Low</button>
+          <button class="ctrl-btn" onclick="sendMiningLevel(2)" title="25% CPU - light"><i class="fa-solid fa-battery-half" style="color:#22c55e"></i> Medium</button>
+          <button class="ctrl-btn" onclick="sendMiningLevel(3)" title="50% CPU - moderate"><i class="fa-solid fa-battery-three-quarters" style="color:#3b82f6"></i> High</button>
+          <button class="ctrl-btn" onclick="sendMiningLevel(4)" title="100% CPU - full power"><i class="fa-solid fa-battery-full" style="color:#a855f7"></i> Full</button>
+        </div>
+        <div class="control-status" id="miningLevelStatus"></div>
       </div>
       <div class="mining-workers" id="miningWorkersSection">
         <h4><i class="fa-solid fa-microchip"></i> Active Workers</h4>
@@ -2311,6 +2341,20 @@
 
         lastMetrics = data.metrics || {};
 
+        // Show current display mode from metrics
+        var modeEl = document.getElementById('currentDisplayMode');
+        if (modeEl && lastMetrics) {
+          var modes = {};
+          Object.keys(lastMetrics).forEach(function(n) {
+            var dm = lastMetrics[n] && lastMetrics[n].displayMode;
+            if (dm && dm !== 'unknown') modes[dm] = (modes[dm] || 0) + 1;
+          });
+          var modeKeys = Object.keys(modes);
+          if (modeKeys.length === 1) modeEl.textContent = 'Current: ' + modeKeys[0];
+          else if (modeKeys.length > 1) modeEl.textContent = 'Mixed: ' + modeKeys.map(function(k){ return k + '(' + modes[k] + ')'; }).join(', ');
+          else modeEl.textContent = '';
+        }
+
         // Client-side node synthesis: if server returned empty nodes but has metrics
         if ((!data.nodes || data.nodes.length === 0) && data.metrics && Object.keys(data.metrics).length > 0) {
           var battMap = {};
@@ -2785,10 +2829,14 @@
           const toggleCmd = isOnline ? 'mining-stop' : 'mining-start';
           const toggleIcon = isOnline ? 'fa-pause' : 'fa-play';
           const toggleTitle = (isOnline ? 'Stop' : 'Start') + ' mining on ' + w.name;
+          var levelStr = '';
+          if (w.miningLevel && w.miningLevel !== 'unknown') {
+            levelStr = ' | CPU ' + w.miningLevel + '%';
+          }
           return '<div class="worker-chip ' + (isOnline ? '' : 'offline') + '">' +
             '<i class="fa-solid ' + (isOnline ? 'fa-circle-check' : 'fa-circle-xmark') + '" style="color: var(--' + (isOnline ? 'green' : 'red') + ')"></i>' +
             '<span>' + w.name + '</span>' +
-            '<span class="rate">' + w.hashrate + uptimeStr + '</span>' +
+            '<span class="rate">' + w.hashrate + levelStr + uptimeStr + '</span>' +
             '<button class="ssh-preset" onclick="sendMiningNodeCommand(\'' + escapeAttr(toggleCmd) + '\',\'' + escapeAttr(w.name) + '\')" title="' + escapeAttr(toggleTitle) + '" style="margin-left:4px"><i class="fa-solid ' + toggleIcon + '"></i></button></div>';
         }).join('');
       } else {
@@ -2796,14 +2844,16 @@
       }
 
       const poolInfoEl = document.getElementById('miningPoolInfo');
-      if (poolInfoEl && (mining.poolBalance || mining.totalPaid)) {
-        var html = '<i class="fa-solid fa-vault"></i> Pending: <span>' + (mining.poolBalance || '--') + '</span> &nbsp;|&nbsp; Total Paid: <span>' + (mining.totalPaid || '--') + '</span>';
+      if (poolInfoEl) {
+        var poolDisplay = mining.pool || 'MoneroOcean';
+        if (mining.poolUrl && mining.poolUrl !== 'unknown') poolDisplay += ' (' + mining.poolUrl + ')';
+        var html = '<i class="fa-solid fa-server"></i> Pool: <span>' + poolDisplay + '</span>';
         if (mining.totalAccepted) html += ' &nbsp;|&nbsp; Shares: <span>' + mining.totalAccepted + '</span> accepted';
         if (mining.totalRejected) html += ', <span style="color:var(--red)">' + mining.totalRejected + '</span> rejected';
+        if (mining.poolBalance) html += ' &nbsp;|&nbsp; Pending: <span>' + mining.poolBalance + '</span>';
+        if (mining.totalPaid) html += ' &nbsp;|&nbsp; Total Paid: <span>' + mining.totalPaid + '</span>';
         poolInfoEl.innerHTML = html;
         poolInfoEl.style.display = 'block';
-      } else if (poolInfoEl) {
-        poolInfoEl.style.display = 'none';
       }
     }
 
@@ -2897,6 +2947,60 @@
       } catch (e) {
         msgEl.textContent = `Error: ${e.message}`;
         msgEl.className = 'mining-message error';
+      }
+    }
+
+    // Terminal display mode control
+    async function sendDisplayMode(mode) {
+      if (!savedPassword) {
+        requirePassword(function() { sendDisplayMode(mode); });
+        return;
+      }
+      const status = document.getElementById('displayModeStatus');
+      status.textContent = 'Setting display to ' + mode + '...';
+      status.className = 'control-status visible';
+      try {
+        const data = await sendToBackend({ command: 'display-mode', target: 'phones', displayMode: mode, password: savedPassword });
+        if (data.success) {
+          status.textContent = data.message + ' — waiting for result...';
+          status.className = 'control-status visible success';
+          if (data.id) pollCommandCompletion(data.id, 'display-mode', 'phones');
+        } else {
+          status.textContent = 'Error: ' + data.error;
+          status.className = 'control-status visible error';
+          if (data.error === 'Invalid password') { savedPassword = ''; localStorage.removeItem('clusterPassword'); }
+        }
+      } catch (e) {
+        status.textContent = 'Error: ' + e.message;
+        status.className = 'control-status visible error';
+      }
+    }
+
+    // Mining level control (0=off, 1=low, 2=medium, 3=high, 4=full)
+    async function sendMiningLevel(level) {
+      if (!savedPassword) {
+        requirePassword(function() { sendMiningLevel(level); });
+        return;
+      }
+      const status = document.getElementById('miningLevelStatus');
+      const labels = ['Off', 'Low (12%)', 'Medium (25%)', 'High (50%)', 'Full (100%)'];
+      status.textContent = 'Setting mining level to ' + labels[level] + '...';
+      status.className = 'control-status visible';
+      try {
+        const data = await sendToBackend({ command: 'mining-level', target: 'all', miningLevel: level, password: savedPassword });
+        if (data.success) {
+          status.textContent = data.message + ' — waiting for result...';
+          status.className = 'control-status visible success';
+          if (data.id) pollCommandCompletion(data.id, 'mining-level', 'all');
+          setTimeout(loadClusterStatus, 5000);
+        } else {
+          status.textContent = 'Error: ' + data.error;
+          status.className = 'control-status visible error';
+          if (data.error === 'Invalid password') { savedPassword = ''; localStorage.removeItem('clusterPassword'); }
+        }
+      } catch (e) {
+        status.textContent = 'Error: ' + e.message;
+        status.className = 'control-status visible error';
       }
     }
 
