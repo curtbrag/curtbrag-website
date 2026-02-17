@@ -334,40 +334,23 @@ fi'
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       # Mining levels: 0=off, 1=12% CPU, 2=25% CPU, 3=50% CPU, 4=100% CPU
+      # Works on both systemd and OpenRC by modifying xmrig config directly
       case "$mining_level" in
         0)
-          LEVEL_CMD="doas systemctl stop xmrig 2>/dev/null; doas systemctl disable xmrig 2>/dev/null; echo 'mining off'"
+          LEVEL_CMD="doas rc-service xmrig stop 2>/dev/null || doas systemctl stop xmrig 2>/dev/null; echo 'mining off'"
           ;;
-        1)
-          LEVEL_CMD='doas mkdir -p /etc/systemd/system/xmrig.service.d
-printf "[Service]\nCPUQuota=12%%\nNice=19\n" | doas tee /etc/systemd/system/xmrig.service.d/override.conf >/dev/null
-doas systemctl daemon-reload
-doas systemctl enable xmrig 2>/dev/null
-doas systemctl restart xmrig
-echo "mining level 1 (12% CPU)"'
-          ;;
-        2)
-          LEVEL_CMD='doas mkdir -p /etc/systemd/system/xmrig.service.d
-printf "[Service]\nCPUQuota=25%%\nNice=19\n" | doas tee /etc/systemd/system/xmrig.service.d/override.conf >/dev/null
-doas systemctl daemon-reload
-doas systemctl enable xmrig 2>/dev/null
-doas systemctl restart xmrig
-echo "mining level 2 (25% CPU)"'
-          ;;
-        3)
-          LEVEL_CMD='doas mkdir -p /etc/systemd/system/xmrig.service.d
-printf "[Service]\nCPUQuota=50%%\nNice=10\n" | doas tee /etc/systemd/system/xmrig.service.d/override.conf >/dev/null
-doas systemctl daemon-reload
-doas systemctl enable xmrig 2>/dev/null
-doas systemctl restart xmrig
-echo "mining level 3 (50% CPU)"'
-          ;;
-        4)
-          LEVEL_CMD='doas rm -f /etc/systemd/system/xmrig.service.d/override.conf
-doas systemctl daemon-reload
-doas systemctl enable xmrig 2>/dev/null
-doas systemctl restart xmrig
-echo "mining level 4 (full CPU)"'
+        1|2|3|4)
+          # Map level to xmrig max-threads-hint percentage
+          case "$mining_level" in
+            1) HINT=12 ;; 2) HINT=25 ;; 3) HINT=50 ;; 4) HINT=100 ;;
+          esac
+          # Use sed to modify config (works on all nodes without jq)
+          LEVEL_CMD="CFG=/etc/xmrig/config.json
+if [ -f \"\$CFG\" ]; then
+  doas sed -i 's/\"max-threads-hint\":[0-9]*/\"max-threads-hint\":$HINT/' \"\$CFG\"
+fi
+doas rc-service xmrig restart 2>/dev/null || doas systemctl restart xmrig 2>/dev/null
+echo \"mining level $mining_level (${HINT}% CPU)\""
           ;;
         *)
           report_result "$cmd_id" "error: invalid mining level $mining_level" "" "$cmd" "$target"
@@ -387,9 +370,9 @@ echo "mining level 4 (full CPU)"'
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       if [ "$display_mode" = "off" ]; then
-        DISPLAY_CMD="doas systemctl stop cage@tty7 2>/dev/null; echo 'display off'"
+        DISPLAY_CMD="doas systemctl stop cage@tty7 2>/dev/null; doas rc-service cage stop 2>/dev/null; echo 'display off'"
       else
-        DISPLAY_CMD="mkdir -p /home/user/display && echo '$display_mode' > /home/user/display/.mode && doas systemctl restart cage@tty7 2>/dev/null && echo 'display mode set to $display_mode'"
+        DISPLAY_CMD="mkdir -p /home/user/display && echo '$display_mode' > /home/user/display/.mode && { doas systemctl restart cage@tty7 2>/dev/null || doas rc-service cage restart 2>/dev/null || doas rc-service greetd restart 2>/dev/null; } && echo 'display mode set to $display_mode'"
       fi
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         run_on_all_tracked "$DISPLAY_CMD" "$RESULT_DIR" "$PHONE_NODES"
@@ -422,7 +405,7 @@ vt = 7
 command = \"cage -- firefox-esr --kiosk $safe_url\"
 user = \"user\"
 GREETDEOF
-doas systemctl restart greetd"
+doas systemctl restart greetd 2>/dev/null || doas rc-service greetd restart 2>/dev/null"
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
           run_on_all_tracked "$BROWSE_CMD" "$RESULT_DIR" "$PHONE_NODES"
         else
@@ -438,7 +421,7 @@ doas systemctl restart greetd"
       SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
       FAIL=""
       SELF_UPDATED="false"
-      for SCRIPT in push-cluster-status.sh poll-cluster-commands.sh; do
+      for SCRIPT in push-cluster-status.sh poll-cluster-commands.sh cluster-nodes.conf; do
         if curl -sfL "$REPO_RAW/$SCRIPT" -o "$SCRIPT_DIR/$SCRIPT.new"; then
           chmod +x "$SCRIPT_DIR/$SCRIPT.new"
           mv "$SCRIPT_DIR/$SCRIPT.new" "$SCRIPT_DIR/$SCRIPT"
@@ -509,8 +492,8 @@ HEAD_SCRIPT=$(head -15 "$0" 2>/dev/null)"
     ssh)
       if [ -z "$ssh_cmd" ]; then
         report_result "$cmd_id" "error: no command specified" "" "$cmd" "$target"
-      # Block shell metacharacters that could enable injection
-      elif printf '%s' "$ssh_cmd" | grep -qE '[;|&\$\`\\><\{\}\(\)!]|\$\(|rm -rf /|mkfs|dd if=|:[(][)][{]|/dev/sd|shutdown|halt|poweroff|init 0|kill -9 1'; then
+      # Block shell metacharacters that could enable injection (matches JS-side filter)
+      elif printf '%s' "$ssh_cmd" | grep -qE '[;|&\$\`\\><\{\}\(\)!~\[\]*?]|\$\(|rm -rf /|mkfs|dd if=|:[(][)][{]|/dev/sd|shutdown|halt|poweroff|init 0|kill -9 1'; then
         log "BLOCKED dangerous SSH command: $ssh_cmd"
         report_result "$cmd_id" "error: command blocked for safety" "" "$cmd" "$target"
       else

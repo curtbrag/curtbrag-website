@@ -2829,10 +2829,14 @@
           const toggleCmd = isOnline ? 'mining-stop' : 'mining-start';
           const toggleIcon = isOnline ? 'fa-pause' : 'fa-play';
           const toggleTitle = (isOnline ? 'Stop' : 'Start') + ' mining on ' + w.name;
+          var levelStr = '';
+          if (w.miningLevel && w.miningLevel !== 'unknown') {
+            levelStr = ' | CPU ' + w.miningLevel + '%';
+          }
           return '<div class="worker-chip ' + (isOnline ? '' : 'offline') + '">' +
             '<i class="fa-solid ' + (isOnline ? 'fa-circle-check' : 'fa-circle-xmark') + '" style="color: var(--' + (isOnline ? 'green' : 'red') + ')"></i>' +
             '<span>' + w.name + '</span>' +
-            '<span class="rate">' + w.hashrate + uptimeStr + '</span>' +
+            '<span class="rate">' + w.hashrate + levelStr + uptimeStr + '</span>' +
             '<button class="ssh-preset" onclick="sendMiningNodeCommand(\'' + escapeAttr(toggleCmd) + '\',\'' + escapeAttr(w.name) + '\')" title="' + escapeAttr(toggleTitle) + '" style="margin-left:4px"><i class="fa-solid ' + toggleIcon + '"></i></button></div>';
         }).join('');
       } else {
@@ -2841,7 +2845,9 @@
 
       const poolInfoEl = document.getElementById('miningPoolInfo');
       if (poolInfoEl) {
-        var html = '<i class="fa-solid fa-server"></i> Pool: <span>' + (mining.pool || 'MoneroOcean') + '</span>';
+        var poolDisplay = mining.pool || 'MoneroOcean';
+        if (mining.poolUrl && mining.poolUrl !== 'unknown') poolDisplay += ' (' + mining.poolUrl + ')';
+        var html = '<i class="fa-solid fa-server"></i> Pool: <span>' + poolDisplay + '</span>';
         if (mining.totalAccepted) html += ' &nbsp;|&nbsp; Shares: <span>' + mining.totalAccepted + '</span> accepted';
         if (mining.totalRejected) html += ', <span style="color:var(--red)">' + mining.totalRejected + '</span> rejected';
         if (mining.poolBalance) html += ' &nbsp;|&nbsp; Pending: <span>' + mining.poolBalance + '</span>';
