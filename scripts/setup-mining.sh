@@ -152,9 +152,20 @@ setup_node() {
 XMRIG_CONFIG
   echo -e "  ${GREEN}✓${NC} Config written"
 
-  # Create systemd service
-  echo -e "  Creating service..."
-  ssh -o BatchMode=yes "$SSH" "doas tee /etc/systemd/system/xmrig.service > /dev/null" << 'SVCUNIT'
+  # Also check if xmrig is at /usr/bin/xmrig (from apk)
+  ssh -o BatchMode=yes "$SSH" "
+    if [ -f /usr/bin/xmrig ] && [ ! -f /usr/local/bin/xmrig ]; then
+      doas ln -sf /usr/bin/xmrig /usr/local/bin/xmrig
+    fi
+  " 2>/dev/null
+
+  # Detect init system and create appropriate service
+  INIT_SYS=$(ssh -o BatchMode=yes "$SSH" "command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1 && echo systemd || { command -v rc-service >/dev/null 2>&1 && echo openrc; } || echo none" 2>/dev/null)
+  echo -e "  Init system: ${INIT_SYS}"
+
+  if [ "$INIT_SYS" = "systemd" ]; then
+    echo -e "  Creating systemd service..."
+    ssh -o BatchMode=yes "$SSH" "doas tee /etc/systemd/system/xmrig.service > /dev/null" << 'SVCUNIT'
 [Unit]
 Description=XMRig Monero Miner
 After=network-online.target
@@ -170,16 +181,28 @@ Nice=10
 [Install]
 WantedBy=multi-user.target
 SVCUNIT
+    ssh -o BatchMode=yes "$SSH" "doas systemctl daemon-reload; doas systemctl enable xmrig 2>/dev/null; doas systemctl restart xmrig" 2>/dev/null
+  else
+    echo -e "  Creating OpenRC service..."
+    ssh -o BatchMode=yes "$SSH" "doas tee /etc/init.d/xmrig > /dev/null && doas chmod +x /etc/init.d/xmrig" << 'OPENRC_SVC'
+#!/sbin/openrc-run
+name="xmrig"
+description="XMRig Monero Miner"
+command="/usr/local/bin/xmrig"
+command_args="--config=/etc/xmrig/config.json"
+command_background="yes"
+pidfile="/run/xmrig.pid"
+output_log="/var/log/xmrig.log"
+error_log="/var/log/xmrig.log"
+start_stop_daemon_args="--nicelevel 10"
 
-  # Also check if xmrig is at /usr/bin/xmrig (from apk)
-  ssh -o BatchMode=yes "$SSH" "
-    if [ -f /usr/bin/xmrig ] && [ ! -f /usr/local/bin/xmrig ]; then
-      doas ln -sf /usr/bin/xmrig /usr/local/bin/xmrig
-    fi
-  " 2>/dev/null
-
-  # Enable and start
-  ssh -o BatchMode=yes "$SSH" "doas systemctl daemon-reload; doas systemctl enable xmrig 2>/dev/null; doas systemctl restart xmrig" 2>/dev/null
+depend() {
+  need net
+  after firewall
+}
+OPENRC_SVC
+    ssh -o BatchMode=yes "$SSH" "doas rc-update add xmrig default 2>/dev/null; doas rc-service xmrig restart" 2>/dev/null
+  fi
   echo -e "  ${GREEN}✓${NC} Service enabled and started"
 
   # Verify

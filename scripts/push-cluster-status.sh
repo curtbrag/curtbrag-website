@@ -1,6 +1,6 @@
 #!/bin/sh
 # Push K3s cluster status to curtbrag.com
-# Run this on node1 via cron: */5 * * * * /home/user/push-cluster-status.sh >> /var/log/cluster-push.log 2>&1
+# Run this on node1 via cron: */5 * * * * /home/user/push-cluster-status.sh >> /home/user/cluster-push.log 2>&1
 
 set -eu
 
@@ -203,7 +203,9 @@ echo "BATT_STATUS:$(cat "$BD/status" 2>/dev/null || echo Unknown)"
 echo "BATT_TEMP:$(cat "$BD/temp" 2>/dev/null || echo 0)"
 echo "BATT_VOLT:$(cat "$BD/voltage_now" 2>/dev/null || echo 0)"
 echo "BATT_HEALTH:$(cat "$BD/health" 2>/dev/null || echo Unknown)"
-echo "DISPLAY_MODE:$(cat /home/user/display/.mode 2>/dev/null || echo unknown)"'
+echo "DISPLAY_MODE:$(cat /home/user/display/.mode 2>/dev/null || echo unknown)"
+echo "MINING_LEVEL:$(tr "," "\n" < /etc/xmrig/config.json 2>/dev/null | grep max-threads-hint | tr -cd "0-9" || echo unknown)"
+echo "MINING_POOL:$(tr "," "\n" < /etc/xmrig/config.json 2>/dev/null | grep -m1 url | sed "s/.*\"url\":\"//;s/\".*//" || echo unknown)"'
 
 # Gather from all phone nodes in parallel
 for i in $(seq 1 10); do
@@ -296,12 +298,18 @@ for i in $(seq 1 10); do
   DISP_MODE=$(echo "$RAW" | grep "^DISPLAY_MODE:" | sed 's/^DISPLAY_MODE://' | tr -d ' ')
   [ -z "$DISP_MODE" ] && DISP_MODE="unknown"
 
+  # Mining config
+  MINING_LVL=$(echo "$RAW" | grep "^MINING_LEVEL:" | sed 's/^MINING_LEVEL://' | tr -d ' ')
+  [ -z "$MINING_LVL" ] && MINING_LVL="unknown"
+  MINING_POOL_URL=$(echo "$RAW" | grep "^MINING_POOL:" | sed 's/^MINING_POOL://' | tr -d ' ')
+  [ -z "$MINING_POOL_URL" ] && MINING_POOL_URL="unknown"
+
   NODE_M=$(jq -n \
     --argjson cu "${CPU_USAGE:-0}" \
     --argjson mt "${MEM_TOTAL:-0}" --argjson mu "${MEM_USED:-0}" --argjson mp "${MEM_PCT:-0}" \
     --argjson dt "${DISK_TOTAL:-0}" --argjson du "${DISK_USED:-0}" --argjson da "${DISK_AVAIL:-0}" --argjson dp "${DISK_PCT:-0}" \
-    --argjson temp "$TEMP_BLOCK" --argjson batt "$BATT_BLOCK" --arg dm "$DISP_MODE" \
-    '{cpu:{usage:$cu,cores:null},memory:{totalMB:$mt,usedMB:$mu,percent:$mp},temp:$temp,storage:{totalMB:$dt,usedMB:$du,availMB:$da,percent:$dp},battery:$batt,displayMode:$dm}')
+    --argjson temp "$TEMP_BLOCK" --argjson batt "$BATT_BLOCK" --arg dm "$DISP_MODE" --arg ml "$MINING_LVL" --arg mp2 "$MINING_POOL_URL" \
+    '{cpu:{usage:$cu,cores:null},memory:{totalMB:$mt,usedMB:$mu,percent:$mp},temp:$temp,storage:{totalMB:$dt,usedMB:$du,availMB:$da,percent:$dp},battery:$batt,displayMode:$dm,miningLevel:$ml,miningPool:$mp2}')
 
   METRICS_JSON=$(echo "$METRICS_JSON" | jq --arg n "$NODE_NAME" --argjson m "$NODE_M" '.[$n] = $m')
 
@@ -381,10 +389,13 @@ for i in $(seq 1 10); do
   XMRIG=""
   [ -f "$TMPFILE" ] && XMRIG=$(cat "$TMPFILE")
 
+  # Get mining level from already-collected metrics
+  NODE_ML=$(echo "$METRICS_JSON" | jq -r --arg n "$NODE_NAME" '.[$n].miningLevel // "unknown"')
+
   if [ "$XMRIG" = "PROC_RUNNING" ]; then
     # Process is running but API didn't respond — report as mining with unknown hashrate
-    MINING_WORKERS=$(echo "$MINING_WORKERS" | jq --arg n "$NODE_NAME" \
-      '. + [{name:$n, hashrate:"? H/s", hashrateRaw:0, status:"mining", accepted:0, note:"api_timeout"}]')
+    MINING_WORKERS=$(echo "$MINING_WORKERS" | jq --arg n "$NODE_NAME" --arg ml "$NODE_ML" \
+      '. + [{name:$n, hashrate:"? H/s", hashrateRaw:0, status:"mining", accepted:0, note:"api_timeout", miningLevel:$ml}]')
     log "  $NODE_NAME mining (process running, API unavailable)"
   elif [ -n "$XMRIG" ] && echo "$XMRIG" | jq . >/dev/null 2>&1; then
     HR=$(echo "$XMRIG" | jq '.hashrate.total[0] // 0')
@@ -407,15 +418,15 @@ for i in $(seq 1 10); do
     MINING_WORKERS=$(echo "$MINING_WORKERS" | jq \
       --arg n "$NODE_NAME" --arg hr "$HR_FMT" --argjson hrr "$HR" \
       --argjson acc "$ACC" --argjson rej "$REJ" --argjson upt "$UPT" \
-      --arg algo "$ALGO" --argjson thr "$THREADS" \
-      '. + [{name:$n, hashrate:$hr, hashrateRaw:$hrr, status:"mining", accepted:$acc, rejected:$rej, uptime:$upt, algo:$algo, threads:$thr}]')
+      --arg algo "$ALGO" --argjson thr "$THREADS" --arg ml "$NODE_ML" \
+      '. + [{name:$n, hashrate:$hr, hashrateRaw:$hrr, status:"mining", accepted:$acc, rejected:$rej, uptime:$upt, algo:$algo, threads:$thr, miningLevel:$ml}]')
 
     TOTAL_HR=$(awk "BEGIN{printf \"%.2f\", $TOTAL_HR + $HR}")
     TOTAL_ACC=$((TOTAL_ACC + ACC))
     TOTAL_REJ=$((TOTAL_REJ + REJ))
     log "  $NODE_NAME mining: $HR_FMT"
   else
-    MINING_WORKERS=$(echo "$MINING_WORKERS" | jq --arg n "$NODE_NAME" '. + [{name:$n, hashrate:"0 H/s", hashrateRaw:0, status:"offline", accepted:0}]')
+    MINING_WORKERS=$(echo "$MINING_WORKERS" | jq --arg n "$NODE_NAME" --arg ml "$NODE_ML" '. + [{name:$n, hashrate:"0 H/s", hashrateRaw:0, status:"offline", accepted:0, miningLevel:$ml}]')
   fi
 done
 rm -f "$TMP_DIR"/mining_node*.tmp
@@ -452,13 +463,21 @@ MONTHLY_FMT=$(printf '$%.2f' "$MONTHLY_USD" 2>/dev/null || echo '$0.00')
 MINING_ENABLED="false"
 [ "$MINERS_RUNNING" -gt 0 ] && MINING_ENABLED="true"
 
+# Read pool name dynamically from node1's metrics (already collected)
+POOL_URL=$(echo "$METRICS_JSON" | jq -r '.node1.miningPool // "unknown"')
+case "$POOL_URL" in
+  *moneroocean*) POOL_NAME="MoneroOcean" ;;
+  *supportxmr*) POOL_NAME="supportxmr" ;;
+  *) POOL_NAME="$POOL_URL" ;;
+esac
+
 MINING_JSON=$(jq -n \
   --argjson en "$MINING_ENABLED" --argjson mr "$MINERS_RUNNING" \
   --arg thr "$THR_FMT" --argjson thrr "$TOTAL_HR" \
   --argjson tacc "$TOTAL_ACC" --argjson trej "$TOTAL_REJ" \
   --arg ed "$DAILY_FMT" --arg em "$MONTHLY_FMT" \
-  --argjson wk "$MINING_WORKERS" \
-  '{enabled:$en, minersRunning:$mr, minersTotal:10, totalHashrate:$thr, totalHashrateRaw:$thrr, totalAccepted:$tacc, totalRejected:$trej, coin:"XMR", pool:"MoneroOcean", estimatedDaily:$ed, estimatedMonthly:$em, workers:$wk}')
+  --argjson wk "$MINING_WORKERS" --arg pool "$POOL_NAME" --arg poolUrl "$POOL_URL" \
+  '{enabled:$en, minersRunning:$mr, minersTotal:10, totalHashrate:$thr, totalHashrateRaw:$thrr, totalAccepted:$tacc, totalRejected:$trej, coin:"XMR", pool:$pool, poolUrl:$poolUrl, estimatedDaily:$ed, estimatedMonthly:$em, workers:$wk}')
 log "Mining: $MINERS_RUNNING running, total $THR_FMT"
 
 # ── Summary ─────────────────────────────────────────────────────────
@@ -537,18 +556,30 @@ PAYLOAD_SIZE=$(echo "$PAYLOAD" | wc -c)
 log "Payload size: ${PAYLOAD_SIZE} bytes"
 
 log "Pushing to API..."
-RESPONSE=$(printf '%s' "$PAYLOAD" | curl -sL -w "\n%{http_code}" -X POST "$API_URL" \
-  -H "Content-Type: application/json" \
-  -H "X-Cluster-Key: $API_KEY" \
-  -d @-)
+PUSH_OK="false"
+PUSH_ATTEMPT=0
+while [ "$PUSH_ATTEMPT" -lt 3 ]; do
+  PUSH_ATTEMPT=$((PUSH_ATTEMPT + 1))
+  RESPONSE=$(printf '%s' "$PAYLOAD" | curl -sL -w "\n%{http_code}" --max-time 30 -X POST "$API_URL" \
+    -H "Content-Type: application/json" \
+    -H "X-Cluster-Key: $API_KEY" \
+    -d @-)
 
-HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-BODY=$(echo "$RESPONSE" | sed '$d')
+  HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+  BODY=$(echo "$RESPONSE" | sed '$d')
 
-if [ "$HTTP_CODE" = "200" ]; then
-  log "SUCCESS: Status pushed ($PAYLOAD_SIZE bytes)"
-else
-  log "ERROR: HTTP $HTTP_CODE - $BODY"
+  if [ "$HTTP_CODE" = "200" ]; then
+    log "SUCCESS: Status pushed ($PAYLOAD_SIZE bytes)"
+    PUSH_OK="true"
+    break
+  else
+    log "WARN: Push attempt $PUSH_ATTEMPT failed (HTTP $HTTP_CODE)"
+    [ "$PUSH_ATTEMPT" -lt 3 ] && sleep $((PUSH_ATTEMPT * 5))
+  fi
+done
+
+if [ "$PUSH_OK" != "true" ]; then
+  log "ERROR: All push attempts failed (last: HTTP $HTTP_CODE - $BODY)"
   exit 1
 fi
 
