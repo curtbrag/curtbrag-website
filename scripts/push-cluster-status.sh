@@ -45,7 +45,7 @@ mkdir -p "$TMP_DIR"
 # ── Kubernetes data (may be unavailable if K3s is down) ──────────
 
 K3S_UP="false"
-if command -v kubectl >/dev/null 2>&1 && kubectl cluster-info >/dev/null 2>&1; then
+if command -v kubectl >/dev/null 2>&1 && timeout 10 kubectl cluster-info >/dev/null 2>&1; then
   K3S_UP="true"
 fi
 
@@ -210,6 +210,7 @@ echo "MINING_POOL:$(tr "," "\n" < /etc/xmrig/config.json 2>/dev/null | grep -m1 
 # Gather from all phone nodes in parallel
 for i in $(seq 1 10); do
   (
+    set +e  # SSH failures are expected for unreachable nodes
     if [ "$i" = "1" ]; then
       # node1 is localhost — gather metrics locally
       RAW=$(sh -c "$METRICS_CMD" 2>/dev/null)
@@ -221,7 +222,7 @@ for i in $(seq 1 10); do
     echo "$RAW" > "$TMP_DIR/node${i}.tmp"
   ) &
 done
-wait
+wait || true
 
 # Parse results sequentially
 for i in $(seq 1 10); do
@@ -352,6 +353,7 @@ TOTAL_REJ=0
 # Check xmrig API on all nodes in parallel (faster than sequential)
 for i in $(seq 1 10); do
   (
+    set +e  # SSH/curl failures are expected for unreachable nodes
     NODE_IP="192.168.1.$((205 + i))"
     # Try local curl first (works for node1 where xmrig binds to 127.0.0.1)
     XMRIG=""
@@ -381,7 +383,7 @@ for i in $(seq 1 10); do
     fi
   ) &
 done
-wait
+wait || true
 
 for i in $(seq 1 10); do
   NODE_NAME="node$i"
