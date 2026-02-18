@@ -5041,26 +5041,27 @@
     // ─── API Auto-Detect ─────────────────────────────────────────────
     async function autoDetectApi() {
       showToast('Scanning for API server...', 'info');
-      var isSecure = location.protocol === 'https:';
-      var candidates = [
-        'http://localhost:3847',
-        'http://127.0.0.1:3847',
-        isSecure ? 'https://192.168.1.206:3847' : 'http://192.168.1.206:3847',
-        isSecure ? 'https://nexus-prime:3847' : 'http://nexus-prime:3847',
-        isSecure ? 'https://nexus-prime.local:3847' : 'http://nexus-prime.local:3847',
-        isSecure ? 'https://192.168.1.179:3847' : 'http://192.168.1.179:3847',
-      ];
-      // When served over HTTPS, also try HTTP variants as fallback
-      if (isSecure) {
-        candidates.push('http://192.168.1.206:3847');
-        candidates.push('http://192.168.1.179:3847');
-        candidates.push('http://nexus-prime:3847');
-        candidates.push('http://nexus-prime.local:3847');
-      }
+      var candidates = [];
 
-      // Also check if there's a saved Tailscale URL
+      // 1. Try funnel URL from Netlify status (pushed by node1, has NEXUS-PRIME's Tailscale FQDN)
+      try {
+        var statusRes = await fetch('/.netlify/functions/cluster-status', { signal: AbortSignal.timeout(5000) });
+        if (statusRes.ok) {
+          var statusData = await statusRes.json();
+          if (statusData.network && statusData.network.apiServerUrl) {
+            candidates.push(statusData.network.apiServerUrl);
+          }
+        }
+      } catch (e) { /* continue */ }
+
+      // 2. Saved Tailscale URL from previous session
       var tsUrl = localStorage.getItem('clusterTailscaleUrl');
-      if (tsUrl) candidates.unshift(tsUrl);
+      if (tsUrl) candidates.push(tsUrl);
+
+      // 3. LAN candidates (work when browsing locally)
+      candidates.push('http://localhost:3847', 'http://127.0.0.1:3847');
+      candidates.push('http://nexus-prime:3847', 'http://nexus-prime.local:3847');
+      candidates.push('http://192.168.1.179:3847', 'http://192.168.1.206:3847');
 
       for (var i = 0; i < candidates.length; i++) {
         try {
@@ -5070,13 +5071,13 @@
             if (data.status === 'ok') {
               document.getElementById('apiEndpoint').value = candidates[i];
               saveApiConfig();
-              showToast('Found API at ' + candidates[i], 'success');
+              showToast('Connected to API at ' + candidates[i], 'success');
               return;
             }
           }
         } catch (e) { /* continue */ }
       }
-      showToast('Could not find API server. Start it on NEXUS-PRIME first.', 'error');
+      showToast('API not reachable. Run "tailscale funnel 3847" on NEXUS-PRIME.', 'error');
     }
 
     // ─── Dashboard Config Import/Export ──────────────────────────────
@@ -5748,6 +5749,8 @@
     try { updateSoundToggle(); } catch(e) { console.warn('updateSoundToggle:', e); }
     try { initTheme(); } catch(e) { console.warn('initTheme:', e); }
     try { initApiConfig(); } catch(e) { console.warn('initApiConfig:', e); }
+    // Auto-detect API on first load if none saved
+    if (!apiEndpoint) { try { autoDetectApi(); } catch(e) { console.warn('autoDetect:', e); } }
     try { applyNodeView(); } catch(e) { console.warn('applyNodeView:', e); }
     try { updateClusterAge(); } catch(e) { console.warn('updateClusterAge:', e); }
     setInterval(updateClusterAge, 60000);

@@ -156,6 +156,12 @@ if command -v tailscale >/dev/null 2>&1; then
     TS_NAME=$(echo "$TS_SELF" | jq -r '.HostName // empty')
     NETWORK_JSON=$(echo "$NETWORK_JSON" | jq --arg ip "$TS_IP" --arg name "$TS_NAME" --argjson peers "$TS_PEERS" '.tailscale = {ip: $ip, hostname: $name, connected: true, peers: $peers}')
   fi
+  # Find NEXUS-PRIME's Tailscale FQDN so the dashboard can auto-connect via funnel
+  NP_FQDN=$(echo "$TS_STATUS" | jq -r '[.Peer // {} | to_entries[] | select(.value.HostName == "nexus-prime") | .value.DNSName][0] // empty' 2>/dev/null | sed 's/\.$//')
+  if [ -n "$NP_FQDN" ]; then
+    NETWORK_JSON=$(echo "$NETWORK_JSON" | jq --arg url "https://$NP_FQDN" '.apiServerUrl = $url')
+    log "NEXUS-PRIME funnel URL: https://$NP_FQDN"
+  fi
 fi
 
 if command -v iw >/dev/null 2>&1; then
