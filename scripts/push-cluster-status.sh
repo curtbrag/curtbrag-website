@@ -586,3 +586,38 @@ if [ "$PUSH_OK" != "true" ]; then
 fi
 
 log "Done!"
+
+# ── Auto-heal: restart poller if it's not running ─────────────────
+# The command poller must be running for the dashboard to send commands.
+# Since this push script runs every 5 min via cron, use it as a watchdog.
+
+if ! pgrep -f "poll-cluster-commands" >/dev/null 2>&1; then
+  log "WARN: Command poller not running — restarting it..."
+
+  # Prefer systemd if the service exists
+  if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files cluster-poll.service >/dev/null 2>&1; then
+    doas systemctl restart cluster-poll.service 2>/dev/null
+    sleep 2
+    if systemctl is-active --quiet cluster-poll.service 2>/dev/null; then
+      log "Poller restarted via systemd (cluster-poll.service)"
+    else
+      log "WARN: systemd restart failed, falling back to nohup"
+      nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> /home/user/cluster-poll.log 2>&1 &
+      log "Poller restarted via nohup (PID: $!)"
+    fi
+  elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files cluster-poller.service >/dev/null 2>&1; then
+    doas systemctl restart cluster-poller.service 2>/dev/null
+    sleep 2
+    if systemctl is-active --quiet cluster-poller.service 2>/dev/null; then
+      log "Poller restarted via systemd (cluster-poller.service)"
+    else
+      nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> /home/user/cluster-poll.log 2>&1 &
+      log "Poller restarted via nohup (PID: $!)"
+    fi
+  else
+    nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> /home/user/cluster-poll.log 2>&1 &
+    log "Poller restarted via nohup (PID: $!)"
+  fi
+else
+  log "Poller alive (PID: $(pgrep -f 'poll-cluster-commands' | head -1))"
+fi
