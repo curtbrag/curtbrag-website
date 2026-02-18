@@ -1,6 +1,6 @@
 #!/bin/bash
 # Setup script for CurtBrag Cluster API Server
-# Run this on AORUS (the control-plane PC)
+# Run this on NEXUS-PRIME (the control-plane PC)
 # Usage: bash setup-cluster-api.sh [--password PASSWORD] [--token TOKEN] [--wallet XMR_WALLET]
 
 set -e
