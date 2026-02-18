@@ -90,15 +90,15 @@ SSH_PORT="${SSH_PORT:-22}"
 ssh_cmd() {
   local target="$1"; shift
   if [ -n "${SSH_PASS:-}" ]; then
-    sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$target" "$@"
+    sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new "$target" "$@"
   else
-    ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$target" "$@"
+    ssh -p "$SSH_PORT" -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$target" "$@"
   fi
 }
 
 scp_cmd() {
   local src="$1" dst="$2"
-  scp -P "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$src" "$dst" 2>/dev/null
+  scp -P "$SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$src" "$dst" 2>/dev/null
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -338,11 +338,12 @@ setup_mining_node() {
   echo -e "${YELLOW}  [${NAME}]${NC} ${IP}"
 
   # Check SSH — try with key first, fall back to password
-  if ! ssh_cmd "$SSH_TARGET" "echo ok" &>/dev/null; then
-    # Show why it failed
-    SSH_ERR=$(ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$SSH_TARGET" "echo ok" 2>&1 || true)
-    echo -e "    ${RED}✗${NC} Cannot SSH — ${SSH_ERR}"
-    echo -e "    ${YELLOW}Tip: ssh-copy-id user@${IP} or re-run with --password${NC}"
+  SSH_ERR=$(ssh_cmd "$SSH_TARGET" "echo ok" 2>&1)
+  if [ $? -ne 0 ]; then
+    # Show the actual error message
+    SSH_ERR_SHORT=$(echo "$SSH_ERR" | grep -v "^$" | tail -2 | tr '\n' ' ')
+    echo -e "    ${RED}✗${NC} Cannot SSH — ${SSH_ERR_SHORT:-unknown error}"
+    echo -e "    ${YELLOW}Tip: ssh-copy-id -p ${SSH_PORT} user@${IP} or re-run with --password${NC}"
     return 1
   fi
 
@@ -462,21 +463,66 @@ deploy_mining() {
   echo -e "  CPU:    ${CPU_HINT}%"
   echo ""
 
-  local OK=0 FAIL=0 NUM=0
+  # Pre-check: test SSH connectivity to all nodes first (fast, parallel-ish)
+  echo -e "  ${BLUE}Pre-checking SSH access to all nodes...${NC}"
+  local REACHABLE="" UNREACHABLE=""
   for name in $(echo "${!NODES[@]}" | tr ' ' '\n' | sort); do
-    NUM=$((NUM + 1))
-    if [ "$NUM" -gt 1 ] && [ "$STAGGER_SECS" -gt 0 ]; then
+    local IP="${NODES[$name]}"
+    echo -ne "    ${YELLOW}[${name}]${NC} ${IP} ... "
+    if ssh_cmd "user@${IP}" "echo ok" &>/dev/null; then
+      echo -e "${GREEN}OK${NC}"
+      REACHABLE="$REACHABLE $name"
+    else
+      # Quick diagnosis
+      if timeout 3 bash -c "echo >/dev/tcp/$IP/$SSH_PORT" 2>/dev/null; then
+        echo -e "${RED}auth failed${NC}"
+      elif ping -c 1 -W 2 "$IP" &>/dev/null; then
+        echo -e "${RED}port ${SSH_PORT} closed${NC}"
+      else
+        echo -e "${RED}unreachable${NC}"
+      fi
+      UNREACHABLE="$UNREACHABLE $name"
+    fi
+  done
+
+  local REACH_COUNT=$(echo $REACHABLE | wc -w)
+  local UNREACH_COUNT=$(echo $UNREACHABLE | wc -w)
+  echo ""
+  echo -e "  SSH: ${GREEN}${REACH_COUNT} reachable${NC}, ${RED}${UNREACH_COUNT} unreachable${NC}"
+
+  if [ "$REACH_COUNT" -eq 0 ]; then
+    echo -e "  ${RED}No nodes reachable — cannot deploy mining.${NC}"
+    echo -e "  ${YELLOW}Run: bash scripts/deploy-everything.sh --diagnose${NC}"
+    return 1
+  fi
+
+  echo ""
+  echo -e "  ${BLUE}Deploying to ${REACH_COUNT} reachable nodes...${NC}"
+  echo ""
+
+  local OK=0 FAIL=0 STARTED=0
+  for name in $REACHABLE; do
+    # Only stagger after a successful xmrig start (RandomX memory needs time)
+    if [ "$STARTED" -gt 0 ] && [ "$STAGGER_SECS" -gt 0 ]; then
       echo -e "  ${BLUE}Waiting ${STAGGER_SECS}s (RandomX memory allocation)...${NC}"
       sleep "$STAGGER_SECS"
     fi
     if setup_mining_node "$name"; then
       OK=$((OK + 1))
+      STARTED=$((STARTED + 1))
     else
       FAIL=$((FAIL + 1))
     fi
   done
+
+  # Count unreachable as failed too
+  FAIL=$((FAIL + UNREACH_COUNT))
+
   echo ""
   echo -e "  Mining: ${GREEN}${OK} running${NC}, ${RED}${FAIL} failed${NC}"
+  if [ -n "$UNREACHABLE" ]; then
+    echo -e "  ${YELLOW}Unreachable (skipped):${UNREACHABLE}${NC}"
+  fi
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════

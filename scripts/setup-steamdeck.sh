@@ -175,10 +175,10 @@ for i in $(seq 1 10); do
 
   # SSH test (try port 22 first, then 8022)
   SSH_PORT=22
-  if ssh -p 22 -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" &>/dev/null; then
+  if ssh -p 22 -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" &>/dev/null; then
     echo -e "${GREEN}SSH OK (port 22)${NC}"
     SSH_OK=$((SSH_OK + 1))
-  elif ssh -p 8022 -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" &>/dev/null; then
+  elif ssh -p 8022 -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" &>/dev/null; then
     echo -e "${GREEN}SSH OK (port 8022)${NC}"
     SSH_OK=$((SSH_OK + 1))
     SSH_PORT=8022
@@ -244,22 +244,40 @@ if [ -n "$NEED_KEY_COPY" ]; then
           || { echo -e "${RED}failed${NC}"; continue; }
 
         # Verify key auth actually works
-        if ssh -p "$port" -o ConnectTimeout=3 -o BatchMode=yes -o StrictHostKeyChecking=accept-new "user@$ip" "echo ok" &>/dev/null; then
+        if ssh -p "$port" -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new "user@$ip" "echo ok" &>/dev/null; then
           echo -e " ${GREEN}(verified)${NC}"
         else
-          # Key was copied but auth still fails — fix permissions via password
+          # Key was copied but auth still fails — aggressive perms fix via password
           echo -ne " ${YELLOW}(fixing perms)${NC}"
           sshpass -p "$PHONE_PASS" ssh -p "$port" -o StrictHostKeyChecking=accept-new "user@$ip" "
+            # Fix ownership (critical — sshd rejects if wrong owner)
+            chown -R \$(whoami):\$(id -gn) ~/.ssh 2>/dev/null
             chmod 700 ~/.ssh 2>/dev/null
             chmod 600 ~/.ssh/authorized_keys 2>/dev/null
-            # Fix home dir perms (sshd is strict about this)
-            chmod 755 ~ 2>/dev/null
+            # Home dir must not be group/world writable (sshd StrictModes)
+            chmod go-w ~ 2>/dev/null
+            # Ensure authorized_keys has the right content (no corruption)
+            if [ -f ~/.ssh/authorized_keys ]; then
+              sort -u ~/.ssh/authorized_keys > ~/.ssh/authorized_keys.tmp && mv ~/.ssh/authorized_keys.tmp ~/.ssh/authorized_keys
+              chmod 600 ~/.ssh/authorized_keys 2>/dev/null
+            fi
+            # If doas is available, try restoring SELinux context
+            command -v restorecon >/dev/null 2>&1 && restorecon -R ~/.ssh 2>/dev/null
+            # Try restarting sshd to pick up any config changes
+            command -v doas >/dev/null 2>&1 && doas rc-service sshd restart 2>/dev/null
+            command -v sudo >/dev/null 2>&1 && sudo systemctl restart sshd 2>/dev/null
           " &>/dev/null
+          sleep 2
           # Retry verification
-          if ssh -p "$port" -o ConnectTimeout=3 -o BatchMode=yes "user@$ip" "echo ok" &>/dev/null; then
+          if ssh -p "$port" -o ConnectTimeout=5 -o BatchMode=yes "user@$ip" "echo ok" &>/dev/null; then
             echo -e " ${GREEN}OK${NC}"
           else
+            # Last resort: get verbose SSH error for debugging
+            SSH_DIAG=$(ssh -p "$port" -o ConnectTimeout=5 -o BatchMode=yes -v "user@$ip" "echo ok" 2>&1 | grep -i "auth\|permission\|pubkey\|keyboard" | head -3)
             echo -e " ${RED}still failing${NC}"
+            if [ -n "$SSH_DIAG" ]; then
+              echo -e "      ${YELLOW}Debug: ${SSH_DIAG}${NC}"
+            fi
           fi
         fi
       else
@@ -370,7 +388,7 @@ if [ -n "$NEXUS_HOST" ]; then
       NP_KEY_FAIL=0
       for i in $(seq 1 10); do
         IP="192.168.1.$((205 + i))"
-        if ssh -o ConnectTimeout=3 -o BatchMode=yes "user@$IP" "
+        if ssh -o ConnectTimeout=5 -o BatchMode=yes "user@$IP" "
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           grep -qF '${NP_PUBKEY}' ~/.ssh/authorized_keys 2>/dev/null || echo '${NP_PUBKEY}' >> ~/.ssh/authorized_keys
           chmod 600 ~/.ssh/authorized_keys
