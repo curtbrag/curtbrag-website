@@ -240,8 +240,28 @@ if [ -n "$NEED_KEY_COPY" ]; then
       echo -ne "  ${YELLOW}[${name}]${NC} Copying key to ${ip}:${port} ... "
       if command -v sshpass &>/dev/null; then
         sshpass -p "$PHONE_PASS" ssh-copy-id -p "$port" -o StrictHostKeyChecking=accept-new "user@$ip" &>/dev/null \
-          && echo -e "${GREEN}done${NC}" \
-          || echo -e "${RED}failed${NC}"
+          && echo -ne "${GREEN}done${NC}" \
+          || { echo -e "${RED}failed${NC}"; continue; }
+
+        # Verify key auth actually works
+        if ssh -p "$port" -o ConnectTimeout=3 -o BatchMode=yes -o StrictHostKeyChecking=accept-new "user@$ip" "echo ok" &>/dev/null; then
+          echo -e " ${GREEN}(verified)${NC}"
+        else
+          # Key was copied but auth still fails — fix permissions via password
+          echo -ne " ${YELLOW}(fixing perms)${NC}"
+          sshpass -p "$PHONE_PASS" ssh -p "$port" -o StrictHostKeyChecking=accept-new "user@$ip" "
+            chmod 700 ~/.ssh 2>/dev/null
+            chmod 600 ~/.ssh/authorized_keys 2>/dev/null
+            # Fix home dir perms (sshd is strict about this)
+            chmod 755 ~ 2>/dev/null
+          " &>/dev/null
+          # Retry verification
+          if ssh -p "$port" -o ConnectTimeout=3 -o BatchMode=yes "user@$ip" "echo ok" &>/dev/null; then
+            echo -e " ${GREEN}OK${NC}"
+          else
+            echo -e " ${RED}still failing${NC}"
+          fi
+        fi
       else
         echo -e "${YELLOW}skipped (no sshpass)${NC}"
         echo -e "    ${BLUE}Manual fix: ssh-copy-id -p $port user@$ip${NC}"
@@ -386,7 +406,12 @@ echo -e "  ${BLUE}(API server is on NEXUS-PRIME — skipping local API setup)${N
 echo ""
 
 # Pass through any extra args, but always skip nexus (that's on NEXUS-PRIME now)
-bash "$SCRIPT_DIR/deploy-everything.sh" --skip-nexus "$@"
+# Also pass phone password as fallback if SSH keys didn't take
+PASS_ARGS="--skip-nexus"
+if [ -n "${PHONE_PASS:-}" ]; then
+  PASS_ARGS="$PASS_ARGS --password $PHONE_PASS"
+fi
+bash "$SCRIPT_DIR/deploy-everything.sh" $PASS_ARGS "$@"
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"

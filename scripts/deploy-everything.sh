@@ -337,26 +337,50 @@ setup_mining_node() {
 
   echo -e "${YELLOW}  [${NAME}]${NC} ${IP}"
 
-  # Check SSH
+  # Check SSH — try with key first, fall back to password
   if ! ssh_cmd "$SSH_TARGET" "echo ok" &>/dev/null; then
-    echo -e "    ${RED}✗${NC} Cannot SSH — skipping"
+    # Show why it failed
+    SSH_ERR=$(ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$SSH_TARGET" "echo ok" 2>&1 || true)
+    echo -e "    ${RED}✗${NC} Cannot SSH — ${SSH_ERR}"
+    echo -e "    ${YELLOW}Tip: ssh-copy-id user@${IP} or re-run with --password${NC}"
     return 1
   fi
 
-  # Enable community repo + install xmrig
-  ssh_cmd "$SSH_TARGET" "
-    if ! grep -q '^[^#].*community' /etc/apk/repositories 2>/dev/null; then
-      MIRROR=\$(grep -m1 '^http' /etc/apk/repositories | sed 's|/[^/]*/[^/]*$||')
-      ALPINE_VER=\$(cat /etc/alpine-release 2>/dev/null | cut -d. -f1,2)
-      [ -n \"\$MIRROR\" ] && [ -n \"\$ALPINE_VER\" ] && echo \"\${MIRROR}/v\${ALPINE_VER}/community\" | doas tee -a /etc/apk/repositories >/dev/null
+  # Detect OS — Alpine/postmarketOS vs Debian/Ubuntu vs other
+  REMOTE_OS=$(ssh_cmd "$SSH_TARGET" "
+    if [ -f /etc/alpine-release ]; then echo alpine
+    elif command -v apt-get >/dev/null 2>&1; then echo debian
+    elif command -v dnf >/dev/null 2>&1; then echo fedora
+    else echo unknown; fi
+  " 2>/dev/null)
+  echo -e "    OS: ${REMOTE_OS:-unknown}"
+
+  # Install xmrig based on OS
+  INSTALL_OUT=$(ssh_cmd "$SSH_TARGET" "
+    if command -v xmrig >/dev/null 2>&1; then
+      echo 'already-installed'
+    elif [ -f /etc/alpine-release ]; then
+      # Alpine/postmarketOS — enable community repo + install
+      if ! grep -q '^[^#].*community' /etc/apk/repositories 2>/dev/null; then
+        MIRROR=\$(grep -m1 '^http' /etc/apk/repositories | sed 's|/[^/]*/[^/]*\$||')
+        ALPINE_VER=\$(cat /etc/alpine-release 2>/dev/null | cut -d. -f1,2)
+        [ -n \"\$MIRROR\" ] && [ -n \"\$ALPINE_VER\" ] && echo \"\${MIRROR}/v\${ALPINE_VER}/community\" | doas tee -a /etc/apk/repositories >/dev/null
+      fi
+      doas apk update 2>&1 | tail -1
+      doas apk add xmrig 2>&1
+    elif command -v apt-get >/dev/null 2>&1; then
+      # Debian/Ubuntu
+      sudo apt-get update -qq 2>&1 | tail -1
+      sudo apt-get install -y xmrig 2>&1
+    else
+      echo 'ERROR: unsupported OS'
     fi
-    doas apk update >/dev/null 2>&1
-    command -v xmrig >/dev/null 2>&1 || doas apk add xmrig >/dev/null 2>&1
-  " 2>/dev/null
+  " 2>&1)
 
   XMRIG_BIN=$(ssh_cmd "$SSH_TARGET" "command -v xmrig 2>/dev/null" 2>/dev/null)
   if [ -z "$XMRIG_BIN" ]; then
-    echo -e "    ${RED}✗${NC} xmrig install failed"
+    echo -e "    ${RED}✗${NC} xmrig install failed:"
+    echo -e "    ${YELLOW}${INSTALL_OUT}${NC}" | head -5
     return 1
   fi
   echo -e "    ${GREEN}✓${NC} xmrig installed"
