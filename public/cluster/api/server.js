@@ -739,13 +739,29 @@ async function handleCommand(req, res, body) {
     return sendJson(res, 401, { error: 'Invalid password' });
   }
 
-  const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'browse', 'refresh-adb', 'custom', 'reboot', 'screenshot', 'brightness', 'ssh'];
+  const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'mining-level', 'display-mode', 'browse', 'refresh-adb', 'custom', 'reboot', 'screenshot', 'brightness', 'ssh'];
   if (!validCommands.includes(command)) {
     return sendJson(res, 400, { error: 'Invalid command: ' + command });
   }
 
   if (command === 'browse' && !browseUrl) {
     return sendJson(res, 400, { error: 'URL required for browse command' });
+  }
+
+  // Validate mining-level
+  if (command === 'mining-level') {
+    const level = parseInt(body.miningLevel);
+    if (isNaN(level) || level < 0 || level > 4) {
+      return sendJson(res, 400, { error: 'miningLevel required, must be 0-4' });
+    }
+  }
+
+  // Validate display-mode
+  if (command === 'display-mode') {
+    const validModes = ['matrix', 'stats', 'bonsai', 'cycle', 'off'];
+    if (!body.displayMode || !validModes.includes(body.displayMode)) {
+      return sendJson(res, 400, { error: 'displayMode required, must be one of: ' + validModes.join(', ') });
+    }
   }
 
   // SSH/Custom command: run a sanitized command on target node via SSH
@@ -861,17 +877,17 @@ async function executeOnNode(name, command, browseUrl, body) {
   switch (command) {
     case 'start': {
       const svc = name === 'node1' ? 'k3s' : 'k3s-agent';
-      const r = await sshExecAsync(name, `doas rc-service ${svc} start`);
+      const r = await sshExecAsync(name, `doas systemctl start ${svc} 2>/dev/null || doas rc-service ${svc} start`);
       return { ok: r.ok, output: r.stdout || r.stderr };
     }
     case 'stop': {
       const svc = name === 'node1' ? 'k3s' : 'k3s-agent';
-      const r = await sshExecAsync(name, `doas rc-service ${svc} stop`);
+      const r = await sshExecAsync(name, `doas systemctl stop ${svc} 2>/dev/null || doas rc-service ${svc} stop`);
       return { ok: r.ok, output: r.stdout || r.stderr };
     }
     case 'restart': {
       const svc = name === 'node1' ? 'k3s' : 'k3s-agent';
-      const r = await sshExecAsync(name, `doas rc-service ${svc} restart`);
+      const r = await sshExecAsync(name, `doas systemctl restart ${svc} 2>/dev/null || doas rc-service ${svc} restart`);
       return { ok: r.ok, output: r.stdout || r.stderr };
     }
     case 'wake': {
@@ -893,6 +909,35 @@ async function executeOnNode(name, command, browseUrl, body) {
       if (!isPhone) return { ok: false, error: 'Not a phone node' };
       const r = await sshExecAsync(name, 'doas systemctl stop xmrig 2>/dev/null || doas rc-service xmrig stop');
       return { ok: r.ok, output: r.stdout || r.stderr };
+    }
+    case 'mining-level': {
+      if (!isPhone) return { ok: false, error: 'Not a phone node' };
+      const level = parseInt(body.miningLevel);
+      if (level === 0) {
+        const r = await sshExecAsync(name, 'doas systemctl stop xmrig 2>/dev/null || doas rc-service xmrig stop');
+        return { ok: r.ok, output: r.stdout || r.stderr || 'mining off' };
+      }
+      const hintMap = { 1: 12, 2: 25, 3: 50, 4: 100 };
+      const hint = hintMap[level] || 50;
+      const r = await sshExecAsync(name,
+        `doas sed -i 's/"max-threads-hint":[0-9]*/"max-threads-hint":${hint}/' /etc/xmrig/config.json 2>/dev/null; ` +
+        `doas systemctl restart xmrig 2>/dev/null || doas rc-service xmrig restart`
+      );
+      return { ok: r.ok, output: r.stdout || r.stderr || `mining level ${level} (${hint}% CPU)` };
+    }
+    case 'display-mode': {
+      if (!isPhone) return { ok: false, error: 'Not a phone node' };
+      const mode = body.displayMode;
+      if (mode === 'off') {
+        const r = await sshExecAsync(name, 'doas systemctl stop cage@tty7 2>/dev/null; doas rc-service cage stop 2>/dev/null; echo display off');
+        return { ok: r.ok, output: r.stdout || r.stderr || 'display off' };
+      }
+      const r = await sshExecAsync(name,
+        `mkdir -p /home/user/display && echo '${mode}' > /home/user/display/.mode && ` +
+        `{ doas systemctl restart cage@tty7 2>/dev/null || doas rc-service cage restart 2>/dev/null || doas rc-service greetd restart 2>/dev/null; } && ` +
+        `echo 'display mode set to ${mode}'`
+      );
+      return { ok: r.ok, output: r.stdout || r.stderr || `display mode: ${mode}` };
     }
     case 'browse': {
       if (!isPhone) return { ok: false, error: 'Not a phone node' };
