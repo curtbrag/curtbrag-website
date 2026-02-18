@@ -58,6 +58,8 @@ while [[ $# -gt 0 ]]; do
     --stagger) STAGGER_SECS="$2"; shift 2;;
     --skip-mining) SKIP_MINING=1; shift;;
     --skip-nexus) SKIP_NEXUS=1; shift;;
+    --ssh-port) SSH_PORT="$2"; shift 2;;
+    --diagnose) DIAGNOSE=1; shift;;
     -h|--help)
       echo "Usage: $0 [options]"
       echo "  --wallet ADDR     XMR wallet address"
@@ -66,6 +68,8 @@ while [[ $# -gt 0 ]]; do
       echo "  --stagger N        Seconds between starting each miner (default: 30)"
       echo "  --skip-mining      Skip mining setup on phones"
       echo "  --skip-nexus       Skip API server setup on this machine"
+      echo "  --ssh-port PORT    SSH port (default: 22, Termux uses 8022)"
+      echo "  --diagnose         Run SSH diagnostics on all nodes"
       exit 0;;
     *) shift;;
   esac
@@ -78,15 +82,74 @@ banner() {
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
-# SSH wrapper
+# SSH wrapper — supports custom port via SSH_PORT env (default: 22)
+SSH_PORT="${SSH_PORT:-22}"
+
 ssh_cmd() {
   local target="$1"; shift
   if [ -n "${SSH_PASS:-}" ]; then
-    sshpass -p "$SSH_PASS" ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$target" "$@"
+    sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$target" "$@"
   else
-    ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$target" "$@"
+    ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$target" "$@"
   fi
 }
+
+scp_cmd() {
+  local src="$1" dst="$2"
+  scp -P "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$src" "$dst" 2>/dev/null
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STEP 0: SSH Diagnostics (--diagnose)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+diagnose_ssh() {
+  banner "SSH Diagnostics"
+  echo -e "  SSH port: ${SSH_PORT}"
+  echo ""
+  for name in $(echo "${!NODES[@]}" | tr ' ' '\n' | sort); do
+    IP="${NODES[$name]}"
+    echo -ne "  ${YELLOW}[${name}]${NC} ${IP}:${SSH_PORT} ... "
+
+    # Step 1: ping
+    if ping -c 1 -W 2 "$IP" &>/dev/null; then
+      echo -ne "${GREEN}ping OK${NC} → "
+    else
+      echo -e "${RED}ping FAILED${NC} (host unreachable or not on network)"
+      continue
+    fi
+
+    # Step 2: port open
+    if timeout 3 bash -c "echo >/dev/tcp/$IP/$SSH_PORT" 2>/dev/null; then
+      echo -ne "${GREEN}port open${NC} → "
+    else
+      echo -e "${RED}port ${SSH_PORT} closed${NC} (sshd not running or wrong port)"
+      # Try common alternate ports
+      for alt_port in 22 8022 2222; do
+        [ "$alt_port" = "$SSH_PORT" ] && continue
+        if timeout 3 bash -c "echo >/dev/tcp/$IP/$alt_port" 2>/dev/null; then
+          echo -e "    ${YELLOW}→ port ${alt_port} IS open. Try: --ssh-port ${alt_port}${NC}"
+        fi
+      done
+      continue
+    fi
+
+    # Step 3: SSH auth
+    if ssh_cmd "user@${IP}" "echo ok" &>/dev/null; then
+      echo -e "${GREEN}SSH OK${NC}"
+    else
+      echo -e "${RED}SSH auth FAILED${NC} (need key setup or --password)"
+      echo -e "    ${YELLOW}→ Fix: ssh-copy-id -p ${SSH_PORT} user@${IP}${NC}"
+    fi
+  done
+  echo ""
+}
+
+# Run diagnostics if requested
+if [ -n "${DIAGNOSE:-}" ]; then
+  diagnose_ssh
+  exit 0
+fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STEP 1: NEXUS-PRIME — Cluster API Server
@@ -200,16 +263,51 @@ setup_tailscale_funnel() {
   banner "STEP 2/4 — Tailscale Funnel"
 
   if ! command -v tailscale &>/dev/null; then
-    echo -e "  ${YELLOW}⚠${NC} Tailscale not installed. Install it:"
-    echo -e "    curl -fsSL https://tailscale.com/install.sh | sh"
-    echo -e "  Then re-run this script."
-    echo -e "  ${YELLOW}Skipping funnel setup.${NC}"
-    return 0
+    echo -e "  ${YELLOW}⚠${NC} Tailscale not installed. Attempting auto-install..."
+    # Detect platform and install
+    if [ -f /etc/steamos-release ] || uname -a | grep -qi steamdeck 2>/dev/null; then
+      # Steam Deck — use deck-tailscale installer
+      echo -e "  ${BLUE}Detected Steam Deck — using deck-tailscale installer${NC}"
+      if [ ! -d "$HOME/deck-tailscale" ]; then
+        git clone https://github.com/tailscale-dev/deck-tailscale.git "$HOME/deck-tailscale" 2>/dev/null
+      fi
+      # deck-tailscale needs sudo and working DNS — ensure resolv.conf is set
+      if ! sudo cat /etc/resolv.conf 2>/dev/null | grep -q nameserver; then
+        echo -e "  ${YELLOW}Fixing DNS for root...${NC}"
+        echo -e "nameserver 8.8.8.8\nnameserver 1.1.1.1" | sudo tee /etc/resolv.conf >/dev/null
+      fi
+      (cd "$HOME/deck-tailscale" && sudo bash tailscale.sh) 2>&1
+      if [ -f /etc/profile.d/tailscale.sh ]; then
+        source /etc/profile.d/tailscale.sh 2>/dev/null || export PATH="$PATH:/opt/tailscale"
+      fi
+    elif [ -f /etc/alpine-release ]; then
+      # Alpine/postmarketOS
+      sudo apk add tailscale 2>/dev/null || doas apk add tailscale 2>/dev/null
+      sudo rc-update add tailscale default 2>/dev/null || true
+      sudo service tailscale start 2>/dev/null || true
+    else
+      # Generic Linux
+      curl -fsSL https://tailscale.com/install.sh | sh
+    fi
+
+    if ! command -v tailscale &>/dev/null; then
+      echo -e "  ${RED}✗${NC} Tailscale install failed. Install manually:"
+      echo -e "    Steam Deck: cd ~/deck-tailscale && sudo bash tailscale.sh"
+      echo -e "    Linux:      curl -fsSL https://tailscale.com/install.sh | sh"
+      echo -e "  ${YELLOW}Skipping funnel setup.${NC}"
+      return 0
+    fi
+    echo -e "  ${GREEN}✓${NC} Tailscale installed"
   fi
 
   if ! tailscale status &>/dev/null; then
-    echo -e "  ${RED}✗${NC} Tailscale not logged in. Run: sudo tailscale up"
-    return 0
+    echo -e "  ${YELLOW}⚠${NC} Tailscale not logged in."
+    echo -e "  ${BLUE}Attempting: sudo tailscale up --operator=$(whoami) --ssh${NC}"
+    sudo tailscale up --operator="$(whoami)" --ssh --qr 2>&1 || {
+      echo -e "  ${RED}✗${NC} Tailscale login failed. Run manually:"
+      echo -e "    sudo tailscale up --operator=$(whoami) --ssh"
+      return 0
+    }
   fi
 
   echo -e "  ${GREEN}✓${NC} Tailscale connected"
@@ -374,8 +472,7 @@ setup_node1_services() {
   # Copy scripts to node1
   echo -e "\n${YELLOW}  Copying scripts to node1...${NC}"
   for script in push-cluster-status.sh poll-cluster-commands.sh cluster-nodes.conf; do
-    scp -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
-      "$SCRIPT_DIR/$script" "${NODE1_SSH}:/home/user/$script" 2>/dev/null \
+    scp_cmd "$SCRIPT_DIR/$script" "${NODE1_SSH}:/home/user/$script" \
       && echo -e "  ${GREEN}✓${NC} $script" \
       || echo -e "  ${RED}✗${NC} Failed to copy $script"
   done
@@ -480,7 +577,14 @@ echo -e "  ${BLUE}Check dashboard:${NC}"
 echo -e "    https://curtbrag.com/cluster"
 echo ""
 echo -e "  ${BLUE}Manage:${NC}"
-echo -e "    sudo systemctl status cluster-api   # API server"
-echo -e "    sudo journalctl -u cluster-api -f   # API logs"
-echo -e "    ssh user@192.168.1.206 'tail -f /var/log/xmrig.log'  # Mining logs"
+if command -v systemctl &>/dev/null; then
+  echo -e "    sudo systemctl status cluster-api   # API server"
+  echo -e "    sudo journalctl -u cluster-api -f   # API logs"
+else
+  echo -e "    curl http://localhost:${API_PORT}/api/health  # API health"
+fi
+echo -e "    ssh -p ${SSH_PORT} user@192.168.1.206 'tail -f /var/log/xmrig.log'  # Mining logs"
+echo ""
+echo -e "  ${BLUE}Diagnostics:${NC}"
+echo -e "    bash scripts/deploy-everything.sh --diagnose    # Check SSH to all phones"
 echo ""
