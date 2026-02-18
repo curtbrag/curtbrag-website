@@ -1,5 +1,5 @@
 #!/bin/sh
-# Enable xmrig HTTP API on all cluster nodes
+# Enable xmrig HTTP API on all cluster nodes (no jq required)
 # Run on node1: sh /home/user/enable-xmrig-api.sh
 set -u
 
@@ -14,7 +14,7 @@ fi
 
 log() { echo "[$(date '+%H:%M:%S')] $1"; }
 
-# jq command to enable the HTTP API in xmrig config
+# Uses sed only — no jq needed on worker nodes
 ENABLE_CMD='
 CONFIG="/etc/xmrig/config.json"
 if [ ! -f "$CONFIG" ]; then
@@ -23,37 +23,49 @@ if [ ! -f "$CONFIG" ]; then
 fi
 
 # Check if http API is already enabled
-CURRENT=$(cat "$CONFIG" | jq -r ".http.enabled // false" 2>/dev/null)
-if [ "$CURRENT" = "true" ]; then
-  echo "OK: already enabled"
-  exit 0
+if grep -q "\"http\"" "$CONFIG" && grep -q "\"enabled\": *true" "$CONFIG"; then
+  # Verify it responds
+  if curl -s --connect-timeout 2 http://127.0.0.1:18080/1/summary >/dev/null 2>&1; then
+    echo "OK: already enabled and responding"
+    exit 0
+  fi
 fi
 
-# Enable http API (bind to localhost only)
 doas cp "$CONFIG" "${CONFIG}.bak"
-doas sh -c "jq '"'"'.http = {"enabled":true,"host":"127.0.0.1","port":18080,"access-token":null,"restricted":true}'"'"' \"${CONFIG}.bak\" > \"$CONFIG\""
+
+if grep -q "\"http\"" "$CONFIG"; then
+  # http block exists — flip enabled to true
+  doas sed -i "s/\"enabled\": *false/\"enabled\": true/" "$CONFIG"
+  echo "Toggled enabled: false -> true"
+else
+  # No http block — inject one before the final closing brace
+  doas sed -i "s/^}$/,\"http\":{\"enabled\":true,\"host\":\"127.0.0.1\",\"port\":18080,\"access-token\":null,\"restricted\":true}\n}/" "$CONFIG"
+  echo "Injected http block"
+fi
 
 # Restart xmrig
-doas pkill xmrig 2>/dev/null; sleep 2
+doas pkill xmrig 2>/dev/null
+sleep 2
 if [ -f /etc/init.d/xmrig ]; then
   doas rc-service xmrig restart 2>/dev/null
-elif command -v systemctl >/dev/null 2>&1; then
+elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files xmrig.service >/dev/null 2>&1; then
   doas systemctl restart xmrig 2>/dev/null
 else
   doas /usr/bin/xmrig -c "$CONFIG" -B 2>/dev/null
 fi
-sleep 1
+sleep 2
 
 # Verify
-if curl -s --connect-timeout 3 http://127.0.0.1:18080/1/summary | jq .hashrate.total[0] >/dev/null 2>&1; then
+if curl -s --connect-timeout 3 http://127.0.0.1:18080/1/summary 2>/dev/null | grep -q hashrate; then
   echo "OK: API enabled and responding"
 else
-  echo "WARN: API enabled but not yet responding (may need a moment)"
+  echo "WARN: restarted, API may need a moment to come up"
 fi
 '
 
 log "Enabling xmrig HTTP API on all nodes..."
 
+FAILED=""
 for entry in $NODE_LIST; do
   name="${entry%%:*}"
   rest="${entry#*:}"
@@ -68,6 +80,10 @@ for entry in $NODE_LIST; do
       "user@$ip" "$ENABLE_CMD" 2>&1)
   fi
   log "  $name: $RESULT"
+  echo "$RESULT" | grep -qi "timeout\|refused\|No route" && FAILED="$FAILED $name"
 done
 
+if [ -n "$FAILED" ]; then
+  log "Unreachable nodes:$FAILED (check if powered on / on WiFi)"
+fi
 log "Done! Hashrates should appear on next dashboard push (within 5 min)."
