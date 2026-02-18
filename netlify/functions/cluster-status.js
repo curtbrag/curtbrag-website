@@ -135,7 +135,7 @@ const DEMO_DATA = {
     totalHashrate: '~1.5 KH/s',
     totalHashrateRaw: 1500,
     coin: 'XMR',
-    pool: 'supportxmr.com',
+    pool: 'moneroocean.stream',
     estimatedDaily: '$0.08',
     estimatedMonthly: '$2.25',
     workers: [

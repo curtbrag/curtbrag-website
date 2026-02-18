@@ -1186,7 +1186,7 @@ async function gatherMiningStats() {
   let totalPaid = null;
   let poolHashrate = null;
   if (CONFIG.xmrWallet) {
-    const poolResult = await httpGetJson('supportxmr.com', 443, `/api/miner/${CONFIG.xmrWallet}/stats`, 5000);
+    const poolResult = await httpGetJson('api.moneroocean.stream', 443, `/miner/${CONFIG.xmrWallet}/stats`, 5000);
     if (poolResult.ok && poolResult.data) {
       const pd = poolResult.data;
       poolBalance = pd.amtDue ? (pd.amtDue / 1e12).toFixed(6) + ' XMR' : null;
@@ -1204,10 +1204,11 @@ async function gatherMiningStats() {
     const dailyBlocks = 720;
     const blockReward = 0.6;
     try {
-      const networkResult = await httpGetJson('supportxmr.com', 443, '/api/network/stats', 5000);
+      const networkResult = await httpGetJson('api.moneroocean.stream', 443, '/network/stats', 5000);
       if (networkResult.ok && networkResult.data) {
-        if (networkResult.data.difficulty) networkHashrate = networkResult.data.difficulty / 120;
-        if (networkResult.data.value) xmrPrice = networkResult.data.value;
+        const ps = networkResult.data.pool_statistics || networkResult.data;
+        if (ps.difficulty) networkHashrate = ps.difficulty / 120;
+        if (networkResult.data.price) xmrPrice = networkResult.data.price;
       }
     } catch { /* use fallbacks */ }
     const dailyXmr = (totalHashrate / networkHashrate) * dailyBlocks * blockReward;
