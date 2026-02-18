@@ -5748,6 +5748,8 @@
     try { updateSoundToggle(); } catch(e) { console.warn('updateSoundToggle:', e); }
     try { initTheme(); } catch(e) { console.warn('initTheme:', e); }
     try { initApiConfig(); } catch(e) { console.warn('initApiConfig:', e); }
+    // Auto-detect API on first load if none saved
+    if (!apiEndpoint) { try { autoDetectApi(); } catch(e) { console.warn('autoDetect:', e); } }
     try { applyNodeView(); } catch(e) { console.warn('applyNodeView:', e); }
     try { updateClusterAge(); } catch(e) { console.warn('updateClusterAge:', e); }
     setInterval(updateClusterAge, 60000);
