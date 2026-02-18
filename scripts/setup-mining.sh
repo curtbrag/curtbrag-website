@@ -7,14 +7,16 @@
 #   1. Enables Alpine community repo (required — xmrig is not in the default repos)
 #   2. Installs xmrig via apk (the only reliable method for Linux ARM64)
 #   3. Deploys xmrig config with wallet/pool/worker settings
-#   4. Creates and starts an OpenRC service (uses start-stop-daemon for proper daemonization)
+#   4. Creates and starts a systemd service (postmarketOS v25.12 uses systemd)
+#      Falls back to OpenRC if systemd is not available.
 #
-# Why OpenRC and not nohup/disown/setsid?
-#   The phones run postmarketOS (Alpine Linux) with BusyBox ash.
+# Why systemd/OpenRC and not nohup/disown/setsid?
+#   The phones run postmarketOS with BusyBox ash.
 #   - disown: doesn't exist in BusyBox ash
 #   - nohup + &: gets killed when SSH session closes
 #   - setsid: detaches but doas still reaps it
-#   - start-stop-daemon: BusyBox built-in, designed exactly for this. OpenRC wraps it.
+#   - systemctl: proper process management via systemd (primary)
+#   - start-stop-daemon: BusyBox built-in, OpenRC fallback
 
 set -e
 
@@ -24,7 +26,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-WALLET=""
+WALLET="44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT"
 POOL="gulf.moneroocean.stream:20128"
 TARGET_NODE=""
 HTTP_TOKEN=""
