@@ -204,11 +204,24 @@ if [ -n "$NEED_KEY_COPY" ]; then
   if [ -n "$PHONE_PASS" ]; then
     if ! command -v sshpass &>/dev/null; then
       echo -e "  ${YELLOW}Installing sshpass...${NC}"
-      # On Steam Deck, sshpass might not be available via pacman
-      # Try to compile from source as a fallback
       if command -v pacman &>/dev/null; then
+        # Steam Deck has a read-only root FS — must disable it first
+        echo -e "  ${BLUE}Disabling read-only filesystem...${NC}"
         sudo steamos-readonly disable 2>/dev/null || true
-        sudo pacman -Sy --noconfirm sshpass 2>/dev/null || true
+
+        # Pacman keyring must be initialized or installs fail
+        echo -e "  ${BLUE}Initializing pacman keyring...${NC}"
+        sudo pacman-key --init 2>/dev/null
+        sudo pacman-key --populate archlinux holo 2>/dev/null
+
+        echo -e "  ${BLUE}Installing sshpass via pacman...${NC}"
+        if sudo pacman -Sy --noconfirm sshpass; then
+          echo -e "  ${GREEN}✓${NC} sshpass installed"
+        else
+          echo -e "  ${RED}✗${NC} sshpass install failed"
+        fi
+
+        # Re-enable read-only FS
         sudo steamos-readonly enable 2>/dev/null || true
       fi
     fi
