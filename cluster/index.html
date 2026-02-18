@@ -1256,7 +1256,7 @@
         <select id="targetSelect" aria-label="Select target nodes" style="background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.4rem 0.75rem; border-radius: 6px; font-family: inherit; font-size: 0.8rem;">
           <option value="all">All Nodes</option>
           <option value="phones">Phones Only (node1-10)</option>
-          <option value="pcs">PCs Only (neo, vikixii, aorus)</option>
+          <option value="pcs">PCs Only (neo, vikixii, nexus-prime)</option>
           <optgroup label="Phones">
             <option value="node1">node1 (control plane)</option>
             <option value="node2">node2</option>
@@ -1272,7 +1272,7 @@
           <optgroup label="PCs / Laptops">
             <option value="neo">neo (Desktop)</option>
             <option value="vikixii">vikixii (Laptop)</option>
-            <option value="aorus-node">aorus-node (Desktop)</option>
+            <option value="nexus-prime">nexus-prime (Control Plane)</option>
             <option value="steamdeck">steamdeck</option>
           </optgroup>
           <optgroup label="Other">
@@ -1917,7 +1917,7 @@
           <option value="node1">node1</option><option value="node2">node2</option><option value="node3">node3</option>
           <option value="node4">node4</option><option value="node5">node5</option><option value="node6">node6</option>
           <option value="node7">node7</option><option value="node8">node8</option><option value="node9">node9</option>
-          <option value="node10">node10</option><option value="aorus-node">aorus</option>
+          <option value="node10">node10</option><option value="nexus-prime">nexus-prime</option>
         </select>
         <button class="svc-check-btn" onclick="clearTerminal()"><i class="fa-solid fa-eraser"></i> Clear</button>
       </div>
@@ -1957,7 +1957,7 @@
         <h3><i class="fa-solid fa-microchip"></i> Hardware</h3>
         <div class="info-list">
           <div class="info-item"><i class="fa-solid fa-mobile"></i><span class="label">Phones:</span><span class="value">10x OnePlus 6T (ARM64)</span></div>
-          <div class="info-item"><i class="fa-solid fa-desktop"></i><span class="label">PCs:</span><span class="value">3x WSL2 (neo, vikixii, aorus)</span></div>
+          <div class="info-item"><i class="fa-solid fa-desktop"></i><span class="label">PCs:</span><span class="value">NEXUS-PRIME (Dell Precision 3541), neo, vikixii</span></div>
           <div class="info-item"><i class="fa-solid fa-gamepad"></i><span class="label">Gaming:</span><span class="value">Steam Deck (x86)</span></div>
           <div class="info-item"><i class="fa-solid fa-video"></i><span class="label">KVM:</span><span class="value">2x PiKVM (ARM64)</span></div>
         </div>
@@ -5046,14 +5046,16 @@
         'http://localhost:3847',
         'http://127.0.0.1:3847',
         isSecure ? 'https://192.168.1.206:3847' : 'http://192.168.1.206:3847',
-        isSecure ? 'https://aorus:3847' : 'http://aorus:3847',
-        isSecure ? 'https://aorus.local:3847' : 'http://aorus.local:3847',
+        isSecure ? 'https://nexus-prime:3847' : 'http://nexus-prime:3847',
+        isSecure ? 'https://nexus-prime.local:3847' : 'http://nexus-prime.local:3847',
+        isSecure ? 'https://192.168.1.179:3847' : 'http://192.168.1.179:3847',
       ];
       // When served over HTTPS, also try HTTP variants as fallback
       if (isSecure) {
         candidates.push('http://192.168.1.206:3847');
-        candidates.push('http://aorus:3847');
-        candidates.push('http://aorus.local:3847');
+        candidates.push('http://192.168.1.179:3847');
+        candidates.push('http://nexus-prime:3847');
+        candidates.push('http://nexus-prime.local:3847');
       }
 
       // Also check if there's a saved Tailscale URL
@@ -5074,7 +5076,7 @@
           }
         } catch (e) { /* continue */ }
       }
-      showToast('Could not find API server. Start it on AORUS first.', 'error');
+      showToast('Could not find API server. Start it on NEXUS-PRIME first.', 'error');
     }
 
     // ─── Dashboard Config Import/Export ──────────────────────────────
@@ -5685,9 +5687,9 @@
       if (tickerData.alerts !== undefined) items.push({ icon: 'fa-bell', label: 'Alerts', val: tickerData.alerts });
       if (tickerData.uptime) items.push({ icon: 'fa-clock', label: 'API Uptime', val: tickerData.uptime });
 
-      // Power estimate: 10 phones @ ~3W each + AORUS ~200W
+      // Power estimate: 10 phones @ ~3W each + NEXUS-PRIME ~65W
       var phonesUp = tickerData.nodesReady || 0;
-      var watts = (Math.min(phonesUp, 10) * 3) + 200;
+      var watts = (Math.min(phonesUp, 10) * 3) + 65;
       items.push({ icon: 'fa-bolt', label: 'Power', val: watts + 'W' });
       items.push({ icon: 'fa-dollar-sign', label: 'Daily Cost', val: '$' + ((watts * 24 / 1000) * 0.12).toFixed(2) });
 
