@@ -125,7 +125,6 @@ else
     NODE_IP="192.168.1.$((205 + i))"
     NODE_NAME="node$i"
     NODE_ROLE="worker"
-    [ "$i" = "1" ] && NODE_ROLE="control-plane"
     # Check reachability: node1 locally, others via SSH (5s timeout)
     if [ "$i" = "1" ]; then
       # Actually verify node1 is functional instead of assuming Ready

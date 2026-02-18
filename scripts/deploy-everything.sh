@@ -58,6 +58,7 @@ while [[ $# -gt 0 ]]; do
     --stagger) STAGGER_SECS="$2"; shift 2;;
     --skip-mining) SKIP_MINING=1; shift;;
     --skip-nexus) SKIP_NEXUS=1; shift;;
+    --api-only) API_ONLY=1; shift;;
     --ssh-port) SSH_PORT="$2"; shift 2;;
     --diagnose) DIAGNOSE=1; shift;;
     -h|--help)
@@ -68,6 +69,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --stagger N        Seconds between starting each miner (default: 30)"
       echo "  --skip-mining      Skip mining setup on phones"
       echo "  --skip-nexus       Skip API server setup on this machine"
+      echo "  --api-only         Only set up API server + Tailscale (no mining, no node1)"
       echo "  --ssh-port PORT    SSH port (default: 22, Termux uses 8022)"
       echo "  --diagnose         Run SSH diagnostics on all nodes"
       exit 0;;
@@ -544,15 +546,20 @@ if [ -z "${SKIP_NEXUS:-}" ]; then
   setup_tailscale_funnel
 fi
 
-# Step 3: Mining
-if [ -z "${SKIP_MINING:-}" ]; then
-  deploy_mining
+# If --api-only, skip mining and node1 services
+if [ -n "${API_ONLY:-}" ]; then
+  echo -e "${YELLOW}API-only mode — skipping mining and node1 setup${NC}"
 else
-  echo -e "${YELLOW}Skipping mining setup (--skip-mining)${NC}"
-fi
+  # Step 3: Mining
+  if [ -z "${SKIP_MINING:-}" ]; then
+    deploy_mining
+  else
+    echo -e "${YELLOW}Skipping mining setup (--skip-mining)${NC}"
+  fi
 
-# Step 4: node1 push + poller
-setup_node1_services
+  # Step 4: node1 push + poller
+  setup_node1_services
+fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # FINAL SUMMARY
