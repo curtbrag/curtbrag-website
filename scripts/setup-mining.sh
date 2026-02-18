@@ -29,8 +29,9 @@ POOL="gulf.moneroocean.stream:20128"
 TARGET_NODE=""
 HTTP_TOKEN=""
 CPU_HINT=75  # Max 75% CPU to avoid thermal throttle
-SSH_PASS=""  # Optional: SSH/doas password for phone nodes
-USE_TLS=true # MoneroOcean uses TLS by default on port 20128
+SSH_PASS=""       # Optional: SSH/doas password for phone nodes
+USE_TLS=true      # MoneroOcean uses TLS by default on port 20128
+STAGGER_SECS=30   # Seconds between starting each node (prevents mass OOM)
 
 # Node IPs
 declare -A NODES=(
@@ -56,6 +57,7 @@ while [[ $# -gt 0 ]]; do
     --cpu) CPU_HINT="$2"; shift 2;;
     --password) SSH_PASS="$2"; shift 2;;
     --no-tls) USE_TLS=false; shift;;
+    --stagger) STAGGER_SECS="$2"; shift 2;;
     -h|--help)
       echo "Usage: $0 --wallet <XMR_ADDRESS> [options]"
       echo "  --wallet     Monero wallet address (REQUIRED)"
@@ -65,6 +67,8 @@ while [[ $# -gt 0 ]]; do
       echo "  --cpu        CPU usage hint % (default: 75)"
       echo "  --password   SSH/doas password for phone nodes"
       echo "  --no-tls     Disable TLS for pool connection"
+      echo "  --stagger N  Wait N seconds between starting each node (default: 30)"
+      echo "               Prevents mass OOM from simultaneous 2.3GB RandomX allocations"
       exit 0;;
     *) shift;;
   esac
@@ -240,12 +244,39 @@ setup_node() {
 XMRIG_CONFIG
   echo -e "  ${GREEN}✓${NC} Config written to /etc/xmrig/config.json"
 
-  # Step 4: Create and start OpenRC service
-  # (postmarketOS uses OpenRC, not systemd)
-  INIT_SYS=$(ssh_cmd "$SSH_TARGET" "command -v rc-service >/dev/null 2>&1 && echo openrc || { command -v systemctl >/dev/null 2>&1 && echo systemd; } || echo none" 2>/dev/null)
+  # Step 4: Create and start service
+  # Detect init system — check systemd FIRST (postmarketOS newer versions use systemd,
+  # and the phones have proven to work with systemctl enable/start/stop)
+  INIT_SYS=$(ssh_cmd "$SSH_TARGET" "command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1 && echo systemd || { command -v rc-service >/dev/null 2>&1 && echo openrc; } || echo none" 2>/dev/null)
   echo -e "  Init system: ${INIT_SYS}"
 
-  if [ "$INIT_SYS" = "openrc" ]; then
+  # Stop any existing xmrig (cleanup from manual runs or stale processes)
+  ssh_cmd "$SSH_TARGET" "doas killall xmrig 2>/dev/null; sleep 1; true" 2>/dev/null
+
+  if [ "$INIT_SYS" = "systemd" ]; then
+    echo -e "  Creating systemd service..."
+    # Unmask in case it was masked during previous cleanup
+    ssh_cmd "$SSH_TARGET" "doas systemctl unmask xmrig.service 2>/dev/null" 2>/dev/null
+    ssh_cmd "$SSH_TARGET" "doas tee /etc/systemd/system/xmrig.service > /dev/null" << 'SVCUNIT'
+[Unit]
+Description=XMRig Monero Miner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/xmrig --config=/etc/xmrig/config.json --no-color
+Restart=always
+RestartSec=15
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
+SVCUNIT
+    ssh_cmd "$SSH_TARGET" "doas systemctl daemon-reload; doas systemctl enable xmrig 2>/dev/null; doas systemctl restart xmrig" 2>/dev/null
+    SVC_STATUS=$(ssh_cmd "$SSH_TARGET" "doas systemctl is-active xmrig.service 2>&1" 2>/dev/null)
+    echo -e "  Service: ${SVC_STATUS}"
+  elif [ "$INIT_SYS" = "openrc" ]; then
     echo -e "  Creating OpenRC service..."
     ssh_cmd "$SSH_TARGET" "doas tee /etc/init.d/xmrig > /dev/null && doas chmod +x /etc/init.d/xmrig" << 'OPENRC_SVC'
 #!/sbin/openrc-run
@@ -264,30 +295,9 @@ depend() {
   after firewall
 }
 OPENRC_SVC
-    # Stop any existing xmrig (cleanup from manual runs)
-    ssh_cmd "$SSH_TARGET" "doas killall xmrig 2>/dev/null; sleep 1; true" 2>/dev/null
     ssh_cmd "$SSH_TARGET" "doas rc-update add xmrig default 2>/dev/null; doas rc-service xmrig restart" 2>/dev/null
     SVC_STATUS=$(ssh_cmd "$SSH_TARGET" "doas rc-service xmrig status 2>&1" 2>/dev/null)
     echo -e "  Service: ${SVC_STATUS}"
-  elif [ "$INIT_SYS" = "systemd" ]; then
-    echo -e "  Creating systemd service..."
-    ssh_cmd "$SSH_TARGET" "doas tee /etc/systemd/system/xmrig.service > /dev/null" << 'SVCUNIT'
-[Unit]
-Description=XMRig Monero Miner
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/xmrig --config=/etc/xmrig/config.json
-Restart=always
-RestartSec=10
-Nice=10
-
-[Install]
-WantedBy=multi-user.target
-SVCUNIT
-    ssh_cmd "$SSH_TARGET" "doas systemctl daemon-reload; doas systemctl enable xmrig 2>/dev/null; doas systemctl restart xmrig" 2>/dev/null
   else
     echo -e "  ${RED}✗${NC} No init system found — cannot create service"
     return 1
@@ -328,10 +338,16 @@ if [ -n "$TARGET_NODE" ]; then
   fi
   setup_node "$TARGET_NODE"
 else
-  echo -e "${YELLOW}Setting up all ${#NODES[@]} phone nodes...${NC}\n"
+  echo -e "${YELLOW}Setting up all ${#NODES[@]} phone nodes (${STAGGER_SECS}s stagger)...${NC}\n"
   SUCCESSES=0
   FAILURES=0
+  NODE_NUM=0
   for name in $(echo "${!NODES[@]}" | tr ' ' '\n' | sort); do
+    NODE_NUM=$((NODE_NUM + 1))
+    if [ "$NODE_NUM" -gt 1 ] && [ "$STAGGER_SECS" -gt 0 ]; then
+      echo -e "${BLUE}  Waiting ${STAGGER_SECS}s before next node (RandomX dataset allocation)...${NC}"
+      sleep "$STAGGER_SECS"
+    fi
     if setup_node "$name"; then
       SUCCESSES=$((SUCCESSES + 1))
     else

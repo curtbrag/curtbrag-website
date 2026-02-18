@@ -886,12 +886,12 @@ async function executeOnNode(name, command, browseUrl, body) {
     }
     case 'mining-start': {
       if (!isPhone) return { ok: false, error: 'Not a phone node' };
-      const r = await sshExecAsync(name, 'doas rc-service xmrig start');
+      const r = await sshExecAsync(name, 'doas systemctl start xmrig 2>/dev/null || doas rc-service xmrig start');
       return { ok: r.ok, output: r.stdout || r.stderr };
     }
     case 'mining-stop': {
       if (!isPhone) return { ok: false, error: 'Not a phone node' };
-      const r = await sshExecAsync(name, 'doas rc-service xmrig stop');
+      const r = await sshExecAsync(name, 'doas systemctl stop xmrig 2>/dev/null || doas rc-service xmrig stop');
       return { ok: r.ok, output: r.stdout || r.stderr };
     }
     case 'browse': {
