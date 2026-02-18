@@ -12,6 +12,8 @@ elif [ -f /home/user/cluster-nodes.conf ]; then
   load_node_config
 fi
 
+SSH_PORT="${SSH_PORT:-22}"
+
 log() { echo "[$(date '+%H:%M:%S')] $1"; }
 
 # Uses sed only — no jq needed on worker nodes
@@ -76,7 +78,7 @@ for entry in $NODE_LIST; do
     RESULT=$(sh -c "$ENABLE_CMD" 2>&1)
   else
     log "$name ($ip): running via SSH..."
-    RESULT=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+    RESULT=$(ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
       "user@$ip" "$ENABLE_CMD" 2>&1)
   fi
   log "  $name: $RESULT"

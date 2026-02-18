@@ -32,6 +32,7 @@ TARGET_NODE=""
 HTTP_TOKEN=""
 CPU_HINT=75  # Max 75% CPU to avoid thermal throttle
 SSH_PASS=""       # Optional: SSH/doas password for phone nodes
+SSH_PORT="${SSH_PORT:-22}"  # SSH port (default: 22, Termux uses 8022)
 USE_TLS=true      # MoneroOcean uses TLS by default on port 20128
 STAGGER_SECS=30   # Seconds between starting each node (prevents mass OOM)
 
@@ -59,6 +60,7 @@ while [[ $# -gt 0 ]]; do
     --cpu) CPU_HINT="$2"; shift 2;;
     --password) SSH_PASS="$2"; shift 2;;
     --no-tls) USE_TLS=false; shift;;
+    --ssh-port) SSH_PORT="$2"; shift 2;;
     --stagger) STAGGER_SECS="$2"; shift 2;;
     -h|--help)
       echo "Usage: $0 --wallet <XMR_ADDRESS> [options]"
@@ -69,6 +71,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --cpu        CPU usage hint % (default: 75)"
       echo "  --password   SSH/doas password for phone nodes"
       echo "  --no-tls     Disable TLS for pool connection"
+      echo "  --ssh-port P SSH port (default: 22, Termux uses 8022)"
       echo "  --stagger N  Wait N seconds between starting each node (default: 30)"
       echo "               Prevents mass OOM from simultaneous 2.3GB RandomX allocations"
       exit 0;;
@@ -102,9 +105,9 @@ ssh_cmd() {
       echo -e "${RED}Error: sshpass required when using --password (install: apk add sshpass / apt install sshpass)${NC}" >&2
       return 1
     fi
-    sshpass -p "$SSH_PASS" ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$target" "$@"
+    sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$target" "$@"
   else
-    ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$target" "$@"
+    ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$target" "$@"
   fi
 }
 

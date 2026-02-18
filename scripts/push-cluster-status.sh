@@ -22,6 +22,9 @@ log() {
 
 log "Starting cluster status push..."
 
+# SSH port — configurable via env, defaults to 22
+SSH_PORT="${SSH_PORT:-22}"
+
 # Load shared node configuration
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ -f "$SCRIPT_DIR/cluster-nodes.conf" ]; then
@@ -131,7 +134,7 @@ else
       else
         NODE_STATUS="NotReady"
       fi
-    elif ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then
+    elif ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then
       NODE_STATUS="Ready"
     else
       NODE_STATUS="NotReady"
@@ -222,7 +225,7 @@ for i in $(seq 1 10); do
       RAW=$(sh -c "$METRICS_CMD" 2>/dev/null)
     else
       NODE_IP="192.168.1.$((205 + i))"
-      RAW=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+      RAW=$(ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
         "user@$NODE_IP" "$METRICS_CMD" 2>/dev/null)
     fi
     echo "$RAW" > "$TMP_DIR/node${i}.tmp"
@@ -367,7 +370,7 @@ for i in $(seq 1 10); do
       XMRIG=$(curl -s --connect-timeout 5 --max-time 8 "http://127.0.0.1:18080/1/summary" 2>/dev/null)
     else
       # xmrig binds to localhost, so query via SSH tunnel to the remote node
-      XMRIG=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+      XMRIG=$(ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
         "user@$NODE_IP" "curl -s --connect-timeout 3 --max-time 5 http://127.0.0.1:18080/1/summary 2>/dev/null" 2>/dev/null)
     fi
     if [ -n "$XMRIG" ] && echo "$XMRIG" | jq . >/dev/null 2>&1; then
@@ -378,7 +381,7 @@ for i in $(seq 1 10); do
       if [ "$i" = "1" ]; then
         pgrep xmrig >/dev/null 2>&1 && PROC_CHECK="running"
       else
-        ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+        ssh -p "$SSH_PORT" -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
           "user@$NODE_IP" "pgrep xmrig >/dev/null 2>&1 && echo running" 2>/dev/null | grep -q running && PROC_CHECK="running"
       fi
       if [ "$PROC_CHECK" = "running" ]; then

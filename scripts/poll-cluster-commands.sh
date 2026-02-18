@@ -13,6 +13,7 @@ fi
 API_URL="https://curtbrag.com/.netlify/functions/cluster-control"
 API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set. Create /home/user/.cluster-env with: CLUSTER_API_KEY=your-key}"
 POLL_INTERVAL=5  # seconds
+SSH_PORT="${SSH_PORT:-22}"  # SSH port (default: 22, Termux uses 8022)
 # Auto-detect our IP so local-exec works even if IP changes
 LOCAL_IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
 [ -z "$LOCAL_IP" ] && LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
@@ -88,7 +89,7 @@ run_on_node() {
     timeout 30 sh -c "$cmd" 2>"$_stderr_tmp"
     _rc=$?
   else
-    timeout 30 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$ip" "$cmd" 2>"$_stderr_tmp"
+    timeout 30 ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$ip" "$cmd" 2>"$_stderr_tmp"
     _rc=$?
   fi
   if [ "$_rc" -ne 0 ] && [ -s "$_stderr_tmp" ]; then
@@ -105,7 +106,7 @@ run_on_node_full() {
   if is_local_ip "$ip"; then
     timeout 30 sh -c "$cmd" 2>&1
   else
-    timeout 30 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$ip" "$cmd" 2>&1
+    timeout 30 ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$ip" "$cmd" 2>&1
   fi
 }
 
