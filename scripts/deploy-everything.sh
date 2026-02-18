@@ -1,15 +1,12 @@
 #!/bin/bash
 # ╔══════════════════════════════════════════════════════════════════════╗
 # ║  CurtBrag Phone Cluster — ONE COMMAND DEPLOY                       ║
-# ║  Run from any machine with SSH access to the phones:               ║
-# ║    bash scripts/deploy-everything.sh                                ║
-# ║                                                                     ║
-# ║  Works from: Steam Deck, NEXUS-PRIME, any Linux/Mac with SSH keys  ║
+# ║  Run this on NEXUS-PRIME: bash scripts/deploy-everything.sh        ║
 # ║                                                                     ║
 # ║  What it does (in order):                                           ║
-# ║    1. Sets up THIS machine as the cluster brain (API server)        ║
+# ║    1. Sets up NEXUS-PRIME as the cluster brain (API server)         ║
 # ║    2. Exposes API via Tailscale Funnel                              ║
-# ║    3. SSHes into all 10 phones and deploys xmrig                   ║
+# ║    3. Deploys xmrig to all 10 phones                                ║
 # ║    4. Sets up push cron + command poller on node1                   ║
 # ║    5. Verifies everything is running                                ║
 # ╚══════════════════════════════════════════════════════════════════════╝
@@ -65,7 +62,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --cpu N            CPU % hint for miners (default: 75)"
       echo "  --stagger N        Seconds between starting each miner (default: 30)"
       echo "  --skip-mining      Skip mining setup on phones"
-      echo "  --skip-nexus       Skip API server setup on this machine"
+      echo "  --skip-nexus       Skip NEXUS-PRIME API server setup"
       exit 0;;
     *) shift;;
   esac
@@ -93,7 +90,7 @@ ssh_cmd() {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 setup_nexus_prime() {
-  banner "STEP 1/4 — Cluster API Server (this machine)"
+  banner "STEP 1/4 — NEXUS-PRIME: Cluster API Server"
 
   # Prompt for credentials if not set
   if [ -z "${CLUSTER_WEB_PASSWORD:-}" ]; then
@@ -189,7 +186,7 @@ EOF
     echo -e "  ${YELLOW}⚠${NC} API didn't respond yet (may need a moment)"
   fi
 
-  echo -e "\n  ${GREEN}API server is live on port ${API_PORT}${NC}"
+  echo -e "\n  ${GREEN}NEXUS-PRIME API server is live on port ${API_PORT}${NC}"
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -427,7 +424,7 @@ chmod 600 /home/user/.cluster-env" 2>/dev/null
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║        CURTBRAG PHONE CLUSTER — FULL DEPLOY                ║${NC}"
-echo -e "${CYAN}║  API Server + Tailscale + Mining + Dashboard Push          ║${NC}"
+echo -e "${CYAN}║  NEXUS-PRIME API + Tailscale + Mining + Dashboard Push     ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "  Wallet: ${WALLET:0:12}...${WALLET: -8}"
@@ -435,11 +432,11 @@ echo -e "  Pool:   ${POOL}"
 echo -e "  Phones: ${#NODES[@]} nodes (192.168.1.206-215)"
 echo ""
 
-# Step 1: API server on this machine
+# Step 1: NEXUS-PRIME API server
 if [ -z "${SKIP_NEXUS:-}" ]; then
   setup_nexus_prime
 else
-  echo -e "${YELLOW}Skipping API server setup (--skip-nexus)${NC}"
+  echo -e "${YELLOW}Skipping NEXUS-PRIME setup (--skip-nexus)${NC}"
 fi
 
 # Step 2: Tailscale Funnel
@@ -466,7 +463,7 @@ echo -e "${GREEN}╔════════════════════
 echo -e "${GREEN}║                    DEPLOY COMPLETE                          ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "  ${GREEN}API Server:${NC}   Running on this machine, port ${API_PORT}"
+echo -e "  ${GREEN}NEXUS-PRIME:${NC}  API server on port ${API_PORT}"
 echo -e "  ${GREEN}Tailscale:${NC}    Funnel exposing API to internet"
 echo -e "  ${GREEN}Mining:${NC}       xmrig on all phones -> MoneroOcean"
 echo -e "  ${GREEN}Dashboard:${NC}    node1 pushing status every 5 min"
