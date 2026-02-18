@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // CurtBrag Cluster API Server
-// Runs on AORUS control-plane — serves live kubectl data, phone screenshots, and commands
+// Runs on NEXUS-PRIME control-plane — serves live kubectl data, phone screenshots, and commands
 // Zero npm dependencies — uses only Node.js built-in modules
 
 const http = require('http');
@@ -20,11 +20,11 @@ const CONFIG = {
 
   // Monero mining
   xmrWallet: process.env.XMR_WALLET || '',
-  xmrPool: 'supportxmr.com',
+  xmrPool: 'moneroocean.stream',
   xmrigPort: 18080,
   xmrigToken: process.env.XMRIG_TOKEN || '',
 
-  // Phone nodes (USB+WiFi connected to AORUS)
+  // Phone nodes (USB+WiFi connected to NEXUS-PRIME)
   phoneNodes: {
     node1:  { ip: '192.168.1.206', ssh: 'user@192.168.1.206', role: 'control-plane', adb: null },
     node2:  { ip: '192.168.1.207', ssh: 'user@192.168.1.207', role: 'worker', adb: null },
@@ -38,7 +38,7 @@ const CONFIG = {
     node10: { ip: '192.168.1.215', ssh: 'user@192.168.1.215', role: 'worker', adb: null },
   },
   phoneNodeNames: ['node1','node2','node3','node4','node5','node6','node7','node8','node9','node10'],
-  otherNodes: ['neo', 'vikixii', 'aorus-node', 'steamdeck', 'pikvm-main', 'pikvm-2'],
+  otherNodes: ['neo', 'vikixii', 'nexus-prime', 'steamdeck', 'pikvm-main', 'pikvm-2'],
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -419,7 +419,7 @@ async function gatherNodeMetrics() {
     metrics[pm.name] = pm.metrics;
   }
 
-  // AORUS (local) metrics
+  // NEXUS-PRIME (local) metrics
   const [localCpu, localMem, localTemp, localDisk] = await Promise.all([
     runAsync("top -bn1 | head -3 | grep -i cpu | head -1", 5000),
     runAsync("free -m | grep Mem", 3000),
@@ -427,29 +427,29 @@ async function gatherNodeMetrics() {
     runAsync("df -m / | tail -1", 3000),
   ]);
 
-  const aorus = { cpu: null, memory: null, temp: null, storage: null };
+  const nexus = { cpu: null, memory: null, temp: null, storage: null };
   if (localCpu.ok) {
     const cpuMatch = localCpu.stdout.match(/(\d+[\.,]\d+)\s*(idle|id)/i);
-    if (cpuMatch) aorus.cpu = { usage: Math.round(100 - parseFloat(cpuMatch[1].replace(',', '.'))), cores: os.cpus().length };
+    if (cpuMatch) nexus.cpu = { usage: Math.round(100 - parseFloat(cpuMatch[1].replace(',', '.'))), cores: os.cpus().length };
   }
   if (localMem.ok) {
     const parts = localMem.stdout.split(/\s+/);
     if (parts.length >= 3) {
-      aorus.memory = { totalMB: parseInt(parts[1]) || 0, usedMB: parseInt(parts[2]) || 0 };
-      if (aorus.memory.totalMB > 0) aorus.memory.percent = Math.round((aorus.memory.usedMB / aorus.memory.totalMB) * 100);
+      nexus.memory = { totalMB: parseInt(parts[1]) || 0, usedMB: parseInt(parts[2]) || 0 };
+      if (nexus.memory.totalMB > 0) nexus.memory.percent = Math.round((nexus.memory.usedMB / nexus.memory.totalMB) * 100);
     }
   }
   if (localTemp.ok) {
     const rawTemp = parseInt(localTemp.stdout);
-    if (rawTemp > 0) aorus.temp = { celsius: rawTemp > 1000 ? Math.round(rawTemp / 1000) : rawTemp };
+    if (rawTemp > 0) nexus.temp = { celsius: rawTemp > 1000 ? Math.round(rawTemp / 1000) : rawTemp };
   }
   if (localDisk.ok) {
     const parts = localDisk.stdout.split(/\s+/);
     if (parts.length >= 4) {
-      aorus.storage = { totalMB: parseInt(parts[1]) || 0, usedMB: parseInt(parts[2]) || 0, availMB: parseInt(parts[3]) || 0, percent: parseInt(parts[4]) || 0 };
+      nexus.storage = { totalMB: parseInt(parts[1]) || 0, usedMB: parseInt(parts[2]) || 0, availMB: parseInt(parts[3]) || 0, percent: parseInt(parts[4]) || 0 };
     }
   }
-  metrics['aorus-node'] = aorus;
+  metrics['nexus-prime'] = nexus;
 
   metricsCache = { data: metrics, timestamp: now };
   return metrics;
@@ -886,12 +886,12 @@ async function executeOnNode(name, command, browseUrl, body) {
     }
     case 'mining-start': {
       if (!isPhone) return { ok: false, error: 'Not a phone node' };
-      const r = await sshExecAsync(name, 'doas rc-service xmrig start');
+      const r = await sshExecAsync(name, 'doas systemctl start xmrig 2>/dev/null || doas rc-service xmrig start');
       return { ok: r.ok, output: r.stdout || r.stderr };
     }
     case 'mining-stop': {
       if (!isPhone) return { ok: false, error: 'Not a phone node' };
-      const r = await sshExecAsync(name, 'doas rc-service xmrig stop');
+      const r = await sshExecAsync(name, 'doas systemctl stop xmrig 2>/dev/null || doas rc-service xmrig stop');
       return { ok: r.ok, output: r.stdout || r.stderr };
     }
     case 'browse': {
