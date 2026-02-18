@@ -204,90 +204,53 @@ fi
 
 echo ""
 
-# ─── Cloudflare Tunnel ────────────────────────────────────────────────────────
+# ─── Tailscale Funnel (auto-exposes API to dashboard) ────────────────────────
 
-echo -e "${YELLOW}Setting up Cloudflare tunnel...${NC}"
+echo -e "${YELLOW}Setting up Tailscale Funnel...${NC}"
 
-if ! command -v cloudflared &>/dev/null; then
-  echo -e "  ${YELLOW}⚠${NC} cloudflared not installed."
+if ! command -v tailscale &>/dev/null; then
+  echo -e "  ${RED}✗${NC} Tailscale not installed"
+  echo -e "  Install: ${GREEN}curl -fsSL https://tailscale.com/install.sh | sh${NC}"
+  echo -e "  Then re-run this script."
   echo ""
-
-  # Try Tailscale Funnel as alternative
-  if command -v tailscale &>/dev/null; then
-    echo -e "  ${GREEN}✓${NC} Tailscale found — trying Tailscale Funnel as alternative..."
-    echo ""
-    echo -e "${BLUE}Starting Tailscale Funnel on port ${PORT}...${NC}"
-    echo -e "This exposes your API server to the internet via your Tailscale account."
-    echo -e "${YELLOW}You may need to enable Funnel in your Tailscale admin console first.${NC}"
-    echo -e "  https://login.tailscale.com/admin/dns → Enable HTTPS + Funnel"
-    echo ""
-
-    # Get the Tailscale hostname
-    TS_HOSTNAME=$(tailscale status --self --json 2>/dev/null | grep -o '"DNSName":"[^"]*"' | head -1 | sed 's/"DNSName":"//;s/"//')
-    if [ -n "$TS_HOSTNAME" ]; then
-      TS_HOSTNAME="${TS_HOSTNAME%.}" # Remove trailing dot
-      echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-      echo -e "${GREEN}  Your Tailscale URL will be: https://${TS_HOSTNAME}:${PORT}${NC}"
-      echo -e "${GREEN}  Paste this into your dashboard at curtbrag.com/cluster${NC}"
-      echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    fi
-    echo ""
-
-    # Keep server alive if no systemd
-    if [ "${USE_SYSTEMD:-0}" = "0" ] && [ -n "$SERVER_PID" ]; then
-      trap "kill $SERVER_PID 2>/dev/null; exit" INT TERM
-    fi
-
-    tailscale funnel "${PORT}" 2>&1
-    exit 0
-  fi
-
-  echo -e "  Install cloudflared:"
-  if command -v apt &>/dev/null; then
-    echo "    sudo apt install cloudflared"
-  elif command -v winget &>/dev/null || [[ "$(uname -s)" == *MINGW* ]] || [[ "$(uname -s)" == *MSYS* ]]; then
-    echo "    winget install Cloudflare.cloudflared"
-  else
-    echo "    https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
-  fi
-  echo ""
-  echo -e "  Or install Tailscale for Tailscale Funnel:"
-  echo "    curl -fsSL https://tailscale.com/install.sh | sh"
-  echo ""
-  echo -e "  Then run:  ${GREEN}cloudflared tunnel --url http://localhost:${PORT}${NC}"
-  echo -e "  Or:        ${GREEN}tailscale funnel ${PORT}${NC}"
-  echo ""
-  echo -e "${GREEN}API server is running on port ${PORT}. Paste tunnel URL into curtbrag.com/cluster${NC}"
-  # Keep running if no systemd (foreground mode)
-  if [ "${USE_SYSTEMD:-0}" = "0" ] && [ -n "$SERVER_PID" ]; then
-    echo -e "${YELLOW}Server running in foreground. Press Ctrl+C to stop.${NC}"
-    trap "kill $SERVER_PID 2>/dev/null; exit" INT TERM
-    wait "$SERVER_PID"
-  fi
+  echo -e "${GREEN}API server is running on port ${PORT}.${NC}"
+  echo -e "  Install Tailscale, then run: ${GREEN}tailscale funnel ${PORT}${NC}"
   exit 0
 fi
 
-echo -e "  ${GREEN}✓${NC} cloudflared available"
+echo -e "  ${GREEN}✓${NC} Tailscale installed"
 
-# Start a quick tunnel (prints URL to stderr)
-echo -e "\n${BLUE}Starting Cloudflare tunnel...${NC}"
-echo -e "The tunnel URL will appear below. Paste it into the dashboard's API config bar."
-echo -e "${YELLOW}Press Ctrl+C to stop the tunnel.${NC}\n"
-
-# Keep server alive if no systemd
-if [ "${USE_SYSTEMD:-0}" = "0" ] && [ -n "$SERVER_PID" ]; then
-  trap "kill $SERVER_PID 2>/dev/null; exit" INT TERM
+# Check Tailscale is logged in
+if ! tailscale status &>/dev/null; then
+  echo -e "  ${RED}✗${NC} Tailscale not logged in"
+  echo -e "  Run: ${GREEN}sudo tailscale up${NC}"
+  exit 1
 fi
+echo -e "  ${GREEN}✓${NC} Tailscale connected"
 
-cloudflared tunnel --url "http://localhost:${PORT}" 2>&1 | while read -r line; do
-  if echo "$line" | grep -q "https://.*trycloudflare.com"; then
-    TUNNEL_URL=$(echo "$line" | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com')
-    echo ""
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${GREEN}  Tunnel URL: ${TUNNEL_URL}${NC}"
-    echo -e "${GREEN}  Paste this into your dashboard at curtbrag.com/cluster${NC}"
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-  fi
-  echo "$line"
-done
+# Get FQDN
+TS_FQDN=$(tailscale status --self --json 2>/dev/null | grep -o '"DNSName":"[^"]*"' | head -1 | sed 's/"DNSName":"//;s/"//;s/\.$//')
+
+# Set up funnel via serve + funnel (works on all Tailscale versions)
+echo -e "  Setting up funnel on port ${PORT}..."
+tailscale serve --bg --https 443 "http://localhost:${PORT}" 2>/dev/null \
+  || tailscale serve --bg "${PORT}" 2>/dev/null \
+  || { echo -e "  ${YELLOW}⚠${NC} 'tailscale serve --bg' not supported, using foreground"; }
+
+tailscale funnel on 2>/dev/null || tailscale funnel "${PORT}" &>/dev/null &
+
+FUNNEL_URL="https://${TS_FQDN}"
+
+echo ""
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}  Funnel URL: ${FUNNEL_URL}${NC}"
+echo -e "${GREEN}  Dashboard will auto-detect this — no paste needed${NC}"
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "  ${BLUE}How it works:${NC}"
+echo -e "    1. API server runs on localhost:${PORT}"
+echo -e "    2. Tailscale Funnel exposes it at ${FUNNEL_URL}"
+echo -e "    3. node1's push script sees this in Tailscale peers"
+echo -e "    4. Dashboard reads the URL from status data and auto-connects"
+echo ""
+echo -e "${GREEN}Done! Open curtbrag.com/cluster — it should connect automatically.${NC}"
