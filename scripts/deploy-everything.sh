@@ -446,6 +446,19 @@ else
 fi
 echo "OS:\$OS"
 
+# --- Fix DNS (phones with broken DHCP-provided resolvers) ---
+# Same pattern as Steam Deck DNS fix (lines 364-368)
+if ! grep -q "^nameserver" /etc/resolv.conf 2>/dev/null; then
+  echo -e "nameserver 1.1.1.1\nnameserver 8.8.8.8" | \$PRIV tee /etc/resolv.conf >/dev/null 2>&1 || true
+  echo "DNS:fixed"
+elif ! nslookup gulf.moneroocean.stream >/dev/null 2>&1 && ! getent hosts gulf.moneroocean.stream >/dev/null 2>&1; then
+  # resolv.conf has nameservers but they don't work — override
+  echo -e "nameserver 1.1.1.1\nnameserver 8.8.8.8" | \$PRIV tee /etc/resolv.conf >/dev/null 2>&1 || true
+  echo "DNS:fixed-override"
+else
+  echo "DNS:ok"
+fi
+
 # --- Install xmrig ---
 XMRIG_BIN=\$(command -v xmrig 2>/dev/null)
 if [ -n "\$XMRIG_BIN" ]; then
@@ -605,6 +618,7 @@ DEPLOY_SCRIPT
 
   # Parse the output
   local REMOTE_OS=$(echo "$DEPLOY_OUT" | grep "^OS:" | head -1 | cut -d: -f2)
+  local DNS_STATUS=$(echo "$DEPLOY_OUT" | grep "^DNS:" | head -1 | cut -d: -f2)
   local INSTALL_STATUS=$(echo "$DEPLOY_OUT" | grep "^INSTALL:" | tail -1 | cut -d: -f2-)
   local XMRIG_BIN=$(echo "$DEPLOY_OUT" | grep "^BIN:" | head -1 | cut -d: -f2)
   local CONFIG_STATUS=$(echo "$DEPLOY_OUT" | grep "^CONFIG:" | head -1 | cut -d: -f2)
@@ -629,6 +643,9 @@ DEPLOY_SCRIPT
   fi
 
   echo -e "    OS: ${REMOTE_OS:-unknown}"
+  if [ "$DNS_STATUS" = "fixed" ] || [ "$DNS_STATUS" = "fixed-override" ]; then
+    echo -e "    ${YELLOW}⚠${NC} DNS was broken — fixed (added 1.1.1.1/8.8.8.8)"
+  fi
 
   # Check install
   if [ "$INSTALL_STATUS" = "FAILED - xmrig binary not found" ]; then
@@ -801,8 +818,8 @@ deploy_mining() {
   # PHASE 4: Post-deploy verification — check actual hashrate + pool connection
   # Wait for RandomX dataset build + pool handshake (ARM phones need ~60s)
   echo ""
-  echo -e "  ${BLUE}Waiting 60s for RandomX dataset + pool connection...${NC}"
-  sleep 60
+  echo -e "  ${BLUE}Waiting 120s for RandomX dataset + pool connection...${NC}"
+  sleep 120
   echo ""
   echo -e "  ${BLUE}Verifying actual mining on each node...${NC}"
 
