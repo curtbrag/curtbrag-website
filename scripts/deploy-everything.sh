@@ -434,7 +434,7 @@ if [ "\$OS" = "alpine" ]; then
 #!/bin/sh
 killall xmrig 2>/dev/null
 sleep 1
-nohup $(command -v xmrig || echo /usr/bin/xmrig) --config=/etc/xmrig/config.json --no-color >> /tmp/xmrig.log 2>&1 &
+nohup \$(command -v xmrig || echo /usr/bin/xmrig) --config=/etc/xmrig/config.json --no-color > /tmp/xmrig.log 2>&1 &
 XPID=\$!
 echo \$XPID > /run/xmrig.pid
 # Wait briefly to confirm it didn't crash immediately
