@@ -684,14 +684,25 @@ deploy_mining() {
       # Deploy failed — reset the multiplexed SSH master socket (it may be dead)
       # and retry with a fresh connection
       local IP="${NODES[$name]}"
-      echo -e "  ${YELLOW}[${name}] Deploy failed — resetting SSH connection, retrying in 10s...${NC}"
+      echo -e "  ${YELLOW}[${name}] Deploy failed — resetting SSH, retrying in 10s...${NC}"
       ssh -O exit -o ControlPath="${SSH_CONTROL_DIR}/%r@%h:%p" "user@${IP}" 2>/dev/null || true
       sleep 10
       if setup_mining_node "$name"; then
         OK=$((OK + 1))
         STARTED=$((STARTED + 1))
       else
-        FAIL=$((FAIL + 1))
+        # Two failures — reboot the phone and try one last time
+        echo -e "  ${YELLOW}[${name}] Still failing — rebooting phone and retrying in 45s...${NC}"
+        ssh -O exit -o ControlPath="${SSH_CONTROL_DIR}/%r@%h:%p" "user@${IP}" 2>/dev/null || true
+        # Try to send reboot with a short timeout (phone may be loaded)
+        sshpass -p "${SSH_PASS:-}" ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "user@${IP}" "doas reboot" 2>/dev/null || true
+        sleep 45
+        if setup_mining_node "$name"; then
+          OK=$((OK + 1))
+          STARTED=$((STARTED + 1))
+        else
+          FAIL=$((FAIL + 1))
+        fi
       fi
     fi
   done
