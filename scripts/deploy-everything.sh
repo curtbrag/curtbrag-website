@@ -681,7 +681,11 @@ deploy_mining() {
       OK=$((OK + 1))
       STARTED=$((STARTED + 1))
     else
-      echo -e "  ${YELLOW}[${name}] Deploy failed — retrying in 10s...${NC}"
+      # Deploy failed — reset the multiplexed SSH master socket (it may be dead)
+      # and retry with a fresh connection
+      local IP="${NODES[$name]}"
+      echo -e "  ${YELLOW}[${name}] Deploy failed — resetting SSH connection, retrying in 10s...${NC}"
+      ssh -O exit -o ControlPath="${SSH_CONTROL_DIR}/%r@%h:%p" "user@${IP}" 2>/dev/null || true
       sleep 10
       if setup_mining_node "$name"; then
         OK=$((OK + 1))
