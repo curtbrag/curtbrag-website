@@ -543,10 +543,10 @@ ORCSVC
   fi
 
   # Always create launcher script (used by cron watchdog and as fallback starter)
+  # Self-restarting wrapper — loops forever, auto-restarts xmrig if it exits
   # Use /home/user/ (persistent) instead of /tmp (may be tmpfs, cleared on reboot)
   cat > /home/user/start-xmrig.sh << MINER_LAUNCHER
 #!/bin/sh
-# Self-restarting wrapper — loops forever, restarts xmrig if it exits
 while true; do
   \$XMRIG_BIN --config=/etc/xmrig/config.json --no-color
   sleep 5
@@ -554,38 +554,32 @@ done
 MINER_LAUNCHER
   chmod +x /home/user/start-xmrig.sh
 
-  # Diagnostic: show what init tools are available on this node
-  echo "DEBUG:rc-service=\$([ -x /sbin/rc-service ] && echo yes || echo no)"
-  echo "DEBUG:ssd-cmd=\$(command -v start-stop-daemon 2>/dev/null || echo missing)"
-  echo "DEBUG:ssd-busybox=\$(busybox start-stop-daemon --help >/dev/null 2>&1 && echo yes || echo no)"
-  echo "DEBUG:openrc-run=\$([ -x /sbin/openrc-run ] && echo yes || echo no)"
-  echo "DEBUG:initd=\$([ -x /etc/init.d/xmrig ] && echo yes || echo no)"
+  # Make config readable by non-root user (written via doas tee = owned by root)
+  \$PRIV chmod 644 /etc/xmrig/config.json 2>/dev/null || true
 
+  # --- START XMRIG ---
+  # KEY FIX: Do NOT use doas/root for starting xmrig.
+  # Root cause of 0/9 nodes surviving: doas reaps ALL backgrounded children
+  # when the SSH session closes. nohup+setsid works correctly when NOT
+  # wrapped in doas — process detaches properly from the terminal session.
+  # xmrig runs fine as user: huge-pages=off, port 18080 > 1024, no root needed.
   if [ -x /sbin/rc-service ]; then
     INIT=openrc
     \$PRIV /sbin/rc-service xmrig restart 2>/dev/null || true
     SVC_OUT=\$(\$PRIV /sbin/rc-service xmrig status 2>&1 || true)
     echo "SVC_OUT:\$SVC_OUT"
-  elif busybox start-stop-daemon --help >/dev/null 2>&1; then
-    # BusyBox built-in — invoke via `busybox` directly (symlink may not exist in PATH)
-    # Properly daemonizes: fork, new session, pidfile — survives SSH disconnect
-    INIT=ssd
-    \$PRIV busybox start-stop-daemon -S -b -m -p /run/xmrig.pid -x \$XMRIG_BIN -- --config=/etc/xmrig/config.json --no-color
-  elif command -v start-stop-daemon >/dev/null 2>&1; then
-    # Symlink exists in PATH (standard Alpine installs)
-    INIT=ssd
-    \$PRIV start-stop-daemon -S -b -m -p /run/xmrig.pid -x \$XMRIG_BIN -- --config=/etc/xmrig/config.json --no-color
   else
-    # Last resort: launcher with nohup+setsid (~50% survival rate through SSH disconnect)
-    INIT=launcher
-    \$PRIV sh -c 'nohup setsid /home/user/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null & echo \$! > /run/xmrig.pid'
+    # Run as current user (NOT root) — nohup+setsid properly survives SSH disconnect
+    INIT=direct
+    nohup setsid /home/user/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null &
+    echo \$! > /tmp/xmrig.pid
   fi
 
-  # Safety net: verify xmrig started, retry with launcher if needed
-  sleep 2
+  # Verify xmrig started (wait for process to appear)
+  sleep 3
   if ! pgrep -x xmrig >/dev/null 2>&1; then
-    echo "INIT_RETRY:\$INIT failed, trying launcher"
-    INIT="\${INIT}+launcher"
+    echo "INIT_RETRY:\$INIT failed, trying doas fallback"
+    INIT="\${INIT}+doas"
     \$PRIV sh -c 'nohup setsid /home/user/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null & echo \$! > /run/xmrig.pid'
   fi
 
