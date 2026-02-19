@@ -33,7 +33,7 @@ API_PORT=3847
 CPU_HINT=75
 STAGGER_SECS=5
 
-# Node IPs — phones are connected via Ethernet (USB-C adapters → switch)
+# Node IPs — phones on Ethernet (USB-C adapters → switch), laptops on LAN
 declare -A NODES=(
   [node1]="192.168.1.206"
   [node2]="192.168.1.207"
@@ -45,6 +45,7 @@ declare -A NODES=(
   [node8]="192.168.1.213"
   [node9]="192.168.1.214"
   [node10]="192.168.1.215"
+  [nexus-prime]="192.168.1.179"
 )
 
 
@@ -804,7 +805,7 @@ echo -e "${CYAN}╚════════════════════�
 echo ""
 echo -e "  Wallet: ${WALLET:0:12}...${WALLET: -8}"
 echo -e "  Pool:   ${POOL}"
-echo -e "  Phones: ${#NODES[@]} nodes (Ethernet: 192.168.1.206-215)"
+echo -e "  Nodes:  ${#NODES[@]} (10 phones + NEXUS-PRIME)"
 echo ""
 
 # Step 1: API server on this machine
