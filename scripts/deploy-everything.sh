@@ -422,22 +422,39 @@ sleep 1
 # Detect init system: Alpine always uses OpenRC (even if systemctl shim exists).
 # For non-Alpine, verify PID 1 is actually systemd before using it.
 if [ "\$OS" = "alpine" ]; then
-  INIT=openrc
-  # Remove broken systemd service file + stale PID file
+  INIT=nohup
+  # Remove stale PID file + systemd leftovers
   \$PRIV rm -f /etc/systemd/system/xmrig.service /run/xmrig.pid 2>/dev/null || true
-  # Ensure openrc tools are installed (rc-service, rc-update, start-stop-daemon)
-  \$PRIV apk add -q openrc 2>/dev/null || true
-  # Find OpenRC tools dynamically — they may be in /sbin, /usr/sbin, or elsewhere
-  RC_SVC=""; for p in /sbin/rc-service /usr/sbin/rc-service /bin/rc-service; do [ -x "\$p" ] && RC_SVC="\$p" && break; done
-  RC_UPD=""; for p in /sbin/rc-update /usr/sbin/rc-update /bin/rc-update; do [ -x "\$p" ] && RC_UPD="\$p" && break; done
-  SSD=""; for p in /sbin/start-stop-daemon /usr/sbin/start-stop-daemon /bin/start-stop-daemon; do [ -x "\$p" ] && SSD="\$p" && break; done
-  echo "DEBUG:rc-svc=\${RC_SVC:-not-found},rc-upd=\${RC_UPD:-not-found},ssd=\${SSD:-not-found}"
-  # Write OpenRC service file (for boot persistence)
+  # Kill any existing xmrig cleanly
+  \$PRIV killall xmrig 2>/dev/null || true
+  sleep 1
+  # Start xmrig directly — PostmarketOS lacks rc-service/start-stop-daemon
+  # Use a wrapper script so nohup/backgrounding works reliably under doas
+  \$PRIV tee /tmp/start-xmrig.sh > /dev/null << 'STARTER'
+#!/bin/sh
+killall xmrig 2>/dev/null
+sleep 1
+nohup /usr/local/bin/xmrig --config=/etc/xmrig/config.json --no-color >> /tmp/xmrig.log 2>&1 &
+XPID=\$!
+echo \$XPID > /run/xmrig.pid
+# Wait briefly to confirm it didn't crash immediately
+sleep 2
+if kill -0 \$XPID 2>/dev/null; then
+  echo "XMRIG_STARTED:pid=\$XPID"
+else
+  echo "XMRIG_CRASHED:pid=\$XPID"
+  tail -10 /tmp/xmrig.log 2>/dev/null
+fi
+STARTER
+  \$PRIV chmod +x /tmp/start-xmrig.sh
+  STARTER_OUT=\$(\$PRIV /tmp/start-xmrig.sh 2>&1)
+  echo "DEBUG:\$STARTER_OUT"
+  # Also write OpenRC init script for boot persistence (best-effort)
   \$PRIV tee /etc/init.d/xmrig > /dev/null << ORCSVC || true
 #!/sbin/openrc-run
 name="xmrig"
 description="XMRig Miner"
-command="\$XMRIG_BIN"
+command="/usr/local/bin/xmrig"
 command_args="--config=/etc/xmrig/config.json --no-color"
 command_background="yes"
 pidfile="/run/xmrig.pid"
@@ -445,31 +462,7 @@ output_log="/tmp/xmrig.log"
 error_log="/tmp/xmrig.log"
 depend() { need net; }
 ORCSVC
-  \$PRIV chmod +x /etc/init.d/xmrig || true
-  # Try rc-update + rc-service if available
-  if [ -n "\$RC_UPD" ]; then
-    \$PRIV \$RC_UPD add xmrig default 2>/dev/null || true
-  fi
-  if [ -n "\$RC_SVC" ]; then
-    \$PRIV \$RC_SVC xmrig stop 2>/dev/null || true
-    sleep 1
-    SVC_OUT=\$(\$PRIV \$RC_SVC xmrig start 2>&1) || true
-    echo "SVC_OUT:\$SVC_OUT"
-  fi
-  # Fallback 1: start-stop-daemon
-  sleep 2
-  if ! pgrep -x xmrig >/dev/null 2>&1 && [ -n "\$SSD" ]; then
-    echo "DEBUG:trying-start-stop-daemon"
-    \$PRIV \$SSD --start --background --make-pidfile \
-      --pidfile /run/xmrig.pid \
-      --exec \$XMRIG_BIN -- --config=/etc/xmrig/config.json --no-color 2>&1 || true
-  fi
-  # Fallback 2: nohup (guaranteed to work — no external tools needed)
-  sleep 2
-  if ! pgrep -x xmrig >/dev/null 2>&1; then
-    echo "DEBUG:trying-nohup-fallback"
-    \$PRIV sh -c "nohup \$XMRIG_BIN --config=/etc/xmrig/config.json --no-color > /dev/null 2>&1 & echo \\\$! > /run/xmrig.pid"
-  fi
+  \$PRIV chmod +x /etc/init.d/xmrig 2>/dev/null || true
 elif command -v systemctl >/dev/null 2>&1 && [ "\$(cat /proc/1/comm 2>/dev/null)" = "systemd" ]; then
   INIT=systemd
   \$PRIV systemctl unmask xmrig.service 2>/dev/null || true
@@ -499,12 +492,18 @@ echo "SERVICE:\$INIT"
 
 # --- Verify (wait for startup — ARM phones are slow) ---
 sleep 5
+# Check multiple ways — pgrep -x may not match on all systems
 if pgrep -x xmrig >/dev/null 2>&1; then
   echo "STATUS:RUNNING"
+elif pgrep -f "xmrig.*config" >/dev/null 2>&1; then
+  echo "STATUS:RUNNING"
+elif [ -f /run/xmrig.pid ] && kill -0 \$(cat /run/xmrig.pid 2>/dev/null) 2>/dev/null; then
+  echo "STATUS:RUNNING"
 else
-  # Show last few lines of log for debugging
   echo "STATUS:NOT_RUNNING"
-  echo "LOG_TAIL:\$(tail -5 /tmp/xmrig.log 2>/dev/null || echo 'no log file')"
+  echo "LOG_TAIL:\$(tail -10 /tmp/xmrig.log 2>/dev/null || echo 'no log file')"
+  echo "DEBUG:ps-xmrig=\$(ps aux 2>/dev/null | grep -i xmrig | grep -v grep | head -3)"
+  echo "DEBUG:pidfile=\$(cat /run/xmrig.pid 2>/dev/null || echo 'no pidfile')"
 fi
 DEPLOY_SCRIPT
   )
