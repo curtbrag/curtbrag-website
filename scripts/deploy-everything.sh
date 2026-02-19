@@ -356,7 +356,7 @@ export PATH="/sbin:/usr/sbin:\$PATH"
 # --- Detect OS ---
 if [ -f /etc/alpine-release ]; then
   OS=alpine
-  PRIV="doas"
+  PRIV="doas env PATH=/sbin:/usr/sbin:/bin:/usr/bin"
 elif command -v apt-get >/dev/null 2>&1; then
   OS=debian
   PRIV="sudo"
