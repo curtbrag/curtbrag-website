@@ -150,11 +150,10 @@ resolve_credentials() {
   # 2. If we have web password but no API key, fetch from Netlify
   if [ -z "${CLUSTER_API_KEY:-}" ] && [ -n "${CLUSTER_WEB_PASSWORD:-}" ]; then
     echo -e "  ${YELLOW}Fetching API key from curtbrag.com...${NC}"
-    local ENCODED_PW
-    ENCODED_PW=$(printf '%s' "$CLUSTER_WEB_PASSWORD" | curl -Gso /dev/null -w '%{url_effective}' --data-urlencode @- '' 2>/dev/null | cut -c3- || printf '%s' "$CLUSTER_WEB_PASSWORD")
+    local ENCODED_PW="$CLUSTER_WEB_PASSWORD"
     local FETCHED_KEY
     FETCHED_KEY=$(curl -sf "https://curtbrag.com/.netlify/functions/cluster-control?action=get-api-key&password=$ENCODED_PW" 2>/dev/null \
-      | python3 -c "import sys,json; print(json.load(sys.stdin).get('apiKey',''))" 2>/dev/null || true)
+      | sed -n 's/.*"apiKey":"\([^"]*\)".*/\1/p' 2>/dev/null || true)
     if [ -n "$FETCHED_KEY" ]; then
       CLUSTER_API_KEY="$FETCHED_KEY"
       export CLUSTER_API_KEY
@@ -174,7 +173,7 @@ resolve_credentials() {
       ENCODED_PW=$(printf '%s' "$CLUSTER_WEB_PASSWORD" | curl -Gso /dev/null -w '%{url_effective}' --data-urlencode @- '' 2>/dev/null | cut -c3- || printf '%s' "$CLUSTER_WEB_PASSWORD")
       local FETCHED_KEY
       FETCHED_KEY=$(curl -sf "https://curtbrag.com/.netlify/functions/cluster-control?action=get-api-key&password=$ENCODED_PW" 2>/dev/null \
-        | python3 -c "import sys,json; print(json.load(sys.stdin).get('apiKey',''))" 2>/dev/null || true)
+        | sed -n 's/.*"apiKey":"\([^"]*\)".*/\1/p' 2>/dev/null || true)
       if [ -n "$FETCHED_KEY" ]; then
         CLUSTER_API_KEY="$FETCHED_KEY"
         export CLUSTER_API_KEY
