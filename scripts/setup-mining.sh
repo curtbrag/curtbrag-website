@@ -287,8 +287,8 @@ SVCUNIT
     echo -e "  Service: ${SVC_STATUS}"
   elif [ "$INIT_SYS" = "openrc" ]; then
     echo -e "  Creating OpenRC service..."
-    # Clean up broken systemd service from previous deployments
-    ssh_cmd "$SSH_TARGET" "doas systemctl stop xmrig 2>/dev/null; doas systemctl disable xmrig 2>/dev/null; doas rm -f /etc/systemd/system/xmrig.service 2>/dev/null; true" 2>/dev/null
+    # Remove broken systemd service file (do NOT call systemctl — it hangs on Alpine)
+    ssh_cmd "$SSH_TARGET" "doas rm -f /etc/systemd/system/xmrig.service 2>/dev/null; true" 2>/dev/null
     # Write OpenRC service using the actual xmrig binary path
     ssh_cmd "$SSH_TARGET" "doas tee /etc/init.d/xmrig > /dev/null && doas chmod +x /etc/init.d/xmrig" << OPENRC_SVC
 #!/sbin/openrc-run

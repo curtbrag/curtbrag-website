@@ -420,11 +420,11 @@ sleep 1
 # For non-Alpine, verify PID 1 is actually systemd before using it.
 if [ "\$OS" = "alpine" ]; then
   INIT=openrc
-  # Clean up broken systemd service from previous deployments
-  \$PRIV systemctl stop xmrig 2>/dev/null || true
-  \$PRIV systemctl disable xmrig 2>/dev/null || true
+  echo "DEBUG:alpine-openrc-block-entered"
+  # Remove broken systemd service file (do NOT call systemctl — it hangs on Alpine)
   \$PRIV rm -f /etc/systemd/system/xmrig.service 2>/dev/null || true
-  \$PRIV tee /etc/init.d/xmrig > /dev/null << ORCSVC
+  # Write OpenRC service file
+  \$PRIV tee /etc/init.d/xmrig > /dev/null << ORCSVC || true
 #!/sbin/openrc-run
 name="xmrig"
 description="XMRig Miner"
@@ -436,7 +436,7 @@ output_log="/tmp/xmrig.log"
 error_log="/tmp/xmrig.log"
 depend() { need net; }
 ORCSVC
-  \$PRIV chmod +x /etc/init.d/xmrig
+  \$PRIV chmod +x /etc/init.d/xmrig || true
   \$PRIV rc-update add xmrig default 2>/dev/null || true
   \$PRIV rc-service xmrig restart 2>&1 || true
 elif command -v systemctl >/dev/null 2>&1 && [ "\$(cat /proc/1/comm 2>/dev/null)" = "systemd" ]; then
@@ -489,12 +489,20 @@ DEPLOY_SCRIPT
   local STATUS=$(echo "$DEPLOY_OUT" | grep "^STATUS:" | head -1 | cut -d: -f2)
   local LOG_TAIL=$(echo "$DEPLOY_OUT" | grep "^LOG_TAIL:" | head -1 | cut -d: -f2-)
 
-  # Handle SSH failure
+  # Handle SSH failure (complete or partial)
   if [ $DEPLOY_RC -ne 0 ] && [ -z "$REMOTE_OS" ]; then
     SSH_ERR_SHORT=$(echo "$DEPLOY_OUT" | grep -v "^$" | tail -2 | tr '\n' ' ')
     echo -e "    ${RED}✗${NC} Cannot SSH — ${SSH_ERR_SHORT:-unknown error}"
     echo -e "    ${YELLOW}Tip: ssh-copy-id -p ${SSH_PORT} user@${IP} or re-run with --password${NC}"
     return 1
+  fi
+
+  # Handle partial SSH failure (connection dropped mid-deploy)
+  if [ -z "$SERVICE_TYPE" ] && [ -n "$REMOTE_OS" ]; then
+    echo -e "    ${YELLOW}⚠${NC} SSH connection dropped during service setup (got OS=$REMOTE_OS but no SERVICE status)"
+    # Show any debug/error output from the remote script
+    local DEBUG_OUT=$(echo "$DEPLOY_OUT" | grep "^DEBUG:" | cut -d: -f2-)
+    [ -n "$DEBUG_OUT" ] && echo -e "    ${YELLOW}Debug: ${DEBUG_OUT}${NC}"
   fi
 
   echo -e "    OS: ${REMOTE_OS:-unknown}"
