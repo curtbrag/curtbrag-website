@@ -434,7 +434,7 @@ if [ "\$OS" = "alpine" ]; then
 #!/bin/sh
 killall xmrig 2>/dev/null
 sleep 1
-nohup /usr/local/bin/xmrig --config=/etc/xmrig/config.json --no-color >> /tmp/xmrig.log 2>&1 &
+nohup $(command -v xmrig || echo /usr/bin/xmrig) --config=/etc/xmrig/config.json --no-color >> /tmp/xmrig.log 2>&1 &
 XPID=\$!
 echo \$XPID > /run/xmrig.pid
 # Wait briefly to confirm it didn't crash immediately
@@ -454,7 +454,7 @@ STARTER
 #!/sbin/openrc-run
 name="xmrig"
 description="XMRig Miner"
-command="/usr/local/bin/xmrig"
+command="\$XMRIG_BIN"
 command_args="--config=/etc/xmrig/config.json --no-color"
 command_background="yes"
 pidfile="/run/xmrig.pid"
@@ -678,7 +678,14 @@ deploy_mining() {
       OK=$((OK + 1))
       STARTED=$((STARTED + 1))
     else
-      FAIL=$((FAIL + 1))
+      echo -e "  ${YELLOW}[${name}] Deploy failed — retrying in 10s...${NC}"
+      sleep 10
+      if setup_mining_node "$name"; then
+        OK=$((OK + 1))
+        STARTED=$((STARTED + 1))
+      else
+        FAIL=$((FAIL + 1))
+      fi
     fi
   done
 
@@ -702,19 +709,33 @@ setup_node1_services() {
   local NODE1_IP="${NODES[node1]}"
   local NODE1_SSH="user@${NODE1_IP}"
 
-  if ! ssh_cmd "$NODE1_SSH" "echo ok" &>/dev/null; then
-    echo -e "  ${RED}✗${NC} Cannot SSH to node1 (${NODE1_IP})"
+  local NODE1_ATTEMPT=0 NODE1_OK=0
+  while [ "$NODE1_ATTEMPT" -lt 3 ]; do
+    NODE1_ATTEMPT=$((NODE1_ATTEMPT + 1))
+    if ssh_cmd "$NODE1_SSH" "echo ok" &>/dev/null; then
+      NODE1_OK=1
+      break
+    fi
+    if [ "$NODE1_ATTEMPT" -lt 3 ]; then
+      echo -e "  ${YELLOW}⚠${NC} SSH to node1 failed (attempt $NODE1_ATTEMPT/3) — retrying in 10s..."
+      sleep 10
+    fi
+  done
+  if [ "$NODE1_OK" -eq 0 ]; then
+    echo -e "  ${RED}✗${NC} Cannot SSH to node1 (${NODE1_IP}) after 3 attempts"
     return 1
   fi
   echo -e "  ${GREEN}✓${NC} SSH to node1 OK"
 
-  # Copy scripts to node1
+  # Copy scripts to node1 — single SSH connection via tar pipe (avoids 3 separate SCP connections)
   echo -e "\n${YELLOW}  Copying scripts to node1...${NC}"
-  for script in push-cluster-status.sh poll-cluster-commands.sh cluster-nodes.conf; do
-    scp_cmd "$SCRIPT_DIR/$script" "${NODE1_SSH}:/home/user/$script" \
-      && echo -e "  ${GREEN}✓${NC} $script" \
-      || echo -e "  ${RED}✗${NC} Failed to copy $script"
-  done
+  if tar -cf - -C "$SCRIPT_DIR" push-cluster-status.sh poll-cluster-commands.sh cluster-nodes.conf \
+    | ssh_cmd "$NODE1_SSH" "tar -xf - -C /home/user/ && chmod +x /home/user/push-cluster-status.sh /home/user/poll-cluster-commands.sh"; then
+    echo -e "  ${GREEN}✓${NC} All scripts copied (push-cluster-status.sh, poll-cluster-commands.sh, cluster-nodes.conf)"
+  else
+    echo -e "  ${RED}✗${NC} Failed to copy scripts to node1"
+    return 1
+  fi
 
   # Write env file on node1
   ssh_cmd "$NODE1_SSH" "cat > /home/user/.cluster-env << 'ENVEOF'
@@ -722,9 +743,6 @@ CLUSTER_API_KEY=${CLUSTER_API_KEY:-changeme}
 ENVEOF
 chmod 600 /home/user/.cluster-env" 2>/dev/null
   echo -e "  ${GREEN}✓${NC} .cluster-env written on node1"
-
-  # Make scripts executable
-  ssh_cmd "$NODE1_SSH" "chmod +x /home/user/push-cluster-status.sh /home/user/poll-cluster-commands.sh" 2>/dev/null
 
   # Set up push cron job (every 5 min)
   echo -e "\n${YELLOW}  Setting up cron job...${NC}"
@@ -790,6 +808,10 @@ else
   # Step 3: Mining
   if [ -z "${SKIP_MINING:-}" ]; then
     deploy_mining
+
+    # Cooldown: let xmrig finish RandomX memory allocation before SSH'ing to node1
+    echo -e "\n  ${BLUE}Waiting 20s for mining to stabilize before node1 setup...${NC}"
+    sleep 20
   else
     echo -e "${YELLOW}Skipping mining setup (--skip-mining)${NC}"
   fi
