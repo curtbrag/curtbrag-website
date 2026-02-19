@@ -812,8 +812,8 @@ else
     echo -e "${YELLOW}Skipping mining setup (--skip-mining)${NC}"
   fi
 
-  # Step 4: node1 push + poller
-  setup_node1_services
+  # Step 4: node1 push + poller (non-fatal — mining is already running)
+  setup_node1_services || echo -e "  ${YELLOW}⚠ Step 4 failed — mining is running but dashboard push/poller need manual setup${NC}"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════

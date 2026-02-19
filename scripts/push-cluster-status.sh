@@ -45,6 +45,14 @@ done
 
 mkdir -p "$TMP_DIR"
 
+# Detect local IP early — used by all loops to identify localhost (node1)
+LOCAL_IP=$(ip -4 addr show 2>/dev/null | awk '/inet 192\.168\./{gsub(/\/.*/, "", $2); print $2; exit}')
+ALL_LOCAL_IPS=$(ip -4 addr 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2 | tr '\n' ' ')
+is_local_ip() {
+  for _lip in $ALL_LOCAL_IPS; do [ "$1" = "$_lip" ] && return 0; done
+  return 1
+}
+
 # ── Kubernetes data (may be unavailable if K3s is down) ──────────
 
 K3S_UP="false"
@@ -119,15 +127,23 @@ else
   PODS_JSON='[]'
   SERVICES_JSON='[]'
   EVENTS_JSON='[]'
-  # Build a basic nodes array from what we know: 10 phones on 192.168.1.206-215
+  # Build a basic nodes array from cluster-nodes.conf
   NODES_JSON='[]'
-  for i in $(seq 1 10); do
-    NODE_IP="192.168.1.$((205 + i))"
-    NODE_NAME="node$i"
+  for entry in $ALL_NODES; do
+    NODE_NAME="${entry%%:*}"
+    NODE_IP="${entry#*:}"
     NODE_ROLE="worker"
-    # Check reachability: node1 locally, others via SSH (5s timeout)
-    if [ "$i" = "1" ]; then
-      # Actually verify node1 is functional instead of assuming Ready
+    # Check if this entry has a role in NODE_LIST
+    for nl_entry in $NODE_LIST; do
+      nl_name="${nl_entry%%:*}"
+      if [ "$nl_name" = "$NODE_NAME" ]; then
+        nl_rest="${nl_entry#*:}"
+        NODE_ROLE="${nl_rest#*:}"
+        break
+      fi
+    done
+    # Check reachability: localhost directly, others via SSH (5s timeout)
+    if is_local_ip "$NODE_IP"; then
       if [ -d /proc ] && [ -r /proc/uptime ]; then
         NODE_STATUS="Ready"
       else
@@ -216,26 +232,26 @@ echo "MINING_LEVEL:$(tr "," "\n" < /etc/xmrig/config.json 2>/dev/null | grep max
 echo "MINING_POOL:$(tr "," "\n" < /etc/xmrig/config.json 2>/dev/null | grep -m1 url | sed "s/.*\"url\":\"//;s/\".*//" || echo unknown)"'
 
 # Gather from all phone nodes in parallel
-for i in $(seq 1 10); do
+for entry in $ALL_NODES; do
+  _name="${entry%%:*}"
+  _ip="${entry#*:}"
   (
     set +e  # SSH failures are expected for unreachable nodes
-    if [ "$i" = "1" ]; then
-      # node1 is localhost — gather metrics locally
+    if is_local_ip "$_ip"; then
       RAW=$(sh -c "$METRICS_CMD" 2>/dev/null)
     else
-      NODE_IP="192.168.1.$((205 + i))"
       RAW=$(ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
-        "user@$NODE_IP" "$METRICS_CMD" 2>/dev/null)
+        "user@$_ip" "$METRICS_CMD" 2>/dev/null)
     fi
-    echo "$RAW" > "$TMP_DIR/node${i}.tmp"
+    echo "$RAW" > "$TMP_DIR/${_name}.tmp"
   ) &
 done
 wait || true
 
 # Parse results sequentially
-for i in $(seq 1 10); do
-  NODE_NAME="node$i"
-  TMPFILE="$TMP_DIR/node${i}.tmp"
+for entry in $ALL_NODES; do
+  NODE_NAME="${entry%%:*}"
+  TMPFILE="$TMP_DIR/${NODE_NAME}.tmp"
 
   if [ ! -s "$TMPFILE" ]; then
     # Node unreachable
@@ -359,43 +375,43 @@ TOTAL_ACC=0
 TOTAL_REJ=0
 
 # Check xmrig API on all nodes in parallel (faster than sequential)
-for i in $(seq 1 10); do
+for entry in $ALL_NODES; do
+  _name="${entry%%:*}"
+  _ip="${entry#*:}"
   (
     set +e  # SSH/curl failures are expected for unreachable nodes
-    NODE_IP="192.168.1.$((205 + i))"
-    # Try local curl first (works for node1 where xmrig binds to 127.0.0.1)
     XMRIG=""
-    if [ "$i" = "1" ]; then
+    if is_local_ip "$_ip"; then
       XMRIG=$(curl -s --connect-timeout 5 --max-time 8 "http://127.0.0.1:18080/1/summary" 2>/dev/null)
     else
       # xmrig binds to localhost, so query via SSH tunnel to the remote node
       XMRIG=$(ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
-        "user@$NODE_IP" "curl -s --connect-timeout 3 --max-time 5 http://127.0.0.1:18080/1/summary 2>/dev/null" 2>/dev/null)
+        "user@$_ip" "curl -s --connect-timeout 3 --max-time 5 http://127.0.0.1:18080/1/summary 2>/dev/null" 2>/dev/null)
     fi
     if [ -n "$XMRIG" ] && echo "$XMRIG" | jq . >/dev/null 2>&1; then
-      echo "$XMRIG" > "$TMP_DIR/mining_node${i}.tmp"
+      echo "$XMRIG" > "$TMP_DIR/mining_${_name}.tmp"
     else
       # API failed — check if xmrig process is actually running
       PROC_CHECK=""
-      if [ "$i" = "1" ]; then
+      if is_local_ip "$_ip"; then
         pgrep xmrig >/dev/null 2>&1 && PROC_CHECK="running"
       else
         ssh -p "$SSH_PORT" -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
-          "user@$NODE_IP" "pgrep xmrig >/dev/null 2>&1 && echo running" 2>/dev/null | grep -q running && PROC_CHECK="running"
+          "user@$_ip" "pgrep xmrig >/dev/null 2>&1 && echo running" 2>/dev/null | grep -q running && PROC_CHECK="running"
       fi
       if [ "$PROC_CHECK" = "running" ]; then
-        echo "PROC_RUNNING" > "$TMP_DIR/mining_node${i}.tmp"
+        echo "PROC_RUNNING" > "$TMP_DIR/mining_${_name}.tmp"
       else
-        echo "" > "$TMP_DIR/mining_node${i}.tmp"
+        echo "" > "$TMP_DIR/mining_${_name}.tmp"
       fi
     fi
   ) &
 done
 wait || true
 
-for i in $(seq 1 10); do
-  NODE_NAME="node$i"
-  TMPFILE="$TMP_DIR/mining_node${i}.tmp"
+for entry in $ALL_NODES; do
+  NODE_NAME="${entry%%:*}"
+  TMPFILE="$TMP_DIR/mining_${NODE_NAME}.tmp"
   XMRIG=""
   [ -f "$TMPFILE" ] && XMRIG=$(cat "$TMPFILE")
 

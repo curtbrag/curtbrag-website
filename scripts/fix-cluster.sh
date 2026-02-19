@@ -25,6 +25,19 @@ ENV_FILE="$DIR/.cluster-env"
 
 echo "=== Fixing curtbrag cluster ==="
 
+# Load node configuration if available (deployed by deploy-everything.sh)
+ALL_LOCAL_IPS=$(ip -4 addr 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2 | tr '\n' ' ')
+_is_local() { for _lip in $ALL_LOCAL_IPS; do [ "$1" = "$_lip" ] && return 0; done; return 1; }
+if [ -f "$DIR/cluster-nodes.conf" ]; then
+  . "$DIR/cluster-nodes.conf"
+  load_node_config
+  echo "  Loaded $NODE_COUNT nodes from cluster-nodes.conf"
+else
+  # Fallback: hardcoded node list (matches cluster-nodes.conf defaults)
+  ALL_NODES="node1:192.168.1.206 node2:192.168.1.207 node3:192.168.1.208 node4:192.168.1.209 node5:192.168.1.210 node6:192.168.1.211 node7:192.168.1.212 node8:192.168.1.213 node9:192.168.1.214 node10:192.168.1.215"
+  echo "  Using hardcoded node IPs (cluster-nodes.conf not found)"
+fi
+
 # Detect init system
 INIT_SYSTEM="none"
 if command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1; then
@@ -150,10 +163,10 @@ fi
 echo "[4/5] Diagnosing xmrig on all nodes..."
 # Start xmrig command that works across init systems
 START_XMRIG_CMD='doas rc-service xmrig start 2>/dev/null || doas systemctl start xmrig 2>/dev/null || true'
-for i in $(seq 1 10); do
-  NODE_IP="192.168.1.$((205 + i))"
-  NODE="node$i"
-  if [ "$i" = "1" ]; then
+for entry in $ALL_NODES; do
+  NODE="${entry%%:*}"
+  NODE_IP="${entry#*:}"
+  if _is_local "$NODE_IP"; then
     HAS_BIN="no"; { command -v xmrig >/dev/null 2>&1 || [ -f /usr/local/bin/xmrig ]; } && HAS_BIN="yes"
     HAS_SVC="no"; { [ -f /etc/init.d/xmrig ] || [ -f /etc/systemd/system/xmrig.service ]; } && HAS_SVC="yes"
     HAS_CFG="no"; [ -f /etc/xmrig/config.json ] && HAS_CFG="yes"
@@ -175,10 +188,10 @@ done
 echo "[5/5] Starting mining on all nodes..."
 STARTED=0
 FAILED=0
-for i in $(seq 1 10); do
-  NODE_IP="192.168.1.$((205 + i))"
-  NODE="node$i"
-  if [ "$i" = "1" ]; then
+for entry in $ALL_NODES; do
+  NODE="${entry%%:*}"
+  NODE_IP="${entry#*:}"
+  if _is_local "$NODE_IP"; then
     eval "$START_XMRIG_CMD"
     sleep 1
     if pgrep xmrig >/dev/null 2>&1; then

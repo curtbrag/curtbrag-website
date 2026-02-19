@@ -266,7 +266,7 @@ XMRIG_CONFIG
   if [ "$INIT_SYS" = "systemd" ]; then
     echo -e "  Creating systemd service..."
     ssh_cmd "$SSH_TARGET" "doas systemctl unmask xmrig.service 2>/dev/null" 2>/dev/null
-    ssh_cmd "$SSH_TARGET" "doas tee /etc/systemd/system/xmrig.service > /dev/null" << 'SVCUNIT'
+    ssh_cmd "$SSH_TARGET" "doas tee /etc/systemd/system/xmrig.service > /dev/null" << SVCUNIT
 [Unit]
 Description=XMRig Monero Miner
 After=network-online.target
@@ -274,7 +274,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/xmrig --config=/etc/xmrig/config.json --no-color
+ExecStart=${XMRIG_BIN} --config=/etc/xmrig/config.json --no-color
 Restart=always
 RestartSec=15
 Nice=10
