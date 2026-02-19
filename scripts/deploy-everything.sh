@@ -537,9 +537,10 @@ depend() { need net; }
 ORCSVC
   \$PRIV chmod +x /etc/init.d/xmrig 2>/dev/null || true
   \$PRIV /sbin/rc-update add xmrig default 2>/dev/null || true
-  # Ensure crond is running (needed for the watchdog cron job below)
-  \$PRIV /sbin/rc-update add crond default 2>/dev/null || true
-  \$PRIV /sbin/rc-service crond start 2>/dev/null || true
+  # Start crond directly (rc-service may not exist on PostmarketOS)
+  if ! pgrep -x crond >/dev/null 2>&1; then
+    \$PRIV /usr/sbin/crond 2>/dev/null || \$PRIV crond 2>/dev/null || true
+  fi
 
   # Always create launcher script (used by cron watchdog and as fallback starter)
   # Use /home/user/ (persistent) instead of /tmp (may be tmpfs, cleared on reboot)
@@ -554,8 +555,17 @@ MINER_LAUNCHER
     \$PRIV /sbin/rc-service xmrig restart 2>/dev/null || true
     SVC_OUT=\$(\$PRIV /sbin/rc-service xmrig status 2>&1 || true)
     echo "SVC_OUT:\$SVC_OUT"
+  elif command -v start-stop-daemon >/dev/null 2>&1; then
+    # BusyBox built-in — properly daemonizes (fork, new session, pidfile)
+    # No SSH race condition, no doas child reaping issue
+    INIT=ssd
+    \$PRIV start-stop-daemon -S -b -m -p /run/xmrig.pid -x \$XMRIG_BIN -- --config=/etc/xmrig/config.json --no-color
+  elif [ -x /etc/init.d/xmrig ]; then
+    # Try init script directly (works even without rc-service wrapper)
+    INIT=initd
+    \$PRIV /etc/init.d/xmrig start 2>/dev/null || true
   else
-    # rc-service not available — use launcher with nohup+setsid+stdin-close
+    # Last resort: launcher with nohup+setsid (~50% survival rate through SSH disconnect)
     INIT=launcher
     \$PRIV sh -c 'nohup setsid /home/user/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null & echo \$! > /run/xmrig.pid'
   fi
