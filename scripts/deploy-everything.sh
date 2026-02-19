@@ -350,6 +350,9 @@ setup_mining_node() {
   DEPLOY_OUT=$(ssh_cmd "$SSH_TARGET" "bash -s" 2>&1 << DEPLOY_SCRIPT
 set -e
 
+# Ensure /sbin is in PATH — doas on PostmarketOS has restricted PATH
+export PATH="/sbin:/usr/sbin:\$PATH"
+
 # --- Detect OS ---
 if [ -f /etc/alpine-release ]; then
   OS=alpine
