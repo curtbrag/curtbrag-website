@@ -7,8 +7,8 @@
 #   1. Enables Alpine community repo (required — xmrig is not in the default repos)
 #   2. Installs xmrig via apk (the only reliable method for Linux ARM64)
 #   3. Deploys xmrig config with wallet/pool/worker settings
-#   4. Creates and starts a systemd service (postmarketOS v25.12 uses systemd)
-#      Falls back to OpenRC if systemd is not available.
+#   4. Creates and starts an OpenRC service (postmarketOS/Alpine uses OpenRC)
+#      Falls back to systemd if PID 1 is systemd (non-Alpine distros).
 #
 # Why systemd/OpenRC and not nohup/disown/setsid?
 #   The phones run postmarketOS with BusyBox ash.
@@ -250,9 +250,14 @@ XMRIG_CONFIG
   echo -e "  ${GREEN}✓${NC} Config written to /etc/xmrig/config.json"
 
   # Step 4: Create and start service
-  # Detect init system — check systemd FIRST (postmarketOS newer versions use systemd,
-  # and the phones have proven to work with systemctl enable/start/stop)
-  INIT_SYS=$(ssh_cmd "$SSH_TARGET" "command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1 && echo systemd || { command -v rc-service >/dev/null 2>&1 && echo openrc; } || echo none" 2>/dev/null)
+  # Detect init system — Alpine always uses OpenRC (systemctl shim exists but isn't PID 1).
+  # For non-Alpine, verify PID 1 is actually systemd before using it.
+  INIT_SYS=$(ssh_cmd "$SSH_TARGET" "
+    if [ -f /etc/alpine-release ]; then echo openrc
+    elif [ \"\$(cat /proc/1/comm 2>/dev/null)\" = systemd ]; then echo systemd
+    elif command -v rc-service >/dev/null 2>&1; then echo openrc
+    else echo none; fi
+  " 2>/dev/null)
   echo -e "  Init system: ${INIT_SYS}"
 
   # Stop any existing xmrig (cleanup from manual runs or stale processes)
@@ -260,7 +265,6 @@ XMRIG_CONFIG
 
   if [ "$INIT_SYS" = "systemd" ]; then
     echo -e "  Creating systemd service..."
-    # Unmask in case it was masked during previous cleanup
     ssh_cmd "$SSH_TARGET" "doas systemctl unmask xmrig.service 2>/dev/null" 2>/dev/null
     ssh_cmd "$SSH_TARGET" "doas tee /etc/systemd/system/xmrig.service > /dev/null" << 'SVCUNIT'
 [Unit]
@@ -283,11 +287,14 @@ SVCUNIT
     echo -e "  Service: ${SVC_STATUS}"
   elif [ "$INIT_SYS" = "openrc" ]; then
     echo -e "  Creating OpenRC service..."
-    ssh_cmd "$SSH_TARGET" "doas tee /etc/init.d/xmrig > /dev/null && doas chmod +x /etc/init.d/xmrig" << 'OPENRC_SVC'
+    # Clean up broken systemd service from previous deployments
+    ssh_cmd "$SSH_TARGET" "doas systemctl stop xmrig 2>/dev/null; doas systemctl disable xmrig 2>/dev/null; doas rm -f /etc/systemd/system/xmrig.service 2>/dev/null; true" 2>/dev/null
+    # Write OpenRC service using the actual xmrig binary path
+    ssh_cmd "$SSH_TARGET" "doas tee /etc/init.d/xmrig > /dev/null && doas chmod +x /etc/init.d/xmrig" << OPENRC_SVC
 #!/sbin/openrc-run
 name="xmrig"
 description="XMRig Monero Miner"
-command="/usr/local/bin/xmrig"
+command="${XMRIG_BIN}"
 command_args="--config=/etc/xmrig/config.json"
 command_background="yes"
 pidfile="/run/xmrig.pid"

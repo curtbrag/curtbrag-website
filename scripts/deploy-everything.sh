@@ -416,7 +416,30 @@ echo "CONFIG:written"
 sleep 1
 
 # --- Create service and start ---
-if command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1; then
+# Detect init system: Alpine always uses OpenRC (even if systemctl shim exists).
+# For non-Alpine, verify PID 1 is actually systemd before using it.
+if [ "\$OS" = "alpine" ]; then
+  INIT=openrc
+  # Clean up broken systemd service from previous deployments
+  \$PRIV systemctl stop xmrig 2>/dev/null || true
+  \$PRIV systemctl disable xmrig 2>/dev/null || true
+  \$PRIV rm -f /etc/systemd/system/xmrig.service 2>/dev/null || true
+  \$PRIV tee /etc/init.d/xmrig > /dev/null << ORCSVC
+#!/sbin/openrc-run
+name="xmrig"
+description="XMRig Miner"
+command="\$XMRIG_BIN"
+command_args="--config=/etc/xmrig/config.json --no-color"
+command_background="yes"
+pidfile="/run/xmrig.pid"
+output_log="/tmp/xmrig.log"
+error_log="/tmp/xmrig.log"
+depend() { need net; }
+ORCSVC
+  \$PRIV chmod +x /etc/init.d/xmrig
+  \$PRIV rc-update add xmrig default 2>/dev/null || true
+  \$PRIV rc-service xmrig restart 2>&1 || true
+elif command -v systemctl >/dev/null 2>&1 && [ "\$(cat /proc/1/comm 2>/dev/null)" = "systemd" ]; then
   INIT=systemd
   \$PRIV systemctl unmask xmrig.service 2>/dev/null || true
   \$PRIV tee /etc/systemd/system/xmrig.service > /dev/null << SYSD
@@ -436,23 +459,6 @@ SYSD
   \$PRIV systemctl daemon-reload
   \$PRIV systemctl enable xmrig 2>/dev/null
   \$PRIV systemctl restart xmrig
-elif command -v rc-service >/dev/null 2>&1; then
-  INIT=openrc
-  \$PRIV tee /etc/init.d/xmrig > /dev/null << ORCSVC
-#!/sbin/openrc-run
-name="xmrig"
-description="XMRig Miner"
-command="\$XMRIG_BIN"
-command_args="--config=/etc/xmrig/config.json --no-color"
-command_background="yes"
-pidfile="/run/xmrig.pid"
-output_log="/tmp/xmrig.log"
-error_log="/tmp/xmrig.log"
-depend() { need net; }
-ORCSVC
-  \$PRIV chmod +x /etc/init.d/xmrig
-  \$PRIV rc-update add xmrig default 2>/dev/null || true
-  \$PRIV rc-service xmrig restart 2>&1
 else
   INIT=none
   # Direct start as fallback
