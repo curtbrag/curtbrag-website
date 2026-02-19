@@ -31,7 +31,7 @@ WALLET="44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xV
 POOL="gulf.moneroocean.stream:20128"
 API_PORT=3847
 CPU_HINT=75
-STAGGER_SECS=30
+STAGGER_SECS=5
 
 # Node IPs — same as setup-mining.sh and cluster-nodes.conf
 declare -A NODES=(
@@ -85,34 +85,28 @@ banner() {
 }
 
 # SSH wrapper — supports custom port via SSH_PORT env (default: 22)
-# Uses ControlMaster multiplexing to avoid sshd MaxStartups rate-limiting
 SSH_PORT="${SSH_PORT:-22}"
-SSH_CONTROL_DIR="/tmp/cluster-ssh-$$"
-mkdir -p "$SSH_CONTROL_DIR"
 
-# Cleanup SSH control sockets on exit
-cleanup_ssh() {
-  for sock in "$SSH_CONTROL_DIR"/*; do
-    [ -S "$sock" ] && ssh -o ControlPath="$sock" -O exit dummy 2>/dev/null
-  done
-  rm -rf "$SSH_CONTROL_DIR" 2>/dev/null
-}
-trap cleanup_ssh EXIT
-
-SSH_MUX_OPTS="-o ControlMaster=auto -o ControlPath=${SSH_CONTROL_DIR}/%r@%h:%p -o ControlPersist=600"
+# Common SSH options — keep connections lean to avoid overwhelming phone sshd
+SSH_OPTS="-o ConnectTimeout=5 -o ServerAliveInterval=10 -o ServerAliveCountMax=2 -o StrictHostKeyChecking=accept-new"
 
 ssh_cmd() {
   local target="$1"; shift
   if [ -n "${SSH_PASS:-}" ]; then
-    sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" $SSH_MUX_OPTS -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new "$target" "$@"
+    # Password mode: use sshpass, try pubkey first then password
+    sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" $SSH_OPTS -o PreferredAuthentications=publickey,keyboard-interactive,password "$target" "$@"
   else
-    ssh -p "$SSH_PORT" $SSH_MUX_OPTS -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$target" "$@"
+    ssh -p "$SSH_PORT" $SSH_OPTS -o BatchMode=yes "$target" "$@"
   fi
 }
 
 scp_cmd() {
   local src="$1" dst="$2"
-  scp -P "$SSH_PORT" $SSH_MUX_OPTS -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$src" "$dst" 2>/dev/null
+  if [ -n "${SSH_PASS:-}" ]; then
+    sshpass -p "$SSH_PASS" scp -P "$SSH_PORT" $SSH_OPTS "$src" "$dst" 2>/dev/null
+  else
+    scp -P "$SSH_PORT" $SSH_OPTS "$src" "$dst" 2>/dev/null
+  fi
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -477,32 +471,90 @@ deploy_mining() {
   echo -e "  CPU:    ${CPU_HINT}%"
   echo ""
 
-  # Pre-check: test SSH connectivity to all nodes first (fast, parallel-ish)
-  echo -e "  ${BLUE}Pre-checking SSH access to all nodes...${NC}"
+  # PHASE 1: Wake up all phones' WiFi radios with parallel pings
+  echo -e "  ${BLUE}Waking phone WiFi radios...${NC}"
+  for name in $(echo "${!NODES[@]}" | tr ' ' '\n' | sort); do
+    ping -c 3 -i 0.3 "${NODES[$name]}" &>/dev/null &
+  done
+  wait
+  sleep 2
+
+  # PHASE 2: Parallel SSH pre-check — test all nodes simultaneously
+  # This avoids the sequential timeout problem (10s x 10 nodes = 100s)
+  echo -e "  ${BLUE}Testing SSH to all nodes (parallel)...${NC}"
+  local PRECHECK_DIR="/tmp/cluster-precheck-$$"
+  mkdir -p "$PRECHECK_DIR"
+
+  for name in $(echo "${!NODES[@]}" | tr ' ' '\n' | sort); do
+    local IP="${NODES[$name]}"
+    (
+      if ssh_cmd "user@${IP}" "echo ok" &>/dev/null; then
+        echo "OK" > "$PRECHECK_DIR/$name"
+      else
+        # Capture the actual error
+        ERR=$(ssh_cmd "user@${IP}" "echo ok" 2>&1 | tail -1)
+        echo "FAIL:${ERR}" > "$PRECHECK_DIR/$name"
+      fi
+    ) &
+  done
+  wait
+
+  # Collect results
   local REACHABLE="" UNREACHABLE=""
   for name in $(echo "${!NODES[@]}" | tr ' ' '\n' | sort); do
     local IP="${NODES[$name]}"
-    echo -ne "    ${YELLOW}[${name}]${NC} ${IP} ... "
-    if ssh_cmd "user@${IP}" "echo ok" &>/dev/null; then
-      echo -e "${GREEN}OK${NC}"
+    local RESULT=$(cat "$PRECHECK_DIR/$name" 2>/dev/null || echo "FAIL:no response")
+    if [ "$RESULT" = "OK" ]; then
+      echo -e "    ${YELLOW}[${name}]${NC} ${IP} ... ${GREEN}OK${NC}"
       REACHABLE="$REACHABLE $name"
     else
-      # Quick diagnosis
-      if timeout 3 bash -c "echo >/dev/tcp/$IP/$SSH_PORT" 2>/dev/null; then
-        echo -e "${RED}auth failed${NC}"
-      elif ping -c 1 -W 2 "$IP" &>/dev/null; then
-        echo -e "${RED}port ${SSH_PORT} closed${NC}"
-      else
-        echo -e "${RED}unreachable${NC}"
-      fi
+      local ERR_MSG="${RESULT#FAIL:}"
+      echo -e "    ${YELLOW}[${name}]${NC} ${IP} ... ${RED}FAILED${NC} — ${ERR_MSG:-unknown}"
       UNREACHABLE="$UNREACHABLE $name"
     fi
   done
+  rm -rf "$PRECHECK_DIR"
 
   local REACH_COUNT=$(echo $REACHABLE | wc -w)
   local UNREACH_COUNT=$(echo $UNREACHABLE | wc -w)
   echo ""
   echo -e "  SSH: ${GREEN}${REACH_COUNT} reachable${NC}, ${RED}${UNREACH_COUNT} unreachable${NC}"
+
+  # PHASE 2b: If low success rate, retry once after short pause
+  if [ "$REACH_COUNT" -lt 5 ] && [ "$REACH_COUNT" -lt "${#NODES[@]}" ]; then
+    echo -e "  ${YELLOW}Low success rate — retrying failed nodes in 5s...${NC}"
+    sleep 5
+
+    # Re-ping to wake WiFi
+    for name in $UNREACHABLE; do
+      ping -c 2 -i 0.3 "${NODES[$name]}" &>/dev/null &
+    done
+    wait
+    sleep 1
+
+    local RETRY_OK=""
+    for name in $UNREACHABLE; do
+      local IP="${NODES[$name]}"
+      echo -ne "    ${YELLOW}[${name}]${NC} ${IP} retry ... "
+      if ssh_cmd "user@${IP}" "echo ok" &>/dev/null; then
+        echo -e "${GREEN}OK${NC}"
+        REACHABLE="$REACHABLE $name"
+        RETRY_OK="$RETRY_OK $name"
+      else
+        echo -e "${RED}still failed${NC}"
+      fi
+    done
+
+    # Remove retried-OK nodes from UNREACHABLE
+    for ok_name in $RETRY_OK; do
+      UNREACHABLE=$(echo "$UNREACHABLE" | sed "s/ $ok_name//g")
+    done
+
+    REACH_COUNT=$(echo $REACHABLE | wc -w)
+    UNREACH_COUNT=$(echo $UNREACHABLE | wc -w)
+    echo ""
+    echo -e "  SSH after retry: ${GREEN}${REACH_COUNT} reachable${NC}, ${RED}${UNREACH_COUNT} unreachable${NC}"
+  fi
 
   if [ "$REACH_COUNT" -eq 0 ]; then
     echo -e "  ${RED}No nodes reachable — cannot deploy mining.${NC}"
@@ -510,6 +562,7 @@ deploy_mining() {
     return 1
   fi
 
+  # PHASE 3: Deploy to reachable nodes
   echo ""
   echo -e "  ${BLUE}Deploying to ${REACH_COUNT} reachable nodes...${NC}"
   echo ""
@@ -518,7 +571,7 @@ deploy_mining() {
   for name in $REACHABLE; do
     # Only stagger after a successful xmrig start (RandomX memory needs time)
     if [ "$STARTED" -gt 0 ] && [ "$STAGGER_SECS" -gt 0 ]; then
-      echo -e "  ${BLUE}Waiting ${STAGGER_SECS}s (RandomX memory allocation)...${NC}"
+      echo -e "  ${BLUE}Waiting ${STAGGER_SECS}s (RandomX memory)...${NC}"
       sleep "$STAGGER_SECS"
     fi
     if setup_mining_node "$name"; then

@@ -14,8 +14,8 @@
 # ║    1. Installs Node.js (via nvm) on Steam Deck                    ║
 # ║    2. Installs Tailscale (via deck-tailscale) on Steam Deck       ║
 # ║    3. Generates SSH keys and pushes them to phones                 ║
-# ║    4. SSHes into NEXUS-PRIME and sets up API server + funnel       ║
-# ║    5. Deploys mining to all phones + sets up node1 push/poll       ║
+# ║    4. Deploys mining IMMEDIATELY (while SSH is fresh)              ║
+# ║    5. Sets up NEXUS-PRIME API server (interactive, after mining)   ║
 # ╚══════════════════════════════════════════════════════════════════════╝
 
 set -e
@@ -289,10 +289,27 @@ if [ -n "$NEED_KEY_COPY" ]; then
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# STEP 4: Set up NEXUS-PRIME (headless API server)
+# STEP 4: Deploy mining IMMEDIATELY (while SSH connections are fresh)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-banner "STEP 4/5 — NEXUS-PRIME (Headless API Server)"
+banner "STEP 4/5 — Deploy Mining to Phones"
+
+echo -e "  ${BLUE}Deploying xmrig NOW — SSH connections are fresh from Step 3.${NC}"
+echo ""
+
+# Pass through any extra args, but always skip nexus (that's separate)
+# Also pass phone password as fallback if SSH keys didn't take
+PASS_ARGS="--skip-nexus"
+if [ -n "${PHONE_PASS:-}" ]; then
+  PASS_ARGS="$PASS_ARGS --password $PHONE_PASS"
+fi
+bash "$SCRIPT_DIR/deploy-everything.sh" $PASS_ARGS "$@"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STEP 5: Set up NEXUS-PRIME (headless API server) — AFTER mining
+# ═══════════════════════════════════════════════════════════════════════════════
+
+banner "STEP 5/5 — NEXUS-PRIME (Headless API Server)"
 
 echo -e "  ${BLUE}NEXUS-PRIME is the headless API server brain.${NC}"
 echo -e "  ${BLUE}Setting it up remotely from this Steam Deck.${NC}"
@@ -301,7 +318,7 @@ echo ""
 # Discover NEXUS-PRIME: try local hostname, mDNS, then Tailscale
 NEXUS_HOST=""
 for host in "nexus-prime" "nexus-prime.local"; do
-  if ping -c 1 -W 3 "$host" &>/dev/null; then
+  if ping -c 1 -W 2 "$host" &>/dev/null; then
     NEXUS_HOST="$host"
     echo -e "  ${GREEN}✓${NC} Found NEXUS-PRIME at ${NEXUS_HOST}"
     break
@@ -332,10 +349,10 @@ if [ -n "$NEXUS_HOST" ]; then
   NP_USER="${NP_USER:-$(whoami)}"
   NP_SSH="${NP_USER}@${NEXUS_HOST}"
 
-  # Test SSH access
+  # Test SSH access (with timeout to prevent hanging on bad hostname)
   if ! ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$NP_SSH" "echo ok" &>/dev/null; then
     echo -e "  ${YELLOW}SSH key not set up for NEXUS-PRIME. Trying ssh-copy-id...${NC}"
-    ssh-copy-id -o StrictHostKeyChecking=accept-new "$NP_SSH" 2>/dev/null || true
+    timeout 15 ssh-copy-id -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$NP_SSH" 2>/dev/null || true
   fi
 
   if ssh -o ConnectTimeout=5 -o BatchMode=yes "$NP_SSH" "echo ok" &>/dev/null; then
@@ -413,24 +430,6 @@ else
   echo -e "  ${YELLOW}Set it up later: ssh user@nexus-prime 'cd ~/curtbrag-website && bash scripts/deploy-everything.sh --api-only'${NC}"
 fi
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# STEP 5: Deploy mining + node1 push/poll (skip API — that's on NEXUS-PRIME)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-banner "STEP 5/5 — Deploy Mining to Phones"
-
-echo -e "  ${BLUE}Deploying xmrig to phones + setting up node1 push/poll...${NC}"
-echo -e "  ${BLUE}(API server is on NEXUS-PRIME — skipping local API setup)${NC}"
-echo ""
-
-# Pass through any extra args, but always skip nexus (that's on NEXUS-PRIME now)
-# Also pass phone password as fallback if SSH keys didn't take
-PASS_ARGS="--skip-nexus"
-if [ -n "${PHONE_PASS:-}" ]; then
-  PASS_ARGS="$PASS_ARGS --password $PHONE_PASS"
-fi
-bash "$SCRIPT_DIR/deploy-everything.sh" $PASS_ARGS "$@"
-
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║              STEAM DECK SETUP COMPLETE                      ║${NC}"
@@ -444,7 +443,7 @@ echo ""
 if [ "$NEXUS_SETUP_OK" -eq 1 ] 2>/dev/null; then
   echo -e "  ${GREEN}NEXUS-PRIME:${NC} API server + Tailscale funnel running"
 else
-  echo -e "  ${YELLOW}NEXUS-PRIME:${NC} Needs manual setup — see Step 4 output above"
+  echo -e "  ${YELLOW}NEXUS-PRIME:${NC} Needs manual setup — see Step 5 output above"
 fi
 echo ""
 echo -e "  ${BLUE}If phones were unreachable, make sure:${NC}"
@@ -453,7 +452,7 @@ echo -e "    2. SSH is enabled (postmarketOS: sshd runs by default)"
 echo -e "    3. SSH keys are copied: ssh-copy-id user@<phone-ip>"
 echo ""
 echo -e "  ${BLUE}Re-run mining deploy only:${NC}"
-echo -e "    bash scripts/deploy-everything.sh --skip-nexus"
+echo -e "    bash scripts/deploy-everything.sh --skip-nexus --password 0735"
 echo ""
 echo -e "  ${BLUE}Re-run NEXUS-PRIME API setup:${NC}"
 echo -e "    ssh ${NP_SSH:-user@nexus-prime} 'cd ~/curtbrag-website && bash scripts/deploy-everything.sh --api-only'"
