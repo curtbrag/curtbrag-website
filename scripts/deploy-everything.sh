@@ -420,9 +420,8 @@ sleep 1
 # For non-Alpine, verify PID 1 is actually systemd before using it.
 if [ "\$OS" = "alpine" ]; then
   INIT=openrc
-  echo "DEBUG:alpine-openrc-block-entered"
-  # Remove broken systemd service file (do NOT call systemctl — it hangs on Alpine)
-  \$PRIV rm -f /etc/systemd/system/xmrig.service 2>/dev/null || true
+  # Remove broken systemd service file + stale PID file
+  \$PRIV rm -f /etc/systemd/system/xmrig.service /run/xmrig.pid 2>/dev/null || true
   # Write OpenRC service file
   \$PRIV tee /etc/init.d/xmrig > /dev/null << ORCSVC || true
 #!/sbin/openrc-run
@@ -438,7 +437,19 @@ depend() { need net; }
 ORCSVC
   \$PRIV chmod +x /etc/init.d/xmrig || true
   \$PRIV rc-update add xmrig default 2>/dev/null || true
-  \$PRIV rc-service xmrig restart 2>&1 || true
+  # Stop old service cleanly, then start fresh (restart can fail if stop fails)
+  \$PRIV rc-service xmrig stop 2>/dev/null || true
+  sleep 1
+  SVC_OUT=\$(\$PRIV rc-service xmrig start 2>&1) || true
+  echo "SVC_OUT:\$SVC_OUT"
+  # Fallback: if rc-service failed, start xmrig directly via start-stop-daemon
+  sleep 2
+  if ! pgrep -x xmrig >/dev/null 2>&1; then
+    echo "DEBUG:rc-service-failed-trying-direct-start"
+    \$PRIV start-stop-daemon --start --background --make-pidfile \
+      --pidfile /run/xmrig.pid \
+      --exec \$XMRIG_BIN -- --config=/etc/xmrig/config.json --no-color 2>&1 || true
+  fi
 elif command -v systemctl >/dev/null 2>&1 && [ "\$(cat /proc/1/comm 2>/dev/null)" = "systemd" ]; then
   INIT=systemd
   \$PRIV systemctl unmask xmrig.service 2>/dev/null || true
@@ -466,8 +477,8 @@ else
 fi
 echo "SERVICE:\$INIT"
 
-# --- Verify (wait for startup) ---
-sleep 3
+# --- Verify (wait for startup — ARM phones are slow) ---
+sleep 5
 if pgrep -x xmrig >/dev/null 2>&1; then
   echo "STATUS:RUNNING"
 else
@@ -488,6 +499,8 @@ DEPLOY_SCRIPT
   local SERVICE_TYPE=$(echo "$DEPLOY_OUT" | grep "^SERVICE:" | head -1 | cut -d: -f2)
   local STATUS=$(echo "$DEPLOY_OUT" | grep "^STATUS:" | head -1 | cut -d: -f2)
   local LOG_TAIL=$(echo "$DEPLOY_OUT" | grep "^LOG_TAIL:" | head -1 | cut -d: -f2-)
+  local SVC_OUT=$(echo "$DEPLOY_OUT" | grep "^SVC_OUT:" | head -1 | cut -d: -f2-)
+  local DEBUG_LINES=$(echo "$DEPLOY_OUT" | grep "^DEBUG:" | cut -d: -f2-)
 
   # Handle SSH failure (complete or partial)
   if [ $DEPLOY_RC -ne 0 ] && [ -z "$REMOTE_OS" ]; then
@@ -499,10 +512,8 @@ DEPLOY_SCRIPT
 
   # Handle partial SSH failure (connection dropped mid-deploy)
   if [ -z "$SERVICE_TYPE" ] && [ -n "$REMOTE_OS" ]; then
-    echo -e "    ${YELLOW}⚠${NC} SSH connection dropped during service setup (got OS=$REMOTE_OS but no SERVICE status)"
-    # Show any debug/error output from the remote script
-    local DEBUG_OUT=$(echo "$DEPLOY_OUT" | grep "^DEBUG:" | cut -d: -f2-)
-    [ -n "$DEBUG_OUT" ] && echo -e "    ${YELLOW}Debug: ${DEBUG_OUT}${NC}"
+    echo -e "    ${YELLOW}⚠${NC} SSH connection dropped during service setup"
+    [ -n "$DEBUG_LINES" ] && echo -e "    ${YELLOW}Debug: ${DEBUG_LINES}${NC}"
   fi
 
   echo -e "    OS: ${REMOTE_OS:-unknown}"
@@ -521,6 +532,12 @@ DEPLOY_SCRIPT
     return 0
   else
     echo -e "    ${RED}✗${NC} xmrig NOT running (${SERVICE_TYPE:-unknown})"
+    if [ -n "$SVC_OUT" ]; then
+      echo -e "    ${YELLOW}rc-service: ${SVC_OUT}${NC}"
+    fi
+    if [ -n "$DEBUG_LINES" ]; then
+      echo -e "    ${YELLOW}Debug: ${DEBUG_LINES}${NC}"
+    fi
     if [ -n "$LOG_TAIL" ] && [ "$LOG_TAIL" != "no log file" ]; then
       echo -e "    ${YELLOW}Log: ${LOG_TAIL}${NC}"
     fi
