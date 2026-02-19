@@ -33,7 +33,7 @@ API_PORT=3847
 CPU_HINT=75
 STAGGER_SECS=5
 
-# Node IPs — WiFi fallback, overridden by USB auto-detection below
+# Node IPs — phones are connected via Ethernet (USB-C adapters → switch)
 declare -A NODES=(
   [node1]="192.168.1.206"
   [node2]="192.168.1.207"
@@ -46,127 +46,7 @@ declare -A NODES=(
   [node9]="192.168.1.214"
   [node10]="192.168.1.215"
 )
-USB_MODE=0  # Set to 1 when USB phones detected
 
-# ─── USB Phone Auto-Detection ────────────────────────────────────────────────
-# Phones connected via USB (RNDIS/CDC-ECM) are far more reliable than WiFi.
-# Detect USB network interfaces, find the phone IP on each, and override NODES.
-
-detect_usb_phones() {
-  local usb_ifaces=""
-  # Find USB network interfaces by checking the driver (rndis_host or cdc_ether)
-  for iface in /sys/class/net/*; do
-    local name=$(basename "$iface")
-    [ "$name" = "lo" ] && continue
-    local driver=$(readlink "$iface/device/driver" 2>/dev/null | xargs basename 2>/dev/null)
-    if [ "$driver" = "rndis_host" ] || [ "$driver" = "cdc_ether" ] || [ "$driver" = "cdc_ncm" ]; then
-      usb_ifaces="$usb_ifaces $name"
-    fi
-  done
-
-  # Also check for interfaces matching common USB naming patterns
-  if [ -z "$usb_ifaces" ]; then
-    for iface in /sys/class/net/usb* /sys/class/net/enp*u*; do
-      [ -e "$iface" ] || continue
-      local name=$(basename "$iface")
-      # Verify it's actually up or has an IP
-      ip -4 addr show dev "$name" 2>/dev/null | grep -q "inet " && usb_ifaces="$usb_ifaces $name"
-    done
-  fi
-
-  usb_ifaces=$(echo "$usb_ifaces" | xargs)  # trim
-  if [ -z "$usb_ifaces" ]; then
-    return 1
-  fi
-
-  echo -e "  ${GREEN}Found USB network interfaces:${NC} $usb_ifaces"
-
-  # For each USB interface, find the phone's IP and test SSH
-  local idx=0
-  declare -A USB_NODES=()
-  for iface in $usb_ifaces; do
-    local my_ip=$(ip -4 addr show dev "$iface" 2>/dev/null | grep -oP 'inet \K[\d.]+' | head -1)
-    if [ -z "$my_ip" ]; then
-      echo -e "    ${YELLOW}⚠${NC} $iface — no local IP assigned, skipping"
-      continue
-    fi
-
-    # Build candidate list: gateway, .1, .2, PostmarketOS defaults
-    local candidates=""
-    # Gateway route
-    local gw=$(ip -4 route show dev "$iface" 2>/dev/null | grep -oP 'via \K[\d.]+' | head -1)
-    [ -n "$gw" ] && candidates="$gw"
-    # Subnet .1 and .2
-    local base=$(echo "$my_ip" | sed 's/\.[0-9]*$//')
-    [ "${base}.1" != "$my_ip" ] && candidates="$candidates ${base}.1"
-    [ "${base}.2" != "$my_ip" ] && candidates="$candidates ${base}.2"
-    # PostmarketOS USB default
-    candidates="$candidates 172.16.42.1"
-    # ARP table neighbors on this interface
-    local arp_ips=$(ip -4 neigh show dev "$iface" 2>/dev/null | grep -oP '^\S+' | head -5)
-    candidates="$candidates $arp_ips"
-    # Deduplicate and remove our own IP
-    candidates=$(echo "$candidates" | tr ' ' '\n' | grep -v "^$" | grep -v "^${my_ip}$" | sort -u | tr '\n' ' ')
-
-    local phone_ip=""
-    for candidate in $candidates; do
-      # Use SSH check (phones often block ICMP ping)
-      if ssh -p "$SSH_PORT" -o ConnectTimeout=2 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@${candidate}" "echo ok" &>/dev/null 2>&1; then
-        phone_ip="$candidate"
-        break
-      fi
-      # Also try with sshpass if password is set
-      if [ -n "${SSH_PASS:-}" ] && command -v sshpass &>/dev/null; then
-        if sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" -o ConnectTimeout=2 -o StrictHostKeyChecking=accept-new "user@${candidate}" "echo ok" &>/dev/null 2>&1; then
-          phone_ip="$candidate"
-          break
-        fi
-      fi
-    done
-
-    if [ -z "$phone_ip" ]; then
-      echo -e "    ${YELLOW}⚠${NC} $iface (${my_ip}) — tried ${candidates}— no SSH response"
-      continue
-    fi
-
-    idx=$((idx + 1))
-    USB_NODES[node$idx]="$phone_ip"
-    echo -e "    ${GREEN}✓${NC} $iface → node${idx} @ ${phone_ip}"
-  done
-
-  if [ "$idx" -eq 0 ]; then
-    return 1
-  fi
-
-  # If we found SOME USB phones but not all 10, use hybrid mode:
-  # USB IPs override matching WiFi entries, keep WiFi for the rest
-  if [ "$idx" -lt "${#NODES[@]}" ]; then
-    echo -e "  ${YELLOW}Hybrid mode: ${idx} USB + $((${#NODES[@]} - idx)) WiFi${NC}"
-    # Renumber: USB phones take node1..N, WiFi fills the rest
-    local wifi_idx=$idx
-    declare -A ORIG_NODES=()
-    for key in "${!NODES[@]}"; do ORIG_NODES[$key]="${NODES[$key]}"; done
-    NODES=()
-    for key in "${!USB_NODES[@]}"; do NODES[$key]="${USB_NODES[$key]}"; done
-    for key in $(echo "${!ORIG_NODES[@]}" | tr ' ' '\n' | sort); do
-      # Skip WiFi IPs that match a USB-discovered phone
-      local skip=0
-      for ukey in "${!USB_NODES[@]}"; do
-        [ "${ORIG_NODES[$key]}" = "${USB_NODES[$ukey]}" ] && skip=1
-      done
-      if [ "$skip" -eq 0 ] && [ -z "${NODES[$key]:-}" ]; then
-        NODES[$key]="${ORIG_NODES[$key]}"
-      fi
-    done
-  else
-    # All phones on USB — pure USB mode
-    NODES=()
-    for key in "${!USB_NODES[@]}"; do NODES[$key]="${USB_NODES[$key]}"; done
-  fi
-  USB_MODE=1
-  echo -e "  ${GREEN}USB: ${idx} phones detected${NC}"
-  echo ""
-}
 
 # ─── Parse args ──────────────────────────────────────────────────────────────
 
@@ -182,7 +62,6 @@ while [[ $# -gt 0 ]]; do
     --api-only) API_ONLY=1; shift;;
     --ssh-port) SSH_PORT="$2"; shift 2;;
     --diagnose) DIAGNOSE=1; shift;;
-    --wifi) FORCE_WIFI=1; shift;;
     -h|--help)
       echo "Usage: $0 [options]"
       echo "  --wallet ADDR     XMR wallet address"
@@ -194,7 +73,6 @@ while [[ $# -gt 0 ]]; do
       echo "  --api-only         Only set up API server + Tailscale (no mining, no node1)"
       echo "  --ssh-port PORT    SSH port (default: 22, Termux uses 8022)"
       echo "  --diagnose         Run SSH diagnostics on all nodes"
-      echo "  --wifi             Force WiFi mode (skip USB auto-detection)"
       exit 0;;
     *) shift;;
   esac
@@ -689,17 +567,7 @@ deploy_mining() {
   echo -e "  CPU:    ${CPU_HINT}%"
   echo ""
 
-  # PHASE 1: Wake up phones (WiFi only — USB doesn't need this)
-  if [ "$USB_MODE" -eq 0 ]; then
-    echo -e "  ${BLUE}Waking phone WiFi radios...${NC}"
-    for name in $(echo "${!NODES[@]}" | tr ' ' '\n' | sort); do
-      ping -c 3 -i 0.3 "${NODES[$name]}" &>/dev/null &
-    done
-    wait
-    sleep 2
-  fi
-
-  # PHASE 2: Parallel SSH pre-check — test all nodes simultaneously
+  # PHASE 1: Parallel SSH pre-check — test all nodes simultaneously
   # This avoids the sequential timeout problem (10s x 10 nodes = 100s)
   echo -e "  ${BLUE}Testing SSH to all nodes (parallel)...${NC}"
   local PRECHECK_DIR="/tmp/cluster-precheck-$$"
@@ -747,15 +615,6 @@ deploy_mining() {
   if [ "$REACH_COUNT" -lt 5 ] && [ "$REACH_COUNT" -lt "${#NODES[@]}" ]; then
     echo -e "  ${YELLOW}Low success rate — retrying failed nodes in 5s...${NC}"
     sleep 5
-
-    # Re-ping to wake WiFi (USB doesn't need this)
-    if [ "$USB_MODE" -eq 0 ]; then
-      for name in $UNREACHABLE; do
-        ping -c 2 -i 0.3 "${NODES[$name]}" &>/dev/null &
-      done
-      wait
-      sleep 1
-    fi
 
     local RETRY_OK=""
     for name in $UNREACHABLE; do
@@ -903,18 +762,6 @@ chmod 600 /home/user/.cluster-env" 2>/dev/null
 # MAIN
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Auto-detect USB-connected phones (unless --wifi forces WiFi mode)
-if [ -z "${FORCE_WIFI:-}" ]; then
-  echo ""
-  echo -e "  ${BLUE}Scanning for USB-connected phones...${NC}"
-  if detect_usb_phones; then
-    : # USB_MODE=1 set inside detect_usb_phones
-  else
-    echo -e "  ${YELLOW}No USB phones found — using WiFi IPs${NC}"
-    echo ""
-  fi
-fi
-
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║        CURTBRAG PHONE CLUSTER — FULL DEPLOY                ║${NC}"
@@ -923,11 +770,7 @@ echo -e "${CYAN}╚════════════════════�
 echo ""
 echo -e "  Wallet: ${WALLET:0:12}...${WALLET: -8}"
 echo -e "  Pool:   ${POOL}"
-if [ "$USB_MODE" -eq 1 ]; then
-  echo -e "  Phones: ${#NODES[@]} nodes (${GREEN}USB${NC})"
-else
-  echo -e "  Phones: ${#NODES[@]} nodes (WiFi: 192.168.1.206-215)"
-fi
+echo -e "  Phones: ${#NODES[@]} nodes (Ethernet: 192.168.1.206-215)"
 echo ""
 
 # Step 1: API server on this machine
