@@ -88,13 +88,13 @@ banner() {
 SSH_PORT="${SSH_PORT:-22}"
 
 # Common SSH options — keep connections lean to avoid overwhelming phone sshd
-SSH_OPTS="-o ConnectTimeout=5 -o ServerAliveInterval=10 -o ServerAliveCountMax=2 -o StrictHostKeyChecking=accept-new"
+SSH_OPTS="-o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=2 -o StrictHostKeyChecking=accept-new"
 
 ssh_cmd() {
   local target="$1"; shift
   if [ -n "${SSH_PASS:-}" ]; then
-    # Password mode: use sshpass, try pubkey first then password
-    sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" $SSH_OPTS -o PreferredAuthentications=publickey,keyboard-interactive,password "$target" "$@"
+    # Password mode: use sshpass, try password first (avoids wasting auth rounds on pubkey)
+    sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" $SSH_OPTS -o PreferredAuthentications=password,publickey "$target" "$@"
   else
     ssh -p "$SSH_PORT" $SSH_OPTS -o BatchMode=yes "$target" "$@"
   fi
@@ -422,34 +422,13 @@ sleep 1
 # Detect init system: Alpine always uses OpenRC (even if systemctl shim exists).
 # For non-Alpine, verify PID 1 is actually systemd before using it.
 if [ "\$OS" = "alpine" ]; then
-  INIT=nohup
-  # Remove stale PID file + systemd leftovers
-  \$PRIV rm -f /etc/systemd/system/xmrig.service /run/xmrig.pid 2>/dev/null || true
+  # Remove stale systemd leftovers
+  \$PRIV rm -f /etc/systemd/system/xmrig.service 2>/dev/null || true
   # Kill any existing xmrig cleanly
   \$PRIV killall xmrig 2>/dev/null || true
   sleep 1
-  # Start xmrig directly — PostmarketOS lacks rc-service/start-stop-daemon
-  # Use a wrapper script so nohup/backgrounding works reliably under doas
-  \$PRIV tee /tmp/start-xmrig.sh > /dev/null << 'STARTER'
-#!/bin/sh
-killall xmrig 2>/dev/null
-sleep 1
-nohup \$(command -v xmrig || echo /usr/bin/xmrig) --config=/etc/xmrig/config.json --no-color > /tmp/xmrig.log 2>&1 &
-XPID=\$!
-echo \$XPID > /run/xmrig.pid
-# Wait briefly to confirm it didn't crash immediately
-sleep 2
-if kill -0 \$XPID 2>/dev/null; then
-  echo "XMRIG_STARTED:pid=\$XPID"
-else
-  echo "XMRIG_CRASHED:pid=\$XPID"
-  tail -10 /tmp/xmrig.log 2>/dev/null
-fi
-STARTER
-  \$PRIV chmod +x /tmp/start-xmrig.sh
-  STARTER_OUT=\$(\$PRIV /tmp/start-xmrig.sh 2>&1)
-  echo "DEBUG:\$STARTER_OUT"
-  # Also write OpenRC init script for boot persistence (best-effort)
+  # Write OpenRC init script (same approach as setup-mining.sh — proper process management)
+  # Previous nohup-under-doas approach failed: doas reaps backgrounded children on exit
   \$PRIV tee /etc/init.d/xmrig > /dev/null << ORCSVC || true
 #!/sbin/openrc-run
 name="xmrig"
@@ -460,9 +439,23 @@ command_background="yes"
 pidfile="/run/xmrig.pid"
 output_log="/tmp/xmrig.log"
 error_log="/tmp/xmrig.log"
+start_stop_daemon_args="--nicelevel 10"
 depend() { need net; }
 ORCSVC
   \$PRIV chmod +x /etc/init.d/xmrig 2>/dev/null || true
+  \$PRIV /sbin/rc-update add xmrig default 2>/dev/null || true
+  if [ -x /sbin/rc-service ]; then
+    INIT=openrc
+    \$PRIV /sbin/rc-service xmrig restart 2>/dev/null || true
+    SVC_OUT=\$(\$PRIV /sbin/rc-service xmrig status 2>&1 || true)
+    echo "SVC_OUT:\$SVC_OUT"
+  else
+    # Fallback: setsid detaches from doas session (unlike nohup which gets reaped)
+    INIT=setsid
+    \$PRIV rm -f /run/xmrig.pid 2>/dev/null || true
+    setsid \$PRIV \$XMRIG_BIN --config=/etc/xmrig/config.json --no-color > /tmp/xmrig.log 2>&1 &
+    echo \$! > /run/xmrig.pid 2>/dev/null || true
+  fi
 elif command -v systemctl >/dev/null 2>&1 && [ "\$(cat /proc/1/comm 2>/dev/null)" = "systemd" ]; then
   INIT=systemd
   \$PRIV systemctl unmask xmrig.service 2>/dev/null || true
@@ -588,11 +581,14 @@ deploy_mining() {
   for name in $(echo "${!NODES[@]}" | tr ' ' '\n' | sort); do
     local IP="${NODES[$name]}"
     (
-      if ssh_cmd "user@${IP}" "echo ok" &>/dev/null; then
+      # Single SSH attempt — captures both success and error from one connection.
+      # Previous code opened a SECOND connection on failure to get the error message,
+      # which doubled peak concurrent connections (20 total) and saturated phone sshd MaxStartups.
+      RESULT=$(ssh_cmd "user@${IP}" "echo ok" 2>&1)
+      if echo "$RESULT" | grep -q "^ok$"; then
         echo "OK" > "$PRECHECK_DIR/$name"
       else
-        # Capture the actual error
-        ERR=$(ssh_cmd "user@${IP}" "echo ok" 2>&1 | tail -1)
+        ERR=$(echo "$RESULT" | tail -1)
         echo "FAIL:${ERR}" > "$PRECHECK_DIR/$name"
       fi
     ) &
