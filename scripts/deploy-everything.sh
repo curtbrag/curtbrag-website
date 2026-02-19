@@ -33,7 +33,7 @@ API_PORT=3847
 CPU_HINT=75
 STAGGER_SECS=5
 
-# Node IPs — same as setup-mining.sh and cluster-nodes.conf
+# Node IPs — WiFi fallback, overridden by USB auto-detection below
 declare -A NODES=(
   [node1]="192.168.1.206"
   [node2]="192.168.1.207"
@@ -46,6 +46,87 @@ declare -A NODES=(
   [node9]="192.168.1.214"
   [node10]="192.168.1.215"
 )
+USB_MODE=0  # Set to 1 when USB phones detected
+
+# ─── USB Phone Auto-Detection ────────────────────────────────────────────────
+# Phones connected via USB (RNDIS/CDC-ECM) are far more reliable than WiFi.
+# Detect USB network interfaces, find the phone IP on each, and override NODES.
+
+detect_usb_phones() {
+  local usb_ifaces=""
+  # Find USB network interfaces by checking the driver (rndis_host or cdc_ether)
+  for iface in /sys/class/net/*; do
+    local name=$(basename "$iface")
+    [ "$name" = "lo" ] && continue
+    local driver=$(readlink "$iface/device/driver" 2>/dev/null | xargs basename 2>/dev/null)
+    if [ "$driver" = "rndis_host" ] || [ "$driver" = "cdc_ether" ] || [ "$driver" = "cdc_ncm" ]; then
+      usb_ifaces="$usb_ifaces $name"
+    fi
+  done
+
+  # Also check for interfaces matching common USB naming patterns
+  if [ -z "$usb_ifaces" ]; then
+    for iface in /sys/class/net/usb* /sys/class/net/enp*u*; do
+      [ -e "$iface" ] || continue
+      local name=$(basename "$iface")
+      # Verify it's actually up or has an IP
+      ip -4 addr show dev "$name" 2>/dev/null | grep -q "inet " && usb_ifaces="$usb_ifaces $name"
+    done
+  fi
+
+  usb_ifaces=$(echo "$usb_ifaces" | xargs)  # trim
+  if [ -z "$usb_ifaces" ]; then
+    return 1
+  fi
+
+  echo -e "  ${GREEN}Found USB network interfaces:${NC} $usb_ifaces"
+
+  # For each USB interface, find the phone's IP (the peer/gateway on the link)
+  local idx=0
+  declare -A USB_NODES=()
+  for iface in $usb_ifaces; do
+    # Method 1: gateway route (phone acts as gateway)
+    local phone_ip=$(ip -4 route show dev "$iface" 2>/dev/null | grep -oP 'via \K[\d.]+' | head -1)
+
+    if [ -z "$phone_ip" ]; then
+      # Method 2: Phone is .1 on the subnet (PostmarketOS default)
+      local my_ip=$(ip -4 addr show dev "$iface" 2>/dev/null | grep -oP 'inet \K[\d.]+' | head -1)
+      if [ -n "$my_ip" ]; then
+        phone_ip=$(echo "$my_ip" | sed 's/\.[0-9]*$/.1/')
+        # If we already ARE .1, try .2
+        [ "$phone_ip" = "$my_ip" ] && phone_ip=$(echo "$my_ip" | sed 's/\.[0-9]*$/.2/')
+      fi
+    fi
+
+    if [ -z "$phone_ip" ]; then
+      echo -e "    ${YELLOW}⚠${NC} $iface — no peer IP found, skipping"
+      continue
+    fi
+
+    # Quick connectivity check (ping, not SSH — faster)
+    if ! ping -c 1 -W 1 "$phone_ip" &>/dev/null; then
+      echo -e "    ${YELLOW}⚠${NC} $iface — $phone_ip not responding to ping, skipping"
+      continue
+    fi
+
+    idx=$((idx + 1))
+    USB_NODES[node$idx]="$phone_ip"
+    echo -e "    ${GREEN}✓${NC} $iface → node${idx} @ ${phone_ip}"
+  done
+
+  if [ "$idx" -eq 0 ]; then
+    return 1
+  fi
+
+  # Override NODES with USB-discovered phones
+  NODES=()
+  for key in "${!USB_NODES[@]}"; do
+    NODES[$key]="${USB_NODES[$key]}"
+  done
+  USB_MODE=1
+  echo -e "  ${GREEN}USB mode: ${idx} phones detected — WiFi disabled${NC}"
+  echo ""
+}
 
 # ─── Parse args ──────────────────────────────────────────────────────────────
 
@@ -61,6 +142,7 @@ while [[ $# -gt 0 ]]; do
     --api-only) API_ONLY=1; shift;;
     --ssh-port) SSH_PORT="$2"; shift 2;;
     --diagnose) DIAGNOSE=1; shift;;
+    --wifi) FORCE_WIFI=1; shift;;
     -h|--help)
       echo "Usage: $0 [options]"
       echo "  --wallet ADDR     XMR wallet address"
@@ -72,6 +154,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --api-only         Only set up API server + Tailscale (no mining, no node1)"
       echo "  --ssh-port PORT    SSH port (default: 22, Termux uses 8022)"
       echo "  --diagnose         Run SSH diagnostics on all nodes"
+      echo "  --wifi             Force WiFi mode (skip USB auto-detection)"
       exit 0;;
     *) shift;;
   esac
@@ -566,13 +649,15 @@ deploy_mining() {
   echo -e "  CPU:    ${CPU_HINT}%"
   echo ""
 
-  # PHASE 1: Wake up all phones' WiFi radios with parallel pings
-  echo -e "  ${BLUE}Waking phone WiFi radios...${NC}"
-  for name in $(echo "${!NODES[@]}" | tr ' ' '\n' | sort); do
-    ping -c 3 -i 0.3 "${NODES[$name]}" &>/dev/null &
-  done
-  wait
-  sleep 2
+  # PHASE 1: Wake up phones (WiFi only — USB doesn't need this)
+  if [ "$USB_MODE" -eq 0 ]; then
+    echo -e "  ${BLUE}Waking phone WiFi radios...${NC}"
+    for name in $(echo "${!NODES[@]}" | tr ' ' '\n' | sort); do
+      ping -c 3 -i 0.3 "${NODES[$name]}" &>/dev/null &
+    done
+    wait
+    sleep 2
+  fi
 
   # PHASE 2: Parallel SSH pre-check — test all nodes simultaneously
   # This avoids the sequential timeout problem (10s x 10 nodes = 100s)
@@ -623,12 +708,14 @@ deploy_mining() {
     echo -e "  ${YELLOW}Low success rate — retrying failed nodes in 5s...${NC}"
     sleep 5
 
-    # Re-ping to wake WiFi
-    for name in $UNREACHABLE; do
-      ping -c 2 -i 0.3 "${NODES[$name]}" &>/dev/null &
-    done
-    wait
-    sleep 1
+    # Re-ping to wake WiFi (USB doesn't need this)
+    if [ "$USB_MODE" -eq 0 ]; then
+      for name in $UNREACHABLE; do
+        ping -c 2 -i 0.3 "${NODES[$name]}" &>/dev/null &
+      done
+      wait
+      sleep 1
+    fi
 
     local RETRY_OK=""
     for name in $UNREACHABLE; do
@@ -776,6 +863,18 @@ chmod 600 /home/user/.cluster-env" 2>/dev/null
 # MAIN
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# Auto-detect USB-connected phones (unless --wifi forces WiFi mode)
+if [ -z "${FORCE_WIFI:-}" ]; then
+  echo ""
+  echo -e "  ${BLUE}Scanning for USB-connected phones...${NC}"
+  if detect_usb_phones; then
+    : # USB_MODE=1 set inside detect_usb_phones
+  else
+    echo -e "  ${YELLOW}No USB phones found — using WiFi IPs${NC}"
+    echo ""
+  fi
+fi
+
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║        CURTBRAG PHONE CLUSTER — FULL DEPLOY                ║${NC}"
@@ -784,7 +883,11 @@ echo -e "${CYAN}╚════════════════════�
 echo ""
 echo -e "  Wallet: ${WALLET:0:12}...${WALLET: -8}"
 echo -e "  Pool:   ${POOL}"
-echo -e "  Phones: ${#NODES[@]} nodes (192.168.1.206-215)"
+if [ "$USB_MODE" -eq 1 ]; then
+  echo -e "  Phones: ${#NODES[@]} nodes (${GREEN}USB${NC})"
+else
+  echo -e "  Phones: ${#NODES[@]} nodes (WiFi: 192.168.1.206-215)"
+fi
 echo ""
 
 # Step 1: API server on this machine
