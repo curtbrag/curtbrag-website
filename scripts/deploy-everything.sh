@@ -31,7 +31,7 @@ WALLET="44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xV
 POOL="gulf.moneroocean.stream:20128"
 API_PORT=3847
 CPU_HINT=75
-STAGGER_SECS=5
+STAGGER_SECS=15
 
 # Node IPs — phones on Ethernet (USB-C adapters → switch), laptops on LAN
 declare -A NODES=(
@@ -494,7 +494,7 @@ echo "BIN:\$XMRIG_BIN"
 \$PRIV mkdir -p /etc/xmrig
 \$PRIV tee /etc/xmrig/config.json > /dev/null << 'XMRIG_CONF'
 {
-  "autosave": true,
+  "autosave": false,
   "cpu": { "enabled": true, "huge-pages": false, "max-threads-hint": ${CPU_HINT} },
   "opencl": false, "cuda": false, "donate-level": 1,
   "pools": [{
@@ -575,12 +575,13 @@ MINER_LAUNCHER
     echo \$! > /tmp/xmrig.pid
   fi
 
-  # Verify xmrig started (wait for process to appear)
-  sleep 3
-  if ! pgrep -x xmrig >/dev/null 2>&1; then
-    echo "INIT_RETRY:\$INIT failed, trying doas fallback"
-    INIT="\${INIT}+doas"
-    \$PRIV sh -c 'nohup setsid /home/user/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null & echo \$! > /run/xmrig.pid'
+  # Verify xmrig started (wait for process to appear — ARM phones are slow)
+  sleep 8
+  if ! pgrep -x xmrig >/dev/null 2>&1 && ! pgrep -f start-xmrig >/dev/null 2>&1; then
+    echo "INIT_RETRY:\$INIT failed, retrying direct launch"
+    INIT="\${INIT}+retry"
+    nohup setsid /home/user/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null &
+    echo \$! > /tmp/xmrig.pid
   fi
 
   # Cron watchdog: auto-restart xmrig if it dies (independent of SSH session)
