@@ -81,31 +81,51 @@ detect_usb_phones() {
 
   echo -e "  ${GREEN}Found USB network interfaces:${NC} $usb_ifaces"
 
-  # For each USB interface, find the phone's IP (the peer/gateway on the link)
+  # For each USB interface, find the phone's IP and test SSH
   local idx=0
   declare -A USB_NODES=()
   for iface in $usb_ifaces; do
-    # Method 1: gateway route (phone acts as gateway)
-    local phone_ip=$(ip -4 route show dev "$iface" 2>/dev/null | grep -oP 'via \K[\d.]+' | head -1)
-
-    if [ -z "$phone_ip" ]; then
-      # Method 2: Phone is .1 on the subnet (PostmarketOS default)
-      local my_ip=$(ip -4 addr show dev "$iface" 2>/dev/null | grep -oP 'inet \K[\d.]+' | head -1)
-      if [ -n "$my_ip" ]; then
-        phone_ip=$(echo "$my_ip" | sed 's/\.[0-9]*$/.1/')
-        # If we already ARE .1, try .2
-        [ "$phone_ip" = "$my_ip" ] && phone_ip=$(echo "$my_ip" | sed 's/\.[0-9]*$/.2/')
-      fi
-    fi
-
-    if [ -z "$phone_ip" ]; then
-      echo -e "    ${YELLOW}⚠${NC} $iface — no peer IP found, skipping"
+    local my_ip=$(ip -4 addr show dev "$iface" 2>/dev/null | grep -oP 'inet \K[\d.]+' | head -1)
+    if [ -z "$my_ip" ]; then
+      echo -e "    ${YELLOW}⚠${NC} $iface — no local IP assigned, skipping"
       continue
     fi
 
-    # Quick connectivity check (ping, not SSH — faster)
-    if ! ping -c 1 -W 1 "$phone_ip" &>/dev/null; then
-      echo -e "    ${YELLOW}⚠${NC} $iface — $phone_ip not responding to ping, skipping"
+    # Build candidate list: gateway, .1, .2, PostmarketOS defaults
+    local candidates=""
+    # Gateway route
+    local gw=$(ip -4 route show dev "$iface" 2>/dev/null | grep -oP 'via \K[\d.]+' | head -1)
+    [ -n "$gw" ] && candidates="$gw"
+    # Subnet .1 and .2
+    local base=$(echo "$my_ip" | sed 's/\.[0-9]*$//')
+    [ "${base}.1" != "$my_ip" ] && candidates="$candidates ${base}.1"
+    [ "${base}.2" != "$my_ip" ] && candidates="$candidates ${base}.2"
+    # PostmarketOS USB default
+    candidates="$candidates 172.16.42.1"
+    # ARP table neighbors on this interface
+    local arp_ips=$(ip -4 neigh show dev "$iface" 2>/dev/null | grep -oP '^\S+' | head -5)
+    candidates="$candidates $arp_ips"
+    # Deduplicate and remove our own IP
+    candidates=$(echo "$candidates" | tr ' ' '\n' | grep -v "^$" | grep -v "^${my_ip}$" | sort -u | tr '\n' ' ')
+
+    local phone_ip=""
+    for candidate in $candidates; do
+      # Use SSH check (phones often block ICMP ping)
+      if ssh -p "$SSH_PORT" -o ConnectTimeout=2 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@${candidate}" "echo ok" &>/dev/null 2>&1; then
+        phone_ip="$candidate"
+        break
+      fi
+      # Also try with sshpass if password is set
+      if [ -n "${SSH_PASS:-}" ] && command -v sshpass &>/dev/null; then
+        if sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" -o ConnectTimeout=2 -o StrictHostKeyChecking=accept-new "user@${candidate}" "echo ok" &>/dev/null 2>&1; then
+          phone_ip="$candidate"
+          break
+        fi
+      fi
+    done
+
+    if [ -z "$phone_ip" ]; then
+      echo -e "    ${YELLOW}⚠${NC} $iface (${my_ip}) — tried ${candidates}— no SSH response"
       continue
     fi
 
@@ -118,13 +138,33 @@ detect_usb_phones() {
     return 1
   fi
 
-  # Override NODES with USB-discovered phones
-  NODES=()
-  for key in "${!USB_NODES[@]}"; do
-    NODES[$key]="${USB_NODES[$key]}"
-  done
+  # If we found SOME USB phones but not all 10, use hybrid mode:
+  # USB IPs override matching WiFi entries, keep WiFi for the rest
+  if [ "$idx" -lt "${#NODES[@]}" ]; then
+    echo -e "  ${YELLOW}Hybrid mode: ${idx} USB + $((${#NODES[@]} - idx)) WiFi${NC}"
+    # Renumber: USB phones take node1..N, WiFi fills the rest
+    local wifi_idx=$idx
+    declare -A ORIG_NODES=()
+    for key in "${!NODES[@]}"; do ORIG_NODES[$key]="${NODES[$key]}"; done
+    NODES=()
+    for key in "${!USB_NODES[@]}"; do NODES[$key]="${USB_NODES[$key]}"; done
+    for key in $(echo "${!ORIG_NODES[@]}" | tr ' ' '\n' | sort); do
+      # Skip WiFi IPs that match a USB-discovered phone
+      local skip=0
+      for ukey in "${!USB_NODES[@]}"; do
+        [ "${ORIG_NODES[$key]}" = "${USB_NODES[$ukey]}" ] && skip=1
+      done
+      if [ "$skip" -eq 0 ] && [ -z "${NODES[$key]:-}" ]; then
+        NODES[$key]="${ORIG_NODES[$key]}"
+      fi
+    done
+  else
+    # All phones on USB — pure USB mode
+    NODES=()
+    for key in "${!USB_NODES[@]}"; do NODES[$key]="${USB_NODES[$key]}"; done
+  fi
   USB_MODE=1
-  echo -e "  ${GREEN}USB mode: ${idx} phones detected — WiFi disabled${NC}"
+  echo -e "  ${GREEN}USB: ${idx} phones detected${NC}"
   echo ""
 }
 
