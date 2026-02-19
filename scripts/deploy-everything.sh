@@ -85,20 +85,34 @@ banner() {
 }
 
 # SSH wrapper — supports custom port via SSH_PORT env (default: 22)
+# Uses ControlMaster multiplexing to avoid sshd MaxStartups rate-limiting
 SSH_PORT="${SSH_PORT:-22}"
+SSH_CONTROL_DIR="/tmp/cluster-ssh-$$"
+mkdir -p "$SSH_CONTROL_DIR"
+
+# Cleanup SSH control sockets on exit
+cleanup_ssh() {
+  for sock in "$SSH_CONTROL_DIR"/*; do
+    [ -S "$sock" ] && ssh -o ControlPath="$sock" -O exit dummy 2>/dev/null
+  done
+  rm -rf "$SSH_CONTROL_DIR" 2>/dev/null
+}
+trap cleanup_ssh EXIT
+
+SSH_MUX_OPTS="-o ControlMaster=auto -o ControlPath=${SSH_CONTROL_DIR}/%r@%h:%p -o ControlPersist=600"
 
 ssh_cmd() {
   local target="$1"; shift
   if [ -n "${SSH_PASS:-}" ]; then
-    sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new "$target" "$@"
+    sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" $SSH_MUX_OPTS -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new "$target" "$@"
   else
-    ssh -p "$SSH_PORT" -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$target" "$@"
+    ssh -p "$SSH_PORT" $SSH_MUX_OPTS -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$target" "$@"
   fi
 }
 
 scp_cmd() {
   local src="$1" dst="$2"
-  scp -P "$SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$src" "$dst" 2>/dev/null
+  scp -P "$SSH_PORT" $SSH_MUX_OPTS -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$src" "$dst" 2>/dev/null
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
