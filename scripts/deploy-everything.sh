@@ -88,8 +88,23 @@ banner() {
 # SSH wrapper — supports custom port via SSH_PORT env (default: 22)
 SSH_PORT="${SSH_PORT:-22}"
 
-# Common SSH options — keep connections lean to avoid overwhelming phone sshd
-SSH_OPTS="-o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new"
+# SSH connection multiplexing — establish connection once during pre-check (phones idle),
+# reuse for deploys (phones under load). Eliminates "banner exchange timeout" by avoiding
+# new SSH handshakes when phones are busy with xmrig/RandomX.
+SSH_CONTROL_DIR="/tmp/cluster-ssh-$$"
+mkdir -p "$SSH_CONTROL_DIR"
+
+SSH_OPTS="-o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new -o ControlMaster=auto -o ControlPath=${SSH_CONTROL_DIR}/%r@%h:%p -o ControlPersist=300"
+
+cleanup_ssh_multiplex() {
+  if [ -d "$SSH_CONTROL_DIR" ]; then
+    for sock in "$SSH_CONTROL_DIR"/*; do
+      [ -e "$sock" ] && ssh -O exit -o ControlPath="$sock" dummy 2>/dev/null || true
+    done
+    rm -rf "$SSH_CONTROL_DIR"
+  fi
+}
+trap cleanup_ssh_multiplex EXIT
 
 ssh_cmd() {
   local target="$1"; shift
