@@ -443,18 +443,20 @@ start_stop_daemon_args="--nicelevel 10"
 depend() { need net; }
 ORCSVC
   \$PRIV chmod +x /etc/init.d/xmrig 2>/dev/null || true
-  \$PRIV /sbin/rc-update add xmrig default 2>/dev/null || true
-  if [ -x /sbin/rc-service ]; then
+  \$PRIV rc-update add xmrig default 2>/dev/null || true
+  if command -v rc-service >/dev/null 2>&1; then
     INIT=openrc
-    \$PRIV /sbin/rc-service xmrig restart 2>/dev/null || true
-    SVC_OUT=\$(\$PRIV /sbin/rc-service xmrig status 2>&1 || true)
+    \$PRIV rc-service xmrig restart 2>/dev/null || true
+    SVC_OUT=\$(\$PRIV rc-service xmrig status 2>&1 || true)
     echo "SVC_OUT:\$SVC_OUT"
+  elif command -v start-stop-daemon >/dev/null 2>&1; then
+    # start-stop-daemon (BusyBox built-in) — proper daemonization without rc-service
+    INIT=ssd
+    \$PRIV start-stop-daemon -S -b -m -p /run/xmrig.pid -x \$XMRIG_BIN -- --config=/etc/xmrig/config.json --no-color
   else
-    # Fallback: setsid detaches from doas session (unlike nohup which gets reaped)
+    # Last resort: setsid wrapped in sh -c so doas doesn't reap the child
     INIT=setsid
-    \$PRIV rm -f /run/xmrig.pid 2>/dev/null || true
-    setsid \$PRIV \$XMRIG_BIN --config=/etc/xmrig/config.json --no-color > /tmp/xmrig.log 2>&1 &
-    echo \$! > /run/xmrig.pid 2>/dev/null || true
+    \$PRIV sh -c "setsid \$XMRIG_BIN --config=/etc/xmrig/config.json --no-color > /tmp/xmrig.log 2>&1 &"
   fi
 elif command -v systemctl >/dev/null 2>&1 && [ "\$(cat /proc/1/comm 2>/dev/null)" = "systemd" ]; then
   INIT=systemd
@@ -483,8 +485,8 @@ else
 fi
 echo "SERVICE:\$INIT"
 
-# --- Verify (wait for startup — ARM phones are slow) ---
-sleep 5
+# --- Verify (wait for startup — ARM phones are slow, RandomX dataset takes time) ---
+sleep 8
 # Check multiple ways — pgrep -x may not match on all systems
 if pgrep -x xmrig >/dev/null 2>&1; then
   echo "STATUS:RUNNING"
