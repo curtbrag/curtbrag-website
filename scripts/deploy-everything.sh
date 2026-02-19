@@ -486,7 +486,7 @@ echo "BIN:\$XMRIG_BIN"
   "opencl": false, "cuda": false, "donate-level": 1,
   "pools": [{
     "url": "${POOL}", "user": "${WALLET}", "pass": "${NAME}",
-    "keepalive": true, "tls": true
+    "keepalive": true, "tls": false
   }],
   "http": { "enabled": true, "host": "127.0.0.1", "port": 18080, "restricted": true },
   "log-file": "/tmp/xmrig.log", "print-time": 60
@@ -529,14 +529,19 @@ ORCSVC
     \$PRIV rc-service xmrig restart 2>/dev/null || true
     SVC_OUT=\$(\$PRIV rc-service xmrig status 2>&1 || true)
     echo "SVC_OUT:\$SVC_OUT"
-  elif command -v start-stop-daemon >/dev/null 2>&1; then
-    # start-stop-daemon (BusyBox built-in) — proper daemonization without rc-service
-    INIT=ssd
-    \$PRIV start-stop-daemon -S -b -m -p /run/xmrig.pid -x \$XMRIG_BIN -- --config=/etc/xmrig/config.json --no-color
   else
-    # Last resort: setsid wrapped in sh -c so doas doesn't reap the child
-    INIT=setsid
-    \$PRIV sh -c "setsid \$XMRIG_BIN --config=/etc/xmrig/config.json --no-color > /tmp/xmrig.log 2>&1 &"
+    # rc-service not available — use a launcher script + nohup+setsid+stdin-close
+    # This survives SSH disconnect: setsid creates new session, nohup ignores SIGHUP,
+    # </dev/null detaches stdin so the process doesn't die when the TTY goes away.
+    INIT=launcher
+    cat > /tmp/start-xmrig.sh << 'MINER_LAUNCHER'
+#!/bin/sh
+exec \$XMRIG_BIN --config=/etc/xmrig/config.json --no-color
+MINER_LAUNCHER
+    # Fix: replace placeholder with actual binary path (heredoc was single-quoted)
+    sed -i "s|\\\$XMRIG_BIN|\$XMRIG_BIN|g" /tmp/start-xmrig.sh
+    chmod +x /tmp/start-xmrig.sh
+    \$PRIV sh -c 'nohup setsid /tmp/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null & echo \$! > /run/xmrig.pid'
   fi
 elif command -v systemctl >/dev/null 2>&1 && [ "\$(cat /proc/1/comm 2>/dev/null)" = "systemd" ]; then
   INIT=systemd
@@ -559,9 +564,15 @@ SYSD
   \$PRIV systemctl enable xmrig 2>/dev/null
   \$PRIV systemctl restart xmrig
 else
-  INIT=none
-  # Direct start as fallback
-  \$PRIV nohup \$XMRIG_BIN --config=/etc/xmrig/config.json --no-color > /tmp/xmrig.log 2>&1 &
+  INIT=launcher
+  # Non-Alpine, no systemd — use launcher script (same as Alpine fallback)
+  cat > /tmp/start-xmrig.sh << 'MINER_LAUNCHER2'
+#!/bin/sh
+exec XMRIG_PLACEHOLDER --config=/etc/xmrig/config.json --no-color
+MINER_LAUNCHER2
+  sed -i "s|XMRIG_PLACEHOLDER|\$XMRIG_BIN|g" /tmp/start-xmrig.sh
+  chmod +x /tmp/start-xmrig.sh
+  \$PRIV sh -c 'nohup setsid /tmp/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null & echo \$! > /run/xmrig.pid'
 fi
 echo "SERVICE:\$INIT"
 
@@ -778,6 +789,61 @@ deploy_mining() {
   echo -e "  Mining: ${GREEN}${OK} running${NC}, ${RED}${FAIL} failed${NC}"
   if [ -n "$UNREACHABLE" ]; then
     echo -e "  ${YELLOW}Unreachable (skipped):${UNREACHABLE}${NC}"
+  fi
+
+  # PHASE 4: Post-deploy verification — check actual hashrate + pool connection
+  # Wait for RandomX dataset build + pool handshake (ARM phones need ~60s)
+  echo ""
+  echo -e "  ${BLUE}Waiting 60s for RandomX dataset + pool connection...${NC}"
+  sleep 60
+  echo ""
+  echo -e "  ${BLUE}Verifying actual mining on each node...${NC}"
+
+  local VERIFY_OK=0 VERIFY_FAIL=0
+  for name in $REACHABLE; do
+    local IP="${NODES[$name]}"
+    # Check xmrig HTTP API for real hashrate
+    local HR_JSON
+    HR_JSON=$(ssh_cmd "user@${IP}" "curl -sf --connect-timeout 3 --max-time 5 http://127.0.0.1:18080/1/summary 2>/dev/null" 2>/dev/null || true)
+    local HR=""
+    if [ -n "$HR_JSON" ]; then
+      HR=$(echo "$HR_JSON" | sed -n 's/.*"total":\[\([0-9.]*\).*/\1/p' | head -1)
+    fi
+
+    # Check if hashrate > 0 (use awk since bc may not be available)
+    local HR_POSITIVE=0
+    if [ -n "$HR" ]; then
+      HR_POSITIVE=$(echo "$HR" | awk '{print ($1 > 0) ? 1 : 0}')
+    fi
+
+    if [ "$HR_POSITIVE" = "1" ]; then
+      echo -e "    ${GREEN}✓${NC} [${name}] ${HR} H/s"
+      VERIFY_OK=$((VERIFY_OK + 1))
+    else
+      # Not hashing — check if process is alive
+      local ALIVE
+      ALIVE=$(ssh_cmd "user@${IP}" "pgrep xmrig 2>/dev/null" 2>/dev/null || true)
+      if [ -z "$ALIVE" ]; then
+        echo -e "    ${RED}✗${NC} [${name}] xmrig DEAD — restarting..."
+        ssh_cmd "user@${IP}" "doas sh -c 'nohup setsid /tmp/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null & echo \$! > /run/xmrig.pid'" 2>/dev/null || true
+        VERIFY_FAIL=$((VERIFY_FAIL + 1))
+      else
+        echo -e "    ${YELLOW}⚠${NC} [${name}] process alive, 0 H/s (still initializing or pool issue)"
+        # Check xmrig log for connection errors
+        local LOG_TAIL
+        LOG_TAIL=$(ssh_cmd "user@${IP}" "tail -5 /tmp/xmrig.log 2>/dev/null" 2>/dev/null || true)
+        if echo "$LOG_TAIL" | grep -qi "error\|refused\|failed\|tls"; then
+          echo -e "      ${YELLOW}Log: $(echo "$LOG_TAIL" | grep -i 'error\|refused\|failed\|tls' | tail -1)${NC}"
+        fi
+        VERIFY_FAIL=$((VERIFY_FAIL + 1))
+      fi
+    fi
+  done
+
+  echo ""
+  echo -e "  ${BLUE}Mining verified:${NC} ${GREEN}${VERIFY_OK} hashing${NC}, ${RED}${VERIFY_FAIL} failed/pending${NC}"
+  if [ "$VERIFY_FAIL" -gt 0 ]; then
+    echo -e "  ${YELLOW}Tip: Re-run deploy or check /tmp/xmrig.log on failed nodes${NC}"
   fi
 }
 
