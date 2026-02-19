@@ -307,8 +307,8 @@ depend() {
   after firewall
 }
 OPENRC_SVC
-    ssh_cmd "$SSH_TARGET" "doas env PATH=/sbin:/usr/sbin:/bin:/usr/bin rc-update add xmrig default 2>/dev/null; doas env PATH=/sbin:/usr/sbin:/bin:/usr/bin rc-service xmrig restart" 2>/dev/null
-    SVC_STATUS=$(ssh_cmd "$SSH_TARGET" "doas env PATH=/sbin:/usr/sbin:/bin:/usr/bin rc-service xmrig status 2>&1" 2>/dev/null)
+    ssh_cmd "$SSH_TARGET" "doas /sbin/rc-update add xmrig default 2>/dev/null; doas /sbin/rc-service xmrig restart" 2>/dev/null
+    SVC_STATUS=$(ssh_cmd "$SSH_TARGET" "doas /sbin/rc-service xmrig status 2>&1" 2>/dev/null)
     echo -e "  Service: ${SVC_STATUS}"
   else
     echo -e "  ${RED}✗${NC} No init system found — cannot create service"

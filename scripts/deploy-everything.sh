@@ -356,7 +356,7 @@ export PATH="/sbin:/usr/sbin:\$PATH"
 # --- Detect OS ---
 if [ -f /etc/alpine-release ]; then
   OS=alpine
-  PRIV="doas env PATH=/sbin:/usr/sbin:/bin:/usr/bin"
+  PRIV="doas"
 elif command -v apt-get >/dev/null 2>&1; then
   OS=debian
   PRIV="sudo"
@@ -439,17 +439,17 @@ error_log="/tmp/xmrig.log"
 depend() { need net; }
 ORCSVC
   \$PRIV chmod +x /etc/init.d/xmrig || true
-  \$PRIV rc-update add xmrig default 2>/dev/null || true
+  \$PRIV /sbin/rc-update add xmrig default 2>/dev/null || true
   # Stop old service cleanly, then start fresh (restart can fail if stop fails)
-  \$PRIV rc-service xmrig stop 2>/dev/null || true
+  \$PRIV /sbin/rc-service xmrig stop 2>/dev/null || true
   sleep 1
-  SVC_OUT=\$(\$PRIV rc-service xmrig start 2>&1) || true
+  SVC_OUT=\$(\$PRIV /sbin/rc-service xmrig start 2>&1) || true
   echo "SVC_OUT:\$SVC_OUT"
   # Fallback: if rc-service failed, start xmrig directly via start-stop-daemon
   sleep 2
   if ! pgrep -x xmrig >/dev/null 2>&1; then
     echo "DEBUG:rc-service-failed-trying-direct-start"
-    \$PRIV start-stop-daemon --start --background --make-pidfile \
+    \$PRIV /sbin/start-stop-daemon --start --background --make-pidfile \
       --pidfile /run/xmrig.pid \
       --exec \$XMRIG_BIN -- --config=/etc/xmrig/config.json --no-color 2>&1 || true
   fi
