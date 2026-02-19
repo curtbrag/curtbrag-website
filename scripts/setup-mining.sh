@@ -221,7 +221,7 @@ setup_node() {
   "autosave": true,
   "cpu": {
     "enabled": true,
-    "huge-pages": true,
+    "huge-pages": false,
     "max-threads-hint": ${CPU_HINT}
   },
   "opencl": false,
@@ -243,7 +243,7 @@ setup_node() {
     "access-token": "${HTTP_TOKEN}",
     "restricted": true
   },
-  "log-file": "/var/log/xmrig.log",
+  "log-file": "/tmp/xmrig.log",
   "print-time": 60
 }
 XMRIG_CONFIG
@@ -291,8 +291,8 @@ command="/usr/local/bin/xmrig"
 command_args="--config=/etc/xmrig/config.json"
 command_background="yes"
 pidfile="/run/xmrig.pid"
-output_log="/var/log/xmrig.log"
-error_log="/var/log/xmrig.log"
+output_log="/tmp/xmrig.log"
+error_log="/tmp/xmrig.log"
 start_stop_daemon_args="--nicelevel 10"
 
 depend() {
@@ -316,7 +316,7 @@ OPENRC_SVC
     echo -e "  ${GREEN}✓${NC} xmrig process is running"
   else
     echo -e "  ${RED}✗${NC} xmrig process NOT running — checking logs..."
-    LOG_TAIL=$(ssh_cmd "$SSH_TARGET" "tail -5 /var/log/xmrig.log 2>/dev/null" 2>/dev/null)
+    LOG_TAIL=$(ssh_cmd "$SSH_TARGET" "tail -5 /tmp/xmrig.log 2>/dev/null" 2>/dev/null)
     echo -e "  Log: ${LOG_TAIL}"
     return 1
   fi

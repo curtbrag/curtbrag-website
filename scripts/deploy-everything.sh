@@ -345,121 +345,171 @@ setup_mining_node() {
 
   echo -e "${YELLOW}  [${NAME}]${NC} ${IP}"
 
-  # Check SSH — try with key first, fall back to password
-  SSH_ERR=$(ssh_cmd "$SSH_TARGET" "echo ok" 2>&1)
-  if [ $? -ne 0 ]; then
-    # Show the actual error message
-    SSH_ERR_SHORT=$(echo "$SSH_ERR" | grep -v "^$" | tail -2 | tr '\n' ' ')
-    echo -e "    ${RED}✗${NC} Cannot SSH — ${SSH_ERR_SHORT:-unknown error}"
-    echo -e "    ${YELLOW}Tip: ssh-copy-id -p ${SSH_PORT} user@${IP} or re-run with --password${NC}"
-    return 1
+  # Single SSH session: install, configure, start xmrig — all in one connection
+  # This prevents WiFi drops between steps from leaving partial deployments
+  DEPLOY_OUT=$(ssh_cmd "$SSH_TARGET" "bash -s" 2>&1 << DEPLOY_SCRIPT
+set -e
+
+# --- Detect OS ---
+if [ -f /etc/alpine-release ]; then
+  OS=alpine
+  PRIV="doas"
+elif command -v apt-get >/dev/null 2>&1; then
+  OS=debian
+  PRIV="sudo"
+else
+  OS=unknown
+  PRIV="sudo"
+fi
+echo "OS:\$OS"
+
+# --- Install xmrig ---
+XMRIG_BIN=\$(command -v xmrig 2>/dev/null)
+if [ -n "\$XMRIG_BIN" ]; then
+  echo "INSTALL:already-installed"
+elif [ "\$OS" = "alpine" ]; then
+  # Enable community repo if needed
+  if ! grep -q '^[^#].*community' /etc/apk/repositories 2>/dev/null; then
+    MIRROR=\$(grep -m1 '^http' /etc/apk/repositories | sed 's|/[^/]*/[^/]*$||')
+    ALPINE_VER=\$(cat /etc/alpine-release 2>/dev/null | cut -d. -f1,2)
+    [ -n "\$MIRROR" ] && [ -n "\$ALPINE_VER" ] && echo "\${MIRROR}/v\${ALPINE_VER}/community" | \$PRIV tee -a /etc/apk/repositories >/dev/null
   fi
+  \$PRIV apk update >/dev/null 2>&1
+  \$PRIV apk add xmrig 2>&1 | tail -3
+  echo "INSTALL:done"
+elif [ "\$OS" = "debian" ]; then
+  \$PRIV apt-get update -qq 2>&1 | tail -1
+  \$PRIV apt-get install -y xmrig 2>&1 | tail -3
+  echo "INSTALL:done"
+else
+  echo "INSTALL:ERROR unsupported OS"
+  exit 1
+fi
 
-  # Detect OS — Alpine/postmarketOS vs Debian/Ubuntu vs other
-  REMOTE_OS=$(ssh_cmd "$SSH_TARGET" "
-    if [ -f /etc/alpine-release ]; then echo alpine
-    elif command -v apt-get >/dev/null 2>&1; then echo debian
-    elif command -v dnf >/dev/null 2>&1; then echo fedora
-    else echo unknown; fi
-  " 2>/dev/null)
-  echo -e "    OS: ${REMOTE_OS:-unknown}"
+# --- Verify binary exists ---
+XMRIG_BIN=\$(command -v xmrig 2>/dev/null)
+if [ -z "\$XMRIG_BIN" ]; then
+  echo "INSTALL:FAILED - xmrig binary not found"
+  exit 1
+fi
+echo "BIN:\$XMRIG_BIN"
 
-  # Install xmrig based on OS
-  INSTALL_OUT=$(ssh_cmd "$SSH_TARGET" "
-    if command -v xmrig >/dev/null 2>&1; then
-      echo 'already-installed'
-    elif [ -f /etc/alpine-release ]; then
-      # Alpine/postmarketOS — enable community repo + install
-      if ! grep -q '^[^#].*community' /etc/apk/repositories 2>/dev/null; then
-        MIRROR=\$(grep -m1 '^http' /etc/apk/repositories | sed 's|/[^/]*/[^/]*\$||')
-        ALPINE_VER=\$(cat /etc/alpine-release 2>/dev/null | cut -d. -f1,2)
-        [ -n \"\$MIRROR\" ] && [ -n \"\$ALPINE_VER\" ] && echo \"\${MIRROR}/v\${ALPINE_VER}/community\" | doas tee -a /etc/apk/repositories >/dev/null
-      fi
-      doas apk update 2>&1 | tail -1
-      doas apk add xmrig 2>&1
-    elif command -v apt-get >/dev/null 2>&1; then
-      # Debian/Ubuntu
-      sudo apt-get update -qq 2>&1 | tail -1
-      sudo apt-get install -y xmrig 2>&1
-    else
-      echo 'ERROR: unsupported OS'
-    fi
-  " 2>&1)
-
-  XMRIG_BIN=$(ssh_cmd "$SSH_TARGET" "command -v xmrig 2>/dev/null" 2>/dev/null)
-  if [ -z "$XMRIG_BIN" ]; then
-    echo -e "    ${RED}✗${NC} xmrig install failed:"
-    echo -e "    ${YELLOW}${INSTALL_OUT}${NC}" | head -5
-    return 1
-  fi
-  echo -e "    ${GREEN}✓${NC} xmrig installed"
-
-  # Symlink if needed
-  [ "$XMRIG_BIN" != "/usr/local/bin/xmrig" ] && ssh_cmd "$SSH_TARGET" "[ ! -e /usr/local/bin/xmrig ] && doas ln -sf $XMRIG_BIN /usr/local/bin/xmrig" 2>/dev/null
-
-  # Write config
-  ssh_cmd "$SSH_TARGET" "doas mkdir -p /etc/xmrig && doas tee /etc/xmrig/config.json > /dev/null" << XMRIG_CFG
+# --- Write config (huge-pages OFF for phone ARM CPUs) ---
+\$PRIV mkdir -p /etc/xmrig
+\$PRIV tee /etc/xmrig/config.json > /dev/null << 'XMRIG_CONF'
 {
   "autosave": true,
-  "cpu": { "enabled": true, "huge-pages": true, "max-threads-hint": ${CPU_HINT} },
+  "cpu": { "enabled": true, "huge-pages": false, "max-threads-hint": ${CPU_HINT} },
   "opencl": false, "cuda": false, "donate-level": 1,
   "pools": [{
     "url": "${POOL}", "user": "${WALLET}", "pass": "${NAME}",
     "keepalive": true, "tls": true
   }],
   "http": { "enabled": true, "host": "127.0.0.1", "port": 18080, "restricted": true },
-  "log-file": "/var/log/xmrig.log", "print-time": 60
+  "log-file": "/tmp/xmrig.log", "print-time": 60
 }
-XMRIG_CFG
-  echo -e "    ${GREEN}✓${NC} Config written"
+XMRIG_CONF
+echo "CONFIG:written"
 
-  # Kill any stale process
-  ssh_cmd "$SSH_TARGET" "doas killall xmrig 2>/dev/null; sleep 1; true" 2>/dev/null
+# --- Kill any stale process ---
+\$PRIV killall xmrig 2>/dev/null || true
+sleep 1
 
-  # Create service and start
-  INIT_SYS=$(ssh_cmd "$SSH_TARGET" "command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1 && echo systemd || { command -v rc-service >/dev/null 2>&1 && echo openrc; } || echo none" 2>/dev/null)
-
-  if [ "$INIT_SYS" = "systemd" ]; then
-    ssh_cmd "$SSH_TARGET" "doas systemctl unmask xmrig.service 2>/dev/null; doas tee /etc/systemd/system/xmrig.service > /dev/null" << 'SVC'
+# --- Create service and start ---
+if command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1; then
+  INIT=systemd
+  \$PRIV systemctl unmask xmrig.service 2>/dev/null || true
+  \$PRIV tee /etc/systemd/system/xmrig.service > /dev/null << SYSD
 [Unit]
 Description=XMRig Miner
 After=network-online.target
 Wants=network-online.target
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/xmrig --config=/etc/xmrig/config.json --no-color
+ExecStart=\$XMRIG_BIN --config=/etc/xmrig/config.json --no-color
 Restart=always
 RestartSec=15
 Nice=10
 [Install]
 WantedBy=multi-user.target
-SVC
-    ssh_cmd "$SSH_TARGET" "doas systemctl daemon-reload; doas systemctl enable xmrig 2>/dev/null; doas systemctl restart xmrig" 2>/dev/null
-  elif [ "$INIT_SYS" = "openrc" ]; then
-    ssh_cmd "$SSH_TARGET" "doas tee /etc/init.d/xmrig > /dev/null && doas chmod +x /etc/init.d/xmrig" << 'ORCSVC'
+SYSD
+  \$PRIV systemctl daemon-reload
+  \$PRIV systemctl enable xmrig 2>/dev/null
+  \$PRIV systemctl restart xmrig
+elif command -v rc-service >/dev/null 2>&1; then
+  INIT=openrc
+  \$PRIV tee /etc/init.d/xmrig > /dev/null << ORCSVC
 #!/sbin/openrc-run
 name="xmrig"
 description="XMRig Miner"
-command="/usr/local/bin/xmrig"
-command_args="--config=/etc/xmrig/config.json"
+command="\$XMRIG_BIN"
+command_args="--config=/etc/xmrig/config.json --no-color"
 command_background="yes"
 pidfile="/run/xmrig.pid"
-output_log="/var/log/xmrig.log"
-error_log="/var/log/xmrig.log"
+output_log="/tmp/xmrig.log"
+error_log="/tmp/xmrig.log"
 depend() { need net; }
 ORCSVC
-    ssh_cmd "$SSH_TARGET" "doas rc-update add xmrig default 2>/dev/null; doas rc-service xmrig restart" 2>/dev/null
-  else
-    echo -e "    ${RED}✗${NC} No init system"
+  \$PRIV chmod +x /etc/init.d/xmrig
+  \$PRIV rc-update add xmrig default 2>/dev/null || true
+  \$PRIV rc-service xmrig restart 2>&1
+else
+  INIT=none
+  # Direct start as fallback
+  \$PRIV nohup \$XMRIG_BIN --config=/etc/xmrig/config.json --no-color > /tmp/xmrig.log 2>&1 &
+fi
+echo "SERVICE:\$INIT"
+
+# --- Verify (wait for startup) ---
+sleep 3
+if pgrep -x xmrig >/dev/null 2>&1; then
+  echo "STATUS:RUNNING"
+else
+  # Show last few lines of log for debugging
+  echo "STATUS:NOT_RUNNING"
+  echo "LOG_TAIL:\$(tail -5 /tmp/xmrig.log 2>/dev/null || echo 'no log file')"
+fi
+DEPLOY_SCRIPT
+  )
+
+  DEPLOY_RC=$?
+
+  # Parse the output
+  local REMOTE_OS=$(echo "$DEPLOY_OUT" | grep "^OS:" | head -1 | cut -d: -f2)
+  local INSTALL_STATUS=$(echo "$DEPLOY_OUT" | grep "^INSTALL:" | tail -1 | cut -d: -f2-)
+  local XMRIG_BIN=$(echo "$DEPLOY_OUT" | grep "^BIN:" | head -1 | cut -d: -f2)
+  local CONFIG_STATUS=$(echo "$DEPLOY_OUT" | grep "^CONFIG:" | head -1 | cut -d: -f2)
+  local SERVICE_TYPE=$(echo "$DEPLOY_OUT" | grep "^SERVICE:" | head -1 | cut -d: -f2)
+  local STATUS=$(echo "$DEPLOY_OUT" | grep "^STATUS:" | head -1 | cut -d: -f2)
+  local LOG_TAIL=$(echo "$DEPLOY_OUT" | grep "^LOG_TAIL:" | head -1 | cut -d: -f2-)
+
+  # Handle SSH failure
+  if [ $DEPLOY_RC -ne 0 ] && [ -z "$REMOTE_OS" ]; then
+    SSH_ERR_SHORT=$(echo "$DEPLOY_OUT" | grep -v "^$" | tail -2 | tr '\n' ' ')
+    echo -e "    ${RED}✗${NC} Cannot SSH — ${SSH_ERR_SHORT:-unknown error}"
+    echo -e "    ${YELLOW}Tip: ssh-copy-id -p ${SSH_PORT} user@${IP} or re-run with --password${NC}"
     return 1
   fi
 
-  # Verify
-  sleep 3
-  if ssh_cmd "$SSH_TARGET" "pgrep -x xmrig >/dev/null 2>&1" 2>/dev/null; then
-    echo -e "    ${GREEN}✓${NC} xmrig RUNNING"
+  echo -e "    OS: ${REMOTE_OS:-unknown}"
+
+  # Check install
+  if [ "$INSTALL_STATUS" = "FAILED - xmrig binary not found" ]; then
+    echo -e "    ${RED}✗${NC} xmrig install failed"
+    return 1
+  fi
+  echo -e "    ${GREEN}✓${NC} xmrig installed (${XMRIG_BIN:-unknown})"
+  echo -e "    ${GREEN}✓${NC} Config written (huge-pages: off, log: /tmp/xmrig.log)"
+
+  # Check service
+  if [ "$STATUS" = "RUNNING" ]; then
+    echo -e "    ${GREEN}✓${NC} xmrig RUNNING (${SERVICE_TYPE:-direct})"
+    return 0
   else
-    echo -e "    ${RED}✗${NC} xmrig NOT running — check: ssh $SSH_TARGET 'tail -20 /var/log/xmrig.log'"
+    echo -e "    ${RED}✗${NC} xmrig NOT running (${SERVICE_TYPE:-unknown})"
+    if [ -n "$LOG_TAIL" ] && [ "$LOG_TAIL" != "no log file" ]; then
+      echo -e "    ${YELLOW}Log: ${LOG_TAIL}${NC}"
+    fi
     return 1
   fi
 }
@@ -727,7 +777,7 @@ if command -v systemctl &>/dev/null; then
 else
   echo -e "    curl http://localhost:${API_PORT}/api/health  # API health"
 fi
-echo -e "    ssh -p ${SSH_PORT} user@192.168.1.206 'tail -f /var/log/xmrig.log'  # Mining logs"
+echo -e "    ssh -p ${SSH_PORT} user@192.168.1.206 'tail -f /tmp/xmrig.log'  # Mining logs"
 echo ""
 echo -e "  ${BLUE}Diagnostics:${NC}"
 echo -e "    bash scripts/deploy-everything.sh --diagnose    # Check SSH to all phones"
