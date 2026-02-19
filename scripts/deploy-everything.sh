@@ -502,7 +502,7 @@ echo "BIN:\$XMRIG_BIN"
     "keepalive": true, "tls": true
   }],
   "http": { "enabled": true, "host": "127.0.0.1", "port": 18080, "restricted": true },
-  "log-file": "/tmp/xmrig.log", "print-time": 60
+  "log-file": null, "print-time": 60
 }
 XMRIG_CONF
 echo "CONFIG:written"
@@ -547,8 +547,17 @@ ORCSVC
   # Use /home/user/ (persistent) instead of /tmp (may be tmpfs, cleared on reboot)
   cat > /home/user/start-xmrig.sh << MINER_LAUNCHER
 #!/bin/sh
+exec >> /tmp/xmrig-wrapper.log 2>&1
 while true; do
+  echo "[\$(date)] Starting xmrig (wrapper PID \$\$)"
   \$XMRIG_BIN --config=/etc/xmrig/config.json --no-color
+  RC=\$?
+  echo "[\$(date)] xmrig exited with code \$RC"
+  if [ -f /proc/meminfo ]; then
+    echo "[\$(date)] MemFree: \$(awk '/MemFree/{print \$2}' /proc/meminfo)kB  MemAvail: \$(awk '/MemAvailable/{print \$2}' /proc/meminfo)kB"
+  fi
+  OOMLOG=\$(dmesg 2>/dev/null | grep -i "oom\|killed process" | tail -3)
+  [ -n "\$OOMLOG" ] && echo "[\$(date)] dmesg OOM: \$OOMLOG"
   sleep 5
 done
 MINER_LAUNCHER
@@ -558,37 +567,35 @@ MINER_LAUNCHER
   \$PRIV chmod 644 /etc/xmrig/config.json 2>/dev/null || true
 
   # --- START XMRIG ---
-  # KEY FIX: Do NOT use doas/root for starting xmrig.
-  # Root cause of 0/9 nodes surviving: doas reaps ALL backgrounded children
-  # when the SSH session closes. nohup+setsid works correctly when NOT
-  # wrapped in doas — process detaches properly from the terminal session.
-  # xmrig runs fine as user: huge-pages=off, port 18080 > 1024, no root needed.
+  # Must run as ROOT — phones have limited RAM (~4GB) and the 2GB RandomX dataset
+  # causes non-root xmrig to get OOM-killed within seconds (root has higher OOM score).
+  # Double-fork via subshell ensures full detachment from SSH session:
+  #   doas → sh → (subshell forks+exits) → setsid xmrig (orphaned → reparented to PID 1)
   if [ -x /sbin/rc-service ]; then
     INIT=openrc
     \$PRIV /sbin/rc-service xmrig restart 2>/dev/null || true
     SVC_OUT=\$(\$PRIV /sbin/rc-service xmrig status 2>&1 || true)
     echo "SVC_OUT:\$SVC_OUT"
   else
-    # Run as current user (NOT root) — nohup+setsid properly survives SSH disconnect
-    INIT=direct
-    nohup setsid /home/user/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null &
-    echo \$! > /tmp/xmrig.pid
+    INIT=root-fork
+    \$PRIV sh -c '(setsid /home/user/start-xmrig.sh < /dev/null &)'
+    sleep 1
+    echo "FORK_PID:\$(pgrep -f start-xmrig | head -1)"
   fi
 
   # Verify xmrig started (wait for process to appear — ARM phones are slow)
   sleep 8
   if ! pgrep -x xmrig >/dev/null 2>&1 && ! pgrep -f start-xmrig >/dev/null 2>&1; then
-    echo "INIT_RETRY:\$INIT failed, retrying direct launch"
-    INIT="\${INIT}+retry"
-    nohup setsid /home/user/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null &
-    echo \$! > /tmp/xmrig.pid
+    echo "INIT_RETRY:\$INIT failed, retrying with nohup"
+    INIT="\${INIT}+nohup"
+    \$PRIV sh -c 'nohup setsid /home/user/start-xmrig.sh < /dev/null >> /tmp/xmrig-wrapper.log 2>&1 &'
   fi
 
   # Cron watchdog: auto-restart xmrig if it dies (independent of SSH session)
   # crond must be running (enabled above). The subshell+background ( ... & )
   # ensures xmrig detaches from crond — cron job completes immediately.
   ( \$PRIV crontab -l 2>/dev/null | grep -v 'start-xmrig\|pgrep.*xmrig'; \
-    echo "* * * * * pgrep -x xmrig > /dev/null 2>&1 || (nohup /home/user/start-xmrig.sh >> /tmp/xmrig.log 2>&1 &)" \
+    echo "* * * * * pgrep -x xmrig > /dev/null 2>&1 || (nohup /home/user/start-xmrig.sh &)" \
   ) | \$PRIV crontab -
   echo "WATCHDOG:cron"
 elif command -v systemctl >/dev/null 2>&1 && [ "\$(cat /proc/1/comm 2>/dev/null)" = "systemd" ]; then
@@ -635,9 +642,12 @@ elif [ -f /run/xmrig.pid ] && kill -0 \$(cat /run/xmrig.pid 2>/dev/null) 2>/dev/
   echo "STATUS:RUNNING"
 else
   echo "STATUS:NOT_RUNNING"
-  echo "LOG_TAIL:\$(tail -10 /tmp/xmrig.log 2>/dev/null || echo 'no log file')"
+  echo "LOG_TAIL:\$(tail -30 /tmp/xmrig.log 2>/dev/null || echo 'no xmrig log')"
+  echo "WRAPPER_LOG:\$(tail -20 /tmp/xmrig-wrapper.log 2>/dev/null || echo 'no wrapper log')"
   echo "DEBUG:ps-xmrig=\$(ps aux 2>/dev/null | grep -i xmrig | grep -v grep | head -3)"
-  echo "DEBUG:pidfile=\$(cat /run/xmrig.pid 2>/dev/null || echo 'no pidfile')"
+  echo "DEBUG:pidfile=\$(cat /run/xmrig.pid 2>/dev/null || cat /tmp/xmrig.pid 2>/dev/null || echo 'no pidfile')"
+  echo "DEBUG:mem=\$(awk '/MemFree/{printf \"free=%dMB \",\$2/1024} /MemAvailable/{printf \"avail=%dMB \",\$2/1024} /MemTotal/{printf \"total=%dMB\",\$2/1024}' /proc/meminfo 2>/dev/null)"
+  echo "DEBUG:oom=\$(dmesg 2>/dev/null | grep -i 'oom\|killed process' | tail -2)"
 fi
 DEPLOY_SCRIPT
   )
@@ -653,6 +663,7 @@ DEPLOY_SCRIPT
   local SERVICE_TYPE=$(echo "$DEPLOY_OUT" | grep "^SERVICE:" | head -1 | cut -d: -f2)
   local STATUS=$(echo "$DEPLOY_OUT" | grep "^STATUS:" | head -1 | cut -d: -f2)
   local LOG_TAIL=$(echo "$DEPLOY_OUT" | grep "^LOG_TAIL:" | head -1 | cut -d: -f2-)
+  local WRAPPER_LOG=$(echo "$DEPLOY_OUT" | grep "^WRAPPER_LOG:" | head -1 | cut -d: -f2-)
   local SVC_OUT=$(echo "$DEPLOY_OUT" | grep "^SVC_OUT:" | head -1 | cut -d: -f2-)
   local DEBUG_LINES=$(echo "$DEPLOY_OUT" | grep "^DEBUG:" | cut -d: -f2-)
 
@@ -695,8 +706,11 @@ DEPLOY_SCRIPT
     if [ -n "$DEBUG_LINES" ]; then
       echo -e "    ${YELLOW}Debug: ${DEBUG_LINES}${NC}"
     fi
-    if [ -n "$LOG_TAIL" ] && [ "$LOG_TAIL" != "no log file" ]; then
+    if [ -n "$LOG_TAIL" ] && [ "$LOG_TAIL" != "no xmrig log" ]; then
       echo -e "    ${YELLOW}Log: ${LOG_TAIL}${NC}"
+    fi
+    if [ -n "$WRAPPER_LOG" ] && [ "$WRAPPER_LOG" != "no wrapper log" ]; then
+      echo -e "    ${YELLOW}Wrapper: ${WRAPPER_LOG}${NC}"
     fi
     return 1
   fi
