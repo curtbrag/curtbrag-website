@@ -746,6 +746,16 @@ setup_node1_services() {
   fi
   echo -e "  ${GREEN}✓${NC} SSH to node1 OK"
 
+  # Ensure jq is installed on node1 (needed by poll-cluster-commands.sh)
+  if ! ssh_cmd "$NODE1_SSH" "command -v jq" &>/dev/null; then
+    echo -e "  ${YELLOW}Installing jq on node1...${NC}"
+    ssh_cmd "$NODE1_SSH" "doas apk add -q jq 2>/dev/null || sudo apk add -q jq 2>/dev/null" \
+      && echo -e "  ${GREEN}✓${NC} jq installed" \
+      || echo -e "  ${YELLOW}⚠${NC} jq install failed — command poller won't work"
+  else
+    echo -e "  ${GREEN}✓${NC} jq already installed on node1"
+  fi
+
   # Copy scripts to node1 — single SSH connection via tar pipe (avoids 3 separate SCP connections)
   echo -e "\n${YELLOW}  Copying scripts to node1...${NC}"
   if tar -cf - -C "$SCRIPT_DIR" push-cluster-status.sh poll-cluster-commands.sh cluster-nodes.conf \
@@ -833,6 +843,26 @@ else
     sleep 30
   else
     echo -e "${YELLOW}Skipping mining setup (--skip-mining)${NC}"
+  fi
+
+  # Ensure CLUSTER_API_KEY is set before Step 4 (may have been skipped by --skip-nexus)
+  if [ -z "${CLUSTER_API_KEY:-}" ]; then
+    echo -e "\n${YELLOW}  Resolving API key for dashboard push...${NC}"
+    # Try fetching from Netlify (needs web password)
+    if [ -n "${CLUSTER_WEB_PASSWORD:-}" ]; then
+      ENCODED_PW=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${CLUSTER_WEB_PASSWORD}'))" 2>/dev/null || echo "${CLUSTER_WEB_PASSWORD}")
+      FETCHED_KEY=$(curl -sf "https://curtbrag.com/.netlify/functions/cluster-control?action=get-api-key&password=$ENCODED_PW" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('apiKey',''))" 2>/dev/null)
+      if [ -n "$FETCHED_KEY" ]; then
+        CLUSTER_API_KEY="$FETCHED_KEY"
+        echo -e "  ${GREEN}✓${NC} API key fetched from curtbrag.com"
+      fi
+    fi
+    # Still empty? Prompt the user
+    if [ -z "${CLUSTER_API_KEY:-}" ]; then
+      echo -n "  API key for dashboard push (CLUSTER_API_KEY): "
+      read -r CLUSTER_API_KEY
+    fi
+    export CLUSTER_API_KEY
   fi
 
   # Step 4: node1 push + poller (non-fatal — mining is already running)
