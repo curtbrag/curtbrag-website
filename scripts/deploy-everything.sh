@@ -425,7 +425,14 @@ if [ "\$OS" = "alpine" ]; then
   INIT=openrc
   # Remove broken systemd service file + stale PID file
   \$PRIV rm -f /etc/systemd/system/xmrig.service /run/xmrig.pid 2>/dev/null || true
-  # Write OpenRC service file
+  # Ensure openrc tools are installed (rc-service, rc-update, start-stop-daemon)
+  \$PRIV apk add -q openrc 2>/dev/null || true
+  # Find OpenRC tools dynamically — they may be in /sbin, /usr/sbin, or elsewhere
+  RC_SVC=""; for p in /sbin/rc-service /usr/sbin/rc-service /bin/rc-service; do [ -x "\$p" ] && RC_SVC="\$p" && break; done
+  RC_UPD=""; for p in /sbin/rc-update /usr/sbin/rc-update /bin/rc-update; do [ -x "\$p" ] && RC_UPD="\$p" && break; done
+  SSD=""; for p in /sbin/start-stop-daemon /usr/sbin/start-stop-daemon /bin/start-stop-daemon; do [ -x "\$p" ] && SSD="\$p" && break; done
+  echo "DEBUG:rc-svc=\${RC_SVC:-not-found},rc-upd=\${RC_UPD:-not-found},ssd=\${SSD:-not-found}"
+  # Write OpenRC service file (for boot persistence)
   \$PRIV tee /etc/init.d/xmrig > /dev/null << ORCSVC || true
 #!/sbin/openrc-run
 name="xmrig"
@@ -439,19 +446,29 @@ error_log="/tmp/xmrig.log"
 depend() { need net; }
 ORCSVC
   \$PRIV chmod +x /etc/init.d/xmrig || true
-  \$PRIV /sbin/rc-update add xmrig default 2>/dev/null || true
-  # Stop old service cleanly, then start fresh (restart can fail if stop fails)
-  \$PRIV /sbin/rc-service xmrig stop 2>/dev/null || true
-  sleep 1
-  SVC_OUT=\$(\$PRIV /sbin/rc-service xmrig start 2>&1) || true
-  echo "SVC_OUT:\$SVC_OUT"
-  # Fallback: if rc-service failed, start xmrig directly via start-stop-daemon
+  # Try rc-update + rc-service if available
+  if [ -n "\$RC_UPD" ]; then
+    \$PRIV \$RC_UPD add xmrig default 2>/dev/null || true
+  fi
+  if [ -n "\$RC_SVC" ]; then
+    \$PRIV \$RC_SVC xmrig stop 2>/dev/null || true
+    sleep 1
+    SVC_OUT=\$(\$PRIV \$RC_SVC xmrig start 2>&1) || true
+    echo "SVC_OUT:\$SVC_OUT"
+  fi
+  # Fallback 1: start-stop-daemon
   sleep 2
-  if ! pgrep -x xmrig >/dev/null 2>&1; then
-    echo "DEBUG:rc-service-failed-trying-direct-start"
-    \$PRIV /sbin/start-stop-daemon --start --background --make-pidfile \
+  if ! pgrep -x xmrig >/dev/null 2>&1 && [ -n "\$SSD" ]; then
+    echo "DEBUG:trying-start-stop-daemon"
+    \$PRIV \$SSD --start --background --make-pidfile \
       --pidfile /run/xmrig.pid \
       --exec \$XMRIG_BIN -- --config=/etc/xmrig/config.json --no-color 2>&1 || true
+  fi
+  # Fallback 2: nohup (guaranteed to work — no external tools needed)
+  sleep 2
+  if ! pgrep -x xmrig >/dev/null 2>&1; then
+    echo "DEBUG:trying-nohup-fallback"
+    \$PRIV sh -c "nohup \$XMRIG_BIN --config=/etc/xmrig/config.json --no-color > /dev/null 2>&1 & echo \\\$! > /run/xmrig.pid"
   fi
 elif command -v systemctl >/dev/null 2>&1 && [ "\$(cat /proc/1/comm 2>/dev/null)" = "systemd" ]; then
   INIT=systemd
