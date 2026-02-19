@@ -62,18 +62,20 @@ while [[ $# -gt 0 ]]; do
     --skip-nexus) SKIP_NEXUS=1; shift;;
     --api-only) API_ONLY=1; shift;;
     --ssh-port) SSH_PORT="$2"; shift 2;;
+    --web-password) CLUSTER_WEB_PASSWORD="$2"; shift 2;;
     --diagnose) DIAGNOSE=1; shift;;
     -h|--help)
       echo "Usage: $0 [options]"
-      echo "  --wallet ADDR     XMR wallet address"
-      echo "  --password PASS   SSH password for phone nodes"
-      echo "  --cpu N            CPU % hint for miners (default: 75)"
-      echo "  --stagger N        Seconds between starting each miner (default: 30)"
-      echo "  --skip-mining      Skip mining setup on phones"
-      echo "  --skip-nexus       Skip API server setup on this machine"
-      echo "  --api-only         Only set up API server + Tailscale (no mining, no node1)"
-      echo "  --ssh-port PORT    SSH port (default: 22, Termux uses 8022)"
-      echo "  --diagnose         Run SSH diagnostics on all nodes"
+      echo "  --wallet ADDR        XMR wallet address"
+      echo "  --password PASS      SSH password for phone nodes"
+      echo "  --web-password PASS  Dashboard password (auto-fetches API key)"
+      echo "  --cpu N              CPU % hint for miners (default: 75)"
+      echo "  --stagger N          Seconds between starting each miner (default: 30)"
+      echo "  --skip-mining        Skip mining setup on phones"
+      echo "  --skip-nexus         Skip API server setup on this machine"
+      echo "  --api-only           Only set up API server + Tailscale (no mining, no node1)"
+      echo "  --ssh-port PORT      SSH port (default: 22, Termux uses 8022)"
+      echo "  --diagnose           Run SSH diagnostics on all nodes"
       exit 0;;
     *) shift;;
   esac
@@ -123,6 +125,74 @@ scp_cmd() {
     sshpass -p "$SSH_PASS" scp -P "$SSH_PORT" $SSH_OPTS "$src" "$dst" 2>/dev/null
   else
     scp -P "$SSH_PORT" $SSH_OPTS "$src" "$dst" 2>/dev/null
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CREDENTIALS — resolve API key + web password before any steps
+# ═══════════════════════════════════════════════════════════════════════════════
+
+LOCAL_ENV_CACHE="$HOME/.cluster-env"
+
+resolve_credentials() {
+  # 1. Source local cache (from previous run)
+  if [ -f "$LOCAL_ENV_CACHE" ]; then
+    . "$LOCAL_ENV_CACHE"
+    export CLUSTER_API_KEY="${CLUSTER_API_KEY:-}" CLUSTER_WEB_PASSWORD="${CLUSTER_WEB_PASSWORD:-}"
+  fi
+
+  # Already have both? Done.
+  if [ -n "${CLUSTER_API_KEY:-}" ] && [ -n "${CLUSTER_WEB_PASSWORD:-}" ]; then
+    echo -e "  ${GREEN}✓${NC} Credentials loaded from $LOCAL_ENV_CACHE"
+    return 0
+  fi
+
+  # 2. If we have web password but no API key, fetch from Netlify
+  if [ -z "${CLUSTER_API_KEY:-}" ] && [ -n "${CLUSTER_WEB_PASSWORD:-}" ]; then
+    echo -e "  ${YELLOW}Fetching API key from curtbrag.com...${NC}"
+    local ENCODED_PW
+    ENCODED_PW=$(printf '%s' "$CLUSTER_WEB_PASSWORD" | curl -Gso /dev/null -w '%{url_effective}' --data-urlencode @- '' 2>/dev/null | cut -c3- || printf '%s' "$CLUSTER_WEB_PASSWORD")
+    local FETCHED_KEY
+    FETCHED_KEY=$(curl -sf "https://curtbrag.com/.netlify/functions/cluster-control?action=get-api-key&password=$ENCODED_PW" 2>/dev/null \
+      | python3 -c "import sys,json; print(json.load(sys.stdin).get('apiKey',''))" 2>/dev/null || true)
+    if [ -n "$FETCHED_KEY" ]; then
+      CLUSTER_API_KEY="$FETCHED_KEY"
+      export CLUSTER_API_KEY
+      echo -e "  ${GREEN}✓${NC} API key fetched from curtbrag.com"
+    else
+      echo -e "  ${RED}✗${NC} Failed to fetch API key (wrong password?)"
+    fi
+  fi
+
+  # 3. If still no key and no web password, prompt for web password and fetch
+  if [ -z "${CLUSTER_API_KEY:-}" ] && [ -z "${CLUSTER_WEB_PASSWORD:-}" ]; then
+    echo -n "  Dashboard password (to fetch API key): "
+    read -r CLUSTER_WEB_PASSWORD
+    export CLUSTER_WEB_PASSWORD
+    if [ -n "$CLUSTER_WEB_PASSWORD" ]; then
+      local ENCODED_PW
+      ENCODED_PW=$(printf '%s' "$CLUSTER_WEB_PASSWORD" | curl -Gso /dev/null -w '%{url_effective}' --data-urlencode @- '' 2>/dev/null | cut -c3- || printf '%s' "$CLUSTER_WEB_PASSWORD")
+      local FETCHED_KEY
+      FETCHED_KEY=$(curl -sf "https://curtbrag.com/.netlify/functions/cluster-control?action=get-api-key&password=$ENCODED_PW" 2>/dev/null \
+        | python3 -c "import sys,json; print(json.load(sys.stdin).get('apiKey',''))" 2>/dev/null || true)
+      if [ -n "$FETCHED_KEY" ]; then
+        CLUSTER_API_KEY="$FETCHED_KEY"
+        export CLUSTER_API_KEY
+        echo -e "  ${GREEN}✓${NC} API key fetched from curtbrag.com"
+      else
+        echo -e "  ${RED}✗${NC} Failed to fetch API key — dashboard push will fail"
+        return 1
+      fi
+    fi
+  fi
+
+  # 4. Cache for future runs
+  if [ -n "${CLUSTER_API_KEY:-}" ]; then
+    cat > "$LOCAL_ENV_CACHE" << CACHEEOF
+CLUSTER_API_KEY=${CLUSTER_API_KEY}
+CLUSTER_WEB_PASSWORD=${CLUSTER_WEB_PASSWORD:-}
+CACHEEOF
+    chmod 600 "$LOCAL_ENV_CACHE"
   fi
 }
 
@@ -185,16 +255,10 @@ fi
 setup_nexus_prime() {
   banner "STEP 1/4 — Cluster API Server (this machine)"
 
-  # Prompt for credentials if not set
-  if [ -z "${CLUSTER_WEB_PASSWORD:-}" ]; then
-    echo -n "  Dashboard password (CLUSTER_WEB_PASSWORD): "
-    read -r CLUSTER_WEB_PASSWORD
-    export CLUSTER_WEB_PASSWORD
-  fi
-  if [ -z "${CLUSTER_API_KEY:-}" ]; then
-    echo -n "  API key for push/poller (CLUSTER_API_KEY): "
-    read -r CLUSTER_API_KEY
-    export CLUSTER_API_KEY
+  # Credentials already resolved by resolve_credentials() at startup
+  if [ -z "${CLUSTER_API_KEY:-}" ] || [ -z "${CLUSTER_WEB_PASSWORD:-}" ]; then
+    echo -e "  ${RED}✗${NC} Credentials not set (resolve_credentials failed?)"
+    return 1
   fi
 
   # Check prerequisites
@@ -818,6 +882,9 @@ echo -e "  Pool:   ${POOL}"
 echo -e "  Nodes:  ${#NODES[@]} (10 phones + NEXUS-PRIME)"
 echo ""
 
+# Resolve API key + web password (auto-fetch from Netlify, cache locally)
+resolve_credentials
+
 # Step 1: API server on this machine
 if [ -z "${SKIP_NEXUS:-}" ]; then
   setup_nexus_prime
@@ -843,26 +910,6 @@ else
     sleep 30
   else
     echo -e "${YELLOW}Skipping mining setup (--skip-mining)${NC}"
-  fi
-
-  # Ensure CLUSTER_API_KEY is set before Step 4 (may have been skipped by --skip-nexus)
-  if [ -z "${CLUSTER_API_KEY:-}" ]; then
-    echo -e "\n${YELLOW}  Resolving API key for dashboard push...${NC}"
-    # Try fetching from Netlify (needs web password)
-    if [ -n "${CLUSTER_WEB_PASSWORD:-}" ]; then
-      ENCODED_PW=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${CLUSTER_WEB_PASSWORD}'))" 2>/dev/null || echo "${CLUSTER_WEB_PASSWORD}")
-      FETCHED_KEY=$(curl -sf "https://curtbrag.com/.netlify/functions/cluster-control?action=get-api-key&password=$ENCODED_PW" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('apiKey',''))" 2>/dev/null)
-      if [ -n "$FETCHED_KEY" ]; then
-        CLUSTER_API_KEY="$FETCHED_KEY"
-        echo -e "  ${GREEN}✓${NC} API key fetched from curtbrag.com"
-      fi
-    fi
-    # Still empty? Prompt the user
-    if [ -z "${CLUSTER_API_KEY:-}" ]; then
-      echo -n "  API key for dashboard push (CLUSTER_API_KEY): "
-      read -r CLUSTER_API_KEY
-    fi
-    export CLUSTER_API_KEY
   fi
 
   # Step 4: node1 push + poller (non-fatal — mining is already running)
