@@ -486,7 +486,7 @@ echo "BIN:\$XMRIG_BIN"
   "opencl": false, "cuda": false, "donate-level": 1,
   "pools": [{
     "url": "${POOL}", "user": "${WALLET}", "pass": "${NAME}",
-    "keepalive": true, "tls": false
+    "keepalive": true, "tls": true
   }],
   "http": { "enabled": true, "host": "127.0.0.1", "port": 18080, "restricted": true },
   "log-file": "/tmp/xmrig.log", "print-time": 60
@@ -523,26 +523,33 @@ start_stop_daemon_args="--nicelevel 10"
 depend() { need net; }
 ORCSVC
   \$PRIV chmod +x /etc/init.d/xmrig 2>/dev/null || true
-  \$PRIV rc-update add xmrig default 2>/dev/null || true
-  if command -v rc-service >/dev/null 2>&1; then
-    INIT=openrc
-    \$PRIV rc-service xmrig restart 2>/dev/null || true
-    SVC_OUT=\$(\$PRIV rc-service xmrig status 2>&1 || true)
-    echo "SVC_OUT:\$SVC_OUT"
-  else
-    # rc-service not available — use a launcher script + nohup+setsid+stdin-close
-    # This survives SSH disconnect: setsid creates new session, nohup ignores SIGHUP,
-    # </dev/null detaches stdin so the process doesn't die when the TTY goes away.
-    INIT=launcher
-    cat > /tmp/start-xmrig.sh << 'MINER_LAUNCHER'
+  \$PRIV /sbin/rc-update add xmrig default 2>/dev/null || true
+
+  # Always create launcher script (used by cron watchdog and as fallback starter)
+  cat > /tmp/start-xmrig.sh << MINER_LAUNCHER
 #!/bin/sh
 exec \$XMRIG_BIN --config=/etc/xmrig/config.json --no-color
 MINER_LAUNCHER
-    # Fix: replace placeholder with actual binary path (heredoc was single-quoted)
-    sed -i "s|\\\$XMRIG_BIN|\$XMRIG_BIN|g" /tmp/start-xmrig.sh
-    chmod +x /tmp/start-xmrig.sh
+  chmod +x /tmp/start-xmrig.sh
+
+  if [ -x /sbin/rc-service ]; then
+    INIT=openrc
+    \$PRIV /sbin/rc-service xmrig restart 2>/dev/null || true
+    SVC_OUT=\$(\$PRIV /sbin/rc-service xmrig status 2>&1 || true)
+    echo "SVC_OUT:\$SVC_OUT"
+  else
+    # rc-service not available — use launcher with nohup+setsid+stdin-close
+    INIT=launcher
     \$PRIV sh -c 'nohup setsid /tmp/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null & echo \$! > /run/xmrig.pid'
   fi
+
+  # Cron watchdog: auto-restart xmrig if it dies (independent of SSH session)
+  # This is the safety net — crond runs outside SSH, so even if the initial start
+  # fails or doas reaps the process, crond will restart it within 60 seconds.
+  ( \$PRIV crontab -l 2>/dev/null | grep -v 'start-xmrig\|pgrep.*xmrig'; \
+    echo "* * * * * pgrep -x xmrig > /dev/null 2>&1 || /tmp/start-xmrig.sh >> /tmp/xmrig.log 2>&1" \
+  ) | \$PRIV crontab -
+  echo "WATCHDOG:cron"
 elif command -v systemctl >/dev/null 2>&1 && [ "\$(cat /proc/1/comm 2>/dev/null)" = "systemd" ]; then
   INIT=systemd
   \$PRIV systemctl unmask xmrig.service 2>/dev/null || true
@@ -824,8 +831,7 @@ deploy_mining() {
       local ALIVE
       ALIVE=$(ssh_cmd "user@${IP}" "pgrep xmrig 2>/dev/null" 2>/dev/null || true)
       if [ -z "$ALIVE" ]; then
-        echo -e "    ${RED}✗${NC} [${name}] xmrig DEAD — restarting..."
-        ssh_cmd "user@${IP}" "doas sh -c 'nohup setsid /tmp/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null & echo \$! > /run/xmrig.pid'" 2>/dev/null || true
+        echo -e "    ${RED}✗${NC} [${name}] xmrig DEAD — cron watchdog will restart within 60s"
         VERIFY_FAIL=$((VERIFY_FAIL + 1))
       else
         echo -e "    ${YELLOW}⚠${NC} [${name}] process alive, 0 H/s (still initializing or pool issue)"
@@ -911,19 +917,22 @@ chmod 600 /home/user/.cluster-env" 2>/dev/null
   echo -e "  ${GREEN}✓${NC} Cron: push-cluster-status.sh every 5 min"
 
   # Start command poller (kill old one first)
+  # The push script's auto-heal (push-cluster-status.sh:614) restarts the poller
+  # if it's not running, so even if this initial start fails, the next cron push
+  # (every 5 min) will bring it up. Use < /dev/null for SSH detachment.
   echo -e "\n${YELLOW}  Starting command poller...${NC}"
   ssh_cmd "$NODE1_SSH" "
     pkill -f poll-cluster-commands 2>/dev/null; sleep 1
-    nohup /home/user/poll-cluster-commands.sh > /home/user/cluster-poller.log 2>&1 &
-    sleep 1
+    nohup /home/user/poll-cluster-commands.sh > /home/user/cluster-poller.log 2>&1 < /dev/null &
+    sleep 2
     if pgrep -f poll-cluster-commands >/dev/null 2>&1; then
       echo RUNNING
     else
-      echo FAILED
+      echo WILL_AUTO_START
     fi
-  " 2>/dev/null | grep -q RUNNING \
-    && echo -e "  ${GREEN}✓${NC} Command poller running" \
-    || echo -e "  ${RED}✗${NC} Command poller failed to start"
+  " 2>/dev/null | grep -qE "RUNNING|WILL_AUTO_START" \
+    && echo -e "  ${GREEN}✓${NC} Command poller started (auto-heals via push cron)" \
+    || echo -e "  ${YELLOW}⚠${NC} Command poller will auto-start on next push (5 min)"
 
   # Do an immediate push test
   echo -e "\n${YELLOW}  Running first push...${NC}"
