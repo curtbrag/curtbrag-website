@@ -89,7 +89,7 @@ banner() {
 SSH_PORT="${SSH_PORT:-22}"
 
 # Common SSH options — keep connections lean to avoid overwhelming phone sshd
-SSH_OPTS="-o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=2 -o StrictHostKeyChecking=accept-new"
+SSH_OPTS="-o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new"
 
 ssh_cmd() {
   local target="$1"; shift
@@ -567,18 +567,16 @@ deploy_mining() {
   echo -e "  CPU:    ${CPU_HINT}%"
   echo ""
 
-  # PHASE 1: Parallel SSH pre-check — test all nodes simultaneously
-  # This avoids the sequential timeout problem (10s x 10 nodes = 100s)
-  echo -e "  ${BLUE}Testing SSH to all nodes (parallel)...${NC}"
+  # PHASE 1: Batched SSH pre-check — test 3 nodes at a time
+  # All 10 simultaneous overwhelms the switch; batches of 3 with 1s gaps work reliably
+  echo -e "  ${BLUE}Testing SSH to all nodes (batched, 3 at a time)...${NC}"
   local PRECHECK_DIR="/tmp/cluster-precheck-$$"
   mkdir -p "$PRECHECK_DIR"
 
+  local batch_count=0
   for name in $(echo "${!NODES[@]}" | tr ' ' '\n' | sort); do
     local IP="${NODES[$name]}"
     (
-      # Single SSH attempt — captures both success and error from one connection.
-      # Previous code opened a SECOND connection on failure to get the error message,
-      # which doubled peak concurrent connections (20 total) and saturated phone sshd MaxStartups.
       RESULT=$(ssh_cmd "user@${IP}" "echo ok" 2>&1)
       if echo "$RESULT" | grep -q "^ok$"; then
         echo "OK" > "$PRECHECK_DIR/$name"
@@ -587,6 +585,12 @@ deploy_mining() {
         echo "FAIL:${ERR}" > "$PRECHECK_DIR/$name"
       fi
     ) &
+    batch_count=$((batch_count + 1))
+    if [ "$batch_count" -ge 3 ]; then
+      wait
+      batch_count=0
+      sleep 1
+    fi
   done
   wait
 
@@ -611,10 +615,10 @@ deploy_mining() {
   echo ""
   echo -e "  SSH: ${GREEN}${REACH_COUNT} reachable${NC}, ${RED}${UNREACH_COUNT} unreachable${NC}"
 
-  # PHASE 2b: If low success rate, retry once after short pause
-  if [ "$REACH_COUNT" -lt 5 ] && [ "$REACH_COUNT" -lt "${#NODES[@]}" ]; then
-    echo -e "  ${YELLOW}Low success rate — retrying failed nodes in 5s...${NC}"
-    sleep 5
+  # PHASE 2: Retry any failed nodes (batched pre-check can miss a few)
+  if [ -n "$UNREACHABLE" ]; then
+    echo -e "  ${YELLOW}Retrying ${UNREACH_COUNT} failed nodes in 3s...${NC}"
+    sleep 3
 
     local RETRY_OK=""
     for name in $UNREACHABLE; do
@@ -694,19 +698,19 @@ setup_node1_services() {
   local NODE1_SSH="user@${NODE1_IP}"
 
   local NODE1_ATTEMPT=0 NODE1_OK=0
-  while [ "$NODE1_ATTEMPT" -lt 3 ]; do
+  while [ "$NODE1_ATTEMPT" -lt 5 ]; do
     NODE1_ATTEMPT=$((NODE1_ATTEMPT + 1))
     if ssh_cmd "$NODE1_SSH" "echo ok" &>/dev/null; then
       NODE1_OK=1
       break
     fi
-    if [ "$NODE1_ATTEMPT" -lt 3 ]; then
-      echo -e "  ${YELLOW}⚠${NC} SSH to node1 failed (attempt $NODE1_ATTEMPT/3) — retrying in 10s..."
+    if [ "$NODE1_ATTEMPT" -lt 5 ]; then
+      echo -e "  ${YELLOW}⚠${NC} SSH to node1 failed (attempt $NODE1_ATTEMPT/5) — retrying in 10s..."
       sleep 10
     fi
   done
   if [ "$NODE1_OK" -eq 0 ]; then
-    echo -e "  ${RED}✗${NC} Cannot SSH to node1 (${NODE1_IP}) after 3 attempts"
+    echo -e "  ${RED}✗${NC} Cannot SSH to node1 (${NODE1_IP}) after 5 attempts"
     return 1
   fi
   echo -e "  ${GREEN}✓${NC} SSH to node1 OK"
@@ -794,8 +798,8 @@ else
     deploy_mining
 
     # Cooldown: let xmrig finish RandomX memory allocation before SSH'ing to node1
-    echo -e "\n  ${BLUE}Waiting 20s for mining to stabilize before node1 setup...${NC}"
-    sleep 20
+    echo -e "\n  ${BLUE}Waiting 30s for mining to stabilize before node1 setup...${NC}"
+    sleep 30
   else
     echo -e "${YELLOW}Skipping mining setup (--skip-mining)${NC}"
   fi
