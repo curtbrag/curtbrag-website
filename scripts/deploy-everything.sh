@@ -545,22 +545,19 @@ ORCSVC
   # Always create launcher script (used by cron watchdog and as fallback starter)
   # Self-restarting wrapper — loops forever, auto-restarts xmrig if it exits
   # Use /home/user/ (persistent) instead of /tmp (may be tmpfs, cleared on reboot)
-  cat > /home/user/start-xmrig.sh << MINER_LAUNCHER
+  # IMPORTANT: Use quoted heredoc << 'MINER_LAUNCHER' so $() and $VAR are NOT
+  # expanded at write time (the outer SSH heredoc strips one layer of \$ escaping,
+  # and the quoted inner heredoc preserves everything else literally).
+  cat > /home/user/start-xmrig.sh << 'MINER_LAUNCHER'
 #!/bin/sh
-exec >> /tmp/xmrig-wrapper.log 2>&1
 while true; do
-  echo "[\$(date)] Starting xmrig (wrapper PID \$\$)"
-  \$XMRIG_BIN --config=/etc/xmrig/config.json --no-color
+  __XMRIG_BIN__ --config=/etc/xmrig/config.json --no-color >> /tmp/xmrig.log 2>&1
   RC=\$?
-  echo "[\$(date)] xmrig exited with code \$RC"
-  if [ -f /proc/meminfo ]; then
-    echo "[\$(date)] MemFree: \$(awk '/MemFree/{print \$2}' /proc/meminfo)kB  MemAvail: \$(awk '/MemAvailable/{print \$2}' /proc/meminfo)kB"
-  fi
-  OOMLOG=\$(dmesg 2>/dev/null | grep -i "oom\|killed process" | tail -3)
-  [ -n "\$OOMLOG" ] && echo "[\$(date)] dmesg OOM: \$OOMLOG"
+  echo "[\$(date)] xmrig exited with code \$RC" >> /tmp/xmrig-wrapper.log
   sleep 5
 done
 MINER_LAUNCHER
+  sed -i "s|__XMRIG_BIN__|\$XMRIG_BIN|g" /home/user/start-xmrig.sh
   chmod +x /home/user/start-xmrig.sh
 
   # Make config readable by non-root user (written via doas tee = owned by root)
