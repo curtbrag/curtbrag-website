@@ -3,11 +3,8 @@ export default async (request, context) => {
   const host = url.hostname;
 
   if (host === "teathetruth.com" || host === "www.teathetruth.com") {
-    const teaUrl = new URL("/teathetruth/index.html", url.origin);
-    return context.rewrite(teaUrl.toString());
+    return context.rewrite("/teathetruth/index.html");
   }
-
-  return;
 };
 
 export const config = {
