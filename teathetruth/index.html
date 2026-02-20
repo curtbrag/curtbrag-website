@@ -2,411 +2,790 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Teathetruth — UNCLE TEA</title>
+  <title>Teathetruth — Artist. Producer. Truth.</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <!-- SEO -->
-  <meta name="description" content="UNCLE TEA — the new album from Teathetruth. 9 tracks. Stream now on Spotify." />
-  <meta name="keywords" content="Teathetruth, Uncle Tea, album, hip hop, music, Spotify, new music 2026">
+  <meta name="description" content="Teathetruth — artist, producer, and creator. Listen to UNCLE TEA, explore the art, and connect." />
+  <meta name="keywords" content="Teathetruth, Uncle Tea, artist, producer, music, art, Spotify, hip hop">
   <meta name="author" content="Teathetruth">
 
-  <!-- Open Graph / Social -->
-  <meta property="og:type" content="music.album">
-  <meta property="og:title" content="Teathetruth — UNCLE TEA">
-  <meta property="og:description" content="UNCLE TEA — 9 tracks out now. Stream the full album on Spotify.">
-  <meta property="og:url" content="https://open.spotify.com/album/4eCCTpZLSMHIMYhUsdbnJW">
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Teathetruth">
+  <meta property="og:description" content="Artist. Producer. Truth. Stream UNCLE TEA now.">
+  <meta property="og:url" content="https://teathetruth.com">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Teathetruth — UNCLE TEA">
-  <meta name="twitter:description" content="UNCLE TEA — 9 tracks out now. Stream the full album.">
-  <meta name="theme-color" content="#1DB954">
+  <meta name="twitter:title" content="Teathetruth">
+  <meta name="twitter:description" content="Artist. Producer. Truth. Stream UNCLE TEA now.">
+  <meta name="theme-color" content="#0a0a0a">
 
   <!-- Fonts / Icons -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,700;1,700&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/css/all.min.css" rel="stylesheet"/>
 
   <style>
     :root {
-      --bg: #0a0a0a;
-      --surface: #141414;
-      --surface-hover: #1c1c1c;
-      --border: #2a2a2a;
-      --text: #f0f0f0;
-      --muted: #888;
+      --bg: #060606;
+      --surface: #0f0f0f;
+      --surface-2: #161616;
+      --border: #1e1e1e;
+      --border-light: #2a2a2a;
+      --text: #eaeaea;
+      --muted: #666;
+      --dim: #444;
       --spotify: #1DB954;
-      --accent: #e8e8e8;
+      --warm: #c8a87c;
+      --warm-dim: rgba(200,168,124,0.12);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
 
     body {
-      font-family: 'Inter', -apple-system, sans-serif;
+      font-family: 'Space Grotesk', -apple-system, sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+      overflow-x: hidden;
     }
 
-    /* Subtle grain texture */
-    body::before {
+    /* Film grain overlay */
+    body::after {
       content: '';
       position: fixed;
       inset: 0;
-      opacity: 0.03;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      opacity: 0.035;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
       pointer-events: none;
-      z-index: 0;
+      z-index: 9999;
     }
 
     .page { position: relative; z-index: 1; }
 
-    /* Hero */
-    .hero {
-      text-align: center;
-      padding: 3rem 1.5rem 2rem;
+    /* ---- NAV ---- */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 1.25rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(6,6,6,0.8);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
     }
 
-    .artist-name {
-      font-size: clamp(0.85rem, 2vw, 1rem);
-      font-weight: 600;
-      letter-spacing: 0.25em;
+    .nav-logo {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 0.75rem;
+      color: var(--text);
+      text-decoration: none;
     }
 
-    .album-title {
-      font-size: clamp(3rem, 10vw, 6rem);
-      font-weight: 900;
-      line-height: 0.95;
-      letter-spacing: -0.03em;
-      margin-bottom: 1rem;
-      background: linear-gradient(180deg, #fff 40%, #666);
+    .nav-links { display: flex; gap: 1.75rem; align-items: center; }
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.82rem;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+
+    .nav-cta {
+      background: var(--spotify) !important;
+      color: #000 !important;
+      padding: 0.5rem 1.1rem;
+      border-radius: 50px;
+      font-weight: 600 !important;
+      font-size: 0.8rem !important;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .nav-cta:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(29,185,84,0.3);
+    }
+
+    /* Mobile nav toggle */
+    .nav-toggle {
+      display: none;
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 1.4rem;
+      cursor: pointer;
+    }
+
+    /* ---- HERO ---- */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 6rem 2rem 4rem;
+      position: relative;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 50% at 50% 40%, rgba(200,168,124,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-eyebrow {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: var(--warm);
+      margin-bottom: 1.5rem;
+      opacity: 0;
+      animation: fadeUp 0.8s 0.2s forwards;
+    }
+
+    .hero-title {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: clamp(3.5rem, 12vw, 8rem);
+      font-weight: 700;
+      line-height: 0.9;
+      letter-spacing: -0.02em;
+      margin-bottom: 1.5rem;
+      opacity: 0;
+      animation: fadeUp 0.8s 0.4s forwards;
+    }
+
+    .hero-title em {
+      font-style: italic;
+      background: linear-gradient(135deg, var(--warm), #e8d5b8);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
 
-    .album-meta {
-      font-size: 0.9rem;
+    .hero-sub {
+      font-size: clamp(1rem, 2.5vw, 1.25rem);
       color: var(--muted);
-      margin-bottom: 2rem;
-    }
-
-    /* CTA Buttons */
-    .cta-group {
-      display: flex;
-      gap: 0.75rem;
-      justify-content: center;
-      flex-wrap: wrap;
+      max-width: 500px;
+      line-height: 1.6;
       margin-bottom: 2.5rem;
+      opacity: 0;
+      animation: fadeUp 0.8s 0.6s forwards;
     }
 
-    .cta {
+    .hero-actions {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      opacity: 0;
+      animation: fadeUp 0.8s 0.8s forwards;
+    }
+
+    .btn {
       display: inline-flex;
       align-items: center;
-      gap: 0.6rem;
-      padding: 0.85rem 1.75rem;
+      gap: 0.55rem;
+      padding: 0.9rem 2rem;
       border-radius: 50px;
       text-decoration: none;
-      font-weight: 700;
-      font-size: 0.95rem;
-      transition: transform 0.15s, box-shadow 0.15s;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+      cursor: pointer;
+      border: none;
     }
+    .btn:active { transform: scale(0.97); }
 
-    .cta:active { transform: scale(0.97); }
-
-    .cta-spotify {
-      background: var(--spotify);
+    .btn-primary {
+      background: #fff;
       color: #000;
     }
-    .cta-spotify:hover {
+    .btn-primary:hover {
       transform: translateY(-2px);
-      box-shadow: 0 6px 24px rgba(29, 185, 84, 0.35);
+      box-shadow: 0 8px 30px rgba(255,255,255,0.15);
     }
 
-    .cta-secondary {
+    .btn-ghost {
       background: transparent;
       color: var(--text);
-      border: 1.5px solid var(--border);
+      border: 1px solid var(--border-light);
     }
-    .cta-secondary:hover {
+    .btn-ghost:hover {
       border-color: #555;
       transform: translateY(-2px);
     }
 
-    /* Spotify Embed */
-    .embed-wrap {
-      max-width: 660px;
-      margin: 0 auto 3rem;
-      padding: 0 1.5rem;
+    .scroll-hint {
+      position: absolute;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      color: var(--dim);
+      font-size: 0.7rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      animation: pulse 2s infinite;
     }
 
-    .embed-wrap iframe {
+    /* ---- SECTION LAYOUT ---- */
+    section { padding: 5rem 2rem; }
+    .section-inner { max-width: 900px; margin: 0 auto; }
+
+    .section-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--warm);
+      margin-bottom: 0.75rem;
+    }
+
+    .section-heading {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: clamp(2rem, 5vw, 3rem);
+      font-weight: 700;
+      margin-bottom: 1rem;
+      line-height: 1.1;
+    }
+
+    .section-desc {
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.65;
+      max-width: 600px;
+      margin-bottom: 2.5rem;
+    }
+
+    .divider {
+      width: 40px;
+      height: 1px;
+      background: var(--border-light);
+      margin: 0 auto;
+    }
+
+    /* ---- MUSIC SECTION ---- */
+    #music { background: var(--surface); }
+
+    .album-feature {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+      align-items: center;
+    }
+
+    .album-embed iframe {
       border-radius: 12px;
       width: 100%;
     }
 
-    /* Track list */
-    .tracklist {
-      max-width: 660px;
-      margin: 0 auto 3rem;
-      padding: 0 1.5rem;
-    }
+    .album-info { }
 
-    .tracklist-header {
-      font-size: 0.8rem;
+    .album-badge {
+      display: inline-block;
+      padding: 0.35rem 0.85rem;
+      background: var(--warm-dim);
+      color: var(--warm);
+      font-size: 0.72rem;
       font-weight: 600;
-      letter-spacing: 0.2em;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
-      color: var(--muted);
+      border-radius: 50px;
       margin-bottom: 1rem;
-      padding-bottom: 0.75rem;
-      border-bottom: 1px solid var(--border);
     }
 
-    .track {
+    .album-name {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 2.25rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+
+    .album-meta {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .tracklist { list-style: none; margin-bottom: 2rem; }
+
+    .tracklist li {
       display: flex;
       align-items: center;
-      gap: 1rem;
-      padding: 0.85rem 0;
+      gap: 0.85rem;
+      padding: 0.6rem 0;
       border-bottom: 1px solid rgba(255,255,255,0.04);
-      transition: background 0.15s;
+      font-size: 0.9rem;
     }
 
-    .track:hover {
-      background: rgba(255,255,255,0.02);
-      margin: 0 -0.75rem;
-      padding-left: 0.75rem;
-      padding-right: 0.75rem;
-      border-radius: 8px;
+    .tracklist li:last-child { border-bottom: none; }
+
+    .t-num {
+      color: var(--dim);
+      font-size: 0.8rem;
+      width: 1.5rem;
+      text-align: right;
+      font-weight: 500;
     }
 
-    .track-num {
-      width: 1.75rem;
+    .t-name { font-weight: 500; }
+    .t-skit { color: var(--muted); font-style: italic; font-weight: 400; }
+
+    .btn-spotify {
+      background: var(--spotify);
+      color: #000;
+    }
+    .btn-spotify:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(29,185,84,0.3);
+    }
+
+    /* ---- ART SECTION ---- */
+    #art {
+      background: var(--bg);
+    }
+
+    .art-text {
       text-align: center;
-      font-size: 0.85rem;
-      color: var(--muted);
-      font-weight: 600;
+      margin-bottom: 3rem;
     }
 
-    .track-title {
-      flex: 1;
-      font-weight: 600;
-      font-size: 0.95rem;
+    .art-text .section-desc {
+      margin-left: auto;
+      margin-right: auto;
     }
 
-    .track-skit {
-      color: var(--muted);
-      font-weight: 400;
-      font-style: italic;
-    }
-
-    .track-duration {
-      color: var(--muted);
-      font-size: 0.85rem;
-    }
-
-    /* Social / Links */
-    .links-section {
-      max-width: 660px;
-      margin: 0 auto 3rem;
-      padding: 0 1.5rem;
-    }
-
-    .links-grid {
+    .art-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 0.65rem;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
     }
 
-    .link-btn {
+    .art-cell {
+      aspect-ratio: 1;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
       display: flex;
       align-items: center;
-      gap: 0.65rem;
-      padding: 0.9rem 1.1rem;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.3s;
+    }
+
+    .art-cell:hover { border-color: var(--border-light); }
+
+    .art-placeholder {
+      color: var(--dim);
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      text-align: center;
+      padding: 1rem;
+    }
+
+    .art-cta {
+      text-align: center;
+      margin-top: 2rem;
+    }
+
+    /* ---- ABOUT SECTION ---- */
+    #about {
       background: var(--surface);
+    }
+
+    .about-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+      align-items: start;
+    }
+
+    .about-text p {
+      color: #bbb;
+      line-height: 1.75;
+      font-size: 0.95rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .about-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+    }
+
+    .stat-card {
+      background: var(--surface-2);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      color: var(--text);
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 0.9rem;
-      transition: background 0.15s, border-color 0.15s;
+      border-radius: 12px;
+      padding: 1.25rem;
     }
 
-    .link-btn:hover {
-      background: var(--surface-hover);
-      border-color: #3a3a3a;
+    .stat-value {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--warm);
+      margin-bottom: 0.25rem;
     }
 
-    .link-btn i { width: 20px; text-align: center; font-size: 1.1rem; }
-    .link-btn .fa-spotify { color: #1DB954; }
-    .link-btn .fa-instagram { color: #E4405F; }
-    .link-btn .fa-apple { color: #fc3c44; }
-
-    /* About blurb */
-    .about {
-      max-width: 660px;
-      margin: 0 auto 3rem;
-      padding: 0 1.5rem;
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
     }
 
-    .about-card {
+    /* ---- CONNECT SECTION ---- */
+    #connect {
+      background: var(--bg);
+      text-align: center;
+    }
+
+    .connect-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0.75rem;
+      max-width: 650px;
+      margin: 0 auto 2.5rem;
+    }
+
+    .connect-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      padding: 1.1rem 1.5rem;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 1.5rem;
-    }
-
-    .about-label {
-      font-size: 0.8rem;
+      color: var(--text);
+      text-decoration: none;
       font-weight: 600;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 0.75rem;
-    }
-
-    .about-text {
-      color: #ccc;
-      line-height: 1.65;
       font-size: 0.95rem;
+      transition: all 0.2s;
     }
 
-    /* Footer */
-    footer {
-      text-align: center;
-      padding: 2rem 1.5rem 3rem;
-      color: var(--muted);
-      font-size: 0.8rem;
-      border-top: 1px solid var(--border);
-      max-width: 660px;
+    .connect-btn:hover {
+      background: var(--surface-2);
+      border-color: var(--border-light);
+      transform: translateY(-2px);
+    }
+
+    .connect-btn i { font-size: 1.2rem; }
+    .connect-btn .fa-spotify { color: #1DB954; }
+    .connect-btn .fa-instagram { color: #E4405F; }
+
+    .connect-message {
+      color: var(--dim);
+      font-size: 0.85rem;
+      font-style: italic;
+      max-width: 400px;
       margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    /* ---- FOOTER ---- */
+    footer {
+      padding: 2.5rem 2rem;
+      text-align: center;
+      border-top: 1px solid var(--border);
+    }
+
+    footer p {
+      color: var(--dim);
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
     }
 
     footer a {
-      color: var(--spotify);
+      color: var(--muted);
       text-decoration: none;
     }
-    footer a:hover { text-decoration: underline; }
+    footer a:hover { color: var(--text); }
 
-    /* Responsive */
+    /* ---- ANIMATIONS ---- */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
+    }
+
+    /* Scroll-triggered fade */
+    .reveal {
+      opacity: 0;
+      transform: translateY(30px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ---- RESPONSIVE ---- */
+    @media (max-width: 768px) {
+      nav { padding: 1rem 1.25rem; }
+      .nav-links { display: none; }
+      .nav-links.open {
+        display: flex;
+        flex-direction: column;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: rgba(6,6,6,0.95);
+        backdrop-filter: blur(12px);
+        padding: 1.5rem;
+        gap: 1.25rem;
+        border-bottom: 1px solid var(--border);
+      }
+      .nav-toggle { display: block; }
+
+      .hero { min-height: 90vh; padding: 5rem 1.5rem 3rem; }
+      section { padding: 3.5rem 1.5rem; }
+
+      .album-feature {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+      }
+
+      .art-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .about-grid {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+      }
+
+      .connect-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
     @media (max-width: 480px) {
-      .cta { padding: 0.75rem 1.4rem; font-size: 0.9rem; }
-      .track { gap: 0.65rem; }
+      .hero-title { font-size: clamp(2.75rem, 14vw, 4.5rem); }
+      .btn { padding: 0.8rem 1.5rem; font-size: 0.85rem; }
     }
   </style>
 </head>
 <body>
   <div class="page">
 
-    <!-- Hero -->
-    <section class="hero">
-      <p class="artist-name">Teathetruth</p>
-      <h1 class="album-title">UNCLE TEA</h1>
-      <p class="album-meta">9 Tracks &middot; Out Now &middot; 2026</p>
+    <!-- Nav -->
+    <nav>
+      <a href="#" class="nav-logo">Teathetruth</a>
+      <button class="nav-toggle" aria-label="Toggle menu"><i class="fa-solid fa-bars"></i></button>
+      <div class="nav-links">
+        <a href="#music">Music</a>
+        <a href="#art">Art</a>
+        <a href="#about">About</a>
+        <a href="#connect">Connect</a>
+        <a href="https://open.spotify.com/album/4eCCTpZLSMHIMYhUsdbnJW" target="_blank" rel="noopener noreferrer" class="nav-cta"><i class="fa-brands fa-spotify"></i> Stream</a>
+      </div>
+    </nav>
 
-      <div class="cta-group">
-        <a class="cta cta-spotify" href="https://open.spotify.com/album/4eCCTpZLSMHIMYhUsdbnJW" target="_blank" rel="noopener noreferrer">
-          <i class="fa-brands fa-spotify"></i> Play on Spotify
+    <!-- Hero -->
+    <section class="hero" id="home">
+      <p class="hero-eyebrow">Artist &middot; Producer &middot; Creator</p>
+      <h1 class="hero-title"><em>Tea</em>thetruth</h1>
+      <p class="hero-sub">Music, art, and honesty. No filter, no shortcuts — just truth.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="https://open.spotify.com/album/4eCCTpZLSMHIMYhUsdbnJW" target="_blank" rel="noopener noreferrer">
+          <i class="fa-brands fa-spotify"></i> Stream UNCLE TEA
         </a>
-        <a class="cta cta-secondary" href="https://www.instagram.com/teathetruth/" target="_blank" rel="noopener noreferrer">
-          <i class="fa-brands fa-instagram"></i> Follow
-        </a>
+        <a class="btn btn-ghost" href="#music">Explore</a>
+      </div>
+      <div class="scroll-hint">Scroll</div>
+    </section>
+
+    <!-- Music -->
+    <section id="music">
+      <div class="section-inner reveal">
+        <div class="album-feature">
+          <div class="album-embed">
+            <iframe
+              src="https://open.spotify.com/embed/album/4eCCTpZLSMHIMYhUsdbnJW?utm_source=generator&theme=0"
+              width="100%"
+              height="352"
+              frameBorder="0"
+              allowfullscreen=""
+              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+              loading="lazy"
+            ></iframe>
+          </div>
+          <div class="album-info">
+            <span class="album-badge">New Release</span>
+            <h2 class="album-name">UNCLE TEA</h2>
+            <p class="album-meta">9 Tracks &middot; 2026 &middot; Explicit</p>
+            <ol class="tracklist">
+              <li><span class="t-num">1</span> <span class="t-name">FAMILY PHOTOS</span></li>
+              <li><span class="t-num">2</span> <span class="t-name">I LOVE</span></li>
+              <li><span class="t-num">3</span> <span class="t-name">TABA'S</span></li>
+              <li><span class="t-num">4</span> <span class="t-name t-skit">UNCLE PETROS — SKIT</span></li>
+              <li><span class="t-num">5</span> <span class="t-name">HEART OF GOLD</span></li>
+              <li><span class="t-num">6</span> <span class="t-name">JUICE & GIN</span></li>
+              <li><span class="t-num">7</span> <span class="t-name t-skit">UNCLE AL — SKIT</span></li>
+              <li><span class="t-num">8</span> <span class="t-name">HOLY WATER</span></li>
+              <li><span class="t-num">9</span> <span class="t-name">GENERATIONAL</span></li>
+            </ol>
+            <a class="btn btn-spotify" href="https://open.spotify.com/album/4eCCTpZLSMHIMYhUsdbnJW" target="_blank" rel="noopener noreferrer">
+              <i class="fa-brands fa-spotify"></i> Play Full Album
+            </a>
+          </div>
+        </div>
       </div>
     </section>
 
-    <!-- Spotify Embed -->
-    <div class="embed-wrap">
-      <iframe
-        style="border-radius:12px"
-        src="https://open.spotify.com/embed/album/4eCCTpZLSMHIMYhUsdbnJW?utm_source=generator&theme=0"
-        width="100%"
-        height="352"
-        frameBorder="0"
-        allowfullscreen=""
-        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-        loading="lazy"
-      ></iframe>
-    </div>
-
-    <!-- Track List -->
-    <div class="tracklist">
-      <div class="tracklist-header">Tracklist</div>
-      <div class="track">
-        <span class="track-num">1</span>
-        <span class="track-title">FAMILY PHOTOS</span>
+    <!-- Art -->
+    <section id="art">
+      <div class="section-inner">
+        <div class="art-text reveal">
+          <div class="section-label">Visual Work</div>
+          <h2 class="section-heading">The Art</h2>
+          <p class="section-desc">Raw strokes, real feeling. The same honesty that drives the music lives in every piece.</p>
+        </div>
+        <div class="art-grid reveal">
+          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
+          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
+          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
+          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
+          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
+          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
+        </div>
+        <div class="art-cta reveal">
+          <a class="btn btn-ghost" href="https://www.instagram.com/teathetruth/" target="_blank" rel="noopener noreferrer">
+            <i class="fa-brands fa-instagram"></i> See more on Instagram
+          </a>
+        </div>
       </div>
-      <div class="track">
-        <span class="track-num">2</span>
-        <span class="track-title">I LOVE</span>
-      </div>
-      <div class="track">
-        <span class="track-num">3</span>
-        <span class="track-title">TABA'S</span>
-      </div>
-      <div class="track">
-        <span class="track-num">4</span>
-        <span class="track-title"><span class="track-skit">UNCLE PETROS — SKIT</span></span>
-      </div>
-      <div class="track">
-        <span class="track-num">5</span>
-        <span class="track-title">HEART OF GOLD</span>
-      </div>
-      <div class="track">
-        <span class="track-num">6</span>
-        <span class="track-title">JUICE & GIN</span>
-      </div>
-      <div class="track">
-        <span class="track-num">7</span>
-        <span class="track-title"><span class="track-skit">UNCLE AL — SKIT</span></span>
-      </div>
-      <div class="track">
-        <span class="track-num">8</span>
-        <span class="track-title">HOLY WATER</span>
-      </div>
-      <div class="track">
-        <span class="track-num">9</span>
-        <span class="track-title">GENERATIONAL</span>
-      </div>
-    </div>
-
-    <!-- Links -->
-    <div class="links-section">
-      <div class="links-grid">
-        <a class="link-btn" href="https://open.spotify.com/album/4eCCTpZLSMHIMYhUsdbnJW" target="_blank" rel="noopener noreferrer">
-          <i class="fa-brands fa-spotify"></i> Spotify
-        </a>
-        <a class="link-btn" href="https://www.instagram.com/teathetruth/" target="_blank" rel="noopener noreferrer">
-          <i class="fa-brands fa-instagram"></i> Instagram
-        </a>
-      </div>
-    </div>
+    </section>
 
     <!-- About -->
-    <section class="about">
-      <div class="about-card">
-        <div class="about-label">About the Album</div>
-        <p class="about-text">
-          UNCLE TEA is a 9-track project from Teathetruth exploring family, legacy, and personal truth.
-          Blending storytelling with raw production, the album features intimate skits from Uncle Petros and Uncle Al
-          woven between tracks about love, resilience, and generational impact.
-        </p>
+    <section id="about">
+      <div class="section-inner reveal">
+        <div class="about-grid">
+          <div class="about-text">
+            <div class="section-label">The Artist</div>
+            <h2 class="section-heading">Teathetruth</h2>
+            <p>
+              An artist who paints with sound and ink. Teathetruth blends music production with
+              visual art — each one feeding the other. Family, legacy, and lived experience are
+              the foundation of everything.
+            </p>
+            <p>
+              UNCLE TEA is the latest chapter: a 9-track album weaving personal storytelling with
+              raw production, featuring intimate family skits that ground every beat in something real.
+            </p>
+          </div>
+          <div class="about-stats">
+            <div class="stat-card">
+              <div class="stat-value">9</div>
+              <div class="stat-label">Tracks</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">2026</div>
+              <div class="stat-label">Debut</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">2K+</div>
+              <div class="stat-label">Followers</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">&infin;</div>
+              <div class="stat-label">Truth</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Connect -->
+    <section id="connect">
+      <div class="section-inner reveal">
+        <div class="section-label">Get in Touch</div>
+        <h2 class="section-heading">Connect</h2>
+        <p class="section-desc" style="margin-left:auto;margin-right:auto;">Follow the journey. Stream the music. Reach out.</p>
+
+        <div class="connect-grid">
+          <a class="connect-btn" href="https://open.spotify.com/album/4eCCTpZLSMHIMYhUsdbnJW" target="_blank" rel="noopener noreferrer">
+            <i class="fa-brands fa-spotify"></i> Spotify
+          </a>
+          <a class="connect-btn" href="https://www.instagram.com/teathetruth/" target="_blank" rel="noopener noreferrer">
+            <i class="fa-brands fa-instagram"></i> Instagram
+          </a>
+        </div>
       </div>
     </section>
 
     <!-- Footer -->
     <footer>
       <p>&copy; 2026 Teathetruth. All rights reserved.</p>
-      <p style="margin-top:0.5rem;">
-        <a href="https://open.spotify.com/album/4eCCTpZLSMHIMYhUsdbnJW">Stream UNCLE TEA now</a>
-      </p>
     </footer>
 
   </div>
+
+  <script>
+    // Mobile nav toggle
+    const toggle = document.querySelector('.nav-toggle');
+    const links = document.querySelector('.nav-links');
+    toggle.addEventListener('click', () => {
+      links.classList.toggle('open');
+      const icon = toggle.querySelector('i');
+      icon.classList.toggle('fa-bars');
+      icon.classList.toggle('fa-xmark');
+    });
+
+    // Close nav on link click
+    links.querySelectorAll('a').forEach(a => {
+      a.addEventListener('click', () => {
+        links.classList.remove('open');
+        const icon = toggle.querySelector('i');
+        icon.classList.add('fa-bars');
+        icon.classList.remove('fa-xmark');
+      });
+    });
+
+    // Scroll reveal
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+    // Nav background on scroll
+    const nav = document.querySelector('nav');
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 50) {
+        nav.style.borderBottomColor = 'rgba(255,255,255,0.08)';
+      } else {
+        nav.style.borderBottomColor = 'rgba(255,255,255,0.04)';
+      }
+    });
+  </script>
 </body>
 </html>
