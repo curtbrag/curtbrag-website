@@ -410,6 +410,120 @@
       text-transform: uppercase; position: relative; z-index: 1;
     }
 
+    /* ---- STUDIO SERVICES ---- */
+    #studio { background: var(--bg); }
+
+    .services-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .service-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.75rem;
+      transition: all 0.25s;
+      position: relative;
+      overflow: hidden;
+    }
+    .service-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, var(--gold), transparent);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .service-card:hover::before { opacity: 1; }
+    .service-card:hover {
+      border-color: var(--border-light);
+      transform: translateY(-3px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    }
+
+    .service-icon {
+      font-size: 1.5rem; color: var(--gold); margin-bottom: 0.85rem;
+    }
+    .service-title {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: 1.35rem; margin-bottom: 0.5rem;
+    }
+    .service-desc {
+      color: var(--muted); font-size: 0.85rem; line-height: 1.65;
+      margin-bottom: 1rem;
+    }
+    .service-price {
+      font-size: 0.75rem; font-weight: 600; color: var(--gold);
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+
+    .studio-cta {
+      text-align: center; margin-top: 1.5rem;
+    }
+    .studio-cta p {
+      color: var(--dim); font-size: 0.8rem; margin-top: 0.75rem;
+      font-style: italic;
+    }
+
+    /* ---- SHARE / SMART LINK ---- */
+    #share { background: var(--surface); text-align: center; }
+
+    .share-album-title {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: 2rem; margin-bottom: 0.25rem;
+    }
+    .share-album-meta {
+      color: var(--muted); font-size: 0.85rem; margin-bottom: 1.5rem;
+    }
+
+    .share-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0.6rem;
+      max-width: 600px;
+      margin: 0 auto 2rem;
+    }
+
+    .share-btn {
+      display: flex; align-items: center; justify-content: center; gap: 0.6rem;
+      padding: 0.85rem 1rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.82rem;
+      transition: all 0.2s;
+    }
+    .share-btn:hover {
+      border-color: var(--border-light);
+      background: var(--surface-3);
+      transform: translateY(-2px);
+    }
+    .share-btn i { font-size: 1rem; }
+
+    .share-copy {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.65rem 1.25rem;
+      background: var(--gold-glow);
+      border: 1px solid rgba(200,160,64,0.2);
+      border-radius: 50px;
+      color: var(--gold);
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .share-copy:hover {
+      background: rgba(200,160,64,0.2);
+    }
+    .share-copy.copied {
+      background: rgba(80,200,80,0.15);
+      border-color: rgba(80,200,80,0.3);
+      color: #5c5;
+    }
+
     /* ---- PRESS ---- */
     #press { background: var(--bg); }
 
@@ -528,8 +642,8 @@
       <div class="nav-links">
         <a href="#latest">Music</a>
         <a href="#discography">Catalog</a>
+        <a href="#studio">Studio</a>
         <a href="#about">Story</a>
-        <a href="#crew">Crew</a>
         <a href="#art">Art</a>
         <a href="#connect">Connect</a>
         <a href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer" class="nav-stream"><i class="fa-brands fa-spotify"></i> Stream</a>
@@ -910,7 +1024,83 @@
           <a class="btn btn-outline" href="https://www.instagram.com/teathetruth/" target="_blank" rel="noopener noreferrer">
             <i class="fa-brands fa-instagram"></i> See the art on Instagram
           </a>
+          <p style="color:var(--dim); font-size:0.78rem; margin-top:1rem; font-style:italic;">Interested in a commission or print? DM on Instagram.</p>
         </div>
+      </div>
+    </section>
+
+    <div class="brush-divider"></div>
+
+    <!-- Studio Services -->
+    <section id="studio">
+      <div class="inner">
+        <div class="reveal">
+          <div class="label">Bankblock Studios</div>
+          <h2 class="heading">Work With Tea</h2>
+          <p class="desc">Professional production, mixing, and mastering out of Bankblock Studios, Lynn MA. The same sound behind 28 releases and artists like Jeff Porter, David Ryan, and the KMF roster.</p>
+        </div>
+        <div class="services-grid reveal">
+          <div class="service-card">
+            <div class="service-icon"><i class="fa-solid fa-music"></i></div>
+            <div class="service-title">Production</div>
+            <div class="service-desc">Full beat production from scratch. Custom instrumentals tailored to your sound — from hard-hitting hip-hop to soulful, melody-driven tracks.</div>
+            <div class="service-price">Inquire for rates</div>
+          </div>
+          <div class="service-card">
+            <div class="service-icon"><i class="fa-solid fa-microphone-lines"></i></div>
+            <div class="service-title">Recording</div>
+            <div class="service-desc">Studio sessions at Bankblock Studios. Professional vocal recording, engineering, and direction to get the best take every time.</div>
+            <div class="service-price">Inquire for rates</div>
+          </div>
+          <div class="service-card">
+            <div class="service-icon"><i class="fa-solid fa-sliders"></i></div>
+            <div class="service-title">Mixing &amp; Mastering</div>
+            <div class="service-desc">Industry-standard mixing and mastering. Clean, loud, and radio-ready. Same process behind every Teathetruth and Jeff Porter release.</div>
+            <div class="service-price">Inquire for rates</div>
+          </div>
+          <div class="service-card">
+            <div class="service-icon"><i class="fa-solid fa-fire"></i></div>
+            <div class="service-title">Full Package</div>
+            <div class="service-desc">Production + recording + mix/master — the complete Bankblock experience. Walk in with a vision, walk out with a finished record.</div>
+            <div class="service-price">Best value &middot; Inquire</div>
+          </div>
+        </div>
+        <div class="studio-cta reveal">
+          <a class="btn btn-gold" href="https://www.instagram.com/teathetruth/" target="_blank" rel="noopener noreferrer">
+            <i class="fa-brands fa-instagram"></i> Book a Session
+          </a>
+          <p>DM on Instagram for rates, availability, and bookings.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="brush-divider"></div>
+
+    <!-- Share / Smart Link -->
+    <section id="share">
+      <div class="inner reveal">
+        <div class="label">Share The Music</div>
+        <h2 class="share-album-title">UNCLE TEA</h2>
+        <p class="share-album-meta">Latest Album &middot; 9 Tracks &middot; February 2026</p>
+
+        <div class="share-grid">
+          <a class="share-btn" href="https://open.spotify.com/album/4eCCTpZLSMHIMYhUsdbnJW" target="_blank" rel="noopener noreferrer">
+            <i class="fa-brands fa-spotify" style="color:#1DB954"></i> Spotify
+          </a>
+          <a class="share-btn" href="https://music.apple.com/us/artist/teathetruth/1493317951" target="_blank" rel="noopener noreferrer">
+            <i class="fa-brands fa-apple" style="color:#fc3c44"></i> Apple Music
+          </a>
+          <a class="share-btn" href="https://teathetruth.bandcamp.com" target="_blank" rel="noopener noreferrer">
+            <i class="fa-brands fa-bandcamp" style="color:#629aa9"></i> Bandcamp
+          </a>
+          <a class="share-btn" href="https://audiomack.com/teathetruth" target="_blank" rel="noopener noreferrer">
+            <i class="fa-solid fa-headphones" style="color:#f90"></i> Audiomack
+          </a>
+        </div>
+
+        <button class="share-copy" onclick="copyLink(this)">
+          <i class="fa-solid fa-link"></i> Copy Link to Share
+        </button>
       </div>
     </section>
 
@@ -999,6 +1189,19 @@
         icon.classList.remove('fa-xmark');
       });
     });
+
+    // Copy share link
+    function copyLink(btn) {
+      const url = 'https://teathetruth.com';
+      navigator.clipboard.writeText(url).then(() => {
+        btn.classList.add('copied');
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          btn.innerHTML = '<i class="fa-solid fa-link"></i> Copy Link to Share';
+        }, 2000);
+      });
+    }
 
     // Scroll reveal
     const observer = new IntersectionObserver((entries) => {
