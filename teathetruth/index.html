@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Teathetruth — UNCLE TEA</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- SEO -->
+  <meta name="description" content="UNCLE TEA — the new album from Teathetruth. 9 tracks. Stream now on Spotify." />
+  <meta name="keywords" content="Teathetruth, Uncle Tea, album, hip hop, music, Spotify, new music 2026">
+  <meta name="author" content="Teathetruth">
+
+  <!-- Open Graph / Social -->
+  <meta property="og:type" content="music.album">
+  <meta property="og:title" content="Teathetruth — UNCLE TEA">
+  <meta property="og:description" content="UNCLE TEA — 9 tracks out now. Stream the full album on Spotify.">
+  <meta property="og:url" content="https://open.spotify.com/album/4eCCTpZLSMHIMYhUsdbnJW">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Teathetruth — UNCLE TEA">
+  <meta name="twitter:description" content="UNCLE TEA — 9 tracks out now. Stream the full album.">
+  <meta name="theme-color" content="#1DB954">
+
+  <!-- Fonts / Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/css/all.min.css" rel="stylesheet"/>
+
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --surface: #141414;
+      --surface-hover: #1c1c1c;
+      --border: #2a2a2a;
+      --text: #f0f0f0;
+      --muted: #888;
+      --spotify: #1DB954;
+      --accent: #e8e8e8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* Subtle grain texture */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .page { position: relative; z-index: 1; }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 3rem 1.5rem 2rem;
+    }
+
+    .artist-name {
+      font-size: clamp(0.85rem, 2vw, 1rem);
+      font-weight: 600;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .album-title {
+      font-size: clamp(3rem, 10vw, 6rem);
+      font-weight: 900;
+      line-height: 0.95;
+      letter-spacing: -0.03em;
+      margin-bottom: 1rem;
+      background: linear-gradient(180deg, #fff 40%, #666);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .album-meta {
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-bottom: 2rem;
+    }
+
+    /* CTA Buttons */
+    .cta-group {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 2.5rem;
+    }
+
+    .cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.85rem 1.75rem;
+      border-radius: 50px;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 0.95rem;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .cta:active { transform: scale(0.97); }
+
+    .cta-spotify {
+      background: var(--spotify);
+      color: #000;
+    }
+    .cta-spotify:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(29, 185, 84, 0.35);
+    }
+
+    .cta-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1.5px solid var(--border);
+    }
+    .cta-secondary:hover {
+      border-color: #555;
+      transform: translateY(-2px);
+    }
+
+    /* Spotify Embed */
+    .embed-wrap {
+      max-width: 660px;
+      margin: 0 auto 3rem;
+      padding: 0 1.5rem;
+    }
+
+    .embed-wrap iframe {
+      border-radius: 12px;
+      width: 100%;
+    }
+
+    /* Track list */
+    .tracklist {
+      max-width: 660px;
+      margin: 0 auto 3rem;
+      padding: 0 1.5rem;
+    }
+
+    .tracklist-header {
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .track {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.85rem 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      transition: background 0.15s;
+    }
+
+    .track:hover {
+      background: rgba(255,255,255,0.02);
+      margin: 0 -0.75rem;
+      padding-left: 0.75rem;
+      padding-right: 0.75rem;
+      border-radius: 8px;
+    }
+
+    .track-num {
+      width: 1.75rem;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .track-title {
+      flex: 1;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .track-skit {
+      color: var(--muted);
+      font-weight: 400;
+      font-style: italic;
+    }
+
+    .track-duration {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    /* Social / Links */
+    .links-section {
+      max-width: 660px;
+      margin: 0 auto 3rem;
+      padding: 0 1.5rem;
+    }
+
+    .links-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0.65rem;
+    }
+
+    .link-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      padding: 0.9rem 1.1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .link-btn:hover {
+      background: var(--surface-hover);
+      border-color: #3a3a3a;
+    }
+
+    .link-btn i { width: 20px; text-align: center; font-size: 1.1rem; }
+    .link-btn .fa-spotify { color: #1DB954; }
+    .link-btn .fa-instagram { color: #E4405F; }
+    .link-btn .fa-apple { color: #fc3c44; }
+
+    /* About blurb */
+    .about {
+      max-width: 660px;
+      margin: 0 auto 3rem;
+      padding: 0 1.5rem;
+    }
+
+    .about-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+
+    .about-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .about-text {
+      color: #ccc;
+      line-height: 1.65;
+      font-size: 0.95rem;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 2rem 1.5rem 3rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+      border-top: 1px solid var(--border);
+      max-width: 660px;
+      margin: 0 auto;
+    }
+
+    footer a {
+      color: var(--spotify);
+      text-decoration: none;
+    }
+    footer a:hover { text-decoration: underline; }
+
+    /* Responsive */
+    @media (max-width: 480px) {
+      .cta { padding: 0.75rem 1.4rem; font-size: 0.9rem; }
+      .track { gap: 0.65rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <!-- Hero -->
+    <section class="hero">
+      <p class="artist-name">Teathetruth</p>
+      <h1 class="album-title">UNCLE TEA</h1>
+      <p class="album-meta">9 Tracks &middot; Out Now &middot; 2026</p>
+
+      <div class="cta-group">
+        <a class="cta cta-spotify" href="https://otis.curtbrag.com/teaspotify" target="_blank" rel="noopener noreferrer">
+          <i class="fa-brands fa-spotify"></i> Play on Spotify
+        </a>
+        <a class="cta cta-secondary" href="https://otis.curtbrag.com/teainsta" target="_blank" rel="noopener noreferrer">
+          <i class="fa-brands fa-instagram"></i> Follow
+        </a>
+      </div>
+    </section>
+
+    <!-- Spotify Embed -->
+    <div class="embed-wrap">
+      <iframe
+        style="border-radius:12px"
+        src="https://open.spotify.com/embed/album/4eCCTpZLSMHIMYhUsdbnJW?utm_source=generator&theme=0"
+        width="100%"
+        height="352"
+        frameBorder="0"
+        allowfullscreen=""
+        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+        loading="lazy"
+      ></iframe>
+    </div>
+
+    <!-- Track List -->
+    <div class="tracklist">
+      <div class="tracklist-header">Tracklist</div>
+      <div class="track">
+        <span class="track-num">1</span>
+        <span class="track-title">FAMILY PHOTOS</span>
+      </div>
+      <div class="track">
+        <span class="track-num">2</span>
+        <span class="track-title">I LOVE</span>
+      </div>
+      <div class="track">
+        <span class="track-num">3</span>
+        <span class="track-title">TABA'S</span>
+      </div>
+      <div class="track">
+        <span class="track-num">4</span>
+        <span class="track-title"><span class="track-skit">UNCLE PETROS — SKIT</span></span>
+      </div>
+      <div class="track">
+        <span class="track-num">5</span>
+        <span class="track-title">HEART OF GOLD</span>
+      </div>
+      <div class="track">
+        <span class="track-num">6</span>
+        <span class="track-title">JUICE & GIN</span>
+      </div>
+      <div class="track">
+        <span class="track-num">7</span>
+        <span class="track-title"><span class="track-skit">UNCLE AL — SKIT</span></span>
+      </div>
+      <div class="track">
+        <span class="track-num">8</span>
+        <span class="track-title">HOLY WATER</span>
+      </div>
+      <div class="track">
+        <span class="track-num">9</span>
+        <span class="track-title">GENERATIONAL</span>
+      </div>
+    </div>
+
+    <!-- Links -->
+    <div class="links-section">
+      <div class="links-grid">
+        <a class="link-btn" href="https://otis.curtbrag.com/teaspotify" target="_blank" rel="noopener noreferrer">
+          <i class="fa-brands fa-spotify"></i> Spotify
+        </a>
+        <a class="link-btn" href="https://otis.curtbrag.com/teainsta" target="_blank" rel="noopener noreferrer">
+          <i class="fa-brands fa-instagram"></i> Instagram
+        </a>
+      </div>
+    </div>
+
+    <!-- About -->
+    <section class="about">
+      <div class="about-card">
+        <div class="about-label">About the Album</div>
+        <p class="about-text">
+          UNCLE TEA is a 9-track project from Teathetruth exploring family, legacy, and personal truth.
+          Blending storytelling with raw production, the album features intimate skits from Uncle Petros and Uncle Al
+          woven between tracks about love, resilience, and generational impact.
+        </p>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <p>&copy; 2026 Teathetruth. All rights reserved.</p>
+      <p style="margin-top:0.5rem;">
+        <a href="https://otis.curtbrag.com/teaspotify">Stream UNCLE TEA now</a>
+      </p>
+    </footer>
+
+  </div>
+</body>
+</html>
