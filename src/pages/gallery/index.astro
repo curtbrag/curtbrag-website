@@ -6,9 +6,18 @@ import Layout from '../../layouts/Layout.astro';
 
   <!-- ═══════════════════════════════════════════ HEADER ═══════════════════════════════════════════ -->
   <section class="max-w-6xl mx-auto px-4 py-12">
+    <!-- Breadcrumb -->
+    <nav aria-label="Breadcrumb" class="mb-6 reveal">
+      <ol class="flex items-center gap-2 text-sm text-muted">
+        <li><a href="/" class="hover:text-brand transition">Home</a></li>
+        <li aria-hidden="true"><i class="fa-solid fa-chevron-right text-xs"></i></li>
+        <li class="text-text" aria-current="page">Gallery</li>
+      </ol>
+    </nav>
+
     <div class="text-center mb-12 reveal">
       <h1 class="text-4xl md:text-5xl font-bold mb-3">
-        <i class="fa-solid fa-images text-brand mr-3"></i><span class="gradient-text">Photo Gallery</span>
+        <i class="fa-solid fa-images text-brand mr-3" aria-hidden="true"></i><span class="gradient-text">Photo Gallery</span>
       </h1>
       <p class="text-text-secondary text-lg">Browse the collections</p>
     </div>
@@ -21,7 +30,7 @@ import Layout from '../../layouts/Layout.astro';
         <div class="relative overflow-hidden">
           <img
             src="/gallery/cars/20140328_111738.jpg"
-            alt="Cars Gallery"
+            alt="Customer cars and trucks from Boston area shops"
             class="w-full h-52 object-cover transition-transform duration-500 group-hover:scale-110"
             loading="lazy"
           />
@@ -29,7 +38,7 @@ import Layout from '../../layouts/Layout.astro';
         </div>
         <div class="p-6">
           <h2 class="text-xl font-bold mb-2 group-hover:text-brand transition">
-            <i class="fa-solid fa-car mr-2"></i>Cars Gallery
+            <i class="fa-solid fa-car mr-2" aria-hidden="true"></i>Cars Gallery
           </h2>
           <p class="text-text-secondary text-sm">Customer cars, trucks, and rides from around Boston</p>
           <span class="inline-block bg-surface text-muted text-xs px-3 py-1 rounded-full mt-3 badge-glow">100+ photos</span>
@@ -41,7 +50,7 @@ import Layout from '../../layouts/Layout.astro';
         <div class="relative overflow-hidden">
           <img
             src="/gallery/snapon/20160811_173654.jpg"
-            alt="Snap-on Gallery"
+            alt="Snap-on tools and truck photos"
             class="w-full h-52 object-cover transition-transform duration-500 group-hover:scale-110"
             loading="lazy"
           />
@@ -49,7 +58,7 @@ import Layout from '../../layouts/Layout.astro';
         </div>
         <div class="p-6">
           <h2 class="text-xl font-bold mb-2 group-hover:text-brand transition">
-            <i class="fa-solid fa-wrench mr-2"></i>Snap-on Gallery
+            <i class="fa-solid fa-wrench mr-2" aria-hidden="true"></i>Snap-on Gallery
           </h2>
           <p class="text-text-secondary text-sm">Tools, truck photos, and Snap-on memories</p>
           <span class="inline-block bg-surface text-muted text-xs px-3 py-1 rounded-full mt-3 badge-glow">250+ photos</span>
@@ -61,7 +70,7 @@ import Layout from '../../layouts/Layout.astro';
         <div class="relative overflow-hidden">
           <img
             src="/assets/pc/01_full_dual_system_rgb.webp"
-            alt="CYBERDYNE PC Build Gallery"
+            alt="CYBERDYNE dual-system PC build with RGB lighting"
             class="w-full h-52 object-cover transition-transform duration-500 group-hover:scale-110"
             loading="lazy"
           />
@@ -69,7 +78,7 @@ import Layout from '../../layouts/Layout.astro';
         </div>
         <div class="p-6">
           <h2 class="text-xl font-bold mb-2 group-hover:text-blue transition">
-            <i class="fa-solid fa-microchip mr-2"></i>PC Build
+            <i class="fa-solid fa-microchip mr-2" aria-hidden="true"></i>PC Build
           </h2>
           <p class="text-text-secondary text-sm">CYBERDYNE dual-system build photos and detail shots</p>
           <span class="inline-block bg-surface text-muted text-xs px-3 py-1 rounded-full mt-3 badge-glow">35 photos</span>
@@ -87,7 +96,7 @@ import Layout from '../../layouts/Layout.astro';
           href="/addyourride"
           class="btn-brand inline-flex items-center gap-2 bg-brand text-white rounded-xl px-6 py-3 font-semibold hover:bg-brand-dark transition shadow-lg shadow-brand/20 hover:shadow-brand/40 hover:scale-105"
         >
-          <i class="fa-solid fa-car-side"></i> Add Your Ride
+          <i class="fa-solid fa-car-side" aria-hidden="true"></i> Add Your Ride
         </a>
       </div>
     </div>

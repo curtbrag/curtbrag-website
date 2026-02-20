@@ -10,8 +10,8 @@
   --color-panel-hover: #1c1d21;
   --color-surface: #1e1f24;
   --color-text: #f5f5f5;
-  --color-text-secondary: #b0b0b0;
-  --color-muted: #787878;
+  --color-text-secondary: #c0c0c0;
+  --color-muted: #9a9a9a;
   --color-border: #2a2b30;
   --color-border-hover: #3d3e44;
   --color-green: #22c55e;
@@ -28,12 +28,33 @@ html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-size: 16px;
 }
 
 body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
+  line-height: 1.6;
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal, .reveal-left, .reveal-right, .reveal-scale {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Lazy-load images */
+img[loading="lazy"] {
+  content-visibility: auto;
 }
 
 /* Scrollbar styling */
