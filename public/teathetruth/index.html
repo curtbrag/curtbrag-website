@@ -5,13 +5,13 @@
   <title>Teathetruth — Artist. Producer. Engineer.</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <meta name="description" content="Teathetruth — artist, producer, and engineer out of Bankblock Studios, Lynn MA. 28 releases deep. Stream UNCLE TEA and the full catalog." />
-  <meta name="keywords" content="Teathetruth, Tommy Sarri, Uncle Tea, artist, producer, engineer, Bankblock Studios, Lynn MA, KMF, hip hop, Spotify, Greek">
+  <meta name="description" content="Teathetruth — artist, producer, and engineer out of Lynn, MA. 28 releases deep. Stream UNCLE TEA and the full catalog." />
+  <meta name="keywords" content="Teathetruth, Tommy Sarri, Uncle Tea, artist, producer, engineer, Lynn MA, hip hop, Spotify, Greek">
   <meta name="author" content="Teathetruth">
 
   <meta property="og:type" content="website">
   <meta property="og:title" content="Teathetruth — Artist. Producer. Engineer.">
-  <meta property="og:description" content="Music, art, and truth out of Bankblock Studios, Lynn MA. 28 releases. Stream UNCLE TEA now.">
+  <meta property="og:description" content="Music, art, and truth out of Lynn, MA. 28 releases. Stream UNCLE TEA now.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Teathetruth">
   <meta name="twitter:description" content="Artist. Producer. Engineer. Stream the catalog.">
@@ -317,6 +317,11 @@
       font-size: 0.65rem; color: var(--dim); margin-top: 0.25rem;
       font-style: italic;
     }
+    .disco-card-img {
+      width: 100%; aspect-ratio: 1; object-fit: cover;
+      border-radius: 6px; margin-bottom: 0.75rem;
+      border: 1px solid var(--border);
+    }
 
     /* ---- ABOUT ---- */
     #about { background: var(--surface); }
@@ -409,6 +414,32 @@
       color: var(--dim); font-size: 0.7rem; letter-spacing: 0.12em;
       text-transform: uppercase; position: relative; z-index: 1;
     }
+    .art-cell img {
+      width: 100%; height: 100%; object-fit: cover;
+      position: relative; z-index: 1;
+      transition: transform 0.4s;
+    }
+    .art-cell:hover img { transform: scale(1.05); }
+
+    /* ---- FLOATING PLAYER ---- */
+    .floating-player {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 99;
+      background: rgba(5,5,8,0.95);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-top: 1px solid var(--border);
+    }
+    .floating-player iframe { display: block; }
+    .player-dismiss {
+      position: absolute; top: 6px; right: 10px;
+      background: rgba(255,255,255,0.08); border: none;
+      color: var(--muted); cursor: pointer;
+      font-size: 1rem; width: 24px; height: 24px;
+      border-radius: 50%; display: flex;
+      align-items: center; justify-content: center;
+      z-index: 100; transition: color 0.2s, background 0.2s;
+    }
+    .player-dismiss:hover { color: var(--text); background: rgba(255,255,255,0.15); }
 
     /* ---- STUDIO SERVICES ---- */
     #studio { background: var(--bg); }
@@ -565,6 +596,7 @@
     .connect-btn .fa-instagram { color: #E4405F; }
     .connect-btn .fa-apple { color: #fc3c44; }
     .connect-btn .fa-bandcamp { color: #629aa9; }
+    .connect-btn .fa-youtube { color: #FF0000; }
 
     .connect-note {
       color: var(--dim); font-size: 0.8rem; font-style: italic;
@@ -573,7 +605,7 @@
 
     /* ---- FOOTER ---- */
     footer {
-      padding: 2.5rem 2rem; text-align: center;
+      padding: 2.5rem 2rem 6rem; text-align: center;
       border-top: 1px solid var(--border);
       background: var(--bg);
     }
@@ -655,7 +687,7 @@
       <div class="hero-content">
         <p class="hero-eyebrow">Artist &middot; Producer &middot; Engineer</p>
         <h1 class="hero-title"><span class="accent">Tea</span>thetruth</h1>
-        <p class="hero-location">Bankblock Studios <span>&middot;</span> Lynn, MA <span>&middot;</span> KMF</p>
+        <p class="hero-location">Lynn, MA</p>
         <p class="hero-sub">28 releases deep. Every beat produced, every track mixed and mastered by hand. Music, art, and truth — no filter.</p>
         <div class="hero-actions">
           <a class="btn btn-gold" href="https://open.spotify.com/album/4eCCTpZLSMHIMYhUsdbnJW" target="_blank" rel="noopener noreferrer">
@@ -687,7 +719,7 @@
           <div>
             <span class="release-badge">Latest Release &middot; Feb 2026</span>
             <h2 class="release-title">UNCLE TEA</h2>
-            <p class="release-meta">9 Tracks &middot; Album &middot; Bankblock Studios</p>
+            <p class="release-meta">9 Tracks &middot; Album &middot; February 2026</p>
             <ol class="tracklist">
               <li><span class="t-num">1</span><span class="t-name">FAMILY PHOTOS</span></li>
               <li><span class="t-num">2</span><span class="t-name">I LOVE</span></li>
@@ -715,34 +747,39 @@
         <div class="reveal">
           <div class="label">Discography</div>
           <h2 class="heading">The Catalog</h2>
-          <p class="desc">14 albums, 14 singles &amp; EPs. Every track produced, recorded, mixed, and mastered at Bankblock Studios, Lynn, MA.</p>
+          <p class="desc">14 albums, 14 singles &amp; EPs. Every track produced, recorded, mixed, and mastered by Teathetruth.</p>
         </div>
 
         <!-- Albums -->
         <div class="disco-grid reveal">
           <a class="disco-card" href="https://open.spotify.com/album/4eCCTpZLSMHIMYhUsdbnJW" target="_blank" rel="noopener noreferrer">
+            <img class="disco-card-img" src="https://i.scdn.co/image/ab67616d0000b2736172b097dd967e3a7ded1fff" alt="UNCLE TEA" loading="lazy">
             <div class="disco-year">Feb 2026</div>
             <div class="disco-name">UNCLE TEA</div>
             <div class="disco-type">Album &middot; 9 tracks</div>
           </a>
           <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+            <img class="disco-card-img" src="https://i.scdn.co/image/ab67616d0000b2736360459f23c81347e53fe804" alt="THE TRUTH THEORY" loading="lazy">
             <div class="disco-year">Sep 2025</div>
             <div class="disco-name">THE TRUTH THEORY</div>
             <div class="disco-type">Album &middot; 13 tracks</div>
             <div class="disco-feat">ft. Chef Bogey, Theravada, WhoIsNicko</div>
           </a>
           <a class="disco-card" href="https://open.spotify.com/album/3lmXCTx2HSaoUqLMtCyPSs" target="_blank" rel="noopener noreferrer">
+            <img class="disco-card-img" src="https://i.scdn.co/image/ab67616d0000b2734701d3b783a3b68f699d037f" alt="THE BEAUTIFUL UGLY II" loading="lazy">
             <div class="disco-year">Apr 2025</div>
             <div class="disco-name">THE BEAUTIFUL UGLY II</div>
             <div class="disco-type">Album &middot; 17 tracks</div>
             <div class="disco-feat">with Kashi2x</div>
           </a>
           <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+            <img class="disco-card-img" src="https://i.scdn.co/image/ab67616d0000b2739990bf40f9a4581c47b6ce7a" alt="Santorini II" loading="lazy">
             <div class="disco-year">Sep 2024</div>
             <div class="disco-name">Santorini II</div>
             <div class="disco-type">Album &middot; 13 tracks</div>
           </a>
           <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+            <img class="disco-card-img" src="https://i.scdn.co/image/ab67616d0000b273f54cc379abfcc0223f8671c6" alt="Only I Could Do It" loading="lazy">
             <div class="disco-year">Aug 2023</div>
             <div class="disco-name">Only I Could Do It</div>
             <div class="disco-type">Album &middot; 16 tracks</div>
@@ -754,11 +791,13 @@
             <div class="disco-feat">Jeff Porter, prod. by Teathetruth</div>
           </a>
           <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+            <img class="disco-card-img" src="https://i.scdn.co/image/ab67616d0000b2733260610fb9fe1dfa3f6d1b25" alt="ILLUSTRIOUS" loading="lazy">
             <div class="disco-year">Dec 2022</div>
             <div class="disco-name">ILLUSTRIOUS</div>
             <div class="disco-type">Album &middot; 10 tracks</div>
           </a>
           <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+            <img class="disco-card-img" src="https://i.scdn.co/image/ab67616d0000b273463ca1f684336a3967c5e75e" alt="Santorini" loading="lazy">
             <div class="disco-year">Oct 2022</div>
             <div class="disco-name">Santorini</div>
             <div class="disco-type">Album &middot; 8 tracks</div>
@@ -801,12 +840,14 @@
           <div class="label" style="margin-top:1rem;">Singles &amp; EPs</div>
           <div class="disco-grid" style="margin-top:1rem;">
             <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+              <img class="disco-card-img" src="https://i.scdn.co/image/ab67616d0000b27379c5bfb4baa4d5ed1c3413db" alt="WAGYU" loading="lazy">
               <div class="disco-year">Jan 2026</div>
               <div class="disco-name">WAGYU</div>
               <div class="disco-type">Single</div>
               <div class="disco-feat">ft. Hooper James</div>
             </a>
             <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+              <img class="disco-card-img" src="https://i.scdn.co/image/ab67616d0000b273d4dcb1ced170b36eb6d71fa1" alt="BRINKS TRUCK" loading="lazy">
               <div class="disco-year">Oct 2025</div>
               <div class="disco-name">BRINKS TRUCK</div>
               <div class="disco-type">Single</div>
@@ -889,13 +930,8 @@
             <div class="label">The Artist</div>
             <h2 class="heading">Built Different</h2>
             <p>
-              <strong>Teathetruth</strong> is an artist, producer, and engineer out of <strong>Bankblock Studios in Lynn, Massachusetts</strong>.
+              <strong>Teathetruth</strong> is an artist, producer, and engineer out of <strong>Lynn, Massachusetts</strong>.
               Everything is done in-house — writing, production, recording, mixing, mastering. No middlemen. No shortcuts. 28 releases since 2020 and counting.
-            </p>
-            <p>
-              A founding member of <em>KMF (Keep Moving Forward)</em>, a 10-member hip-hop collective out of Lynn
-              that's recorded at <strong>Quad Recording Studio in New York City</strong> — the same studio where Tupac
-              and Biggie laid down records. The mission is simple: keep creating, keep pushing, keep moving forward.
             </p>
             <p>
               With roots tied deep to <strong>Greece</strong>, the music pulls from two worlds — the grit of Lynn and the soul of Athens.
@@ -911,16 +947,8 @@
           </div>
           <div class="about-cards">
             <div class="info-card">
-              <div class="info-card-label">Studio</div>
-              <div class="info-card-value">Bankblock Studios</div>
-            </div>
-            <div class="info-card">
               <div class="info-card-label">Location</div>
               <div class="info-card-value">Lynn, MA</div>
-            </div>
-            <div class="info-card">
-              <div class="info-card-label">Collective</div>
-              <div class="info-card-value">KMF</div>
             </div>
             <div class="info-card">
               <div class="info-card-label">Releases</div>
@@ -952,11 +980,11 @@
         <div class="crew-grid reveal">
           <div class="crew-card">
             <div class="crew-name">Kashi2x</div>
-            <div class="crew-role">Artist &middot; KMF</div>
+            <div class="crew-role">Artist</div>
           </div>
           <div class="crew-card">
             <div class="crew-name">Wst. Taylor</div>
-            <div class="crew-role">Artist &middot; KMF</div>
+            <div class="crew-role">Artist</div>
           </div>
           <div class="crew-card">
             <div class="crew-name">Chef Bogey</div>
@@ -1010,15 +1038,15 @@
         <div class="reveal">
           <div class="label">Visual Work</div>
           <h2 class="heading">The Art</h2>
-          <p class="desc art-desc-center">Same hands that make the beats make the paintings. Dark canvases, gold light, raw brush strokes.</p>
+          <p class="desc art-desc-center">Album covers, paintings, and visual work. Same hands that make the beats make the art.</p>
         </div>
         <div class="art-grid reveal">
-          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
-          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
-          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
-          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
-          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
-          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
+          <div class="art-cell"><img src="https://i.scdn.co/image/ab67616d0000b2736172b097dd967e3a7ded1fff" alt="UNCLE TEA" loading="lazy"></div>
+          <div class="art-cell"><img src="https://i.scdn.co/image/ab67616d0000b2736360459f23c81347e53fe804" alt="THE TRUTH THEORY" loading="lazy"></div>
+          <div class="art-cell"><img src="https://i.scdn.co/image/ab67616d0000b2734701d3b783a3b68f699d037f" alt="THE BEAUTIFUL UGLY II" loading="lazy"></div>
+          <div class="art-cell"><img src="https://i.scdn.co/image/ab67616d0000b2739990bf40f9a4581c47b6ce7a" alt="Santorini II" loading="lazy"></div>
+          <div class="art-cell"><img src="https://i.scdn.co/image/ab67616d0000b273f54cc379abfcc0223f8671c6" alt="Only I Could Do It" loading="lazy"></div>
+          <div class="art-cell"><img src="https://i.scdn.co/image/ab67616d0000b2733260610fb9fe1dfa3f6d1b25" alt="ILLUSTRIOUS" loading="lazy"></div>
         </div>
         <div class="reveal" style="margin-top:2rem;">
           <a class="btn btn-outline" href="https://www.instagram.com/teathetruth/" target="_blank" rel="noopener noreferrer">
@@ -1035,9 +1063,9 @@
     <section id="studio">
       <div class="inner">
         <div class="reveal">
-          <div class="label">Bankblock Studios</div>
+          <div class="label">Studio</div>
           <h2 class="heading">Work With Tea</h2>
-          <p class="desc">Professional production, mixing, and mastering out of Bankblock Studios, Lynn MA. The same sound behind 28 releases and artists like Jeff Porter, David Ryan, and the KMF roster.</p>
+          <p class="desc">Professional production, mixing, and mastering out of Lynn, MA. The same sound behind 28 releases.</p>
         </div>
         <div class="services-grid reveal">
           <div class="service-card">
@@ -1049,7 +1077,7 @@
           <div class="service-card">
             <div class="service-icon"><i class="fa-solid fa-microphone-lines"></i></div>
             <div class="service-title">Recording</div>
-            <div class="service-desc">Studio sessions at Bankblock Studios. Professional vocal recording, engineering, and direction to get the best take every time.</div>
+            <div class="service-desc">Professional studio sessions. Vocal recording, engineering, and direction to get the best take every time.</div>
             <div class="service-price">Inquire for rates</div>
           </div>
           <div class="service-card">
@@ -1061,7 +1089,7 @@
           <div class="service-card">
             <div class="service-icon"><i class="fa-solid fa-fire"></i></div>
             <div class="service-title">Full Package</div>
-            <div class="service-desc">Production + recording + mix/master — the complete Bankblock experience. Walk in with a vision, walk out with a finished record.</div>
+            <div class="service-desc">Production + recording + mix/master — the complete package. Walk in with a vision, walk out with a finished record.</div>
             <div class="service-price">Best value &middot; Inquire</div>
           </div>
         </div>
@@ -1158,6 +1186,9 @@
           <a class="connect-btn" href="https://teathetruth.bandcamp.com" target="_blank" rel="noopener noreferrer">
             <i class="fa-brands fa-bandcamp"></i> Bandcamp
           </a>
+          <a class="connect-btn" href="https://youtube.com/@teathetruth?si=1S9EMAzTPKEnw7wt" target="_blank" rel="noopener noreferrer">
+            <i class="fa-brands fa-youtube"></i> YouTube
+          </a>
         </div>
         <p class="connect-note">For bookings, beats, and studio inquiries — reach out on Instagram.</p>
       </div>
@@ -1166,9 +1197,20 @@
     <!-- Footer -->
     <footer>
       <div class="footer-logo">Teathetruth</div>
-      <p>&copy; 2026 Teathetruth &middot; Bankblock Studios &middot; Lynn, MA &middot; KMF</p>
+      <p>&copy; 2026 Teathetruth &middot; Lynn, MA</p>
     </footer>
 
+  </div>
+
+  <!-- Floating Spotify Player -->
+  <div class="floating-player" id="floating-player">
+    <button class="player-dismiss" onclick="document.getElementById('floating-player').style.display='none'" aria-label="Close player">&times;</button>
+    <iframe
+      src="https://open.spotify.com/embed/album/4eCCTpZLSMHIMYhUsdbnJW?utm_source=generator&theme=0"
+      width="100%" height="80" frameBorder="0"
+      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+      loading="lazy"
+    ></iframe>
   </div>
 
   <script>

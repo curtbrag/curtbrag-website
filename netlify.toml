@@ -28,16 +28,6 @@
   status = 200
 
 [[redirects]]
-  from = "/teathetruth"
-  to = "/teathetruth/index.html"
-  status = 200
-
-[[redirects]]
-  from = "/teathetruth/"
-  to = "/teathetruth/index.html"
-  status = 200
-
-[[redirects]]
   from = "/cluster"
   to = "/cluster/index.html"
   status = 200
