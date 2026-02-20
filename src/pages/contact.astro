@@ -7,13 +7,46 @@ import Layout from '../layouts/Layout.astro';
   description="Get in touch with Curtis Bragdon - schedule a truck stop, request tools, or ask any questions."
 >
   <section class="max-w-xl mx-auto px-4 py-12">
+    <!-- Breadcrumb -->
+    <nav aria-label="Breadcrumb" class="mb-6 reveal">
+      <ol class="flex items-center gap-2 text-sm text-muted">
+        <li><a href="/" class="hover:text-brand transition">Home</a></li>
+        <li aria-hidden="true"><i class="fa-solid fa-chevron-right text-xs"></i></li>
+        <li class="text-text" aria-current="page">Contact</li>
+      </ol>
+    </nav>
+
     <h1 class="text-3xl font-bold text-center mb-8 text-text reveal">
-      <i class="fa-solid fa-envelope text-brand mr-2"></i>Contact <span class="gradient-text">Curtis</span>
+      <i class="fa-solid fa-envelope text-brand mr-2" aria-hidden="true"></i>Contact <span class="gradient-text">Curtis</span>
     </h1>
+
+    <!-- Business Info -->
+    <div class="card-glow p-6 mb-6 reveal">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+        <div>
+          <h2 class="font-semibold text-text mb-2"><i class="fa-solid fa-clock text-brand mr-2" aria-hidden="true"></i>Hours</h2>
+          <p class="text-text-secondary">Monday &ndash; Friday: 7:00 AM &ndash; 5:00 PM</p>
+          <p class="text-muted text-xs mt-1">Weekends by appointment</p>
+        </div>
+        <div>
+          <h2 class="font-semibold text-text mb-2"><i class="fa-solid fa-map-marker-alt text-brand mr-2" aria-hidden="true"></i>Service Area</h2>
+          <p class="text-text-secondary">Boston metro area, MA</p>
+          <p class="text-muted text-xs mt-1">Lynn, Revere, Malden, Everett, and surrounding towns</p>
+        </div>
+        <div>
+          <h2 class="font-semibold text-text mb-2"><i class="fa-solid fa-phone text-brand mr-2" aria-hidden="true"></i>Phone</h2>
+          <a href="tel:+17814170692" class="text-text-secondary hover:text-brand transition">781-417-0692</a>
+        </div>
+        <div>
+          <h2 class="font-semibold text-text mb-2"><i class="fa-solid fa-envelope text-brand mr-2" aria-hidden="true"></i>Email</h2>
+          <a href="mailto:curtbrag@yahoo.com" class="text-text-secondary hover:text-brand transition">curtbrag@yahoo.com</a>
+        </div>
+      </div>
+    </div>
 
     <div class="card-glow p-8 reveal">
       <p class="text-text-secondary leading-relaxed mb-6">
-        Have a question about tools, need a custom order, or want to schedule a stop?
+        Have a question about tools, need a custom order, or want to schedule a stop? Fill out the form below or use the quick contact options.
       </p>
 
       <!-- Quick Contact Buttons -->

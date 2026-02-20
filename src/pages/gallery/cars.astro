@@ -6,9 +6,20 @@ import Layout from '../../layouts/Layout.astro';
 
   <!-- ═══════════════════════════════════════════ HEADER ═══════════════════════════════════════════ -->
   <section class="max-w-7xl mx-auto px-4 py-12">
+    <!-- Breadcrumb -->
+    <nav aria-label="Breadcrumb" class="mb-6">
+      <ol class="flex items-center gap-2 text-sm text-muted">
+        <li><a href="/" class="hover:text-brand transition">Home</a></li>
+        <li aria-hidden="true"><i class="fa-solid fa-chevron-right text-xs"></i></li>
+        <li><a href="/gallery" class="hover:text-brand transition">Gallery</a></li>
+        <li aria-hidden="true"><i class="fa-solid fa-chevron-right text-xs"></i></li>
+        <li class="text-text" aria-current="page">Cars</li>
+      </ol>
+    </nav>
+
     <div class="text-center mb-10">
       <h1 class="text-4xl md:text-5xl font-bold mb-3">
-        <i class="fa-solid fa-car text-brand mr-3"></i>Cars Gallery
+        <i class="fa-solid fa-car text-brand mr-3" aria-hidden="true"></i>Cars Gallery
       </h1>
       <p class="text-text-secondary text-lg">Customer rides from around Boston</p>
     </div>

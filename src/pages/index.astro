@@ -40,25 +40,28 @@ import Layout from '../layouts/Layout.astro';
         This ain't your average tool truck. I don't just sell tools &mdash; I build my own path and custom solutions that last, with Alina on standby.
       </p>
 
-      <!-- Quick Contact Cluster -->
-      <div class="flex flex-wrap justify-center gap-3 animate-fade-in delay-2">
+      <!-- Primary CTA -->
+      <div class="animate-fade-in delay-2">
         <a
-          href="tel:+17814170692"
-          class="btn-brand inline-flex items-center gap-2 bg-brand text-white rounded-xl px-6 py-3 font-semibold hover:bg-brand-dark transition shadow-lg shadow-brand/20 hover:shadow-brand/40 hover:scale-105"
+          href="https://otis.curtbrag.com/curtschedule"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn-brand inline-flex items-center gap-2 bg-brand text-white rounded-xl px-8 py-4 font-semibold text-lg hover:bg-brand-dark transition shadow-lg shadow-brand/20 hover:shadow-brand/40 hover:scale-105"
         >
-          <i class="fa-solid fa-phone"></i> Call
+          <i class="fa-solid fa-calendar-check"></i> Book a Service
         </a>
-        <a
-          href="sms:+17814170692"
-          class="btn-brand inline-flex items-center gap-2 bg-brand text-white rounded-xl px-6 py-3 font-semibold hover:bg-brand-dark transition shadow-lg shadow-brand/20 hover:shadow-brand/40 hover:scale-105"
-        >
-          <i class="fa-solid fa-comment-sms"></i> Text
+      </div>
+
+      <!-- Secondary Contact -->
+      <div class="flex flex-wrap justify-center gap-4 mt-6 animate-fade-in delay-3">
+        <a href="tel:+17814170692" class="text-text-secondary hover:text-brand text-sm transition flex items-center gap-1.5">
+          <i class="fa-solid fa-phone text-xs"></i> 781-417-0692
         </a>
-        <a
-          href="mailto:curtbrag@yahoo.com"
-          class="btn-brand inline-flex items-center gap-2 bg-brand text-white rounded-xl px-6 py-3 font-semibold hover:bg-brand-dark transition shadow-lg shadow-brand/20 hover:shadow-brand/40 hover:scale-105"
-        >
-          <i class="fa-solid fa-envelope"></i> Email
+        <a href="sms:+17814170692" class="text-text-secondary hover:text-brand text-sm transition flex items-center gap-1.5">
+          <i class="fa-solid fa-comment-sms text-xs"></i> Text Me
+        </a>
+        <a href="mailto:curtbrag@yahoo.com" class="text-text-secondary hover:text-brand text-sm transition flex items-center gap-1.5">
+          <i class="fa-solid fa-envelope text-xs"></i> curtbrag@yahoo.com
         </a>
       </div>
     </div>
@@ -85,7 +88,8 @@ import Layout from '../layouts/Layout.astro';
             <i class="fa-solid fa-calendar-check"></i>
           </div>
           <h3 class="text-lg font-semibold mb-2 group-hover:text-brand transition">Schedule Stop</h3>
-          <p class="text-text-secondary text-sm">Book a tool truck visit at your shop or location.</p>
+          <p class="text-text-secondary text-sm mb-3">Book a tool truck visit at your shop or location.</p>
+          <span class="inline-flex items-center gap-1 text-brand text-sm font-semibold group-hover:gap-2 transition-all"><i class="fa-solid fa-arrow-right text-xs"></i> Book Now</span>
         </a>
 
         <!-- Request a Tool -->
@@ -99,7 +103,8 @@ import Layout from '../layouts/Layout.astro';
             <i class="fa-solid fa-toolbox"></i>
           </div>
           <h3 class="text-lg font-semibold mb-2 group-hover:text-brand transition">Request a Tool</h3>
-          <p class="text-text-secondary text-sm">Need something specific? Submit a request and I'll track it down.</p>
+          <p class="text-text-secondary text-sm mb-3">Need something specific? Submit a request and I'll track it down.</p>
+          <span class="inline-flex items-center gap-1 text-brand text-sm font-semibold group-hover:gap-2 transition-all"><i class="fa-solid fa-arrow-right text-xs"></i> Submit Request</span>
         </a>
 
         <!-- Warranty / RA Help -->
@@ -113,7 +118,8 @@ import Layout from '../layouts/Layout.astro';
             <i class="fa-solid fa-shield"></i>
           </div>
           <h3 class="text-lg font-semibold mb-2 group-hover:text-brand transition">Warranty / RA Help</h3>
-          <p class="text-text-secondary text-sm">Broken tool? Start a warranty or return authorization.</p>
+          <p class="text-text-secondary text-sm mb-3">Broken tool? Start a warranty or return authorization.</p>
+          <span class="inline-flex items-center gap-1 text-brand text-sm font-semibold group-hover:gap-2 transition-all"><i class="fa-solid fa-arrow-right text-xs"></i> Start Claim</span>
         </a>
       </div>
     </div>
@@ -201,15 +207,6 @@ import Layout from '../layouts/Layout.astro';
           <p class="text-text-secondary text-sm">Trading cards on eBay</p>
         </a>
 
-        <!-- Phone Cluster -->
-        <a href="/cluster" class="card-glow p-5 block group">
-          <div class="text-2xl mb-3 text-green card-icon">
-            <i class="fa-solid fa-server"></i>
-          </div>
-          <h3 class="font-semibold mb-1 group-hover:text-brand transition">Phone Cluster</h3>
-          <p class="text-text-secondary text-sm">10 phones running Kubernetes</p>
-        </a>
-
         <!-- Rig -->
         <a href="/rig" class="card-glow p-5 block group">
           <div class="text-2xl mb-3 text-blue card-icon">
@@ -238,13 +235,10 @@ import Layout from '../layouts/Layout.astro';
   <section class="py-14 md:py-20 reveal">
     <div class="max-w-6xl mx-auto px-4 sm:px-6">
       <h2 class="text-2xl font-bold mb-1">Quick Pay</h2>
-      <div class="w-16 h-0.5 bg-gradient-to-r from-brand to-transparent mb-8"></div>
+      <div class="w-16 h-0.5 bg-gradient-to-r from-brand to-transparent mb-4"></div>
+      <p class="text-text-secondary text-sm mb-8 max-w-2xl">Pay for tools, services, or outstanding balances using any of the accepted payment methods below.</p>
 
       <div class="flex flex-wrap gap-3 justify-center stagger-children">
-        <a href="https://otis.curtbrag.com/curtdk" target="_blank" rel="noopener noreferrer"
-          class="inline-flex items-center gap-2 bg-surface border border-border rounded-lg px-5 py-3 text-sm hover:border-brand hover:bg-panel-hover hover:scale-105 transition-all duration-300 group">
-          <i class="fa-solid fa-football text-green group-hover:scale-110 transition-transform"></i> DraftKings
-        </a>
         <a href="https://otis.curtbrag.com/curtzelle" target="_blank" rel="noopener noreferrer"
           class="inline-flex items-center gap-2 bg-surface border border-border rounded-lg px-5 py-3 text-sm hover:border-brand hover:bg-panel-hover hover:scale-105 transition-all duration-300 group">
           <i class="fa-solid fa-money-bill text-purple-400 group-hover:scale-110 transition-transform"></i> Zelle
@@ -256,10 +250,6 @@ import Layout from '../layouts/Layout.astro';
         <a href="https://otis.curtbrag.com/curtvenmo" target="_blank" rel="noopener noreferrer"
           class="inline-flex items-center gap-2 bg-surface border border-border rounded-lg px-5 py-3 text-sm hover:border-brand hover:bg-panel-hover hover:scale-105 transition-all duration-300 group">
           <i class="fa-brands fa-paypal text-blue group-hover:scale-110 transition-transform"></i> Venmo
-        </a>
-        <a href="https://otis.curtbrag.com/curtspotify" target="_blank" rel="noopener noreferrer"
-          class="inline-flex items-center gap-2 bg-surface border border-border rounded-lg px-5 py-3 text-sm hover:border-brand hover:bg-panel-hover hover:scale-105 transition-all duration-300 group">
-          <i class="fa-brands fa-spotify text-green group-hover:scale-110 transition-transform"></i> Spotify
         </a>
       </div>
     </div>
@@ -273,11 +263,14 @@ import Layout from '../layouts/Layout.astro';
     <div class="max-w-6xl mx-auto px-4 sm:px-6">
       <!-- Header -->
       <div class="flex items-center gap-3 mb-1">
-        <img src="/assets/alina_avatar.png" alt="Alina AI" class="w-12 h-12 rounded-xl ring-2 ring-brand/30" loading="lazy" />
+        <img src="/assets/alina_avatar.png" alt="Alina AI assistant avatar" class="w-12 h-12 rounded-xl ring-2 ring-brand/30" loading="lazy" />
         <h2 class="text-2xl font-bold">Alina &mdash; <span class="gradient-text">AI Command Center</span></h2>
       </div>
-      <p class="text-muted text-sm mb-6">
-        GPT sessions 7,500+ &bull; Custom automations (Bitly, Netlify, DraftKings, more) &bull; Tool deals closed: infinity
+      <p class="text-text-secondary text-sm mb-3 max-w-2xl">
+        Alina is a GPT-powered assistant that can help you schedule a truck stop, answer questions about tools and services, share current promotions, assist with warranty claims, and provide contact info. Just type a question below.
+      </p>
+      <p class="text-muted text-xs mb-6">
+        7,500+ sessions &bull; Custom automations &bull; Available 24/7
       </p>
 
       <!-- Prompt Chips -->
@@ -327,45 +320,45 @@ import Layout from '../layouts/Layout.astro';
   <section class="py-14 md:py-20 reveal">
     <div class="max-w-6xl mx-auto px-4 sm:px-6">
       <div class="flex items-center gap-3 mb-1">
-        <i class="fa-solid fa-trophy text-yellow text-xl"></i>
+        <i class="fa-solid fa-trophy text-yellow text-xl" aria-hidden="true"></i>
         <h2 class="text-2xl font-bold">Boston Sports Tracker</h2>
       </div>
       <div class="w-16 h-0.5 bg-gradient-to-r from-yellow to-transparent mb-8"></div>
 
-      <div class="bg-panel border border-border rounded-2xl p-6 hover:border-border-hover transition-colors duration-300">
+      <div id="sports-container" class="bg-panel border border-border rounded-2xl p-6 hover:border-border-hover transition-colors duration-300">
         <div class="divide-y divide-border">
           <div class="flex justify-between items-center py-3 group hover:bg-surface/50 px-3 -mx-3 rounded-lg transition-colors">
             <span class="font-semibold flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full bg-red"></span> Red Sox
+              <span class="w-2 h-2 rounded-full bg-red" aria-hidden="true"></span> Red Sox
             </span>
-            <span id="score-redsox" class="text-text-secondary text-sm">Loading...</span>
+            <span id="score-redsox" class="text-text-secondary text-sm">No game scheduled</span>
           </div>
           <div class="flex justify-between items-center py-3 group hover:bg-surface/50 px-3 -mx-3 rounded-lg transition-colors">
             <span class="font-semibold flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full bg-blue"></span> Patriots
+              <span class="w-2 h-2 rounded-full bg-blue" aria-hidden="true"></span> Patriots
             </span>
-            <span id="score-patriots" class="text-text-secondary text-sm">Loading...</span>
+            <span id="score-patriots" class="text-text-secondary text-sm">No game scheduled</span>
           </div>
           <div class="flex justify-between items-center py-3 group hover:bg-surface/50 px-3 -mx-3 rounded-lg transition-colors">
             <span class="font-semibold flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full bg-green"></span> Celtics
+              <span class="w-2 h-2 rounded-full bg-green" aria-hidden="true"></span> Celtics
             </span>
-            <span id="score-celtics" class="text-text-secondary text-sm">Loading...</span>
+            <span id="score-celtics" class="text-text-secondary text-sm">No game scheduled</span>
           </div>
           <div class="flex justify-between items-center py-3 group hover:bg-surface/50 px-3 -mx-3 rounded-lg transition-colors">
             <span class="font-semibold flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full bg-yellow"></span> Bruins
+              <span class="w-2 h-2 rounded-full bg-yellow" aria-hidden="true"></span> Bruins
             </span>
-            <span id="score-bruins" class="text-text-secondary text-sm">Loading...</span>
+            <span id="score-bruins" class="text-text-secondary text-sm">No game scheduled</span>
           </div>
           <div class="flex justify-between items-center py-3 group hover:bg-surface/50 px-3 -mx-3 rounded-lg transition-colors">
             <span class="font-semibold flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full bg-blue"></span> Revolution
+              <span class="w-2 h-2 rounded-full bg-blue" aria-hidden="true"></span> Revolution
             </span>
-            <span id="score-revolution" class="text-text-secondary text-sm">Loading...</span>
+            <span id="score-revolution" class="text-text-secondary text-sm">No game scheduled</span>
           </div>
         </div>
-        <p class="text-muted text-xs mt-4">Auto-updates every 5 min</p>
+        <p id="sports-status" class="text-muted text-xs mt-4">Fetching latest scores...</p>
       </div>
     </div>
   </section>
@@ -480,10 +473,13 @@ import Layout from '../layouts/Layout.astro';
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const teamIds = ['redsox', 'patriots', 'celtics', 'bruins', 'revolution'];
+    const statusEl = document.getElementById('sports-status');
+    let loaded = false;
 
     async function loadSports() {
       try {
         const res = await fetch('/.netlify/functions/sports');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
 
         if (data.success && data.teams) {
@@ -492,15 +488,20 @@ import Layout from '../layouts/Layout.astro';
             if (el && data.teams[team]) {
               el.textContent = data.teams[team];
             } else if (el) {
-              el.textContent = 'No game today';
+              el.textContent = 'No game scheduled';
             }
           });
+          loaded = true;
+          if (statusEl) statusEl.textContent = 'Auto-updates every 5 min';
         }
       } catch {
-        teamIds.forEach((team) => {
-          const el = document.getElementById(`score-${team}`);
-          if (el) el.textContent = 'Unavailable';
-        });
+        if (!loaded) {
+          teamIds.forEach((team) => {
+            const el = document.getElementById(`score-${team}`);
+            if (el) el.textContent = 'No game scheduled';
+          });
+          if (statusEl) statusEl.textContent = 'Scores temporarily unavailable. Check back shortly.';
+        }
       }
     }
 
