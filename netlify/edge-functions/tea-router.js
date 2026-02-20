@@ -3,10 +3,8 @@ export default async (request, context) => {
   const host = url.hostname;
 
   if (host === "teathetruth.com" || host === "www.teathetruth.com") {
-    const teaPage = new URL("/teathetruth/index.html", url.origin);
-    const response = await fetch(teaPage.toString(), {
-      headers: { "Host": "curtbrag.com" },
-    });
+    const teaPage = new URL("/teathetruth/index.html", "https://curtbrag.com");
+    const response = await fetch(teaPage.toString());
     return new Response(response.body, {
       status: 200,
       headers: {
