@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Teathetruth — Artist. Producer. Engineer.</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <meta name="description" content="Teathetruth — artist, producer, and engineer out of Bankblock Studios, Lynn MA. Stream UNCLE TEA and the full catalog." />
+  <meta name="keywords" content="Teathetruth, Uncle Tea, artist, producer, engineer, Bankblock Studios, Lynn MA, hip hop, Spotify">
+  <meta name="author" content="Teathetruth">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Teathetruth — Artist. Producer. Engineer.">
+  <meta property="og:description" content="Music, art, and truth out of Bankblock Studios, Lynn MA. Stream UNCLE TEA now.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Teathetruth">
+  <meta name="twitter:description" content="Artist. Producer. Engineer. Stream the catalog.">
+  <meta name="theme-color" content="#B03840">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/css/all.min.css" rel="stylesheet"/>
+
+  <style>
+    :root {
+      --bg: #050505;
+      --surface: #0c0c0c;
+      --surface-2: #131313;
+      --border: #1a1a1a;
+      --border-light: #252525;
+      --text: #e8e8e8;
+      --muted: #5a5a5a;
+      --dim: #3a3a3a;
+      --crimson: #B03840;
+      --crimson-glow: rgba(176,56,64,0.15);
+      --gold: #c8a050;
+      --gold-dim: rgba(200,160,80,0.1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Space Grotesk', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Grain */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      opacity: 0.04;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    .page { position: relative; z-index: 1; }
+    .serif { font-family: 'Instrument Serif', Georgia, serif; }
+
+    /* ---- NAV ---- */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      padding: 1rem 2rem;
+      display: flex; justify-content: space-between; align-items: center;
+      background: rgba(5,5,5,0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      transition: border-color 0.3s;
+    }
+    .nav-logo {
+      font-size: 0.95rem; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--text); text-decoration: none;
+    }
+    .nav-logo span { color: var(--crimson); }
+    .nav-links { display: flex; gap: 1.5rem; align-items: center; }
+    .nav-links a {
+      color: var(--muted); text-decoration: none; font-size: 0.78rem;
+      font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-stream {
+      background: var(--crimson) !important; color: #fff !important;
+      padding: 0.45rem 1rem; border-radius: 50px;
+      font-weight: 600 !important; font-size: 0.75rem !important;
+      letter-spacing: 0.05em !important;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .nav-stream:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(176,56,64,0.35);
+    }
+    .nav-toggle {
+      display: none; background: none; border: none;
+      color: var(--text); font-size: 1.3rem; cursor: pointer;
+    }
+
+    /* ---- HERO ---- */
+    .hero {
+      min-height: 100vh; display: flex; flex-direction: column;
+      justify-content: center; align-items: center; text-align: center;
+      padding: 6rem 2rem 4rem; position: relative; overflow: hidden;
+    }
+    /* Atmospheric gradient — mimics the dark/warm glow of his paintings */
+    .hero::before {
+      content: ''; position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse 50% 40% at 30% 60%, rgba(176,56,64,0.08) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 35% at 70% 45%, rgba(200,160,80,0.05) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    /* Brush stroke accent lines */
+    .hero::after {
+      content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border-light), transparent);
+    }
+
+    .hero-content { position: relative; z-index: 1; }
+
+    .hero-eyebrow {
+      font-size: 0.7rem; font-weight: 600; letter-spacing: 0.4em;
+      text-transform: uppercase; color: var(--crimson); margin-bottom: 1.75rem;
+      opacity: 0; animation: fadeUp 0.7s 0.1s forwards;
+    }
+
+    .hero-title {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: clamp(4rem, 13vw, 9rem); font-weight: 400;
+      line-height: 0.88; letter-spacing: -0.02em; margin-bottom: 1.5rem;
+      opacity: 0; animation: fadeUp 0.7s 0.25s forwards;
+    }
+    .hero-title .accent {
+      color: var(--crimson);
+      font-style: italic;
+    }
+
+    .hero-sub {
+      font-size: clamp(0.95rem, 2vw, 1.1rem); color: var(--muted);
+      max-width: 440px; line-height: 1.65; margin: 0 auto 2.5rem;
+      opacity: 0; animation: fadeUp 0.7s 0.4s forwards;
+    }
+
+    .hero-location {
+      font-size: 0.72rem; letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--dim); margin-bottom: 2rem;
+      opacity: 0; animation: fadeUp 0.7s 0.35s forwards;
+    }
+
+    .hero-actions {
+      display: flex; gap: 0.85rem; flex-wrap: wrap; justify-content: center;
+      opacity: 0; animation: fadeUp 0.7s 0.55s forwards;
+    }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.85rem 1.75rem; border-radius: 50px; text-decoration: none;
+      font-weight: 600; font-size: 0.88rem; transition: all 0.2s;
+      cursor: pointer; border: none;
+    }
+    .btn:active { transform: scale(0.97); }
+
+    .btn-crimson { background: var(--crimson); color: #fff; }
+    .btn-crimson:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(176,56,64,0.3);
+    }
+
+    .btn-outline {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border-light);
+    }
+    .btn-outline:hover { border-color: #444; transform: translateY(-2px); }
+
+    .scroll-cue {
+      position: absolute; bottom: 2.5rem; left: 50%; transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+      color: var(--dim); font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase;
+      opacity: 0; animation: fadeUp 0.7s 0.8s forwards;
+    }
+    .scroll-line {
+      width: 1px; height: 32px; background: var(--border-light);
+      animation: scrollPulse 2s infinite;
+    }
+
+    /* ---- SECTIONS ---- */
+    section { padding: 5.5rem 2rem; }
+    .inner { max-width: 960px; margin: 0 auto; }
+
+    .label {
+      font-size: 0.65rem; font-weight: 600; letter-spacing: 0.35em;
+      text-transform: uppercase; color: var(--crimson); margin-bottom: 0.65rem;
+    }
+    .heading {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: clamp(2rem, 5vw, 3.25rem); font-weight: 400;
+      margin-bottom: 0.75rem; line-height: 1.05;
+    }
+    .desc {
+      color: var(--muted); font-size: 0.95rem; line-height: 1.7;
+      max-width: 540px; margin-bottom: 2.5rem;
+    }
+
+    /* ---- LATEST RELEASE ---- */
+    #latest { background: var(--surface); }
+
+    .release-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 3rem;
+      align-items: start;
+    }
+
+    .release-embed iframe { border-radius: 12px; width: 100%; }
+
+    .release-badge {
+      display: inline-block; padding: 0.3rem 0.75rem; margin-bottom: 1rem;
+      background: var(--crimson-glow); color: var(--crimson);
+      font-size: 0.68rem; font-weight: 600; letter-spacing: 0.12em;
+      text-transform: uppercase; border-radius: 50px;
+      border: 1px solid rgba(176,56,64,0.2);
+    }
+
+    .release-title {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: 2.5rem; margin-bottom: 0.35rem;
+    }
+
+    .release-meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 1.25rem; }
+
+    .tracklist { list-style: none; margin-bottom: 1.75rem; }
+    .tracklist li {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.55rem 0; border-bottom: 1px solid rgba(255,255,255,0.03);
+      font-size: 0.88rem;
+    }
+    .tracklist li:last-child { border-bottom: none; }
+    .t-num { color: var(--dim); font-size: 0.78rem; width: 1.4rem; text-align: right; font-weight: 500; }
+    .t-name { font-weight: 500; }
+    .t-skit { color: var(--muted); font-style: italic; font-weight: 400; }
+
+    /* ---- DISCOGRAPHY ---- */
+    #discography { background: var(--bg); }
+
+    .disco-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+
+    .disco-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      transition: all 0.25s;
+      text-decoration: none;
+      color: var(--text);
+      display: block;
+    }
+    .disco-card:hover {
+      border-color: var(--border-light);
+      background: var(--surface-2);
+      transform: translateY(-3px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+
+    .disco-year {
+      font-size: 0.68rem; color: var(--crimson); font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.4rem;
+    }
+    .disco-name {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: 1.15rem; margin-bottom: 0.35rem; line-height: 1.2;
+    }
+    .disco-type {
+      font-size: 0.72rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    /* ---- STUDIO / ABOUT ---- */
+    #about { background: var(--surface); }
+
+    .about-layout {
+      display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 3.5rem;
+      align-items: start;
+    }
+
+    .about-text p {
+      color: #aaa; line-height: 1.8; font-size: 0.95rem; margin-bottom: 1.25rem;
+    }
+    .about-text strong { color: var(--text); }
+
+    .about-cards { display: flex; flex-direction: column; gap: 0.85rem; }
+
+    .info-card {
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 1.15rem;
+    }
+    .info-card-label {
+      font-size: 0.65rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.12em; margin-bottom: 0.35rem;
+    }
+    .info-card-value {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: 1.35rem; color: var(--gold);
+    }
+
+    /* ---- ART ---- */
+    #art { background: var(--bg); text-align: center; }
+
+    .art-desc-center { margin-left: auto; margin-right: auto; }
+
+    .art-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px;
+      margin-bottom: 2rem;
+    }
+    .art-cell {
+      aspect-ratio: 1; background: var(--surface);
+      border: 1px solid var(--border); display: flex;
+      align-items: center; justify-content: center;
+      position: relative; overflow: hidden;
+      transition: border-color 0.3s;
+    }
+    .art-cell:hover { border-color: var(--border-light); }
+    .art-placeholder {
+      color: var(--dim); font-size: 0.7rem; letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    /* ---- CONNECT ---- */
+    #connect { background: var(--surface); text-align: center; }
+
+    .connect-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.7rem; max-width: 700px; margin: 0 auto 2rem;
+    }
+    .connect-btn {
+      display: flex; align-items: center; justify-content: center; gap: 0.7rem;
+      padding: 1rem 1.25rem; background: var(--surface-2);
+      border: 1px solid var(--border); border-radius: 10px;
+      color: var(--text); text-decoration: none; font-weight: 600;
+      font-size: 0.92rem; transition: all 0.2s;
+    }
+    .connect-btn:hover {
+      background: #1a1a1a; border-color: var(--border-light);
+      transform: translateY(-2px);
+    }
+    .connect-btn i { font-size: 1.15rem; }
+    .connect-btn .fa-spotify { color: #1DB954; }
+    .connect-btn .fa-instagram { color: #E4405F; }
+    .connect-btn .fa-apple { color: #fc3c44; }
+
+    .connect-note {
+      color: var(--dim); font-size: 0.8rem; font-style: italic;
+      max-width: 360px; margin: 0 auto; line-height: 1.6;
+    }
+
+    /* ---- FOOTER ---- */
+    footer {
+      padding: 2rem 2rem; text-align: center;
+      border-top: 1px solid var(--border);
+    }
+    footer p { color: var(--dim); font-size: 0.72rem; letter-spacing: 0.04em; }
+    footer a { color: var(--muted); text-decoration: none; }
+    footer a:hover { color: var(--text); }
+
+    /* ---- ANIMATIONS ---- */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(22px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes scrollPulse {
+      0%, 100% { opacity: 0.3; transform: scaleY(1); }
+      50% { opacity: 1; transform: scaleY(1.3); }
+    }
+    .reveal {
+      opacity: 0; transform: translateY(28px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+
+    /* ---- RESPONSIVE ---- */
+    @media (max-width: 768px) {
+      nav { padding: 0.9rem 1.25rem; }
+      .nav-links { display: none; }
+      .nav-links.open {
+        display: flex; flex-direction: column;
+        position: absolute; top: 100%; left: 0; right: 0;
+        background: rgba(5,5,5,0.97); backdrop-filter: blur(16px);
+        padding: 1.5rem; gap: 1.1rem;
+        border-bottom: 1px solid var(--border);
+      }
+      .nav-toggle { display: block; }
+      .hero { min-height: 92vh; padding: 5rem 1.5rem 3rem; }
+      section { padding: 3.5rem 1.5rem; }
+      .release-grid { grid-template-columns: 1fr; gap: 2rem; }
+      .disco-grid { grid-template-columns: repeat(2, 1fr); }
+      .about-layout { grid-template-columns: 1fr; gap: 2rem; }
+      .art-grid { grid-template-columns: repeat(2, 1fr); }
+      .connect-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 480px) {
+      .hero-title { font-size: clamp(3rem, 15vw, 5rem); }
+      .btn { padding: 0.75rem 1.4rem; font-size: 0.84rem; }
+      .disco-grid { grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+      .disco-card { padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <!-- Nav -->
+    <nav>
+      <a href="#" class="nav-logo">Tea<span>the</span>truth</a>
+      <button class="nav-toggle" aria-label="Toggle menu"><i class="fa-solid fa-bars"></i></button>
+      <div class="nav-links">
+        <a href="#latest">Music</a>
+        <a href="#discography">Catalog</a>
+        <a href="#about">About</a>
+        <a href="#art">Art</a>
+        <a href="#connect">Connect</a>
+        <a href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer" class="nav-stream"><i class="fa-brands fa-spotify"></i> Stream</a>
+      </div>
+    </nav>
+
+    <!-- Hero -->
+    <section class="hero" id="home">
+      <div class="hero-content">
+        <p class="hero-eyebrow">Artist &middot; Producer &middot; Engineer</p>
+        <h1 class="hero-title"><span class="accent">Tea</span>thetruth</h1>
+        <p class="hero-location">Bankblock Studios &middot; Lynn, MA</p>
+        <p class="hero-sub">Music, art, and truth. No filter. Every beat produced, mixed, and mastered by hand.</p>
+        <div class="hero-actions">
+          <a class="btn btn-crimson" href="https://open.spotify.com/album/4eCCTpZLSMHIMYhUsdbnJW" target="_blank" rel="noopener noreferrer">
+            <i class="fa-brands fa-spotify"></i> Stream UNCLE TEA
+          </a>
+          <a class="btn btn-outline" href="#latest">Explore</a>
+        </div>
+      </div>
+      <div class="scroll-cue">
+        <div class="scroll-line"></div>
+        Scroll
+      </div>
+    </section>
+
+    <!-- Latest Release -->
+    <section id="latest">
+      <div class="inner reveal">
+        <div class="release-grid">
+          <div class="release-embed">
+            <iframe
+              src="https://open.spotify.com/embed/album/4eCCTpZLSMHIMYhUsdbnJW?utm_source=generator&theme=0"
+              width="100%" height="352" frameBorder="0" allowfullscreen=""
+              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+              loading="lazy"
+            ></iframe>
+          </div>
+          <div>
+            <span class="release-badge">Latest Release</span>
+            <h2 class="release-title">UNCLE TEA</h2>
+            <p class="release-meta">9 Tracks &middot; February 2026 &middot; Explicit</p>
+            <ol class="tracklist">
+              <li><span class="t-num">1</span><span class="t-name">FAMILY PHOTOS</span></li>
+              <li><span class="t-num">2</span><span class="t-name">I LOVE</span></li>
+              <li><span class="t-num">3</span><span class="t-name">TABA'S</span></li>
+              <li><span class="t-num">4</span><span class="t-name t-skit">UNCLE PETROS — SKIT</span></li>
+              <li><span class="t-num">5</span><span class="t-name">HEART OF GOLD</span></li>
+              <li><span class="t-num">6</span><span class="t-name">JUICE &amp; GIN</span></li>
+              <li><span class="t-num">7</span><span class="t-name t-skit">UNCLE AL — SKIT</span></li>
+              <li><span class="t-num">8</span><span class="t-name">HOLY WATER</span></li>
+              <li><span class="t-num">9</span><span class="t-name">GENERATIONAL</span></li>
+            </ol>
+            <a class="btn btn-crimson" href="https://open.spotify.com/album/4eCCTpZLSMHIMYhUsdbnJW" target="_blank" rel="noopener noreferrer">
+              <i class="fa-brands fa-spotify"></i> Play Full Album
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Discography -->
+    <section id="discography">
+      <div class="inner">
+        <div class="reveal">
+          <div class="label">Discography</div>
+          <h2 class="heading">The Catalog</h2>
+          <p class="desc">10 projects and counting. Every track produced, recorded, mixed, and mastered at Bankblock Studios.</p>
+        </div>
+        <div class="disco-grid reveal">
+          <a class="disco-card" href="https://open.spotify.com/album/4eCCTpZLSMHIMYhUsdbnJW" target="_blank" rel="noopener noreferrer">
+            <div class="disco-year">2026</div>
+            <div class="disco-name">UNCLE TEA</div>
+            <div class="disco-type">Album &middot; 9 tracks</div>
+          </a>
+          <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+            <div class="disco-year">2025</div>
+            <div class="disco-name">THE TRUTH THEORY</div>
+            <div class="disco-type">Album &middot; 13 tracks</div>
+          </a>
+          <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+            <div class="disco-year">2025</div>
+            <div class="disco-name">THE BEAUTIFUL UGLY II</div>
+            <div class="disco-type">Album</div>
+          </a>
+          <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+            <div class="disco-year">2024</div>
+            <div class="disco-name">Santorini II</div>
+            <div class="disco-type">Album</div>
+          </a>
+          <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+            <div class="disco-year">2023</div>
+            <div class="disco-name">Only I Could Do It</div>
+            <div class="disco-type">Album</div>
+          </a>
+          <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+            <div class="disco-year">2023</div>
+            <div class="disco-name">STILLUSTRIOUS</div>
+            <div class="disco-type">Album</div>
+          </a>
+          <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+            <div class="disco-year">2022</div>
+            <div class="disco-name">ILLUSTRIOUS</div>
+            <div class="disco-type">Album</div>
+          </a>
+          <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+            <div class="disco-year">2022</div>
+            <div class="disco-name">Santorini</div>
+            <div class="disco-type">Album</div>
+          </a>
+          <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+            <div class="disco-year">2022</div>
+            <div class="disco-name">Carpe Diem</div>
+            <div class="disco-type">Album</div>
+          </a>
+          <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+            <div class="disco-year">2022</div>
+            <div class="disco-name">The Oddysey</div>
+            <div class="disco-type">Album</div>
+          </a>
+        </div>
+
+        <div class="reveal" style="margin-top:2.5rem;">
+          <div class="label" style="margin-top:1rem;">Singles &amp; EPs</div>
+          <div class="disco-grid" style="margin-top:1rem;">
+            <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+              <div class="disco-year">2026</div>
+              <div class="disco-name">WAGYU</div>
+              <div class="disco-type">Single</div>
+            </a>
+            <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+              <div class="disco-year">2025</div>
+              <div class="disco-name">BRINKS TRUCK</div>
+              <div class="disco-type">Single</div>
+            </a>
+            <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+              <div class="disco-year">2025</div>
+              <div class="disco-name">SHINE</div>
+              <div class="disco-type">Single</div>
+            </a>
+            <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+              <div class="disco-year">2025</div>
+              <div class="disco-name">HARDTOFACE</div>
+              <div class="disco-type">Single &middot; ft. Theravada</div>
+            </a>
+            <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+              <div class="disco-year">2025</div>
+              <div class="disco-name">Greek Corner</div>
+              <div class="disco-type">Single</div>
+            </a>
+            <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+              <div class="disco-year">2025</div>
+              <div class="disco-name">YOU DON'T KNOW ME</div>
+              <div class="disco-type">EP</div>
+            </a>
+            <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+              <div class="disco-year">2024</div>
+              <div class="disco-name">1 Am On Kallithea</div>
+              <div class="disco-type">Single &middot; ft. sarkitoo. &amp; Vikkie</div>
+            </a>
+            <a class="disco-card" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+              <div class="disco-year">2024</div>
+              <div class="disco-name">BOOM SAUCE</div>
+              <div class="disco-type">Single</div>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- About -->
+    <section id="about">
+      <div class="inner reveal">
+        <div class="about-layout">
+          <div class="about-text">
+            <div class="label">The Artist</div>
+            <h2 class="heading">Built Different</h2>
+            <p>
+              <strong>Teathetruth</strong> is an artist, producer, and engineer out of <strong>Bankblock Studios in Lynn, Massachusetts</strong>.
+              Everything is done in-house — writing, production, recording, mixing, mastering. No middlemen. No shortcuts.
+            </p>
+            <p>
+              With roots tied to <strong>Greece</strong>, the music pulls from two worlds — the grit of Lynn and the soul of Athens.
+              Projects like <em>Santorini</em>, <em>1 Am On Kallithea</em>, and <em>Greek Corner</em> were born between both coasts of the Atlantic.
+            </p>
+            <p>
+              Beyond the music, Tea is a <strong>visual artist</strong> — painting and drawing with the same raw, unfiltered honesty that drives every beat.
+              Family, legacy, and lived truth are the foundation. UNCLE TEA is the latest proof.
+            </p>
+          </div>
+          <div class="about-cards">
+            <div class="info-card">
+              <div class="info-card-label">Studio</div>
+              <div class="info-card-value">Bankblock Studios</div>
+            </div>
+            <div class="info-card">
+              <div class="info-card-label">Location</div>
+              <div class="info-card-value">Lynn, MA</div>
+            </div>
+            <div class="info-card">
+              <div class="info-card-label">Projects</div>
+              <div class="info-card-value">10 Albums</div>
+            </div>
+            <div class="info-card">
+              <div class="info-card-label">Top Track</div>
+              <div class="info-card-value">Ouzo — 60K+</div>
+            </div>
+            <div class="info-card">
+              <div class="info-card-label">Roles</div>
+              <div class="info-card-value">Artist / Producer / Engineer</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Art -->
+    <section id="art">
+      <div class="inner">
+        <div class="reveal">
+          <div class="label">Visual Work</div>
+          <h2 class="heading">The Art</h2>
+          <p class="desc art-desc-center">Same hands that make the beats make the paintings. Raw brush strokes, real feeling.</p>
+        </div>
+        <div class="art-grid reveal">
+          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
+          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
+          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
+          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
+          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
+          <div class="art-cell"><div class="art-placeholder">Coming Soon</div></div>
+        </div>
+        <div class="reveal" style="margin-top:2rem;">
+          <a class="btn btn-outline" href="https://www.instagram.com/teathetruth/" target="_blank" rel="noopener noreferrer">
+            <i class="fa-brands fa-instagram"></i> See the art on Instagram
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Connect -->
+    <section id="connect">
+      <div class="inner reveal">
+        <div class="label">Listen Everywhere</div>
+        <h2 class="heading">Connect</h2>
+        <p class="desc" style="margin-left:auto;margin-right:auto;">Stream the catalog. Follow the journey.</p>
+
+        <div class="connect-grid">
+          <a class="connect-btn" href="https://open.spotify.com/artist/31S4YvnyJK6xZf1klhsUTo" target="_blank" rel="noopener noreferrer">
+            <i class="fa-brands fa-spotify"></i> Spotify
+          </a>
+          <a class="connect-btn" href="https://music.apple.com/us/artist/teathetruth/1493317951" target="_blank" rel="noopener noreferrer">
+            <i class="fa-brands fa-apple"></i> Apple Music
+          </a>
+          <a class="connect-btn" href="https://www.instagram.com/teathetruth/" target="_blank" rel="noopener noreferrer">
+            <i class="fa-brands fa-instagram"></i> Instagram
+          </a>
+        </div>
+        <p class="connect-note">For bookings, beats, and studio inquiries — reach out on Instagram.</p>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <p>&copy; 2026 Teathetruth &middot; Bankblock Studios &middot; Lynn, MA</p>
+    </footer>
+
+  </div>
+
+  <script>
+    // Mobile nav
+    const toggle = document.querySelector('.nav-toggle');
+    const links = document.querySelector('.nav-links');
+    toggle.addEventListener('click', () => {
+      links.classList.toggle('open');
+      const icon = toggle.querySelector('i');
+      icon.classList.toggle('fa-bars');
+      icon.classList.toggle('fa-xmark');
+    });
+    links.querySelectorAll('a').forEach(a => {
+      a.addEventListener('click', () => {
+        links.classList.remove('open');
+        const icon = toggle.querySelector('i');
+        icon.classList.add('fa-bars');
+        icon.classList.remove('fa-xmark');
+      });
+    });
+
+    // Scroll reveal
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) entry.target.classList.add('visible');
+      });
+    }, { threshold: 0.08 });
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+  </script>
+</body>
+</html>
