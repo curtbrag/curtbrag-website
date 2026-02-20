@@ -7,7 +7,16 @@
 [build.environment]
   NODE_VERSION = "20"
 
-# Redirects — Astro generates clean URLs, cluster is a static standalone page
+# Host-based routing: teathetruth.com serves Tea's site
+[[redirects]]
+  from = "/*"
+  to = "/teathetruth/index.html"
+  status = 200
+  force = true
+  [redirects.conditions]
+    Host = ["teathetruth.com", "www.teathetruth.com"]
+
+# curtbrag.com/teathetruth still works too
 [[redirects]]
   from = "/teathetruth"
   to = "/teathetruth/index.html"
