@@ -7,14 +7,10 @@
 [build.environment]
   NODE_VERSION = "20"
 
-# Host-based routing: teathetruth.com serves Tea's site
-[[redirects]]
-  from = "/*"
-  to = "/teathetruth/index.html"
-  status = 200
-  force = true
-  [redirects.conditions]
-    Host = ["teathetruth.com", "www.teathetruth.com"]
+# Host-based routing: teathetruth.com serves Tea's site via edge function
+[[edge_functions]]
+  function = "tea-router"
+  path = "/*"
 
 # curtbrag.com/teathetruth still works too
 [[redirects]]
