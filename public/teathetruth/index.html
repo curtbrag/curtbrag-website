@@ -618,6 +618,36 @@
     footer a { color: var(--muted); text-decoration: none; }
     footer a:hover { color: var(--gold); }
 
+    .cb-badge {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      margin-top: 1.25rem; padding: 0.4rem 0.85rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 50px;
+      text-decoration: none;
+      transition: all 0.25s;
+    }
+    .cb-badge:hover {
+      border-color: var(--gold);
+      background: var(--surface-3);
+      transform: translateY(-1px);
+    }
+    .cb-badge-icon {
+      width: 18px; height: 18px;
+      background: var(--gold);
+      border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 0.55rem; color: var(--bg);
+      letter-spacing: -0.02em;
+      line-height: 1;
+    }
+    .cb-badge-text {
+      font-size: 0.62rem; color: var(--dim);
+      letter-spacing: 0.06em; text-transform: uppercase;
+      font-weight: 500;
+    }
+    .cb-badge:hover .cb-badge-text { color: var(--muted); }
+
     /* ---- ANIMATIONS ---- */
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(22px); }
@@ -1198,6 +1228,10 @@
     <footer>
       <div class="footer-logo">Teathetruth</div>
       <p>&copy; 2026 Teathetruth &middot; Lynn, MA</p>
+      <a class="cb-badge" href="https://curtbrag.com" target="_blank" rel="noopener noreferrer">
+        <span class="cb-badge-icon">CB</span>
+        <span class="cb-badge-text">Built by Curtbrag</span>
+      </a>
     </footer>
 
   </div>
