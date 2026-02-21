@@ -7,14 +7,12 @@
 [build.environment]
   NODE_VERSION = "20"
 
-# teathetruth.com serves Tea's site
+# Route homepage through function for host-based routing (teathetruth.com)
 [[redirects]]
-  from = "/*"
-  to = "/teathetruth/index.html"
+  from = "/"
+  to = "/.netlify/functions/host-router"
   status = 200
   force = true
-  [redirects.conditions]
-    Host = ["teathetruth.com", "www.teathetruth.com"]
 
 # curtbrag.com/teathetruth still works too
 [[redirects]]
