@@ -5,6 +5,7 @@
 # ║  Usage:                                                             ║
 # ║    sh recover-cluster.sh              # diagnose only (read-only)  ║
 # ║    sh recover-cluster.sh --fix        # diagnose + repair          ║
+# ║    sh recover-cluster.sh --fix --install-agents   # fresh install  ║
 # ║    sh recover-cluster.sh --fix --restart-mining   # + start miners ║
 # ║    sh recover-cluster.sh --fix --push             # + push status  ║
 # ║                                                                     ║
@@ -57,16 +58,20 @@ find_k3s_bin() {
 DO_FIX=0
 RESTART_MINING=0
 PUSH_STATUS=0
+INSTALL_AGENTS=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --diagnose) shift;;  # diagnose is the default, accept for clarity
     --fix) DO_FIX=1; shift;;
+    --install-agents) INSTALL_AGENTS=1; shift;;
     --restart-mining) RESTART_MINING=1; shift;;
     --push) PUSH_STATUS=1; shift;;
     --help|-h)
-      echo "Usage: sh recover-cluster.sh [--fix] [--restart-mining] [--push]"
+      echo "Usage: sh recover-cluster.sh [--fix] [--install-agents] [--restart-mining] [--push]"
       echo "  --fix              Attempt to repair K3s cluster"
+      echo "  --install-agents   Force fresh K3s agent install on all workers"
+      echo "                     (use after CP reinstall when workers lack K3s)"
       echo "  --restart-mining   Also restart xmrig on all nodes"
       echo "  --push             Push fresh status to dashboard after repair"
       exit 0;;
@@ -366,6 +371,7 @@ fi
 if [ "$DO_FIX" -eq 0 ]; then
   echo "Run with --fix to attempt repairs:"
   echo "  sh recover-cluster.sh --fix"
+  echo "  sh recover-cluster.sh --fix --install-agents   # fresh K3s install on workers"
   echo ""
   rm -rf "$DIAG_DIR"
   exit 0
@@ -471,6 +477,9 @@ echo ""
 
 # ── Fix 3: Repair worker nodes ───────────────────────────────────────
 log_info "Fix 3: Repairing stopped/NotReady worker nodes..."
+if [ "$INSTALL_AGENTS" -eq 1 ]; then
+  echo "  (--install-agents: will force fresh K3s install on all workers)"
+fi
 echo ""
 
 for entry in $NODE_LIST; do
@@ -483,8 +492,66 @@ for entry in $NODE_LIST; do
   [ "$_role" = "control-plane" ] && continue
   [ ! -f "$DIAG_DIR/$_name.reachable" ] && { printf "  %-8s SKIPPED (unreachable)\n" "$_name"; continue; }
 
+  if [ -z "$K3S_TOKEN" ]; then
+    printf "  %-8s SKIPPED (no token available)\n" "$_name"
+    FAILED_FIX=$((FAILED_FIX + 1))
+    continue
+  fi
+
+  # Check if K3s binary exists on this worker
+  HAS_K3S=$(run_on_node "$_ip" "{ command -v k3s >/dev/null 2>&1 || [ -x /usr/local/bin/k3s ]; } && echo yes || echo no" 2>/dev/null || echo "no")
+
+  # Determine if we need a fresh install
+  NEEDS_INSTALL=0
+  if [ "$INSTALL_AGENTS" -eq 1 ]; then
+    NEEDS_INSTALL=1
+    printf "  ${YELLOW}%-8s${NC} --install-agents: forcing fresh install\n" "$_name"
+  elif [ "$HAS_K3S" = "no" ]; then
+    NEEDS_INSTALL=1
+    printf "  ${YELLOW}%-8s${NC} K3s binary not found — needs fresh install\n" "$_name"
+  fi
+
+  if [ "$NEEDS_INSTALL" -eq 1 ]; then
+    # ── Fresh K3s agent install via official installer ──
+    # Uninstall old agent if any remnants exist
+    run_on_node "$_ip" "$PRIV sh /usr/local/bin/k3s-agent-uninstall.sh 2>/dev/null || true" 2>/dev/null
+
+    printf "  %-8s installing K3s agent (this takes 1-3 min on WiFi)...\n" "$_name"
+
+    # Use longer timeout for install — downloads ~60MB binary over WiFi
+    _old_timeout="${SSH_TIMEOUT:-30}"
+    SSH_TIMEOUT=300
+    export SSH_TIMEOUT
+
+    INSTALL_RESULT=$(run_on_node "$_ip" "curl -sfL https://get.k3s.io | K3S_URL='https://${CP_IP}:6443' K3S_TOKEN='${K3S_TOKEN}' INSTALL_K3S_EXEC='agent --node-ip=${_ip} --prefer-bundled-bin' sh -" 2>&1 || echo "INSTALL_FAILED")
+
+    SSH_TIMEOUT="$_old_timeout"
+    export SSH_TIMEOUT
+
+    if echo "$INSTALL_RESULT" | grep -qi "INSTALL_FAILED"; then
+      printf "  ${RED}%-8s${NC} fresh install failed\n" "$_name"
+      # Show last few lines of install output for debugging
+      echo "$INSTALL_RESULT" | tail -5 | while IFS= read -r line; do echo "    $line"; done
+      FAILED_FIX=$((FAILED_FIX + 1))
+      continue
+    fi
+
+    # The installer starts the agent service automatically — verify it's running
+    sleep 5
+    NEW_STATUS=$(run_on_node "$_ip" "$PRIV systemctl is-active k3s-agent 2>/dev/null || $PRIV rc-service k3s-agent status 2>/dev/null || echo stopped" 2>/dev/null || echo "check-failed")
+    if echo "$NEW_STATUS" | grep -qi "started\|running" || { echo "$NEW_STATUS" | grep -qi "active" && ! echo "$NEW_STATUS" | grep -qi "inactive\|activating"; }; then
+      printf "  ${GREEN}%-8s${NC} agent installed and running\n" "$_name"
+      FIXED=$((FIXED + 1))
+    else
+      printf "  ${RED}%-8s${NC} agent installed but not running (%s)\n" "$_name" "$NEW_STATUS"
+      FAILED_FIX=$((FAILED_FIX + 1))
+    fi
+    continue
+  fi
+
+  # ── Existing K3s install: stop/clean/config/restart ──
   # Check if agent is running properly
-  AGENT_STATUS=$(run_on_node "$_ip" "$PRIV rc-service k3s-agent status 2>/dev/null || $PRIV systemctl is-active k3s-agent 2>/dev/null || echo stopped" 2>/dev/null || echo "check-failed")
+  AGENT_STATUS=$(run_on_node "$_ip" "$PRIV systemctl is-active k3s-agent 2>/dev/null || $PRIV rc-service k3s-agent status 2>/dev/null || echo stopped" 2>/dev/null || echo "check-failed")
 
   if echo "$AGENT_STATUS" | grep -qi "started\|running" || { echo "$AGENT_STATUS" | grep -qi "active" && ! echo "$AGENT_STATUS" | grep -qi "inactive\|activating"; }; then
     # Check if registered with correct IP
@@ -497,12 +564,6 @@ for entry in $NODE_LIST; do
     fi
   else
     printf "  ${RED}%-8s${NC} agent %s — fixing\n" "$_name" "$AGENT_STATUS"
-  fi
-
-  if [ -z "$K3S_TOKEN" ]; then
-    printf "  %-8s SKIPPED (no token available)\n" "$_name"
-    FAILED_FIX=$((FAILED_FIX + 1))
-    continue
   fi
 
   # Stop agent
@@ -519,7 +580,7 @@ for entry in $NODE_LIST; do
 
   # Quick verify
   sleep 3
-  NEW_STATUS=$(run_on_node "$_ip" "$PRIV rc-service k3s-agent status 2>/dev/null || $PRIV systemctl is-active k3s-agent 2>/dev/null || echo stopped" 2>/dev/null || echo "check-failed")
+  NEW_STATUS=$(run_on_node "$_ip" "$PRIV systemctl is-active k3s-agent 2>/dev/null || $PRIV rc-service k3s-agent status 2>/dev/null || echo stopped" 2>/dev/null || echo "check-failed")
   if echo "$NEW_STATUS" | grep -qi "started\|running" || { echo "$NEW_STATUS" | grep -qi "active" && ! echo "$NEW_STATUS" | grep -qi "inactive\|activating"; }; then
     printf "  ${GREEN}%-8s${NC} agent restarted successfully\n" "$_name"
     FIXED=$((FIXED + 1))
