@@ -270,6 +270,7 @@ exports.handler = async function(event, context) {
         mining: data.mining || null,
         events: data.events || null,
         nodeScheduling: data.nodeScheduling || null,
+        jobQueue: data.jobQueue || null,
         summary: data.summary || {
           nodesReady: 0,
           nodesTotal: 0,

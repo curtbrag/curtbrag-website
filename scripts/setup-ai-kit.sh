@@ -245,13 +245,12 @@ else
   chmod +x "$CLUSTER_DIR/dispatcher.py"
   echo -e "  ${GREEN}✓${NC} Dispatcher copied to $CLUSTER_DIR/dispatcher.py"
 
-  # Detect privilege escalation
-  if command -v doas &>/dev/null; then
-    PRIV="doas"
-  elif command -v sudo &>/dev/null; then
-    PRIV="sudo"
-  else
-    PRIV=""
+  # Use $PRIV from cluster-lib.sh (already set by detect_priv at top)
+  # Fallback if cluster-lib.sh wasn't loaded
+  if [ -z "${PRIV:-}" ]; then
+    if command -v doas &>/dev/null; then PRIV="doas"
+    elif command -v sudo &>/dev/null; then PRIV="sudo"
+    else PRIV=""; fi
   fi
 
   # Create systemd service for dispatcher (if systemd available)

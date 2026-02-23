@@ -20,7 +20,7 @@ fi
 set -e
 BRANCH="main"
 BASE="https://raw.githubusercontent.com/curtbrag/curtbrag-website/$BRANCH/scripts"
-DIR="/home/user"
+DIR="${HOME:-/home/user}"
 ENV_FILE="$DIR/.cluster-env"
 SCRIPT_DIR="$DIR"
 

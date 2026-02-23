@@ -158,8 +158,8 @@ else
     echo "  K3s binary:    $K3S_BIN"
   fi
 
-  # Check if k3s service is running
-  K3S_SVC_STATUS=$(run_on_node "$CP_IP" "$PRIV rc-service k3s status 2>/dev/null || $PRIV systemctl is-active k3s 2>/dev/null || echo stopped" 2>/dev/null || echo "unreachable")
+  # Check if k3s service is running (try systemd first — node1 uses systemd)
+  K3S_SVC_STATUS=$(run_on_node "$CP_IP" "$PRIV systemctl is-active k3s 2>/dev/null || $PRIV rc-service k3s status 2>/dev/null || echo stopped" 2>/dev/null || echo "unreachable")
   echo "  K3s service:   $K3S_SVC_STATUS"
 
   if echo "$K3S_SVC_STATUS" | grep -qi "started\|running" || { echo "$K3S_SVC_STATUS" | grep -qi "active" && ! echo "$K3S_SVC_STATUS" | grep -qi "inactive\|activating"; }; then
@@ -210,7 +210,7 @@ for entry in $NODE_LIST; do
     SVC="k3s-agent"
   fi
 
-  STATUS=$(run_on_node "$_ip" "$PRIV rc-service $SVC status 2>/dev/null || $PRIV systemctl is-active $SVC 2>/dev/null || echo stopped" 2>/dev/null || echo "check-failed")
+  STATUS=$(run_on_node "$_ip" "$PRIV systemctl is-active $SVC 2>/dev/null || $PRIV rc-service $SVC status 2>/dev/null || echo stopped" 2>/dev/null || echo "check-failed")
 
   if echo "$STATUS" | grep -qi "started\|running" || { echo "$STATUS" | grep -qi "active" && ! echo "$STATUS" | grep -qi "inactive\|activating"; }; then
     printf "  ${GREEN}%-8s${NC} %-12s %s\n" "$_name" "$SVC" "running"
@@ -364,28 +364,53 @@ FAILED_FIX=0
 
 # ── Fix 1: Start K3s control plane if down ────────────────────────────
 if [ -n "$CP_IP" ] && [ -f "$DIAG_DIR/$CP_NAME.reachable" ]; then
-  CP_SVC_STATUS=$(run_on_node "$CP_IP" "$PRIV rc-service k3s status 2>/dev/null || $PRIV systemctl is-active k3s 2>/dev/null || echo stopped" 2>/dev/null || echo "stopped")
+  CP_SVC_STATUS=$(run_on_node "$CP_IP" "$PRIV systemctl is-active k3s 2>/dev/null || $PRIV rc-service k3s status 2>/dev/null || echo stopped" 2>/dev/null || echo "stopped")
 
   if ! { echo "$CP_SVC_STATUS" | grep -qi "started\|running" || { echo "$CP_SVC_STATUS" | grep -qi "active" && ! echo "$CP_SVC_STATUS" | grep -qi "inactive\|activating"; }; }; then
     log_info "Fix 1: Starting K3s control plane on $CP_NAME..."
-    run_on_node "$CP_IP" "$PRIV rc-service k3s start 2>/dev/null || $PRIV systemctl start k3s 2>/dev/null" 2>/dev/null
 
-    # Wait for API server (up to 60s)
+    # Ensure config exists with prefer-bundled-bin (bypasses host iptables/nftables issues)
+    # K3s Known Issues: iptables/nftables incompatibility is a documented problem.
+    # prefer-bundled-bin makes K3s use its own known-good iptables v1.8.8.
+    echo "  Ensuring K3s config with prefer-bundled-bin..."
+    run_on_node "$CP_IP" "$PRIV mkdir -p /etc/rancher/k3s && if [ ! -f /etc/rancher/k3s/config.yaml ] || ! grep -q 'prefer-bundled-bin' /etc/rancher/k3s/config.yaml 2>/dev/null; then printf 'node-name: \"$CP_NAME\"\nnode-ip: \"$CP_IP\"\nwrite-kubeconfig-mode: \"0644\"\nprefer-bundled-bin: true\n' | $PRIV tee /etc/rancher/k3s/config.yaml >/dev/null; fi" 2>/dev/null
+
+    run_on_node "$CP_IP" "$PRIV systemctl start k3s 2>/dev/null || $PRIV rc-service k3s start 2>/dev/null" 2>/dev/null
+
+    # Wait for API server (up to 90s — phones are slow, especially first boot with etcd)
     echo "  Waiting for API server..."
     _waited=0
-    while [ "$_waited" -lt 60 ]; do
+    while [ "$_waited" -lt 90 ]; do
       if run_on_node "$CP_IP" "$PRIV $K3S_BIN kubectl get nodes >/dev/null 2>&1" 2>/dev/null; then
         echo "  ${GREEN}API server ready (${_waited}s)${NC}"
         FIXED=$((FIXED + 1))
         break
+      fi
+      # Check if service is still alive (don't wait blindly if it crashed)
+      if [ "$_waited" -gt 0 ] && [ $((_waited % 20)) -eq 0 ]; then
+        _svc_alive=$(run_on_node "$CP_IP" "$PRIV systemctl is-active k3s 2>/dev/null || echo dead" 2>/dev/null || echo "dead")
+        if [ "$_svc_alive" = "dead" ] || [ "$_svc_alive" = "failed" ] || [ "$_svc_alive" = "inactive" ]; then
+          log_err "K3s service died — checking journal..."
+          break
+        fi
       fi
       sleep 5
       _waited=$((_waited + 5))
       printf "  ... %ds\n" "$_waited"
     done
 
-    if [ "$_waited" -ge 60 ]; then
-      log_err "API server did not come up within 60s"
+    if [ "$_waited" -ge 90 ] || [ "${_svc_alive:-}" = "dead" ] || [ "${_svc_alive:-}" = "failed" ] || [ "${_svc_alive:-}" = "inactive" ]; then
+      log_err "API server did not come up"
+      # Show journal for diagnosis
+      echo ""
+      echo "  ${YELLOW}K3s journal (last 30 lines):${NC}"
+      run_on_node "$CP_IP" "$PRIV journalctl -u k3s -n 30 --no-pager 2>/dev/null || $PRIV $K3S_BIN server --log /dev/stderr 2>&1 | tail -30" 2>/dev/null | while IFS= read -r line; do echo "    $line"; done
+      echo ""
+      echo "  ${YELLOW}Suggested fixes:${NC}"
+      echo "    1. Ensure prefer-bundled-bin: true in /etc/rancher/k3s/config.yaml"
+      echo "    2. If etcd fails: remove cluster-init and use default sqlite datastore"
+      echo "    3. Wipe server state: $PRIV rm -rf /var/lib/rancher/k3s/server && $PRIV systemctl restart k3s"
+      echo "    4. Reinstall: curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='server --node-ip=$CP_IP' $PRIV sh -"
       FAILED_FIX=$((FAILED_FIX + 1))
     fi
   else
@@ -446,16 +471,16 @@ for entry in $NODE_LIST; do
   fi
 
   # Stop agent
-  run_on_node "$_ip" "$PRIV rc-service k3s-agent stop 2>/dev/null || $PRIV systemctl stop k3s-agent 2>/dev/null || true" 2>/dev/null
+  run_on_node "$_ip" "$PRIV systemctl stop k3s-agent 2>/dev/null || $PRIV rc-service k3s-agent stop 2>/dev/null || true" 2>/dev/null
 
   # Clean stale agent data
   run_on_node "$_ip" "$PRIV rm -rf /var/lib/rancher/k3s/agent/* 2>/dev/null || true" 2>/dev/null
 
-  # Write correct config with WiFi IP
-  run_on_node "$_ip" "$PRIV mkdir -p /etc/rancher/k3s && printf 'server: \"https://${CP_IP}:6443\"\ntoken: \"${K3S_TOKEN}\"\nnode-name: \"${_name}\"\nnode-ip: \"${_ip}\"\n' | $PRIV tee /etc/rancher/k3s/config.yaml >/dev/null" 2>/dev/null
+  # Write correct config with WiFi IP and prefer-bundled-bin
+  run_on_node "$_ip" "$PRIV mkdir -p /etc/rancher/k3s && printf 'server: \"https://${CP_IP}:6443\"\ntoken: \"${K3S_TOKEN}\"\nnode-name: \"${_name}\"\nnode-ip: \"${_ip}\"\nprefer-bundled-bin: true\n' | $PRIV tee /etc/rancher/k3s/config.yaml >/dev/null" 2>/dev/null
 
-  # Start agent
-  run_on_node "$_ip" "$PRIV rc-service k3s-agent start 2>/dev/null || $PRIV systemctl start k3s-agent 2>/dev/null" 2>/dev/null
+  # Start agent (try systemd first)
+  run_on_node "$_ip" "$PRIV systemctl start k3s-agent 2>/dev/null || $PRIV rc-service k3s-agent start 2>/dev/null" 2>/dev/null
 
   # Quick verify
   sleep 3
@@ -504,7 +529,7 @@ if [ "$RESTART_MINING" -eq 1 ]; then
     _ip="${_rest%%:*}"
     [ ! -f "$DIAG_DIR/$_name.reachable" ] && continue
 
-    RESULT=$(run_on_node "$_ip" "$PRIV rc-service xmrig start 2>/dev/null || $PRIV systemctl start xmrig 2>/dev/null; sleep 2; pgrep xmrig >/dev/null 2>&1 && echo MINING || echo FAILED" 2>/dev/null || echo "UNREACHABLE")
+    RESULT=$(run_on_node "$_ip" "$PRIV systemctl start xmrig 2>/dev/null || $PRIV rc-service xmrig start 2>/dev/null; sleep 2; pgrep xmrig >/dev/null 2>&1 && echo MINING || echo FAILED" 2>/dev/null || echo "UNREACHABLE")
     printf "  %-8s %s\n" "$_name" "$RESULT"
     echo "$RESULT" | grep -q "MINING" && MINERS_STARTED=$((MINERS_STARTED + 1))
   done

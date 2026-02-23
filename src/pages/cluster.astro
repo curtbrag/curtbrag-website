@@ -97,6 +97,9 @@ import Layout from '../layouts/Layout.astro';
                 <div class="bg-bg rounded-lg px-3 py-2 text-text-secondary">
                   <span class="text-muted select-none">$ </span>curl -sSL https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/fix-cluster.sh | sh
                 </div>
+                <div class="bg-bg rounded-lg px-3 py-2 text-text-secondary">
+                  <span class="text-muted select-none"># </span><span class="text-muted">K3s iptables fix:</span> ssh user@192.168.1.206 'sudo tee /etc/rancher/k3s/config.yaml &lt;&lt;&lt; "prefer-bundled-bin: true" &amp;&amp; sudo systemctl restart k3s'
+                </div>
               </div>
               <a href="/cluster/dashboard" class="inline-flex items-center gap-1.5 mt-3 text-xs text-brand hover:underline">
                 <i class="fa-solid fa-sliders"></i> Open Advanced Dashboard for full controls
@@ -481,12 +484,18 @@ import Layout from '../layouts/Layout.astro';
         demoBanner.classList.add('hidden');
       }
 
-      // K3s down banner — enhanced messaging
+      // K3s down banner — enhanced messaging with staleness detail
       const k3sBannerText = document.getElementById('k3sBannerText')!;
       if (isK3sDown) {
         k3sBanner.classList.remove('hidden');
         k3sBanner.classList.add('flex');
-        const k3sMsg = `K3s Offline — ${nodesReady}/${nodesTotal} nodes responding via SSH. Pods and services unavailable.`;
+        let k3sMsg = `K3s control plane unreachable — ${nodesReady}/${nodesTotal} nodes still responding via SSH.`;
+        if (data.stale && data.ageMinutes) {
+          k3sMsg += ` Last data push was ${data.ageMinutes}m ago — poller may be down on node1.`;
+        }
+        if (health === 0) {
+          k3sMsg = `Cluster appears fully offline — check physical power and WiFi. 0/${nodesTotal} nodes responding.`;
+        }
         k3sBannerText.textContent = k3sMsg;
       } else {
         k3sBanner.classList.add('hidden');

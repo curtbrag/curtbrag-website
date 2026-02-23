@@ -6,12 +6,12 @@
 set -u
 
 # Source env file if CLUSTER_API_KEY not already set (systemd, cron, nohup contexts)
-if [ -z "${CLUSTER_API_KEY:-}" ] && [ -f /home/user/.cluster-env ]; then
-  . /home/user/.cluster-env
+if [ -z "${CLUSTER_API_KEY:-}" ] && [ -f "${HOME:-/home/user}/.cluster-env" ]; then
+  . "${HOME:-/home/user}/.cluster-env"
 fi
 
 API_URL="https://curtbrag.com/.netlify/functions/cluster-control"
-API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set. Create /home/user/.cluster-env with: CLUSTER_API_KEY=your-key}"
+API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set. Create ~/.cluster-env with: CLUSTER_API_KEY=your-key}"
 POLL_INTERVAL=5  # seconds
 SSH_PORT="${SSH_PORT:-22}"  # SSH port (default: 22, Termux uses 8022)
 # Auto-detect our IP so local-exec works even if IP changes
@@ -209,17 +209,18 @@ execute_command() {
       mkdir -p "$RESULT_DIR"
       # Turn on backlight, disable Phosh lock screen via system dconf, unlock session
       WAKE_CMD='
+_P=$(command -v doas >/dev/null 2>&1 && echo doas || echo sudo)
 # Create system-wide dconf overrides to disable Phosh lock screen
-doas mkdir -p /etc/dconf/profile /etc/dconf/db/local.d
-printf "user-db:user\nsystem-db:local\n" | doas tee /etc/dconf/profile/user >/dev/null
-printf "[org/gnome/desktop/screensaver]\nlock-enabled=false\n\n[org/gnome/desktop/session]\nidle-delay=uint32 0\n\n[org/gnome/desktop/lockdown]\ndisable-lock-screen=true\n" | doas tee /etc/dconf/db/local.d/00-no-lock >/dev/null
-doas dconf update 2>/dev/null
+$_P mkdir -p /etc/dconf/profile /etc/dconf/db/local.d
+printf "user-db:user\nsystem-db:local\n" | $_P tee /etc/dconf/profile/user >/dev/null
+printf "[org/gnome/desktop/screensaver]\nlock-enabled=false\n\n[org/gnome/desktop/session]\nidle-delay=uint32 0\n\n[org/gnome/desktop/lockdown]\ndisable-lock-screen=true\n" | $_P tee /etc/dconf/db/local.d/00-no-lock >/dev/null
+$_P dconf update 2>/dev/null
 
 # Turn on backlight
-doas sh -c '"'"'for f in /sys/class/backlight/*/bl_power; do echo 0 > "$f"; done'"'"'
+$_P sh -c '"'"'for f in /sys/class/backlight/*/bl_power; do echo 0 > "$f"; done'"'"'
 
 # Unlock sessions and dismiss screensaver
-doas loginctl unlock-sessions 2>/dev/null
+$_P loginctl unlock-sessions 2>/dev/null
 UID_NUM=$(id -u)
 export XDG_RUNTIME_DIR=/run/user/$UID_NUM
 export WAYLAND_DISPLAY=wayland-0
@@ -237,7 +238,7 @@ true'
     sleep)
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
-      SLEEP_CMD="doas sh -c 'for f in /sys/class/backlight/*/bl_power; do echo 4 > \"\$f\"; done'"
+      SLEEP_CMD="$_RP; eval \$_P sh -c 'for f in /sys/class/backlight/*/bl_power; do echo 4 > \"\$f\"; done'"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         run_on_all_tracked "$SLEEP_CMD" "$RESULT_DIR" "$PHONE_NODES"
       else
@@ -253,13 +254,13 @@ true'
         for entry in $ALL_NODES; do
           name="${entry%%:*}"; ip="${entry##*:}"
           SVC=$(k3s_svc "$name")
-          run_on_node_tracked "$ip" "doas systemctl restart $SVC 2>/dev/null || doas rc-service $SVC restart" "$RESULT_DIR" "$name" &
+          run_on_node_tracked "$ip" "$_RP; eval \$_P systemctl restart $SVC 2>/dev/null || eval \$_P rc-service $SVC restart" "$RESULT_DIR" "$name" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        run_on_node_tracked "$IP" "doas systemctl restart $SVC 2>/dev/null || doas rc-service $SVC restart" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$IP" "$_RP; eval \$_P systemctl restart $SVC 2>/dev/null || eval \$_P rc-service $SVC restart" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -271,13 +272,13 @@ true'
         for entry in $ALL_NODES; do
           name="${entry%%:*}"; ip="${entry##*:}"
           SVC=$(k3s_svc "$name")
-          run_on_node_tracked "$ip" "doas systemctl start $SVC 2>/dev/null || doas rc-service $SVC start" "$RESULT_DIR" "$name" &
+          run_on_node_tracked "$ip" "$_RP; eval \$_P systemctl start $SVC 2>/dev/null || eval \$_P rc-service $SVC start" "$RESULT_DIR" "$name" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        run_on_node_tracked "$IP" "doas systemctl start $SVC 2>/dev/null || doas rc-service $SVC start" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$IP" "$_RP; eval \$_P systemctl start $SVC 2>/dev/null || eval \$_P rc-service $SVC start" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -289,13 +290,13 @@ true'
         for entry in $ALL_NODES; do
           name="${entry%%:*}"; ip="${entry##*:}"
           SVC=$(k3s_svc "$name")
-          run_on_node_tracked "$ip" "doas systemctl stop $SVC 2>/dev/null || doas rc-service $SVC stop" "$RESULT_DIR" "$name" &
+          run_on_node_tracked "$ip" "$_RP; eval \$_P systemctl stop $SVC 2>/dev/null || eval \$_P rc-service $SVC stop" "$RESULT_DIR" "$name" &
         done
         wait
       else
         IP=$(resolve_ip "$target")
         SVC=$(k3s_svc "$target")
-        run_on_node_tracked "$IP" "doas systemctl stop $SVC 2>/dev/null || doas rc-service $SVC stop" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$IP" "$_RP; eval \$_P systemctl stop $SVC 2>/dev/null || eval \$_P rc-service $SVC stop" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -309,12 +310,13 @@ true'
 if ! command -v xmrig >/dev/null 2>&1 && [ ! -f /usr/local/bin/xmrig ]; then
   echo "xmrig not installed" >&2; exit 1
 fi
-doas systemctl start xmrig 2>/dev/null || doas rc-service xmrig start 2>&1
+_P=$(command -v doas >/dev/null 2>&1 && echo doas || echo sudo)
+$_P systemctl start xmrig 2>/dev/null || $_P rc-service xmrig start 2>&1
 sleep 2
 if pgrep xmrig >/dev/null 2>&1; then
   exit 0
 else
-  doas systemctl status xmrig 2>/dev/null || doas rc-service xmrig status >&2; exit 1
+  $_P systemctl status xmrig 2>/dev/null || $_P rc-service xmrig status >&2; exit 1
 fi'
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         run_on_all_tracked "$MINING_START_CMD" "$RESULT_DIR"
@@ -329,9 +331,9 @@ fi'
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "doas systemctl stop xmrig 2>/dev/null || doas rc-service xmrig stop" "$RESULT_DIR"
+        run_on_all_tracked "$_RP; eval \$_P systemctl stop xmrig 2>/dev/null || eval \$_P rc-service xmrig stop" "$RESULT_DIR"
       else
-        run_on_node_tracked "$(resolve_ip "$target")" "doas systemctl stop xmrig 2>/dev/null || doas rc-service xmrig stop" "$RESULT_DIR" "$target"
+        run_on_node_tracked "$(resolve_ip "$target")" "$_RP; eval \$_P systemctl stop xmrig 2>/dev/null || eval \$_P rc-service xmrig stop" "$RESULT_DIR" "$target"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
@@ -344,7 +346,7 @@ fi'
       # Works on both systemd and OpenRC by modifying xmrig config directly
       case "$mining_level" in
         0)
-          LEVEL_CMD="doas rc-service xmrig stop 2>/dev/null || doas systemctl stop xmrig 2>/dev/null; echo 'mining off'"
+          LEVEL_CMD="$_RP; eval \$_P rc-service xmrig stop 2>/dev/null || eval \$_P systemctl stop xmrig 2>/dev/null; echo 'mining off'"
           ;;
         1|2|3|4)
           # Map level to xmrig max-threads-hint percentage
@@ -352,11 +354,11 @@ fi'
             1) HINT=12 ;; 2) HINT=25 ;; 3) HINT=50 ;; 4) HINT=100 ;;
           esac
           # Use sed to modify config (works on all nodes without jq)
-          LEVEL_CMD="CFG=/etc/xmrig/config.json
+          LEVEL_CMD="$_RP; CFG=/etc/xmrig/config.json
 if [ -f \"\$CFG\" ]; then
-  doas sed -i 's/\"max-threads-hint\":[0-9]*/\"max-threads-hint\":$HINT/' \"\$CFG\"
+  eval \$_P sed -i 's/\"max-threads-hint\":[0-9]*/\"max-threads-hint\":$HINT/' \"\$CFG\"
 fi
-doas rc-service xmrig restart 2>/dev/null || doas systemctl restart xmrig 2>/dev/null
+eval \$_P rc-service xmrig restart 2>/dev/null || eval \$_P systemctl restart xmrig 2>/dev/null
 echo \"mining level $mining_level (${HINT}% CPU)\""
           ;;
         *)
@@ -485,8 +487,8 @@ echo \"mining level $mining_level (${HINT}% CPU)\""
         # Use cage (minimal kiosk Wayland compositor) instead of Phosh.
         # cage runs a single app fullscreen - no lock screen, no shell.
         # Install cage if missing, write greetd config, restart greetd.
-        BROWSE_CMD="doas apk add --no-progress cage 2>/dev/null || true
-cat <<'GREETDEOF' | doas tee /etc/greetd/config.toml >/dev/null
+        BROWSE_CMD="$_RP; eval \$_P apk add --no-progress cage 2>/dev/null || true
+cat <<'GREETDEOF' | eval \$_P tee /etc/greetd/config.toml >/dev/null
 [terminal]
 vt = 7
 
@@ -494,7 +496,7 @@ vt = 7
 command = \"cage -- firefox-esr --kiosk $safe_url\"
 user = \"user\"
 GREETDEOF
-doas systemctl restart greetd 2>/dev/null || doas rc-service greetd restart 2>/dev/null"
+eval \$_P systemctl restart greetd 2>/dev/null || eval \$_P rc-service greetd restart 2>/dev/null"
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
           run_on_all_tracked "$BROWSE_CMD" "$RESULT_DIR" "$PHONE_NODES"
         else
@@ -557,7 +559,7 @@ HEAD_SCRIPT=$(head -15 "$0" 2>/dev/null)"
         local name="$1" ip="$2"
         if run_on_node "$ip" "echo ok" >/dev/null 2>&1; then
           echo "ok" > "$RESULT_DIR/$name"
-          run_on_node "$ip" "doas reboot" >/dev/null 2>&1 || true
+          run_on_node "$ip" "$_RP; eval \$_P reboot" >/dev/null 2>&1 || true
         else
           echo "fail" > "$RESULT_DIR/$name"
         fi
@@ -721,7 +723,7 @@ else echo "CAPTURE_FAILED" && exit 1; fi'
         report_result "$cmd_id" "error: brightness must be a number 0-255" "" "$cmd" "$target"
       else
         log "Setting brightness to $BRIGHTNESS_VAL..."
-        BRIGHT_CMD="doas sh -c 'for f in /sys/class/backlight/*/brightness; do echo $BRIGHTNESS_VAL > \"\$f\"; done' 2>/dev/null || doas sh -c 'echo $BRIGHTNESS_VAL > /sys/class/leds/lcd-backlight/brightness' 2>/dev/null"
+        BRIGHT_CMD="$_RP; eval \$_P sh -c 'for f in /sys/class/backlight/*/brightness; do echo $BRIGHTNESS_VAL > \"\$f\"; done' 2>/dev/null || eval \$_P sh -c 'echo $BRIGHTNESS_VAL > /sys/class/leds/lcd-backlight/brightness' 2>/dev/null"
         if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
           run_on_all_tracked "$BRIGHT_CMD" "$RESULT_DIR" "$PHONE_NODES"
         else

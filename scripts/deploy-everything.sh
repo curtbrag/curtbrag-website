@@ -209,12 +209,12 @@ setup_nexus_prime() {
 
   # Save credentials locally for reference
   ENV_FILE="/etc/cluster-api.env"
-  sudo tee "$ENV_FILE" > /dev/null << EOF
+  ${PRIV:-sudo} tee "$ENV_FILE" > /dev/null << EOF
 CLUSTER_WEB_PASSWORD=${CLUSTER_WEB_PASSWORD}
 CLUSTER_API_KEY=${CLUSTER_API_KEY}
 XMR_WALLET=${WALLET}
 EOF
-  sudo chmod 600 "$ENV_FILE"
+  ${PRIV:-sudo} chmod 600 "$ENV_FILE"
   echo -e "  ${GREEN}✓${NC} Credentials saved to $ENV_FILE"
 
   # Verify Netlify functions are responding
