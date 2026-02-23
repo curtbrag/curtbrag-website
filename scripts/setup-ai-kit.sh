@@ -13,7 +13,7 @@
 # ║  Usage:                                                             ║
 # ║    bash scripts/setup-ai-kit.sh --password 0735                    ║
 # ║    bash scripts/setup-ai-kit.sh --password 0735 --with-ai          ║
-# ║    bash scripts/setup-ai-kit.sh --password 0735 --nodes 2,5,7      ║
+# ║    bash scripts/setup-ai-kit.sh --password 0735 --nodes node2,node5 ║
 # ╚══════════════════════════════════════════════════════════════════════╝
 
 set -e
@@ -43,12 +43,14 @@ SKIP_REDIS=0
 SKIP_PHONES=0
 SKIP_DISPATCHER=0
 TARGET_NODES=""
+REDIS_HOST=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --password) SSH_PASS="$2"; shift 2;;
     --ssh-port) SSH_PORT="$2"; shift 2;;
     --cluster-dir) CLUSTER_DIR="$2"; shift 2;;
+    --redis-host) REDIS_HOST="$2"; shift 2;;
     --with-whisper) BUILD_WHISPER=1; shift;;
     --whisper-model) WHISPER_MODEL="$2"; shift 2;;
     --with-llama) BUILD_LLAMA=1; shift;;
@@ -63,7 +65,8 @@ while [[ $# -gt 0 ]]; do
       echo "Setup options:"
       echo "  --password PASS       SSH password for phone nodes"
       echo "  --cluster-dir DIR     Base directory (default: ~/cluster)"
-      echo "  --nodes LIST          Comma-separated node numbers (default: all)"
+      echo "  --redis-host IP       Redis host IP (default: auto-detect local IP)"
+      echo "  --nodes LIST          Comma-separated node names: node2,node5 (default: all workers)"
       echo ""
       echo "Skip steps:"
       echo "  --skip-redis          Skip Redis setup (already installed)"
@@ -79,6 +82,13 @@ while [[ $# -gt 0 ]]; do
     *) shift;;
   esac
 done
+
+# Auto-detect Redis host if not specified — use this machine's IP on the cluster network
+if [ -z "$REDIS_HOST" ]; then
+  REDIS_HOST=$(ip -4 addr show eth0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
+  [ -z "$REDIS_HOST" ] && REDIS_HOST=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
+  [ -z "$REDIS_HOST" ] && REDIS_HOST="127.0.0.1"
+fi
 
 ssh_cmd() {
   local target="$1"; shift
@@ -111,6 +121,7 @@ echo -e "${CYAN}║         PHONE CLUSTER AI KIT — SETUP                      
 echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "  Base dir:    ${CLUSTER_DIR}"
+echo -e "  Redis host:  ${REDIS_HOST}"
 echo -e "  Whisper:     $([ $BUILD_WHISPER -eq 1 ] && echo "YES (model: $WHISPER_MODEL)" || echo "no")"
 echo -e "  LLaMA:       $([ $BUILD_LLAMA -eq 1 ] && echo "YES" || echo "no")"
 echo ""
@@ -164,45 +175,35 @@ banner "Step 3/5: Phone Node Setup"
 if [ $SKIP_PHONES -eq 1 ]; then
   echo -e "  ${YELLOW}Skipped (--skip-phones)${NC}"
 else
-  # Build deploy args
-  DEPLOY_ARGS="--password ${SSH_PASS:-}"
+  # Build deploy args — pass redis-host so workers connect to the right place
+  DEPLOY_ARGS="--password ${SSH_PASS:-} --redis-host $REDIS_HOST"
   [ $BUILD_WHISPER -eq 1 ] && DEPLOY_ARGS="$DEPLOY_ARGS --with-whisper --whisper-model $WHISPER_MODEL"
   [ $BUILD_LLAMA -eq 1 ] && DEPLOY_ARGS="$DEPLOY_ARGS --with-llama"
   [ -n "$TARGET_NODES" ] && DEPLOY_ARGS="$DEPLOY_ARGS --nodes $TARGET_NODES"
 
-  # The existing deploy-workers.sh handles everything:
-  # - Python + Redis client install
-  # - worker.py deployment
-  # - AI runtime builds
-  # - Worker service start
-  # We just need to also install ffmpeg + imagemagick for the content pipelines
-
+  # Install ffmpeg + imagemagick on phone nodes (content pipeline deps)
+  # deploy-workers.sh handles python, worker.py, and service setup
   echo -e "  ${YELLOW}Installing content pipeline dependencies on phones...${NC}"
 
-  # Determine which nodes to target
+  # Use PHONE_NODES from cluster-nodes.conf (filtered by TARGET_NODES if specified)
+  DEPS_NODES="$PHONE_NODES"
   if [ -n "$TARGET_NODES" ]; then
-    NODE_LIST=$(echo "$TARGET_NODES" | tr ',' ' ')
-  else
-    NODE_LIST="1 2 3 4 5 6 7 8 9 10"
+    DEPS_NODES=""
+    for tname in $(echo "$TARGET_NODES" | tr ',' ' '); do
+      for entry in $PHONE_NODES; do
+        ENAME="${entry%%:*}"
+        if [ "$ENAME" = "$tname" ]; then
+          DEPS_NODES="${DEPS_NODES:+$DEPS_NODES }${entry}"
+        fi
+      done
+    done
   fi
 
-  for N in $NODE_LIST; do
-    # Get IP for this node
-    case $N in
-      1) IP="192.168.1.206";;
-      2) IP="192.168.1.207";;
-      3) IP="192.168.1.208";;
-      4) IP="192.168.1.209";;
-      5) IP="192.168.1.210";;
-      6) IP="192.168.1.211";;
-      7) IP="192.168.1.212";;
-      8) IP="192.168.1.213";;
-      9) IP="192.168.1.214";;
-      10) IP="192.168.1.215";;
-      *) continue;;
-    esac
+  for entry in $DEPS_NODES; do
+    NAME="${entry%%:*}"
+    IP="${entry#*:}"
 
-    printf "  node%-2s (%s): " "$N" "$IP"
+    printf "  %-8s (%s): " "$NAME" "$IP"
 
     if ! ssh_cmd "user@$IP" "echo ok" &>/dev/null; then
       echo -e "${RED}unreachable${NC}"
@@ -236,9 +237,13 @@ else
   chmod +x "$CLUSTER_DIR/dispatcher.py"
   echo -e "  ${GREEN}✓${NC} Dispatcher copied to $CLUSTER_DIR/dispatcher.py"
 
-  # Create systemd service for dispatcher (if systemd available)
+  # Detect privilege escalation command
+  PRIV="sudo"
+  command -v sudo &>/dev/null || PRIV="doas"
+
+  # Create service for dispatcher
   if command -v systemctl &>/dev/null; then
-    sudo tee /etc/systemd/system/cluster-dispatcher.service > /dev/null << DSVC
+    $PRIV tee /etc/systemd/system/cluster-dispatcher.service > /dev/null << DSVC
 [Unit]
 Description=Cluster AI Dispatcher — inbox watcher
 After=network-online.target redis-server.service
@@ -248,7 +253,7 @@ Wants=network-online.target
 Type=simple
 User=$USER
 Environment=CLUSTER_DIR=$CLUSTER_DIR
-Environment=REDIS_HOST=127.0.0.1
+Environment=REDIS_HOST=$REDIS_HOST
 ExecStart=/usr/bin/python3 $CLUSTER_DIR/dispatcher.py
 Restart=always
 RestartSec=10
@@ -258,9 +263,9 @@ StandardError=append:$CLUSTER_DIR/logs/dispatcher.log
 [Install]
 WantedBy=multi-user.target
 DSVC
-    sudo systemctl daemon-reload
-    sudo systemctl enable cluster-dispatcher
-    sudo systemctl restart cluster-dispatcher
+    $PRIV systemctl daemon-reload
+    $PRIV systemctl enable cluster-dispatcher
+    $PRIV systemctl restart cluster-dispatcher
     sleep 2
 
     if systemctl is-active --quiet cluster-dispatcher; then
@@ -269,12 +274,46 @@ DSVC
       echo -e "  ${RED}✗${NC} Dispatcher failed to start"
       echo -e "  ${YELLOW}  Check: sudo journalctl -u cluster-dispatcher -n 20${NC}"
     fi
+  elif command -v rc-service &>/dev/null; then
+    # OpenRC (postmarketOS / Alpine)
+    doas tee /etc/init.d/cluster-dispatcher > /dev/null << 'ORCSVC'
+#!/sbin/openrc-run
+name="cluster-dispatcher"
+description="Cluster AI Dispatcher — inbox watcher"
+command="/usr/bin/python3"
+command_args="CLUSTER_DIR_PLACEHOLDER/dispatcher.py"
+command_user="user"
+command_background="yes"
+pidfile="/run/cluster-dispatcher.pid"
+output_log="CLUSTER_DIR_PLACEHOLDER/logs/dispatcher.log"
+error_log="CLUSTER_DIR_PLACEHOLDER/logs/dispatcher.log"
+
+depend() { need net; }
+
+start_pre() {
+  export CLUSTER_DIR="CLUSTER_DIR_PLACEHOLDER"
+  export REDIS_HOST="REDIS_HOST_PLACEHOLDER"
+}
+ORCSVC
+    # Replace placeholders with actual values
+    doas sed -i "s|CLUSTER_DIR_PLACEHOLDER|$CLUSTER_DIR|g" /etc/init.d/cluster-dispatcher
+    doas sed -i "s|REDIS_HOST_PLACEHOLDER|$REDIS_HOST|g" /etc/init.d/cluster-dispatcher
+    doas chmod +x /etc/init.d/cluster-dispatcher
+    doas rc-update add cluster-dispatcher default 2>/dev/null || true
+    doas rc-service cluster-dispatcher restart 2>/dev/null
+    sleep 2
+    if pgrep -f "dispatcher.py" >/dev/null 2>&1; then
+      echo -e "  ${GREEN}✓${NC} Dispatcher running (OpenRC)"
+    else
+      echo -e "  ${RED}✗${NC} Dispatcher failed to start"
+      echo -e "  ${YELLOW}  Check: tail -20 $CLUSTER_DIR/logs/dispatcher.log${NC}"
+    fi
   else
     # Fallback: start with nohup
     pkill -f "dispatcher.py" 2>/dev/null || true
     sleep 1
     cd "$CLUSTER_DIR"
-    CLUSTER_DIR="$CLUSTER_DIR" REDIS_HOST=127.0.0.1 \
+    CLUSTER_DIR="$CLUSTER_DIR" REDIS_HOST="$REDIS_HOST" \
       nohup python3 "$CLUSTER_DIR/dispatcher.py" >> "$CLUSTER_DIR/logs/dispatcher.log" 2>&1 &
     echo -e "  ${GREEN}✓${NC} Dispatcher running (nohup, PID: $!)"
   fi

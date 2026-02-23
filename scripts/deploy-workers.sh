@@ -31,7 +31,7 @@ fi
 
 # Redis host — default to NEXUS ethernet IP, fall back to WiFi
 REDIS_HOST="${REDIS_HOST:-10.0.0.1}"
-WORKER_QUEUES="${WORKER_QUEUES:-shell,whisper,llm,generic}"
+WORKER_QUEUES="${WORKER_QUEUES:-shell,whisper,llm,generic,image,audio}"
 
 # Parse args
 SSH_PORT="${SSH_PORT:-22}"
