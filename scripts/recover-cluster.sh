@@ -134,11 +134,11 @@ else
   K3S_SVC_STATUS=$(run_on_node "$CP_IP" "$PRIV rc-service k3s status 2>/dev/null || $PRIV systemctl is-active k3s 2>/dev/null || echo stopped" 2>/dev/null || echo "unreachable")
   echo "  K3s service:   $K3S_SVC_STATUS"
 
-  if echo "$K3S_SVC_STATUS" | grep -qi "started\|running\|active"; then
+  if echo "$K3S_SVC_STATUS" | grep -qi "started\|running" || { echo "$K3S_SVC_STATUS" | grep -qi "active" && ! echo "$K3S_SVC_STATUS" | grep -qi "inactive\|activating"; }; then
     echo "  ${GREEN}Control plane service is running${NC}"
 
-    # Try kubectl get nodes
-    KUBECTL_OUTPUT=$(run_on_node "$CP_IP" "$PRIV kubectl get nodes -o wide 2>&1" 2>/dev/null || echo "FAILED")
+    # Try kubectl get nodes (K3s bundles kubectl as 'k3s kubectl')
+    KUBECTL_OUTPUT=$(run_on_node "$CP_IP" "$PRIV k3s kubectl get nodes -o wide 2>&1 || $PRIV kubectl get nodes -o wide 2>&1" 2>/dev/null || echo "FAILED")
     if echo "$KUBECTL_OUTPUT" | grep -q "NAME.*STATUS"; then
       echo ""
       echo "  kubectl get nodes:"
@@ -184,7 +184,7 @@ for entry in $NODE_LIST; do
 
   STATUS=$(run_on_node "$_ip" "$PRIV rc-service $SVC status 2>/dev/null || $PRIV systemctl is-active $SVC 2>/dev/null || echo stopped" 2>/dev/null || echo "check-failed")
 
-  if echo "$STATUS" | grep -qi "started\|running\|active"; then
+  if echo "$STATUS" | grep -qi "started\|running" || { echo "$STATUS" | grep -qi "active" && ! echo "$STATUS" | grep -qi "inactive\|activating"; }; then
     printf "  ${GREEN}%-8s${NC} %-12s %s\n" "$_name" "$SVC" "running"
     K3S_RUNNING=$((K3S_RUNNING + 1))
   else
@@ -194,7 +194,8 @@ for entry in $NODE_LIST; do
   fi
 
   # Check registered IP (if agent is running)
-  REGISTERED_IP=$(run_on_node "$_ip" "grep 'node-ip' /etc/rancher/k3s/config.yaml 2>/dev/null | sed 's/.*: *\"//' | sed 's/\".*//' || echo 'not-set'" 2>/dev/null || echo "unknown")
+  # Handle both quoted (node-ip: "1.2.3.4") and unquoted (node-ip: 1.2.3.4) YAML
+  REGISTERED_IP=$(run_on_node "$_ip" "grep 'node-ip' /etc/rancher/k3s/config.yaml 2>/dev/null | sed 's/.*: *//;s/\"//g' | tr -d ' ' || echo 'not-set'" 2>/dev/null || echo "unknown")
   if [ "$REGISTERED_IP" != "not-set" ] && [ "$REGISTERED_IP" != "unknown" ] && [ "$REGISTERED_IP" != "$_ip" ]; then
     printf "  ${YELLOW}         registered IP: %s (expected %s)${NC}\n" "$REGISTERED_IP" "$_ip"
     add_issue "$_name registered with wrong IP ($REGISTERED_IP, expected $_ip)"
@@ -259,7 +260,7 @@ log_info "Step 6/7: Cluster DNS resolution..."
 echo ""
 
 if [ -n "$CP_IP" ] && [ -f "$DIAG_DIR/$CP_NAME.reachable" ]; then
-  DNS_CHECK=$(run_on_node "$CP_IP" "$PRIV kubectl run dns-test --rm -i --restart=Never --image=busybox -- nslookup kubernetes.default.svc.cluster.local 2>&1 | tail -5" 2>/dev/null || echo "check-failed")
+  DNS_CHECK=$(run_on_node "$CP_IP" "$PRIV k3s kubectl run dns-test --rm -i --restart=Never --image=busybox -- nslookup kubernetes.default.svc.cluster.local 2>&1 | tail -5" 2>/dev/null || echo "check-failed")
   if echo "$DNS_CHECK" | grep -qi "address\|server"; then
     echo "  ${GREEN}Cluster DNS is resolving${NC}"
   else
@@ -337,7 +338,7 @@ FAILED_FIX=0
 if [ -n "$CP_IP" ] && [ -f "$DIAG_DIR/$CP_NAME.reachable" ]; then
   CP_SVC_STATUS=$(run_on_node "$CP_IP" "$PRIV rc-service k3s status 2>/dev/null || $PRIV systemctl is-active k3s 2>/dev/null || echo stopped" 2>/dev/null || echo "stopped")
 
-  if ! echo "$CP_SVC_STATUS" | grep -qi "started\|running\|active"; then
+  if ! { echo "$CP_SVC_STATUS" | grep -qi "started\|running" || { echo "$CP_SVC_STATUS" | grep -qi "active" && ! echo "$CP_SVC_STATUS" | grep -qi "inactive\|activating"; }; }; then
     log_info "Fix 1: Starting K3s control plane on $CP_NAME..."
     run_on_node "$CP_IP" "$PRIV rc-service k3s start 2>/dev/null || $PRIV systemctl start k3s 2>/dev/null" 2>/dev/null
 
@@ -345,7 +346,7 @@ if [ -n "$CP_IP" ] && [ -f "$DIAG_DIR/$CP_NAME.reachable" ]; then
     echo "  Waiting for API server..."
     _waited=0
     while [ "$_waited" -lt 60 ]; do
-      if run_on_node "$CP_IP" "$PRIV kubectl get nodes >/dev/null 2>&1" 2>/dev/null; then
+      if run_on_node "$CP_IP" "$PRIV k3s kubectl get nodes >/dev/null 2>&1 || $PRIV kubectl get nodes >/dev/null 2>&1" 2>/dev/null; then
         echo "  ${GREEN}API server ready (${_waited}s)${NC}"
         FIXED=$((FIXED + 1))
         break
@@ -397,9 +398,9 @@ for entry in $NODE_LIST; do
   # Check if agent is running properly
   AGENT_STATUS=$(run_on_node "$_ip" "$PRIV rc-service k3s-agent status 2>/dev/null || $PRIV systemctl is-active k3s-agent 2>/dev/null || echo stopped" 2>/dev/null || echo "check-failed")
 
-  if echo "$AGENT_STATUS" | grep -qi "started\|running\|active"; then
+  if echo "$AGENT_STATUS" | grep -qi "started\|running" || { echo "$AGENT_STATUS" | grep -qi "active" && ! echo "$AGENT_STATUS" | grep -qi "inactive\|activating"; }; then
     # Check if registered with correct IP
-    REGISTERED_IP=$(run_on_node "$_ip" "grep 'node-ip' /etc/rancher/k3s/config.yaml 2>/dev/null | sed 's/.*: *\"//' | sed 's/\".*//' || echo ''" 2>/dev/null || echo "")
+    REGISTERED_IP=$(run_on_node "$_ip" "grep 'node-ip' /etc/rancher/k3s/config.yaml 2>/dev/null | sed 's/.*: *//;s/\"//g' | tr -d ' ' || echo ''" 2>/dev/null || echo "")
     if [ "$REGISTERED_IP" = "$_ip" ] || [ -z "$REGISTERED_IP" ]; then
       printf "  ${GREEN}%-8s${NC} agent running, IP correct\n" "$_name"
       continue
@@ -431,7 +432,7 @@ for entry in $NODE_LIST; do
   # Quick verify
   sleep 3
   NEW_STATUS=$(run_on_node "$_ip" "$PRIV rc-service k3s-agent status 2>/dev/null || $PRIV systemctl is-active k3s-agent 2>/dev/null || echo stopped" 2>/dev/null || echo "check-failed")
-  if echo "$NEW_STATUS" | grep -qi "started\|running\|active"; then
+  if echo "$NEW_STATUS" | grep -qi "started\|running" || { echo "$NEW_STATUS" | grep -qi "active" && ! echo "$NEW_STATUS" | grep -qi "inactive\|activating"; }; then
     printf "  ${GREEN}%-8s${NC} agent restarted successfully\n" "$_name"
     FIXED=$((FIXED + 1))
   else
@@ -450,7 +451,7 @@ echo ""
 sleep 10
 
 if [ -n "$CP_IP" ] && [ -f "$DIAG_DIR/$CP_NAME.reachable" ]; then
-  FINAL_NODES=$(run_on_node "$CP_IP" "$PRIV kubectl get nodes -o wide 2>&1" 2>/dev/null || echo "FAILED")
+  FINAL_NODES=$(run_on_node "$CP_IP" "$PRIV k3s kubectl get nodes -o wide 2>&1 || $PRIV kubectl get nodes -o wide 2>&1" 2>/dev/null || echo "FAILED")
   if echo "$FINAL_NODES" | grep -q "NAME.*STATUS"; then
     echo "  Final cluster state:"
     echo "$FINAL_NODES" | while IFS= read -r line; do echo "    $line"; done

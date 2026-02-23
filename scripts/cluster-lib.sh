@@ -212,17 +212,25 @@ scp_retry() {
 }
 
 # ── Reachability Check ────────────────────────────────────────────────
-# Check if a node is reachable via SSH.
+# Check if a node is reachable via SSH (2 attempts for WiFi resilience).
 # Usage: check_reachable user@host  (returns 0 if reachable, 1 if not)
 check_reachable() {
   _cr_target="$1"
   _cr_port="${2:-${SSH_PORT:-22}}"
+  _cr_attempt=0
 
-  timeout 5 ssh -n -p "$_cr_port" \
-    -o ConnectTimeout=3 \
-    -o BatchMode=yes \
-    -o StrictHostKeyChecking=accept-new \
-    "$_cr_target" "echo ok" >/dev/null 2>&1
+  while [ "$_cr_attempt" -lt 2 ]; do
+    _cr_attempt=$((_cr_attempt + 1))
+    if timeout 8 ssh -n -p "$_cr_port" \
+      -o ConnectTimeout=5 \
+      -o BatchMode=yes \
+      -o StrictHostKeyChecking=accept-new \
+      "$_cr_target" "echo ok" >/dev/null 2>&1; then
+      return 0
+    fi
+    [ "$_cr_attempt" -lt 2 ] && sleep 2
+  done
+  return 1
 }
 
 # ── Local IP Detection ────────────────────────────────────────────────
