@@ -24,7 +24,11 @@ NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Source node config
+# Source shared library and node config
+if [ -f "$SCRIPT_DIR/cluster-lib.sh" ]; then
+  . "$SCRIPT_DIR/cluster-lib.sh"
+  detect_priv
+fi
 if [ -f "$SCRIPT_DIR/cluster-nodes.conf" ]; then
   . "$SCRIPT_DIR/cluster-nodes.conf"
   load_node_config
@@ -219,7 +223,7 @@ chmod 600 /home/user/.worker-env" 2>/dev/null
     ssh_cmd "$SSH_TARGET" "doas tee /etc/systemd/system/cluster-worker.service > /dev/null" << 'SVC'
 [Unit]
 Description=Phone Cluster Worker
-After=network-online.target
+After=network-online.target redis-server.service
 Wants=network-online.target
 
 [Service]
