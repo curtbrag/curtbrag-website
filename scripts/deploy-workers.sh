@@ -12,8 +12,6 @@
 # ║    - Configures auto-restart via init system                        ║
 # ╚══════════════════════════════════════════════════════════════════════╝
 
-set -e
-
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -137,7 +135,7 @@ for entry in $DEPLOY_NODES; do
 
   banner "[${NAME}] ${IP}"
 
-  if ! ssh_cmd "$SSH_TARGET" "echo ok" &>/dev/null; then
+  if ! timeout 10 ssh_cmd "$SSH_TARGET" "echo ok" &>/dev/null; then
     echo -e "  ${RED}✗${NC} Cannot SSH — skipping"
     FAIL=$((FAIL + 1))
     continue
@@ -145,15 +143,23 @@ for entry in $DEPLOY_NODES; do
 
   # ── Step 1: Install Python + deps ────────────────────────────────────
   echo -e "  ${YELLOW}[1/4] Installing Python + Redis client...${NC}"
-  ssh_cmd "$SSH_TARGET" "
+  if ! timeout 90 ssh_cmd "$SSH_TARGET" "
     doas apk add python3 py3-pip 2>/dev/null
     pip install redis 2>/dev/null || pip3 install redis 2>/dev/null || true
-  " 2>/dev/null
+  " 2>/dev/null; then
+    echo -e "  ${RED}✗${NC} Package install timed out — skipping"
+    FAIL=$((FAIL + 1))
+    continue
+  fi
   echo -e "  ${GREEN}✓${NC} Python ready"
 
   # ── Step 2: Deploy worker.py ─────────────────────────────────────────
   echo -e "  ${YELLOW}[2/4] Deploying worker.py...${NC}"
-  scp_cmd "$SCRIPT_DIR/worker.py" "${SSH_TARGET}:/home/user/worker.py"
+  if ! timeout 30 scp_cmd "$SCRIPT_DIR/worker.py" "${SSH_TARGET}:/home/user/worker.py"; then
+    echo -e "  ${RED}✗${NC} Failed to copy worker.py — skipping"
+    FAIL=$((FAIL + 1))
+    continue
+  fi
   ssh_cmd "$SSH_TARGET" "chmod +x /home/user/worker.py" 2>/dev/null
   echo -e "  ${GREEN}✓${NC} worker.py deployed"
 
@@ -163,8 +169,8 @@ for entry in $DEPLOY_NODES; do
 
     if [ $BUILD_WHISPER -eq 1 ]; then
       echo -ne "    whisper.cpp... "
-      scp_cmd "$SCRIPT_DIR/setup-whisper-node.sh" "${SSH_TARGET}:/tmp/setup-whisper-node.sh"
-      WHISPER_RESULT=$(ssh_cmd "$SSH_TARGET" "sh /tmp/setup-whisper-node.sh --model $WHISPER_MODEL 2>&1 | tail -3" 2>/dev/null)
+      timeout 30 scp_cmd "$SCRIPT_DIR/setup-whisper-node.sh" "${SSH_TARGET}:/tmp/setup-whisper-node.sh" 2>/dev/null
+      WHISPER_RESULT=$(timeout 600 ssh_cmd "$SSH_TARGET" "sh /tmp/setup-whisper-node.sh --model $WHISPER_MODEL 2>&1 | tail -3" 2>/dev/null)
       if ssh_cmd "$SSH_TARGET" "test -f /home/user/whisper.cpp/main" 2>/dev/null; then
         echo -e "${GREEN}OK${NC}"
       else
@@ -176,8 +182,8 @@ for entry in $DEPLOY_NODES; do
       echo -ne "    llama.cpp... "
       LLAMA_ARGS=""
       [ -n "$LLAMA_MODEL_URL" ] && LLAMA_ARGS="--model-url $LLAMA_MODEL_URL"
-      scp_cmd "$SCRIPT_DIR/setup-llama-node.sh" "${SSH_TARGET}:/tmp/setup-llama-node.sh"
-      LLAMA_RESULT=$(ssh_cmd "$SSH_TARGET" "sh /tmp/setup-llama-node.sh $LLAMA_ARGS 2>&1 | tail -3" 2>/dev/null)
+      timeout 30 scp_cmd "$SCRIPT_DIR/setup-llama-node.sh" "${SSH_TARGET}:/tmp/setup-llama-node.sh" 2>/dev/null
+      LLAMA_RESULT=$(timeout 600 ssh_cmd "$SSH_TARGET" "sh /tmp/setup-llama-node.sh $LLAMA_ARGS 2>&1 | tail -3" 2>/dev/null)
       if ssh_cmd "$SSH_TARGET" "test -f /home/user/llama.cpp/llama-cli" 2>/dev/null; then
         echo -e "${GREEN}OK${NC}"
       else
@@ -204,7 +210,7 @@ chmod 600 /home/user/.worker-env" 2>/dev/null
   ssh_cmd "$SSH_TARGET" "pkill -f 'worker.py' 2>/dev/null; sleep 1; true" 2>/dev/null
 
   # Detect init system and create service
-  INIT_SYS=$(ssh_cmd "$SSH_TARGET" "command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1 && echo systemd || { command -v rc-service >/dev/null 2>&1 && echo openrc; } || echo none" 2>/dev/null)
+  INIT_SYS=$(ssh_cmd "$SSH_TARGET" "command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1 && echo systemd || { { command -v rc-service >/dev/null 2>&1 || test -f /sbin/openrc-run; } && echo openrc; } || echo none" 2>/dev/null)
 
   if [ "$INIT_SYS" = "systemd" ]; then
     ssh_cmd "$SSH_TARGET" "doas tee /etc/systemd/system/cluster-worker.service > /dev/null" << 'SVC'
@@ -249,7 +255,7 @@ start_pre() {
   export REDIS_HOST NODE_NAME WORKER_QUEUES
 }
 ORCSVC
-    ssh_cmd "$SSH_TARGET" "doas rc-update add cluster-worker default 2>/dev/null; doas rc-service cluster-worker restart" 2>/dev/null
+    ssh_cmd "$SSH_TARGET" "doas rc-update add cluster-worker default 2>/dev/null; doas rc-service cluster-worker restart 2>/dev/null || true" 2>/dev/null
     echo -e "  ${GREEN}✓${NC} Worker running (OpenRC)"
 
   else
@@ -263,7 +269,7 @@ ORCSVC
   fi
 
   # Verify
-  sleep 2
+  sleep 5
   if ssh_cmd "$SSH_TARGET" "pgrep -f 'worker.py' >/dev/null 2>&1" 2>/dev/null; then
     echo -e "  ${GREEN}✓${NC} Worker verified running"
     OK=$((OK + 1))

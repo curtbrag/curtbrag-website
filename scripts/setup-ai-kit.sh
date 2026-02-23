@@ -16,8 +16,6 @@
 # ║    bash scripts/setup-ai-kit.sh --password 0735 --nodes node2,node5 ║
 # ╚══════════════════════════════════════════════════════════════════════╝
 
-set -e
-
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -205,22 +203,23 @@ else
 
     printf "  %-8s (%s): " "$NAME" "$IP"
 
-    if ! ssh_cmd "user@$IP" "echo ok" &>/dev/null; then
+    if ! timeout 10 ssh_cmd "user@$IP" "echo ok" &>/dev/null; then
       echo -e "${RED}unreachable${NC}"
       continue
     fi
 
-    # Install ffmpeg + imagemagick (content pipeline deps)
-    ssh_cmd "user@$IP" "
-      doas apk add ffmpeg imagemagick python3 2>/dev/null
-    " &>/dev/null
+    # Install ffmpeg + imagemagick (content pipeline deps) — 90s timeout
+    if ! timeout 90 ssh_cmd "user@$IP" "doas apk add ffmpeg imagemagick python3 2>/dev/null" &>/dev/null; then
+      echo -e "${YELLOW}timeout/failed${NC}"
+      continue
+    fi
 
     echo -e "${GREEN}deps installed${NC}"
   done
 
   echo ""
   echo -e "  ${YELLOW}Deploying workers...${NC}"
-  bash "$SCRIPT_DIR/deploy-workers.sh" $DEPLOY_ARGS
+  bash "$SCRIPT_DIR/deploy-workers.sh" $DEPLOY_ARGS || echo -e "  ${RED}Worker deployment had errors — check output above${NC}"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -274,9 +273,9 @@ DSVC
       echo -e "  ${RED}✗${NC} Dispatcher failed to start"
       echo -e "  ${YELLOW}  Check: sudo journalctl -u cluster-dispatcher -n 20${NC}"
     fi
-  elif command -v rc-service &>/dev/null; then
+  elif command -v rc-service &>/dev/null || test -f /sbin/openrc-run; then
     # OpenRC (postmarketOS / Alpine)
-    doas tee /etc/init.d/cluster-dispatcher > /dev/null << 'ORCSVC'
+    $PRIV tee /etc/init.d/cluster-dispatcher > /dev/null << 'ORCSVC'
 #!/sbin/openrc-run
 name="cluster-dispatcher"
 description="Cluster AI Dispatcher — inbox watcher"
@@ -296,11 +295,11 @@ start_pre() {
 }
 ORCSVC
     # Replace placeholders with actual values
-    doas sed -i "s|CLUSTER_DIR_PLACEHOLDER|$CLUSTER_DIR|g" /etc/init.d/cluster-dispatcher
-    doas sed -i "s|REDIS_HOST_PLACEHOLDER|$REDIS_HOST|g" /etc/init.d/cluster-dispatcher
-    doas chmod +x /etc/init.d/cluster-dispatcher
-    doas rc-update add cluster-dispatcher default 2>/dev/null || true
-    doas rc-service cluster-dispatcher restart 2>/dev/null
+    $PRIV sed -i "s|CLUSTER_DIR_PLACEHOLDER|$CLUSTER_DIR|g" /etc/init.d/cluster-dispatcher
+    $PRIV sed -i "s|REDIS_HOST_PLACEHOLDER|$REDIS_HOST|g" /etc/init.d/cluster-dispatcher
+    $PRIV chmod +x /etc/init.d/cluster-dispatcher
+    $PRIV rc-update add cluster-dispatcher default 2>/dev/null || true
+    $PRIV rc-service cluster-dispatcher restart 2>/dev/null || true
     sleep 2
     if pgrep -f "dispatcher.py" >/dev/null 2>&1; then
       echo -e "  ${GREEN}✓${NC} Dispatcher running (OpenRC)"

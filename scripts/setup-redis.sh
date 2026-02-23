@@ -8,13 +8,15 @@
 # ║  to it to pull jobs and push results.                              ║
 # ╚══════════════════════════════════════════════════════════════════════╝
 
-set -e
-
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
+
+# Detect privilege escalation command
+PRIV="sudo"
+command -v sudo &>/dev/null || PRIV="doas"
 
 # Detect which node we're on
 HOSTNAME=$(hostname 2>/dev/null || echo "unknown")
@@ -37,14 +39,14 @@ if command -v redis-server &>/dev/null; then
 else
   # Detect OS and install
   if [ -f /etc/debian_version ]; then
-    sudo apt-get update -qq
-    sudo apt-get install -y redis-server redis-tools
+    $PRIV apt-get update -qq
+    $PRIV apt-get install -y redis-server redis-tools
   elif [ -f /etc/alpine-release ]; then
-    doas apk add redis
+    $PRIV apk add redis
   elif [ -f /etc/fedora-release ] || [ -f /etc/redhat-release ]; then
-    sudo dnf install -y redis
+    $PRIV dnf install -y redis
   elif [ -f /etc/arch-release ]; then
-    sudo pacman -S --noconfirm redis
+    $PRIV pacman -S --noconfirm redis
   else
     echo -e "  ${RED}✗${NC} Unsupported OS — install Redis manually"
     exit 1
@@ -73,20 +75,20 @@ done
 if [ -n "$REDIS_CONF" ]; then
   # Bind to all interfaces so phone nodes can connect
   if grep -q "^bind 127.0.0.1" "$REDIS_CONF"; then
-    sudo sed -i "s/^bind 127.0.0.1.*/bind $REDIS_BIND/" "$REDIS_CONF"
+    $PRIV sed -i "s/^bind 127.0.0.1.*/bind $REDIS_BIND/" "$REDIS_CONF"
     echo -e "  ${GREEN}✓${NC} Bind address set to $REDIS_BIND"
   fi
 
   # Disable protected mode (cluster is on private network)
   if grep -q "^protected-mode yes" "$REDIS_CONF"; then
-    sudo sed -i 's/^protected-mode yes/protected-mode no/' "$REDIS_CONF"
+    $PRIV sed -i 's/^protected-mode yes/protected-mode no/' "$REDIS_CONF"
     echo -e "  ${GREEN}✓${NC} Protected mode disabled (private network)"
   fi
 
   # Set max memory for phone cluster workloads
   if ! grep -q "^maxmemory" "$REDIS_CONF"; then
-    echo "maxmemory 256mb" | sudo tee -a "$REDIS_CONF" >/dev/null
-    echo "maxmemory-policy allkeys-lru" | sudo tee -a "$REDIS_CONF" >/dev/null
+    echo "maxmemory 256mb" | $PRIV tee -a "$REDIS_CONF" >/dev/null
+    echo "maxmemory-policy allkeys-lru" | $PRIV tee -a "$REDIS_CONF" >/dev/null
     echo -e "  ${GREEN}✓${NC} Max memory set to 256MB"
   fi
 else
@@ -97,22 +99,40 @@ fi
 
 echo "[3/4] Starting Redis..."
 
-if command -v systemctl &>/dev/null; then
-  sudo systemctl enable redis-server 2>/dev/null || sudo systemctl enable redis 2>/dev/null || true
-  sudo systemctl restart redis-server 2>/dev/null || sudo systemctl restart redis 2>/dev/null
+STARTED=0
+
+# Try systemd first
+if command -v systemctl &>/dev/null && $PRIV systemctl --version &>/dev/null 2>&1; then
+  $PRIV systemctl enable redis-server 2>/dev/null || $PRIV systemctl enable redis 2>/dev/null || true
+  $PRIV systemctl restart redis-server 2>/dev/null || $PRIV systemctl restart redis 2>/dev/null || true
   sleep 1
-  if systemctl is-active --quiet redis-server 2>/dev/null || systemctl is-active --quiet redis 2>/dev/null; then
+  if redis-cli -p "$REDIS_PORT" ping 2>/dev/null | grep -q PONG; then
+    STARTED=1
     echo -e "  ${GREEN}✓${NC} Redis running (systemd)"
-  else
-    echo -e "  ${RED}✗${NC} Redis failed to start — check: sudo journalctl -u redis-server"
   fi
-elif command -v rc-service &>/dev/null; then
-  doas rc-update add redis default 2>/dev/null || true
-  doas rc-service redis restart 2>/dev/null
-  echo -e "  ${GREEN}✓${NC} Redis running (OpenRC)"
-else
-  redis-server --daemonize yes --bind "$REDIS_BIND" --port "$REDIS_PORT"
-  echo -e "  ${GREEN}✓${NC} Redis running (daemonized)"
+fi
+
+# Try OpenRC (also check /sbin/openrc-run for systems where rc-service isn't in PATH)
+if [ "$STARTED" -eq 0 ] && { command -v rc-service &>/dev/null || test -f /sbin/openrc-run; }; then
+  $PRIV rc-update add redis default 2>/dev/null || true
+  $PRIV rc-service redis restart 2>/dev/null || true
+  sleep 1
+  if redis-cli -p "$REDIS_PORT" ping 2>/dev/null | grep -q PONG; then
+    STARTED=1
+    echo -e "  ${GREEN}✓${NC} Redis running (OpenRC)"
+  fi
+fi
+
+# Fallback: direct daemonize
+if [ "$STARTED" -eq 0 ]; then
+  redis-server --daemonize yes --bind "$REDIS_BIND" --port "$REDIS_PORT" --maxmemory 256mb --maxmemory-policy allkeys-lru 2>/dev/null
+  sleep 1
+  if redis-cli -p "$REDIS_PORT" ping 2>/dev/null | grep -q PONG; then
+    echo -e "  ${GREEN}✓${NC} Redis running (daemonized)"
+  else
+    echo -e "  ${RED}✗${NC} Redis failed to start via all methods"
+    exit 1
+  fi
 fi
 
 # ── Step 4: Verify ────────────────────────────────────────────────────
