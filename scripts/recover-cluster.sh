@@ -14,7 +14,7 @@
 
 # No set -e — we handle errors explicitly and want to report all issues
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-DIR="/home/user"
+DIR="${HOME:-/home/user}"
 
 # Source shared library
 if [ -f "$SCRIPT_DIR/cluster-lib.sh" ]; then
@@ -33,6 +33,26 @@ load_nodes || { log_err "Could not load node configuration"; exit 1; }
 
 SSH_PORT="${SSH_PORT:-22}"
 
+# K3s binary path — doas on postmarketOS uses a restricted PATH that
+# may not include /usr/local/bin, so we discover the full path once.
+# This runs on the control plane node (or locally if we ARE the CP).
+find_k3s_bin() {
+  _fkb_ip="$1"
+  for _fkb_path in /usr/local/bin/k3s /usr/bin/k3s; do
+    if run_on_node "$_fkb_ip" "[ -x $_fkb_path ]" 2>/dev/null; then
+      echo "$_fkb_path"
+      return
+    fi
+  done
+  # Fallback: try command -v (works if PATH is ok)
+  _fkb_found=$(run_on_node "$_fkb_ip" "command -v k3s 2>/dev/null" 2>/dev/null || echo "")
+  if [ -n "$_fkb_found" ]; then
+    echo "$_fkb_found"
+  else
+    echo "k3s"  # last resort, let it fail with a clear error
+  fi
+}
+
 # ── Parse args ────────────────────────────────────────────────────────
 DO_FIX=0
 RESTART_MINING=0
@@ -40,6 +60,7 @@ PUSH_STATUS=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --diagnose) shift;;  # diagnose is the default, accept for clarity
     --fix) DO_FIX=1; shift;;
     --restart-mining) RESTART_MINING=1; shift;;
     --push) PUSH_STATUS=1; shift;;
@@ -130,6 +151,13 @@ if [ -z "$CP_NAME" ]; then
 else
   echo "  Control plane: $CP_NAME ($CP_IP)"
 
+  # Discover k3s binary path (doas PATH may not include /usr/local/bin)
+  K3S_BIN="k3s"
+  if [ -f "$DIAG_DIR/$CP_NAME.reachable" ]; then
+    K3S_BIN=$(find_k3s_bin "$CP_IP")
+    echo "  K3s binary:    $K3S_BIN"
+  fi
+
   # Check if k3s service is running
   K3S_SVC_STATUS=$(run_on_node "$CP_IP" "$PRIV rc-service k3s status 2>/dev/null || $PRIV systemctl is-active k3s 2>/dev/null || echo stopped" 2>/dev/null || echo "unreachable")
   echo "  K3s service:   $K3S_SVC_STATUS"
@@ -137,8 +165,8 @@ else
   if echo "$K3S_SVC_STATUS" | grep -qi "started\|running" || { echo "$K3S_SVC_STATUS" | grep -qi "active" && ! echo "$K3S_SVC_STATUS" | grep -qi "inactive\|activating"; }; then
     echo "  ${GREEN}Control plane service is running${NC}"
 
-    # Try kubectl get nodes (K3s bundles kubectl as 'k3s kubectl')
-    KUBECTL_OUTPUT=$(run_on_node "$CP_IP" "$PRIV k3s kubectl get nodes -o wide 2>&1 || $PRIV kubectl get nodes -o wide 2>&1" 2>/dev/null || echo "FAILED")
+    # Try kubectl get nodes (use discovered K3S_BIN path)
+    KUBECTL_OUTPUT=$(run_on_node "$CP_IP" "$PRIV $K3S_BIN kubectl get nodes -o wide 2>&1" 2>/dev/null || echo "FAILED")
     if echo "$KUBECTL_OUTPUT" | grep -q "NAME.*STATUS"; then
       echo ""
       echo "  kubectl get nodes:"
@@ -211,7 +239,7 @@ log_info "Step 4/7: Embedded etcd health..."
 echo ""
 
 if [ -n "$CP_IP" ] && [ -f "$DIAG_DIR/$CP_NAME.reachable" ]; then
-  ETCD_STATUS=$(run_on_node "$CP_IP" "$PRIV k3s etcd-snapshot list 2>&1 | head -5" 2>/dev/null || echo "check-failed")
+  ETCD_STATUS=$(run_on_node "$CP_IP" "$PRIV $K3S_BIN etcd-snapshot list 2>&1 | head -5" 2>/dev/null || echo "check-failed")
   if echo "$ETCD_STATUS" | grep -qi "error\|failed\|check-failed"; then
     echo "  ${RED}etcd health check failed${NC}"
     echo "  $ETCD_STATUS" | head -3 | while IFS= read -r line; do echo "    $line"; done
@@ -260,7 +288,7 @@ log_info "Step 6/7: Cluster DNS resolution..."
 echo ""
 
 if [ -n "$CP_IP" ] && [ -f "$DIAG_DIR/$CP_NAME.reachable" ]; then
-  DNS_CHECK=$(run_on_node "$CP_IP" "$PRIV k3s kubectl run dns-test --rm -i --restart=Never --image=busybox -- nslookup kubernetes.default.svc.cluster.local 2>&1 | tail -5" 2>/dev/null || echo "check-failed")
+  DNS_CHECK=$(run_on_node "$CP_IP" "$PRIV $K3S_BIN kubectl run dns-test --rm -i --restart=Never --image=busybox -- nslookup kubernetes.default.svc.cluster.local 2>&1 | tail -5" 2>/dev/null || echo "check-failed")
   if echo "$DNS_CHECK" | grep -qi "address\|server"; then
     echo "  ${GREEN}Cluster DNS is resolving${NC}"
   else
@@ -276,11 +304,11 @@ log_info "Step 7/7: K3s certificate status..."
 echo ""
 
 if [ -n "$CP_IP" ] && [ -f "$DIAG_DIR/$CP_NAME.reachable" ]; then
-  CERT_CHECK=$(run_on_node "$CP_IP" "$PRIV k3s certificate check 2>&1 || echo 'no cert check command'" 2>/dev/null || echo "check-failed")
+  CERT_CHECK=$(run_on_node "$CP_IP" "$PRIV $K3S_BIN certificate check 2>&1 || echo 'no cert check command'" 2>/dev/null || echo "check-failed")
   if echo "$CERT_CHECK" | grep -qi "expired"; then
     echo "  ${RED}CERTIFICATES EXPIRED${NC}"
     echo "$CERT_CHECK" | head -5 | while IFS= read -r line; do echo "    $line"; done
-    add_issue "K3s certificates are expired — run: $PRIV k3s certificate rotate"
+    add_issue "K3s certificates are expired — run: $PRIV $K3S_BIN certificate rotate"
   elif echo "$CERT_CHECK" | grep -qi "no cert check"; then
     echo "  ${YELLOW}Certificate check not available (older K3s version)${NC}"
   else
@@ -346,7 +374,7 @@ if [ -n "$CP_IP" ] && [ -f "$DIAG_DIR/$CP_NAME.reachable" ]; then
     echo "  Waiting for API server..."
     _waited=0
     while [ "$_waited" -lt 60 ]; do
-      if run_on_node "$CP_IP" "$PRIV k3s kubectl get nodes >/dev/null 2>&1 || $PRIV kubectl get nodes >/dev/null 2>&1" 2>/dev/null; then
+      if run_on_node "$CP_IP" "$PRIV $K3S_BIN kubectl get nodes >/dev/null 2>&1" 2>/dev/null; then
         echo "  ${GREEN}API server ready (${_waited}s)${NC}"
         FIXED=$((FIXED + 1))
         break
@@ -451,7 +479,7 @@ echo ""
 sleep 10
 
 if [ -n "$CP_IP" ] && [ -f "$DIAG_DIR/$CP_NAME.reachable" ]; then
-  FINAL_NODES=$(run_on_node "$CP_IP" "$PRIV k3s kubectl get nodes -o wide 2>&1 || $PRIV kubectl get nodes -o wide 2>&1" 2>/dev/null || echo "FAILED")
+  FINAL_NODES=$(run_on_node "$CP_IP" "$PRIV $K3S_BIN kubectl get nodes -o wide 2>&1" 2>/dev/null || echo "FAILED")
   if echo "$FINAL_NODES" | grep -q "NAME.*STATUS"; then
     echo "  Final cluster state:"
     echo "$FINAL_NODES" | while IFS= read -r line; do echo "    $line"; done

@@ -5,12 +5,13 @@
 set -u
 
 # Source env file if CLUSTER_API_KEY not already set (systemd, cron, nohup contexts)
-if [ -z "${CLUSTER_API_KEY:-}" ] && [ -f /home/user/.cluster-env ]; then
-  . /home/user/.cluster-env
+_ENV_FILE="${HOME:-/home/user}/.cluster-env"
+if [ -z "${CLUSTER_API_KEY:-}" ] && [ -f "$_ENV_FILE" ]; then
+  . "$_ENV_FILE"
 fi
 
 API_URL="https://curtbrag.com/.netlify/functions/cluster-status"
-API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set. Create /home/user/.cluster-env with: CLUSTER_API_KEY=your-key}"
+API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set. Create ~/.cluster-env with: CLUSTER_API_KEY=your-key}"
 TMP_DIR="/tmp/cluster-push-$$"
 
 cleanup() { rm -rf "$TMP_DIR"; }
@@ -52,7 +53,14 @@ mkdir -p "$TMP_DIR"
 # ── Kubernetes data (may be unavailable if K3s is down) ──────────
 
 K3S_UP="false"
-if command -v kubectl >/dev/null 2>&1 && timeout 10 kubectl cluster-info >/dev/null 2>&1; then
+# Find k3s/kubectl binary (doas PATH may not include /usr/local/bin)
+KUBECTL="kubectl"
+if [ -x /usr/local/bin/k3s ]; then
+  KUBECTL="/usr/local/bin/k3s kubectl"
+elif command -v k3s >/dev/null 2>&1; then
+  KUBECTL="k3s kubectl"
+fi
+if timeout 10 $KUBECTL cluster-info >/dev/null 2>&1; then
   K3S_UP="true"
 fi
 
@@ -60,7 +68,7 @@ if [ "$K3S_UP" = "true" ]; then
   log "Connected to cluster, gathering K8s data..."
 
   # Nodes (save raw for reuse)
-  NODES_RAW=$(kubectl get nodes -o json 2>/dev/null)
+  NODES_RAW=$($KUBECTL get nodes -o json 2>/dev/null)
   NODES_JSON=$(echo "$NODES_RAW" | jq -c '[.items[] | {
     name: .metadata.name,
     status: (if (.status.conditions[] | select(.type=="Ready") | .status) == "True" then "Ready" else "NotReady" end),
@@ -80,7 +88,7 @@ if [ "$K3S_UP" = "true" ]; then
   }]')
 
   # Pods with resource requests
-  PODS_JSON=$(kubectl get pods -A -o json 2>/dev/null | jq -c '[.items[] | {
+  PODS_JSON=$($KUBECTL get pods -A -o json 2>/dev/null | jq -c '[.items[] | {
     name: .metadata.name,
     namespace: .metadata.namespace,
     status: .status.phase,
@@ -96,7 +104,7 @@ if [ "$K3S_UP" = "true" ]; then
   log "Got $(echo "$PODS_JSON" | jq 'length') pods"
 
   # Services
-  SERVICES_JSON=$(kubectl get svc -A -o json 2>/dev/null | jq -c '[.items[] | {
+  SERVICES_JSON=$($KUBECTL get svc -A -o json 2>/dev/null | jq -c '[.items[] | {
     name: .metadata.name,
     namespace: .metadata.namespace,
     type: .spec.type,
@@ -107,7 +115,7 @@ if [ "$K3S_UP" = "true" ]; then
   log "Got $(echo "$SERVICES_JSON" | jq 'length') services"
 
   # Events (last 50)
-  EVENTS_JSON=$(kubectl get events -A --sort-by=.lastTimestamp -o json 2>/dev/null | jq -c '[.items[-50:] | reverse[] | {
+  EVENTS_JSON=$($KUBECTL get events -A --sort-by=.lastTimestamp -o json 2>/dev/null | jq -c '[.items[-50:] | reverse[] | {
     type: (.type // "Normal"),
     reason: (.reason // ""),
     message: (.message // "")[0:200],
@@ -718,7 +726,7 @@ if ! pgrep -f "poll-cluster-commands" >/dev/null 2>&1; then
       log "Poller restarted via systemd (cluster-poll.service)"
     else
       log "WARN: systemd restart failed, falling back to nohup"
-      nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> /home/user/cluster-poll.log 2>&1 &
+      nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> "${HOME:-/home/user}/cluster-poll.log" 2>&1 &
       log "Poller restarted via nohup (PID: $!)"
     fi
   elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files cluster-poller.service >/dev/null 2>&1; then
@@ -727,11 +735,11 @@ if ! pgrep -f "poll-cluster-commands" >/dev/null 2>&1; then
     if systemctl is-active --quiet cluster-poller.service 2>/dev/null; then
       log "Poller restarted via systemd (cluster-poller.service)"
     else
-      nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> /home/user/cluster-poll.log 2>&1 &
+      nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> "${HOME:-/home/user}/cluster-poll.log" 2>&1 &
       log "Poller restarted via nohup (PID: $!)"
     fi
   else
-    nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> /home/user/cluster-poll.log 2>&1 &
+    nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> "${HOME:-/home/user}/cluster-poll.log" 2>&1 &
     log "Poller restarted via nohup (PID: $!)"
   fi
 else
