@@ -16,3 +16,7 @@ script-logs/
 
 # Local Netlify folder
 .netlify
+
+# Python
+__pycache__/
+*.pyc
