@@ -151,6 +151,19 @@ const DEMO_DATA = {
       { name: 'node10', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 }
     ]
   },
+  jobQueue: {
+    queues: { shell: 0, whisper: 2, llm: 0, generic: 0, image: 5, audio: 1 },
+    results: { shell: 0, whisper: 0, llm: 0, image: 3, audio: 0 },
+    total_jobs_done: 47,
+    total_dispatched: 55,
+    workers: [
+      { name: 'node1', heartbeat_age: 5, active: true, jobs_done: 12 },
+      { name: 'node2', heartbeat_age: 8, active: true, jobs_done: 9 },
+      { name: 'node3', heartbeat_age: 3, active: true, jobs_done: 11 },
+      { name: 'node4', heartbeat_age: 12, active: true, jobs_done: 8 },
+      { name: 'node5', heartbeat_age: 6, active: true, jobs_done: 7 }
+    ]
+  },
   summary: {
     nodesReady: 7,
     nodesTotal: 10,

@@ -41,8 +41,12 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-# Load node configuration from shared config file
+# Load shared library and node configuration
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/cluster-lib.sh" ]; then
+  . "$SCRIPT_DIR/cluster-lib.sh"
+  detect_priv
+fi
 if [ -f "$SCRIPT_DIR/cluster-nodes.conf" ]; then
   . "$SCRIPT_DIR/cluster-nodes.conf"
   load_node_config
@@ -51,6 +55,8 @@ else
   ALL_NODES="node1:192.168.1.206 node2:192.168.1.207 node3:192.168.1.208 node4:192.168.1.209 node5:192.168.1.210 node6:192.168.1.211 node7:192.168.1.212 node8:192.168.1.213 node9:192.168.1.214 node10:192.168.1.215"
   log "WARN: cluster-nodes.conf not found, using hardcoded IPs"
 fi
+# Portable priv prefix for remote command strings (phones use doas, PCs use sudo)
+_RP='_P=$(command -v doas >/dev/null 2>&1 && echo doas || echo sudo)'
 # Use PHONE_NODES from config (workers only); fall back to ALL_NODES if empty
 [ -z "${PHONE_NODES:-}" ] && PHONE_NODES="$ALL_NODES"
 
@@ -375,14 +381,11 @@ echo \"mining level $mining_level (${HINT}% CPU)\""
       # Cage launched from SSH has no logind seat and cannot access DRM.
       # The ONLY way to change display is: write .mode, update greetd config, reboot.
       # IMPORTANT: edit /etc/greetd/config.toml (NOT /etc/phrog/greetd-config.toml)
-      if [ "$display_mode" = "off" ]; then
-        # Kill cage — greetd won't restart it if we mask the service
-        DISPLAY_CMD='doas killall cage 2>/dev/null; echo "display off (screen will be black until reboot)"'
-      else
-        # Write the mode file, ensure greetd config points to the wrapper, and reboot
-        # The wrapper reads .mode and launches the right display program
-        DISPLAY_CMD="mkdir -p /home/user/display && echo '$display_mode' > /home/user/display/.mode && doas sh -c 'printf \"[terminal]\nvt = 7\n\n[default_session]\ncommand = \\\\\"cage -s -- foot -f monospace:size=18 -e /home/user/display/greetd-wrapper.sh\\\\\"\nuser = \\\\\"user\\\\\"\n\" > /etc/greetd/config.toml' && echo 'display mode set to $display_mode — rebooting' && doas reboot"
-      fi
+      # Write the mode file, update greetd config, and reboot.
+      # For "off": still write the mode file so greetd-wrapper.sh can read it and turn off the display cleanly.
+      # Avoid killall cage — it leaves the screen in undefined state with no recovery path.
+      _P='$(command -v doas >/dev/null 2>&1 && echo doas || echo sudo)'
+      DISPLAY_CMD="mkdir -p /home/user/display && echo '$display_mode' > /home/user/display/.mode && eval $_P sh -c 'printf \"[terminal]\nvt = 7\n\n[default_session]\ncommand = \\\\\"cage -s -- foot -f monospace:size=18 -e /home/user/display/greetd-wrapper.sh\\\\\"\nuser = \\\\\"user\\\\\"\n\" > /etc/greetd/config.toml' && echo 'display mode set to $display_mode — rebooting' && eval $_P reboot"
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         run_on_all_tracked "$DISPLAY_CMD" "$RESULT_DIR" "$PHONE_NODES"
       else

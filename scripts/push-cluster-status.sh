@@ -25,8 +25,12 @@ log "Starting cluster status push..."
 # SSH port — configurable via env, defaults to 22
 SSH_PORT="${SSH_PORT:-22}"
 
-# Load shared node configuration
+# Load shared library and node configuration
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/cluster-lib.sh" ]; then
+  . "$SCRIPT_DIR/cluster-lib.sh"
+  detect_priv
+fi
 if [ -f "$SCRIPT_DIR/cluster-nodes.conf" ]; then
   . "$SCRIPT_DIR/cluster-nodes.conf"
   load_node_config
@@ -119,29 +123,44 @@ else
   PODS_JSON='[]'
   SERVICES_JSON='[]'
   EVENTS_JSON='[]'
-  # Build a basic nodes array from what we know: 10 phones on 192.168.1.206-215
+  # Build a basic nodes array from cluster-nodes.conf (or fallback to seq 1..10)
   NODES_JSON='[]'
-  for i in $(seq 1 10); do
-    NODE_IP="192.168.1.$((205 + i))"
-    NODE_NAME="node$i"
-    NODE_ROLE="worker"
-    [ "$i" = "1" ] && NODE_ROLE="control-plane"
-    # Check reachability: node1 locally, others via SSH (5s timeout)
-    if [ "$i" = "1" ]; then
-      # Actually verify node1 is functional instead of assuming Ready
-      if [ -d /proc ] && [ -r /proc/uptime ]; then
+  if [ -n "${ALL_NODES:-}" ]; then
+    for entry in $NODE_LIST; do
+      NODE_NAME="${entry%%:*}"
+      _rest="${entry#*:}"
+      NODE_IP="${_rest%%:*}"
+      NODE_ROLE="${_rest#*:}"
+      # Check reachability via run_on_node if cluster-lib loaded, else raw SSH
+      if command -v is_local_ip >/dev/null 2>&1 && is_local_ip "$NODE_IP"; then
+        if [ -d /proc ] && [ -r /proc/uptime ]; then NODE_STATUS="Ready"; else NODE_STATUS="NotReady"; fi
+      elif command -v ssh_retry >/dev/null 2>&1; then
+        if ssh_retry "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then NODE_STATUS="Ready"; else NODE_STATUS="NotReady"; fi
+      elif ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then
         NODE_STATUS="Ready"
       else
         NODE_STATUS="NotReady"
       fi
-    elif ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then
-      NODE_STATUS="Ready"
-    else
-      NODE_STATUS="NotReady"
-    fi
-    NODES_JSON=$(echo "$NODES_JSON" | jq --arg name "$NODE_NAME" --arg status "$NODE_STATUS" --arg role "$NODE_ROLE" --arg ip "$NODE_IP" \
-      '. + [{name:$name, status:$status, role:$role, ip:$ip, kubeletVersion:"N/A (K3s down)", osImage:"postmarketOS", arch:"aarch64"}]')
-  done
+      NODES_JSON=$(echo "$NODES_JSON" | jq --arg name "$NODE_NAME" --arg status "$NODE_STATUS" --arg role "$NODE_ROLE" --arg ip "$NODE_IP" \
+        '. + [{name:$name, status:$status, role:$role, ip:$ip, kubeletVersion:"N/A (K3s down)", osImage:"postmarketOS", arch:"aarch64"}]')
+    done
+  else
+    # Fallback: hardcoded 10 phones
+    for i in $(seq 1 10); do
+      NODE_IP="192.168.1.$((205 + i))"
+      NODE_NAME="node$i"
+      NODE_ROLE="worker"; [ "$i" = "1" ] && NODE_ROLE="control-plane"
+      if [ "$i" = "1" ]; then
+        if [ -d /proc ] && [ -r /proc/uptime ]; then NODE_STATUS="Ready"; else NODE_STATUS="NotReady"; fi
+      elif ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then
+        NODE_STATUS="Ready"
+      else
+        NODE_STATUS="NotReady"
+      fi
+      NODES_JSON=$(echo "$NODES_JSON" | jq --arg name "$NODE_NAME" --arg status "$NODE_STATUS" --arg role "$NODE_ROLE" --arg ip "$NODE_IP" \
+        '. + [{name:$name, status:$status, role:$role, ip:$ip, kubeletVersion:"N/A (K3s down)", osImage:"postmarketOS", arch:"aarch64"}]')
+    done
+  fi
   log "Synthesized $(echo "$NODES_JSON" | jq 'length') nodes from SSH"
 fi
 
@@ -297,7 +316,11 @@ for i in $(seq 1 10); do
   BATT_BLOCK="null"
   if [ "${BATT_CAP:--1}" != "-1" ]; then
     BATT_TEMP_C=0
-    [ "${BATT_TEMP_RAW:-0}" -gt 0 ] 2>/dev/null && BATT_TEMP_C=$((BATT_TEMP_RAW / 10))
+    if [ "${BATT_TEMP_RAW:-0}" -gt 1000 ] 2>/dev/null; then
+      BATT_TEMP_C=$((BATT_TEMP_RAW / 1000))
+    elif [ "${BATT_TEMP_RAW:-0}" -gt 0 ] 2>/dev/null; then
+      BATT_TEMP_C=$((BATT_TEMP_RAW / 10))
+    fi
     BATT_BLOCK=$(jq -n --argjson lv "${BATT_CAP:-0}" --argjson ch "$BATT_CHARGING" --argjson bt "$BATT_TEMP_C" '{level:$lv,charging:$ch,temperature:$bt}')
   fi
 

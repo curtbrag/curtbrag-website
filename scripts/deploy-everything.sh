@@ -27,6 +27,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 API_DIR="$REPO_DIR/cluster/api"  # Legacy — local API server is no longer used
 
+# Source shared library
+if [ -f "$SCRIPT_DIR/cluster-lib.sh" ]; then
+  . "$SCRIPT_DIR/cluster-lib.sh"
+  detect_priv
+fi
+
 WALLET="44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT"
 POOL="gulf.moneroocean.stream:20128"
 API_PORT=3847

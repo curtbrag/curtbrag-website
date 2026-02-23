@@ -22,16 +22,27 @@ BRANCH="main"
 BASE="https://raw.githubusercontent.com/curtbrag/curtbrag-website/$BRANCH/scripts"
 DIR="/home/user"
 ENV_FILE="$DIR/.cluster-env"
+SCRIPT_DIR="$DIR"
 
 echo "=== Fixing curtbrag cluster ==="
 
-# Detect init system
-INIT_SYSTEM="none"
-if command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1; then
-  INIT_SYSTEM="systemd"
-elif command -v rc-service >/dev/null 2>&1; then
-  INIT_SYSTEM="openrc"
+# Source shared library (download if missing)
+if [ ! -f "$DIR/cluster-lib.sh" ]; then
+  curl -sfL "$BASE/cluster-lib.sh" -o "$DIR/cluster-lib.sh" 2>/dev/null || true
 fi
+if [ -f "$DIR/cluster-lib.sh" ]; then
+  . "$DIR/cluster-lib.sh"
+  detect_priv
+  load_nodes || true
+else
+  # Fallback: inline priv detection if lib unavailable
+  if command -v doas >/dev/null 2>&1; then PRIV="doas"
+  elif command -v sudo >/dev/null 2>&1; then PRIV="sudo"
+  else PRIV=""; fi
+fi
+
+# Detect init system
+INIT_SYSTEM=$(detect_init 2>/dev/null || echo "none")
 echo "Init system: $INIT_SYSTEM"
 
 # ── Ensure CLUSTER_API_KEY is available ──────────────────────────
@@ -109,7 +120,7 @@ fi
 
 # Step 1: Download fixed scripts
 echo "[1/5] Downloading fixed scripts..."
-for s in push-cluster-status.sh poll-cluster-commands.sh cluster-nodes.conf; do
+for s in cluster-lib.sh push-cluster-status.sh poll-cluster-commands.sh cluster-nodes.conf; do
   curl -sfL "$BASE/$s" -o "$DIR/$s.new" && chmod +x "$DIR/$s.new" && mv "$DIR/$s.new" "$DIR/$s" && echo "  Updated $s" || echo "  FAILED: $s"
 done
 
@@ -122,17 +133,17 @@ if [ "$INIT_SYSTEM" = "systemd" ]; then
   # Always write service file (ensures EnvironmentFile is present)
   # NOTE: using printf instead of heredoc because heredocs break in busybox ash
   # when the script is piped through curl | sh (pipe buffering issue)
-  printf '%s\n' '[Unit]' 'Description=curtbrag.com Cluster Command Poller' 'After=network-online.target' 'Wants=network-online.target' '' '[Service]' 'Type=simple' 'User=user' 'EnvironmentFile=-/home/user/.cluster-env' 'ExecStart=/home/user/poll-cluster-commands.sh' 'Restart=always' 'RestartSec=5' 'StandardOutput=append:/home/user/cluster-poll.log' 'StandardError=append:/home/user/cluster-poll.log' '' '[Install]' 'WantedBy=multi-user.target' | doas tee /etc/systemd/system/cluster-poll.service > /dev/null
+  printf '%s\n' '[Unit]' 'Description=curtbrag.com Cluster Command Poller' 'After=network-online.target' 'Wants=network-online.target' '' '[Service]' 'Type=simple' 'User=user' 'EnvironmentFile=-/home/user/.cluster-env' 'ExecStart=/home/user/poll-cluster-commands.sh' 'Restart=always' 'RestartSec=5' 'StandardOutput=append:/home/user/cluster-poll.log' 'StandardError=append:/home/user/cluster-poll.log' '' '[Install]' 'WantedBy=multi-user.target' | $PRIV tee /etc/systemd/system/cluster-poll.service > /dev/null
 
   # Also fix the push timer service to include EnvironmentFile
-  printf '%s\n' '[Unit]' 'Description=curtbrag.com Cluster Status Push' 'After=network-online.target' 'Wants=network-online.target' '' '[Service]' 'Type=oneshot' 'User=user' 'EnvironmentFile=-/home/user/.cluster-env' 'ExecStart=/home/user/push-cluster-status.sh' 'StandardOutput=append:/home/user/cluster-push.log' 'StandardError=append:/home/user/cluster-push.log' | doas tee /etc/systemd/system/cluster-push.service > /dev/null
+  printf '%s\n' '[Unit]' 'Description=curtbrag.com Cluster Status Push' 'After=network-online.target' 'Wants=network-online.target' '' '[Service]' 'Type=oneshot' 'User=user' 'EnvironmentFile=-/home/user/.cluster-env' 'ExecStart=/home/user/push-cluster-status.sh' 'StandardOutput=append:/home/user/cluster-push.log' 'StandardError=append:/home/user/cluster-push.log' | $PRIV tee /etc/systemd/system/cluster-push.service > /dev/null
 
-  doas systemctl daemon-reload
-  doas systemctl enable cluster-poll 2>/dev/null || true
-  doas systemctl restart cluster-poll
+  $PRIV systemctl daemon-reload
+  $PRIV systemctl enable cluster-poll 2>/dev/null || true
+  $PRIV systemctl restart cluster-poll
   echo "  Poller restarted (systemd)"
 elif [ "$INIT_SYSTEM" = "openrc" ]; then
-  doas rc-service cluster-poll restart 2>/dev/null || {
+  $PRIV rc-service cluster-poll restart 2>/dev/null || {
     # Service might not exist yet — start manually
     nohup "$DIR/poll-cluster-commands.sh" >> "$DIR/cluster-poll.log" 2>&1 &
   }
@@ -152,7 +163,7 @@ echo "[3/5] Restarting push schedule..."
 pkill -f "cluster-push-loop" 2>/dev/null || true
 
 if [ "$INIT_SYSTEM" = "systemd" ]; then
-  doas systemctl restart cluster-push.timer 2>/dev/null || true
+  $PRIV systemctl restart cluster-push.timer 2>/dev/null || true
   echo "  Push timer restarted (systemd)"
 else
   # Create/update the push loop wrapper
@@ -164,55 +175,35 @@ fi
 
 # Step 4: Check xmrig on all nodes
 echo "[4/5] Diagnosing xmrig on all nodes..."
-# Start xmrig command that works across init systems
-START_XMRIG_CMD='doas rc-service xmrig start 2>/dev/null || doas systemctl start xmrig 2>/dev/null || true'
-for i in $(seq 1 10); do
-  NODE_IP="192.168.1.$((205 + i))"
-  NODE="node$i"
-  if [ "$i" = "1" ]; then
-    HAS_BIN="no"; { command -v xmrig >/dev/null 2>&1 || [ -f /usr/local/bin/xmrig ]; } && HAS_BIN="yes"
-    HAS_SVC="no"; { [ -f /etc/init.d/xmrig ] || [ -f /etc/systemd/system/xmrig.service ]; } && HAS_SVC="yes"
-    HAS_CFG="no"; [ -f /etc/xmrig/config.json ] && HAS_CFG="yes"
-    IS_RUN="no"; pgrep xmrig >/dev/null 2>&1 && IS_RUN="yes"
-    echo "  $NODE: binary=$HAS_BIN service=$HAS_SVC config=$HAS_CFG running=$IS_RUN"
-  else
-    DIAG=$(ssh -n -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" '
-      HAS_BIN="no"; { command -v xmrig >/dev/null 2>&1 || [ -f /usr/local/bin/xmrig ]; } && HAS_BIN="yes"
-      HAS_SVC="no"; { [ -f /etc/init.d/xmrig ] || [ -f /etc/systemd/system/xmrig.service ]; } && HAS_SVC="yes"
-      HAS_CFG="no"; [ -f /etc/xmrig/config.json ] && HAS_CFG="yes"
-      IS_RUN="no"; pgrep xmrig >/dev/null 2>&1 && IS_RUN="yes"
-      echo "binary=$HAS_BIN service=$HAS_SVC config=$HAS_CFG running=$IS_RUN"
-    ' 2>/dev/null || echo "UNREACHABLE")
-    echo "  $NODE: $DIAG"
-  fi
+# Start xmrig command that works across init systems (uses remote priv detection)
+XMRIG_DIAG_CMD='
+  HAS_BIN="no"; { command -v xmrig >/dev/null 2>&1 || [ -f /usr/local/bin/xmrig ]; } && HAS_BIN="yes"
+  HAS_SVC="no"; { [ -f /etc/init.d/xmrig ] || [ -f /etc/systemd/system/xmrig.service ]; } && HAS_SVC="yes"
+  HAS_CFG="no"; [ -f /etc/xmrig/config.json ] && HAS_CFG="yes"
+  IS_RUN="no"; pgrep xmrig >/dev/null 2>&1 && IS_RUN="yes"
+  echo "binary=$HAS_BIN service=$HAS_SVC config=$HAS_CFG running=$IS_RUN"
+'
+for entry in $ALL_NODES; do
+  NODE="${entry%%:*}"
+  NODE_IP="${entry#*:}"
+  DIAG=$(run_on_node "$NODE_IP" "$XMRIG_DIAG_CMD" 2>/dev/null || echo "UNREACHABLE")
+  echo "  $NODE: $DIAG"
 done
 
 # Step 5: Start mining on all nodes
 echo "[5/5] Starting mining on all nodes..."
+START_XMRIG_CMD='P=$(command -v doas >/dev/null 2>&1 && echo doas || echo sudo); $P rc-service xmrig start 2>/dev/null || $P systemctl start xmrig 2>/dev/null || true; sleep 2; pgrep xmrig >/dev/null 2>&1 && echo MINING || echo FAILED'
 STARTED=0
 FAILED=0
-for i in $(seq 1 10); do
-  NODE_IP="192.168.1.$((205 + i))"
-  NODE="node$i"
-  if [ "$i" = "1" ]; then
-    eval "$START_XMRIG_CMD"
-    sleep 1
-    if pgrep xmrig >/dev/null 2>&1; then
-      STARTED=$((STARTED + 1))
-      echo "  $NODE: MINING"
-    else
-      FAILED=$((FAILED + 1))
-      echo "  $NODE: FAILED"
-    fi
-  else
-    REMOTE_RESULT=$(ssh -n -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" \
-      "$START_XMRIG_CMD; sleep 2; pgrep xmrig >/dev/null 2>&1 && echo MINING || echo FAILED" 2>/dev/null || echo "UNREACHABLE")
-    echo "  $NODE: $REMOTE_RESULT"
-    case "$REMOTE_RESULT" in
-      *MINING*) STARTED=$((STARTED + 1)) ;;
-      *) FAILED=$((FAILED + 1)) ;;
-    esac
-  fi
+for entry in $ALL_NODES; do
+  NODE="${entry%%:*}"
+  NODE_IP="${entry#*:}"
+  RESULT=$(run_on_node "$NODE_IP" "$START_XMRIG_CMD" 2>/dev/null || echo "UNREACHABLE")
+  echo "  $NODE: $RESULT"
+  case "$RESULT" in
+    *MINING*) STARTED=$((STARTED + 1)) ;;
+    *) FAILED=$((FAILED + 1)) ;;
+  esac
 done
 
 echo ""

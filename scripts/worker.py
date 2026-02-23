@@ -40,7 +40,7 @@ except ImportError:
 REDIS_HOST = os.environ.get("REDIS_HOST", "10.0.0.1")
 REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
 NODE_NAME = os.environ.get("NODE_NAME", socket.gethostname())
-WORKER_QUEUES = os.environ.get("WORKER_QUEUES", "shell,whisper,llm,generic,image,audio").split(",")
+WORKER_QUEUES = os.environ.get("WORKER_QUEUES", "shell,whisper,llm,generic,image,audio,web").split(",")
 
 # AI binary paths
 WHISPER_BIN = os.environ.get("WHISPER_BIN", "/home/user/whisper.cpp/main")
@@ -798,6 +798,108 @@ JSON:"""
         return {"status": "error", "error": str(e)}
 
 
+def handle_site_audit(task_data):
+    """Audit a URL list for broken links, missing OG tags, missing alt text, large images."""
+    urls = task_data.get("urls", [])
+    url = task_data.get("url", "")
+    if url and not urls:
+        urls = [url]
+    if not urls:
+        return {"status": "error", "error": "No URLs provided (set 'urls' or 'url')"}
+
+    results = []
+    for target_url in urls[:50]:  # Cap at 50 URLs per job
+        audit = {"url": target_url, "issues": [], "ok": True}
+        try:
+            cmd = ["curl", "-sL", "-o", "/dev/null", "-w",
+                   "%{http_code}\\n%{size_download}\\n%{time_total}\\n%{url_effective}",
+                   "--max-time", "15", "--max-redirs", "5", target_url]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+            lines = result.stdout.strip().split("\n")
+            status_code = int(lines[0]) if lines else 0
+            size_bytes = int(lines[1]) if len(lines) > 1 else 0
+            load_time = float(lines[2]) if len(lines) > 2 else 0
+
+            audit["status_code"] = status_code
+            audit["size_bytes"] = size_bytes
+            audit["load_time_s"] = round(load_time, 2)
+
+            if status_code >= 400:
+                audit["issues"].append(f"HTTP {status_code}")
+                audit["ok"] = False
+            if load_time > 5:
+                audit["issues"].append(f"Slow load: {load_time:.1f}s")
+
+            # Fetch HTML for content checks
+            html_cmd = ["curl", "-sL", "--max-time", "15", "--max-redirs", "5", target_url]
+            html_result = subprocess.run(html_cmd, capture_output=True, text=True, timeout=20)
+            html = html_result.stdout[:500000]  # Cap at 500KB
+
+            if html:
+                # Check for missing OG tags
+                import re
+                if not re.search(r'<meta\s+property=["\']og:title', html, re.IGNORECASE):
+                    audit["issues"].append("Missing og:title")
+                if not re.search(r'<meta\s+property=["\']og:description', html, re.IGNORECASE):
+                    audit["issues"].append("Missing og:description")
+                if not re.search(r'<meta\s+property=["\']og:image', html, re.IGNORECASE):
+                    audit["issues"].append("Missing og:image")
+
+                # Check for images without alt text
+                imgs = re.findall(r'<img\s[^>]*>', html, re.IGNORECASE)
+                imgs_no_alt = [i for i in imgs if not re.search(r'\balt\s*=\s*["\'][^"\']+', i)]
+                if imgs_no_alt:
+                    audit["issues"].append(f"{len(imgs_no_alt)} image(s) missing alt text")
+
+                # Check for missing title
+                if not re.search(r'<title[^>]*>[^<]+</title>', html, re.IGNORECASE):
+                    audit["issues"].append("Missing <title>")
+
+                # Check for missing meta description
+                if not re.search(r'<meta\s+name=["\']description', html, re.IGNORECASE):
+                    audit["issues"].append("Missing meta description")
+
+                # Find large images (check src attributes)
+                img_srcs = re.findall(r'<img\s[^>]*src=["\']([^"\']+)', html, re.IGNORECASE)
+                for img_src in img_srcs[:20]:  # Check up to 20 images
+                    if img_src.startswith("data:"):
+                        continue
+                    if not img_src.startswith("http"):
+                        # Resolve relative URL
+                        from urllib.parse import urljoin
+                        img_src = urljoin(target_url, img_src)
+                    try:
+                        size_cmd = ["curl", "-sI", "--max-time", "5", img_src]
+                        size_result = subprocess.run(size_cmd, capture_output=True, text=True, timeout=8)
+                        cl_match = re.search(r'content-length:\s*(\d+)', size_result.stdout, re.IGNORECASE)
+                        if cl_match and int(cl_match.group(1)) > 500000:  # > 500KB
+                            size_kb = int(cl_match.group(1)) // 1024
+                            audit["issues"].append(f"Large image ({size_kb}KB): {img_src.split('/')[-1][:40]}")
+                    except Exception:
+                        pass
+
+                if audit["issues"]:
+                    audit["ok"] = False
+
+        except subprocess.TimeoutExpired:
+            audit["issues"].append("Timeout fetching URL")
+            audit["ok"] = False
+        except Exception as e:
+            audit["issues"].append(f"Error: {str(e)[:100]}")
+            audit["ok"] = False
+
+        results.append(audit)
+
+    ok_count = sum(1 for r in results if r["ok"])
+    total_issues = sum(len(r["issues"]) for r in results)
+
+    return {
+        "status": "ok",
+        "summary": f"{ok_count}/{len(results)} URLs passed, {total_issues} issues found",
+        "audits": results
+    }
+
+
 HANDLERS = {
     "shell": handle_shell,
     "whisper": handle_whisper_enhanced,
@@ -805,6 +907,8 @@ HANDLERS = {
     "generic": handle_generic,
     "image": handle_image,
     "audio": handle_audio,
+    "web": handle_site_audit,
+    "site-audit": handle_site_audit,
 }
 
 

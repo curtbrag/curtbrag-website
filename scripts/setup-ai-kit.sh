@@ -29,7 +29,11 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLUSTER_DIR="${CLUSTER_DIR:-$HOME/cluster}"
 
-# Source node config
+# Source shared library and node config
+if [ -f "$SCRIPT_DIR/cluster-lib.sh" ]; then
+  . "$SCRIPT_DIR/cluster-lib.sh"
+  detect_priv
+fi
 if [ -f "$SCRIPT_DIR/cluster-nodes.conf" ]; then
   . "$SCRIPT_DIR/cluster-nodes.conf"
   load_node_config
@@ -182,29 +186,28 @@ else
   echo -e "  ${YELLOW}Installing content pipeline dependencies on phones...${NC}"
 
   # Determine which nodes to target
+  # Build node list from config or filter by --nodes arg
+  _DEPLOY_NODES=""
   if [ -n "$TARGET_NODES" ]; then
-    NODE_LIST=$(echo "$TARGET_NODES" | tr ',' ' ')
+    for N in $(echo "$TARGET_NODES" | tr ',' ' '); do
+      _IP=$(resolve_ip "node$N" 2>/dev/null || echo "")
+      [ -n "$_IP" ] && _DEPLOY_NODES="$_DEPLOY_NODES node$N:$_IP"
+    done
+  elif [ -n "${ALL_NODES:-}" ]; then
+    _DEPLOY_NODES="$ALL_NODES"
   else
-    NODE_LIST="1 2 3 4 5 6 7 8 9 10"
+    # Fallback: hardcoded 10 nodes
+    for N in 1 2 3 4 5 6 7 8 9 10; do
+      _DEPLOY_NODES="$_DEPLOY_NODES node$N:192.168.1.$((205 + N))"
+    done
   fi
 
-  for N in $NODE_LIST; do
-    # Get IP for this node
-    case $N in
-      1) IP="192.168.1.206";;
-      2) IP="192.168.1.207";;
-      3) IP="192.168.1.208";;
-      4) IP="192.168.1.209";;
-      5) IP="192.168.1.210";;
-      6) IP="192.168.1.211";;
-      7) IP="192.168.1.212";;
-      8) IP="192.168.1.213";;
-      9) IP="192.168.1.214";;
-      10) IP="192.168.1.215";;
-      *) continue;;
-    esac
+  for entry in $_DEPLOY_NODES; do
+    _name="${entry%%:*}"
+    IP="${entry#*:}"
+    N="${_name#node}"
 
-    printf "  node%-2s (%s): " "$N" "$IP"
+    printf "  %-7s (%s): " "$_name" "$IP"
 
     if ! SSH_CMD_TIMEOUT=15 ssh_cmd "user@$IP" "echo ok" &>/dev/null; then
       echo -e "${RED}unreachable${NC}"
