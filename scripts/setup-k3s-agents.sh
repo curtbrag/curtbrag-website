@@ -115,6 +115,12 @@ if [[ ${#NODE_IP[@]} -eq 0 ]]; then
   done
 fi
 
+# Derive SERVER_IP from config if node1 was loaded (avoids hardcoded default going stale)
+if [[ -n "${NODE_IP[node1]:-}" ]]; then
+  SERVER_IP="${NODE_IP[node1]}"
+  K3S_URL="https://${SERVER_IP}:6443"
+fi
+
 # Apply --nodes filter
 TARGET_NODES=()
 if [[ -n "$NODES_CSV" ]]; then
@@ -313,6 +319,13 @@ for node in "${TARGET_NODES[@]}"; do
 
   echo "===== $node ($ip) ====="
 
+  # SSH precheck
+  if ! ssh_run "$ip" "echo ok" >/dev/null 2>&1; then
+    echo "[$node] SSH failed — skipping."
+    echo
+    continue
+  fi
+
   if [[ $DIAGNOSE_ONLY -eq 1 ]]; then
     remote_status "$ip" || true
     echo
@@ -321,6 +334,13 @@ for node in "${TARGET_NODES[@]}"; do
 
   # Make sure worker can curl/https
   remote_install_prereqs "$ip" || true
+
+  # Reachability precheck: can the worker reach the API server?
+  if ! ssh_run "$ip" "curl -ks --max-time 8 ${K3S_URL}/readyz >/dev/null 2>&1"; then
+    echo "[$node] cannot reach ${K3S_URL}/readyz — skipping (check network/firewall)."
+    echo
+    continue
+  fi
 
   # stop any running agent/server bits
   remote_stop_k3s "$ip" || true
