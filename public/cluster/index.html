@@ -1595,6 +1595,71 @@
       <div class="mining-message" id="miningMessage"></div>
     </div>
 
+    <!-- Job Queue / AI Workers Panel -->
+    <div class="mining-panel" id="jobQueuePanel" style="display:none">
+      <div class="mining-header">
+        <h2 class="mining-title"><i class="fa-solid fa-gears"></i> Job Queue &amp; AI Workers</h2>
+        <div class="mining-status" id="jobQueueStatus">
+          <i class="fa-solid fa-circle-question"></i> <span>No Data</span>
+        </div>
+      </div>
+      <div class="mining-stats">
+        <div class="mining-stat">
+          <div class="mining-stat-value" id="jqActiveWorkers">--</div>
+          <div class="mining-stat-label">Active Workers</div>
+        </div>
+        <div class="mining-stat">
+          <div class="mining-stat-value" id="jqQueueDepth">--</div>
+          <div class="mining-stat-label">Queued Jobs</div>
+        </div>
+        <div class="mining-stat">
+          <div class="mining-stat-value" id="jqTotalDone">--</div>
+          <div class="mining-stat-label">Jobs Done</div>
+        </div>
+        <div class="mining-stat">
+          <div class="mining-stat-value" id="jqResultsCount">--</div>
+          <div class="mining-stat-label">Results</div>
+        </div>
+      </div>
+      <div style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border)">
+        <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem">
+          <i class="fa-solid fa-list-check" style="color:var(--blue)"></i> Queue Breakdown
+        </div>
+        <div class="mining-stats" style="gap:0.5rem">
+          <div class="mining-stat" style="padding:0.4rem 0.6rem">
+            <div class="mining-stat-value" id="jqShellQueue" style="font-size:1rem">0</div>
+            <div class="mining-stat-label" style="font-size:0.65rem">Shell</div>
+          </div>
+          <div class="mining-stat" style="padding:0.4rem 0.6rem">
+            <div class="mining-stat-value" id="jqWhisperQueue" style="font-size:1rem">0</div>
+            <div class="mining-stat-label" style="font-size:0.65rem">Whisper</div>
+          </div>
+          <div class="mining-stat" style="padding:0.4rem 0.6rem">
+            <div class="mining-stat-value" id="jqLlmQueue" style="font-size:1rem">0</div>
+            <div class="mining-stat-label" style="font-size:0.65rem">LLM</div>
+          </div>
+          <div class="mining-stat" style="padding:0.4rem 0.6rem">
+            <div class="mining-stat-value" id="jqGenericQueue" style="font-size:1rem">0</div>
+            <div class="mining-stat-label" style="font-size:0.65rem">Generic</div>
+          </div>
+        </div>
+      </div>
+      <div class="mining-controls" style="margin-top:0.75rem">
+        <button class="mining-btn start" onclick="sendWorkerCommand('worker-start')" aria-label="Start workers on all nodes">
+          <i class="fa-solid fa-play" aria-hidden="true"></i> Start Workers
+        </button>
+        <button class="mining-btn stop" onclick="sendWorkerCommand('worker-stop')" aria-label="Stop workers on all nodes">
+          <i class="fa-solid fa-stop" aria-hidden="true"></i> Stop Workers
+        </button>
+      </div>
+      <div class="mining-workers" id="jqWorkersSection">
+        <h4><i class="fa-solid fa-robot"></i> Worker Nodes</h4>
+        <div class="worker-list" id="jqWorkerList">
+          <span class="worker-chip"><span>Waiting for data...</span></span>
+        </div>
+      </div>
+    </div>
+
     <!-- Cost Calculator -->
     <div class="panel" id="costPanel" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem">
       <div class="section-header" style="margin-bottom:0.75rem">
@@ -2402,6 +2467,7 @@
 
         renderNetwork(data.network);
         renderMining(data.mining);
+        renderJobQueue(data.jobQueue);
         renderCostCalc(data.mining);
         renderPodHeatmap(allPods, data.nodes || []);
         renderSystemInfo(data.nodes || [], lastMetrics);
@@ -2890,6 +2956,82 @@
         }
         renderMiningChart(data.history || []);
       } catch (e) { /* silent */ }
+    }
+
+    function renderJobQueue(jobQueue) {
+      var panel = document.getElementById('jobQueuePanel');
+      if (!panel) return;
+      if (!jobQueue || (Array.isArray(jobQueue) && jobQueue.length === 0)) {
+        panel.style.display = 'none';
+        return;
+      }
+      panel.style.display = 'block';
+
+      var queues = jobQueue.queues || {};
+      var results = jobQueue.results || {};
+      var workers = jobQueue.workers || [];
+      var totalDone = jobQueue.total_jobs_done || 0;
+      var totalQueued = (queues.shell || 0) + (queues.whisper || 0) + (queues.llm || 0) + (queues.generic || 0);
+      var totalResults = (results.shell || 0) + (results.whisper || 0) + (results.llm || 0);
+      var activeWorkers = workers.filter(function(w) { return w.heartbeat_age !== null && w.heartbeat_age < 30; }).length;
+
+      document.getElementById('jqActiveWorkers').textContent = activeWorkers + '/' + workers.length;
+      document.getElementById('jqQueueDepth').textContent = totalQueued;
+      document.getElementById('jqTotalDone').textContent = totalDone;
+      document.getElementById('jqResultsCount').textContent = totalResults;
+
+      document.getElementById('jqShellQueue').textContent = queues.shell || 0;
+      document.getElementById('jqWhisperQueue').textContent = queues.whisper || 0;
+      document.getElementById('jqLlmQueue').textContent = queues.llm || 0;
+      document.getElementById('jqGenericQueue').textContent = queues.generic || 0;
+
+      var statusEl = document.getElementById('jobQueueStatus');
+      if (activeWorkers > 0) {
+        statusEl.innerHTML = '<i class="fa-solid fa-circle-check"></i> <span>' + activeWorkers + ' Workers Active</span>';
+        statusEl.className = 'mining-status';
+      } else if (workers.length > 0) {
+        statusEl.innerHTML = '<i class="fa-solid fa-circle-pause"></i> <span>Workers Idle</span>';
+        statusEl.className = 'mining-status stopped';
+      } else {
+        statusEl.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> <span>No Workers</span>';
+        statusEl.className = 'mining-status stopped';
+      }
+
+      var wList = document.getElementById('jqWorkerList');
+      if (workers.length > 0) {
+        wList.innerHTML = workers.map(function(w) {
+          var isAlive = w.heartbeat_age !== null && w.heartbeat_age < 30;
+          var hbStr = w.heartbeat_age !== null ? w.heartbeat_age + 's ago' : 'no heartbeat';
+          var activeStr = w.active && w.active !== '' && w.active !== '""' ? ' | working' : '';
+          var jobStr = w.jobs_done ? ' | ' + w.jobs_done + ' done' : '';
+          return '<div class="worker-chip ' + (isAlive ? '' : 'offline') + '">' +
+            '<i class="fa-solid ' + (isAlive ? 'fa-circle-check' : 'fa-circle-xmark') + '" style="color: var(--' + (isAlive ? 'green' : 'red') + ')"></i>' +
+            '<span>' + w.name + '</span>' +
+            '<span class="rate">' + hbStr + jobStr + activeStr + '</span></div>';
+        }).join('');
+      } else {
+        wList.innerHTML = '<span class="worker-chip"><span>No workers registered</span></span>';
+      }
+    }
+
+    async function sendWorkerCommand(cmd) {
+      if (!savedPassword) {
+        pendingCommand = cmd;
+        document.getElementById('passwordModal').classList.add('visible');
+        document.getElementById('passwordInput').focus();
+        return;
+      }
+      showToast('Sending ' + cmd + ' to all phones...', 'info');
+      try {
+        var data = await sendToBackend({ command: cmd, target: 'phones', password: savedPassword });
+        if (data.success) {
+          showToast(data.message + ' — waiting for result...', 'info');
+        } else {
+          showToast(data.error || 'Failed', 'error');
+        }
+      } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+      }
     }
 
     function renderMiningChart(history) {

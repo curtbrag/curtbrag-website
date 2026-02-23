@@ -40,11 +40,23 @@ while true; do
     MINING="MINING"
   fi
 
+  # Worker status
+  WORKER="OFF"
+  WORKER_TASK=""
+  if pgrep -f "worker.py" >/dev/null 2>&1; then
+    WORKER="RUNNING"
+    # Try to get last log line for current task
+    WORKER_TASK=$(tail -1 /home/user/worker.log 2>/dev/null | cut -c1-40)
+  fi
+
   # Online check (can we reach the gateway?)
   ONLINE="OFFLINE"
   if ping -c1 -W2 192.168.1.1 >/dev/null 2>&1; then
     ONLINE="ONLINE"
   fi
+
+  # CPU load
+  LOAD=$(cat /proc/loadavg 2>/dev/null | cut -d' ' -f1-3)
 
   echo "=================================="
   echo ""
@@ -58,6 +70,11 @@ while true; do
   echo "  Battery:  ${BAT_CAP}% (${BAT_STATUS})"
   echo "  Status:   ${ONLINE}"
   echo "  Mining:   ${MINING}"
+  echo "  Worker:   ${WORKER}"
+  if [ -n "$WORKER_TASK" ]; then
+    echo "  Task:     ${WORKER_TASK}"
+  fi
+  echo "  Load:     ${LOAD}"
   echo "  ${UPTIME}"
   echo ""
   echo "=================================="
