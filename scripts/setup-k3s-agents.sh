@@ -1,373 +1,304 @@
-#!/bin/bash
-# ╔══════════════════════════════════════════════════════════════════════╗
-# ║  Join Worker Nodes to K3s Cluster                                   ║
-# ║  Run from node1 (control plane) or any machine with SSH access:     ║
-# ║    bash scripts/setup-k3s-agents.sh                                 ║
-# ║    bash scripts/setup-k3s-agents.sh --install-agents                ║
-# ║    bash scripts/setup-k3s-agents.sh --nodes node2,node3             ║
-# ║                                                                     ║
-# ║  What it does:                                                      ║
-# ║    - Reads K3s agent token from node1 (or --token flag)            ║
-# ║    - SSHs to each worker node                                      ║
-# ║    - Installs K3s in agent mode if binary is missing               ║
-# ║    - Configures node-ip and node-name                              ║
-# ║    - Starts/restarts k3s-agent service                             ║
-# ║    - Verifies nodes join the cluster                               ║
-# ╚══════════════════════════════════════════════════════════════════════╝
+#!/usr/bin/env bash
+set -euo pipefail
 
-# No set -e — we want to continue past failed nodes
+# =========================
+# k3s agent join helper
+# Run from node1 (server)
+# =========================
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+SCRIPTDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOTDIR="$(cd "$SCRIPTDIR/.." && pwd)"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Conf file: try scripts/cluster-nodes.conf first (existing repo format),
+# then repo root (simple "name ip" format)
+CONF_FILE=""
+for f in "$SCRIPTDIR/cluster-nodes.conf" "$ROOTDIR/cluster-nodes.conf"; do
+  [[ -f "$f" ]] && CONF_FILE="$f" && break
+done
 
-# Source node config
-if [ -f "$SCRIPT_DIR/cluster-nodes.conf" ]; then
-  . "$SCRIPT_DIR/cluster-nodes.conf"
-  load_node_config
+ELEVATE=""
+if command -v doas >/dev/null 2>&1; then
+  ELEVATE="doas"
+elif command -v sudo >/dev/null 2>&1; then
+  ELEVATE="sudo"
 else
-  echo "ERROR: cluster-nodes.conf not found"
+  echo "ERROR: need doas or sudo on node1" >&2
   exit 1
 fi
 
-# Defaults
-SERVER_IP="192.168.1.206"
-SERVER_PORT="6443"
-SSH_PORT="${SSH_PORT:-22}"
-INSTALL_AGENTS=0
-DIAGNOSE_ONLY=0
-K3S_TOKEN=""
-K3S_INSTALL_TIMEOUT=300
+SERVER_IP="${SERVER_IP:-192.168.1.206}"
+K3S_URL="${K3S_URL:-https://${SERVER_IP}:6443}"
+SSH_USER="${SSH_USER:-user}"
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
+SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=7 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+SSH_TIMEOUT="${SSH_TIMEOUT:-300}"
 
-# Parse args
-while [ $# -gt 0 ]; do
-  case $1 in
-    --token)         K3S_TOKEN="$2"; shift 2;;
-    --server-ip)     SERVER_IP="$2"; shift 2;;
-    --password)      SSH_PASS="$2"; shift 2;;
-    --ssh-port)      SSH_PORT="$2"; shift 2;;
-    --nodes)         TARGET_NODES="$2"; shift 2;;
-    --install-agents) INSTALL_AGENTS=1; shift;;
-    --diagnose)      DIAGNOSE_ONLY=1; shift;;
-    -h|--help)
-      echo "Usage: $0 [options]"
-      echo ""
-      echo "Options:"
-      echo "  --token TOKEN         K3s agent token (auto-detected from node1 if omitted)"
-      echo "  --server-ip IP        K3s server IP (default: 192.168.1.206)"
-      echo "  --password PASS       SSH password for phone nodes"
-      echo "  --ssh-port PORT       SSH port (default: 22)"
-      echo "  --nodes LIST          Comma-separated node names (default: all workers)"
-      echo "  --install-agents      Force fresh K3s install on all workers"
-      echo "  --diagnose            Just check K3s status on each node, don't change anything"
-      echo ""
-      echo "Examples:"
-      echo "  $0                           # Auto-detect token, join all workers"
-      echo "  $0 --install-agents          # Fresh install on all workers"
-      echo "  $0 --nodes node2,node3       # Only join specific nodes"
-      echo "  $0 --diagnose                # Check K3s status on all nodes"
-      echo "  $0 --token 'K10abc...'       # Use explicit token"
-      exit 0;;
-    *) shift;;
+NODES_CSV=""
+FORCE_INSTALL=0
+DIAGNOSE_ONLY=0
+TOKEN_OVERRIDE=""
+
+usage() {
+  cat <<EOF
+Usage:
+  bash scripts/setup-k3s-agents.sh [--nodes node2,node3] [--install-agents] [--diagnose] [--token TOKEN]
+Env:
+  SERVER_IP=192.168.1.206 (default)
+  K3S_URL=https://192.168.1.206:6443 (default)
+  SSH_USER=user (default)
+  SSH_KEY=~/.ssh/id_ed25519 (default)
+  SSH_TIMEOUT=300 (default)
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --nodes) NODES_CSV="${2:-}"; shift 2 ;;
+    --install-agents) FORCE_INSTALL=1; shift ;;
+    --diagnose) DIAGNOSE_ONLY=1; shift ;;
+    --token) TOKEN_OVERRIDE="${2:-}"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown arg: $1" >&2; usage; exit 1 ;;
   esac
 done
 
-# SSH wrapper (with configurable timeout)
-ssh_cmd() {
-  local target="$1"; shift
-  local cmd_timeout="${SSH_CMD_TIMEOUT:-30}"
-  if [ -n "${SSH_PASS:-}" ]; then
-    timeout "$cmd_timeout" sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" \
-      -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
-      -o StrictHostKeyChecking=accept-new "$target" "$@"
-  else
-    timeout "$cmd_timeout" ssh -p "$SSH_PORT" \
-      -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
-      -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$target" "$@"
-  fi
-}
+# --- discover nodes ---
+declare -A NODE_IP=()
 
-banner() {
-  echo ""
-  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  echo -e "${CYAN}  $1${NC}"
-  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-}
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Determine target nodes (workers only)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-if [ -n "${TARGET_NODES:-}" ]; then
-  DEPLOY_NODES=""
-  for name in $(echo "$TARGET_NODES" | tr ',' ' '); do
-    for entry in $ALL_NODES; do
-      ENAME="${entry%%:*}"
-      if [ "$ENAME" = "$name" ]; then
-        DEPLOY_NODES="${DEPLOY_NODES:+$DEPLOY_NODES }${entry}"
-      fi
+if [[ -n "$CONF_FILE" ]]; then
+  # Detect format: existing repo uses NODE_LIST="name:ip:role ..." as shell variable
+  if grep -q '^NODE_LIST=' "$CONF_FILE" 2>/dev/null; then
+    # Source it to get NODE_LIST, then parse colon-separated entries
+    # shellcheck disable=SC1090
+    . "$CONF_FILE"
+    for entry in $NODE_LIST; do
+      name="${entry%%:*}"
+      rest="${entry#*:}"
+      ip="${rest%%:*}"
+      [[ -z "$name" || -z "$ip" ]] && continue
+      NODE_IP["$name"]="$ip"
     done
+  else
+    # Simple "name ip" format
+    while read -r name ip; do
+      [[ -z "${name:-}" || -z "${ip:-}" ]] && continue
+      [[ "$name" =~ ^# ]] && continue
+      NODE_IP["$name"]="$ip"
+    done < <(grep -v '^\s*$' "$CONF_FILE" || true)
+  fi
+fi
+
+# Fallback: node2..node10 with 192.168.1.207..215 (matches existing cluster-nodes.conf)
+if [[ ${#NODE_IP[@]} -eq 0 ]]; then
+  for i in {2..10}; do
+    NODE_IP["node${i}"]="192.168.1.$((205+i))"
   done
+fi
+
+# Apply --nodes filter
+TARGET_NODES=()
+if [[ -n "$NODES_CSV" ]]; then
+  IFS=',' read -r -a TARGET_NODES <<< "$NODES_CSV"
 else
-  # Default: all worker nodes (skip control plane)
-  DEPLOY_NODES="$PHONE_NODES"
+  # default: all known nodes except node1
+  for n in "${!NODE_IP[@]}"; do
+    [[ "$n" == "node1" ]] && continue
+    TARGET_NODES+=("$n")
+  done
+  # stable ordering
+  IFS=$'\n' TARGET_NODES=($(printf "%s\n" "${TARGET_NODES[@]}" | sort -V))
 fi
 
-echo ""
-echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║        K3S AGENT — WORKER NODE SETUP                       ║${NC}"
-echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "  Server:  https://${SERVER_IP}:${SERVER_PORT}"
-echo -e "  Mode:    $([ $INSTALL_AGENTS -eq 1 ] && echo 'FRESH INSTALL (--install-agents)' || echo 'join / restart existing')"
-echo ""
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Step 1: Get K3s agent token
-# ═══════════════════════════════════════════════════════════════════════════════
-
-if [ -z "$K3S_TOKEN" ]; then
-  banner "Step 1: Reading agent token from node1"
-
-  # Try local first (if we're running on node1)
-  if [ -f /var/lib/rancher/k3s/server/agent-token ]; then
-    K3S_TOKEN=$(cat /var/lib/rancher/k3s/server/agent-token 2>/dev/null)
+# --- read token on node1 (root-only) ---
+read_token() {
+  if [[ -n "$TOKEN_OVERRIDE" ]]; then
+    echo "$TOKEN_OVERRIDE"
+    return 0
   fi
 
-  # Try with doas locally
-  if [ -z "$K3S_TOKEN" ]; then
-    K3S_TOKEN=$(doas cat /var/lib/rancher/k3s/server/agent-token 2>/dev/null || true)
+  # Agent token is what you want for workers
+  if [[ -r /var/lib/rancher/k3s/server/agent-token ]]; then
+    cat /var/lib/rancher/k3s/server/agent-token
+    return 0
   fi
 
-  # Try via SSH to node1
-  if [ -z "$K3S_TOKEN" ]; then
-    echo -e "  ${YELLOW}Not running on node1 — trying SSH...${NC}"
-    K3S_TOKEN=$(ssh_cmd "user@${SERVER_IP}" "doas cat /var/lib/rancher/k3s/server/agent-token 2>/dev/null" 2>/dev/null || true)
+  # root-only: use doas/sudo
+  if $ELEVATE test -r /var/lib/rancher/k3s/server/agent-token 2>/dev/null; then
+    $ELEVATE cat /var/lib/rancher/k3s/server/agent-token
+    return 0
   fi
 
-  # Fall back to server token
-  if [ -z "$K3S_TOKEN" ]; then
-    echo -e "  ${YELLOW}agent-token not found, trying server token...${NC}"
-    K3S_TOKEN=$(doas cat /var/lib/rancher/k3s/server/token 2>/dev/null || true)
-    if [ -z "$K3S_TOKEN" ]; then
-      K3S_TOKEN=$(ssh_cmd "user@${SERVER_IP}" "doas cat /var/lib/rancher/k3s/server/token 2>/dev/null" 2>/dev/null || true)
-    fi
+  # fallback to server token (works, but not ideal)
+  if $ELEVATE test -r /var/lib/rancher/k3s/server/token 2>/dev/null; then
+    $ELEVATE cat /var/lib/rancher/k3s/server/token
+    return 0
   fi
 
-  if [ -z "$K3S_TOKEN" ]; then
-    echo -e "  ${RED}ERROR: Could not read K3s token${NC}"
-    echo ""
-    echo "  Options:"
-    echo "    Run this script on node1 (where K3s server runs)"
-    echo "    Use --token flag: $0 --token 'K10abc...'"
-    echo "    Read manually: doas cat /var/lib/rancher/k3s/server/agent-token"
-    exit 1
-  fi
+  echo "ERROR: cannot read agent-token or server token on node1" >&2
+  exit 1
+}
 
-  echo -e "  ${GREEN}✓${NC} Token: ${K3S_TOKEN:0:20}..."
-else
-  echo -e "  Token provided via --token flag"
+TOKEN="$(read_token | tr -d '\r\n')"
+if [[ -z "$TOKEN" ]]; then
+  echo "ERROR: token empty" >&2
+  exit 1
 fi
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Step 2: Diagnose K3s status on each worker
-# ═══════════════════════════════════════════════════════════════════════════════
+echo "[node1] server: $K3S_URL"
+echo "[node1] token: (hidden) length=${#TOKEN}"
+echo
 
-banner "Step 2: Checking K3s status on workers"
-echo ""
-printf "  ${YELLOW}%-8s %-16s %-12s %-10s %-10s${NC}\n" \
-  "NODE" "IP" "K3S_BIN" "AGENT_SVC" "RUNNING"
-printf "  ${YELLOW}%-8s %-16s %-12s %-10s %-10s${NC}\n" \
-  "────" "──" "───────" "─────────" "───────"
+# --- helpers ---
+ssh_run() {
+  local host="$1"; shift
+  timeout "$SSH_TIMEOUT" ssh -i "$SSH_KEY" "${SSH_OPTS[@]}" "${SSH_USER}@${host}" "$@"
+}
 
-for entry in $DEPLOY_NODES; do
-  NAME="${entry%%:*}"
-  IP="${entry#*:}"
-  SSH_TARGET="user@${IP}"
+remote_detect_init() {
+  local ip="$1"
+  ssh_run "$ip" "if command -v systemctl >/dev/null 2>&1; then echo systemd; else echo openrc; fi"
+}
 
-  if ! ssh_cmd "$SSH_TARGET" "echo ok" &>/dev/null; then
-    printf "  %-8s %-16s ${RED}%-12s${NC}\n" "$NAME" "$IP" "OFFLINE"
-    continue
-  fi
+remote_install_prereqs() {
+  local ip="$1"
+  ssh_run "$ip" "doas apk add --no-cache curl ca-certificates >/dev/null 2>&1 || true"
+}
 
-  DIAG=$(ssh_cmd "$SSH_TARGET" '
-    HAS_BIN="no"; command -v k3s >/dev/null 2>&1 && HAS_BIN="yes"
-    HAS_SVC="no"; { [ -f /etc/init.d/k3s-agent ] || [ -f /etc/systemd/system/k3s-agent.service ]; } && HAS_SVC="yes"
-    IS_RUN="no"; pgrep -f "k3s agent" >/dev/null 2>&1 && IS_RUN="yes"
-    echo "$HAS_BIN|$HAS_SVC|$IS_RUN"
-  ' 2>/dev/null || echo "ERR|ERR|ERR")
-
-  HAS_BIN=$(echo "$DIAG" | cut -d'|' -f1)
-  HAS_SVC=$(echo "$DIAG" | cut -d'|' -f2)
-  IS_RUN=$(echo "$DIAG" | cut -d'|' -f3)
-
-  BIN_COLOR="$RED"; [ "$HAS_BIN" = "yes" ] && BIN_COLOR="$GREEN"
-  SVC_COLOR="$RED"; [ "$HAS_SVC" = "yes" ] && SVC_COLOR="$GREEN"
-  RUN_COLOR="$RED"; [ "$IS_RUN" = "yes" ] && RUN_COLOR="$GREEN"
-
-  printf "  %-8s %-16s ${BIN_COLOR}%-12s${NC} ${SVC_COLOR}%-10s${NC} ${RUN_COLOR}%-10s${NC}\n" \
-    "$NAME" "$IP" "$HAS_BIN" "$HAS_SVC" "$IS_RUN"
-done
-
-echo ""
-
-if [ $DIAGNOSE_ONLY -eq 1 ]; then
-  echo "Diagnosis complete (--diagnose mode). To join workers, run without --diagnose."
-  exit 0
-fi
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Step 3: Install/configure K3s agent on each worker
-# ═══════════════════════════════════════════════════════════════════════════════
-
-banner "Step 3: Joining workers to cluster"
-
-OK=0
-FAIL=0
-SKIP=0
-
-for entry in $DEPLOY_NODES; do
-  NAME="${entry%%:*}"
-  IP="${entry#*:}"
-  SSH_TARGET="user@${IP}"
-
-  echo ""
-  echo -e "  ${BLUE}[${NAME}]${NC} ${IP}"
-
-  # Check SSH connectivity
-  if ! ssh_cmd "$SSH_TARGET" "echo ok" &>/dev/null; then
-    echo -e "    ${RED}✗${NC} Cannot SSH — skipping"
-    FAIL=$((FAIL + 1))
-    continue
-  fi
-
-  # Check if K3s binary exists
-  HAS_K3S=$(ssh_cmd "$SSH_TARGET" "command -v k3s >/dev/null 2>&1 && echo yes || echo no" 2>/dev/null)
-
-  if [ "$HAS_K3S" = "no" ] || [ $INSTALL_AGENTS -eq 1 ]; then
-    # ── Fresh install path ──────────────────────────────────────────
-    echo -e "    ${YELLOW}Installing K3s agent (curl | sh)...${NC}"
-
-    # Clean any remnants first
-    ssh_cmd "$SSH_TARGET" "
-      doas k3s-agent-uninstall.sh 2>/dev/null || true
-      doas rm -rf /var/lib/rancher/k3s/agent 2>/dev/null || true
-      doas rm -f /etc/rancher/k3s/config.yaml 2>/dev/null || true
-    " 2>/dev/null
-
-    # Install K3s via official installer — needs longer timeout for download
-    SSH_CMD_TIMEOUT=$K3S_INSTALL_TIMEOUT ssh_cmd "$SSH_TARGET" "
-      export INSTALL_K3S_EXEC='agent --node-ip=${IP} --node-name=${NAME} --prefer-bundled-bin'
-      export K3S_URL='https://${SERVER_IP}:${SERVER_PORT}'
-      export K3S_TOKEN='${K3S_TOKEN}'
-      curl -sfL https://get.k3s.io | doas sh -
-    " 2>/dev/null
-    INSTALL_RC=$?
-
-    if [ $INSTALL_RC -ne 0 ]; then
-      echo -e "    ${RED}✗${NC} K3s install failed (exit $INSTALL_RC)"
-      echo -e "    ${YELLOW}Try manually:${NC} ssh $SSH_TARGET"
-      echo -e "      curl -sfL https://get.k3s.io | K3S_URL=https://${SERVER_IP}:${SERVER_PORT} K3S_TOKEN=... doas sh -"
-      FAIL=$((FAIL + 1))
-      continue
-    fi
-
-    echo -e "    ${GREEN}✓${NC} K3s installed"
-
-  else
-    # ── Existing install: reconfigure + restart ─────────────────────
-    echo -e "    ${YELLOW}K3s binary found — reconfiguring agent...${NC}"
-
-    # Stop existing agent
-    ssh_cmd "$SSH_TARGET" "
-      doas rc-service k3s-agent stop 2>/dev/null || true
+remote_stop_k3s() {
+  local ip="$1"
+  ssh_run "$ip" '
+    set +e
+    if command -v systemctl >/dev/null 2>&1; then
       doas systemctl stop k3s-agent 2>/dev/null || true
-      doas pkill -f 'k3s agent' 2>/dev/null || true
-      sleep 2
-    " 2>/dev/null
+      doas systemctl stop k3s 2>/dev/null || true
+    else
+      doas rc-service k3s-agent stop 2>/dev/null || true
+      doas rc-service k3s stop 2>/dev/null || true
+    fi
+    doas pkill -f "k3s agent|k3s-agent|k3s " 2>/dev/null || true
+    exit 0
+  '
+}
 
-    # Clean stale agent state
-    ssh_cmd "$SSH_TARGET" "
-      doas rm -rf /var/lib/rancher/k3s/agent/*.kubeconfig 2>/dev/null || true
-      doas rm -rf /var/lib/rancher/k3s/agent/client-ca.crt 2>/dev/null || true
-    " 2>/dev/null
+remote_status() {
+  local ip="$1"
+  ssh_run "$ip" '
+    set +e
+    echo "hostname: $(hostname)"
+    echo -n "k3s binary: "; command -v k3s >/dev/null 2>&1 && echo yes || echo no
+    echo -n "k3s-agent svc: "
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl is-active k3s-agent 2>/dev/null || true
+    else
+      rc-service k3s-agent status 2>/dev/null || true
+    fi
+    echo -n "ports 10250/8472? (best-effort): "
+    command -v ss >/dev/null 2>&1 && ss -lntu 2>/dev/null | awk "NR==1||/:(10250|8472)\b/" || echo "ss not present"
+    exit 0
+  '
+}
 
-    # Write config
-    ssh_cmd "$SSH_TARGET" "
-      doas mkdir -p /etc/rancher/k3s
-      printf '%s\n' \
-        'server: \"https://${SERVER_IP}:${SERVER_PORT}\"' \
-        'token: \"${K3S_TOKEN}\"' \
-        'node-name: \"${NAME}\"' \
-        'node-ip: \"${IP}\"' \
-        'prefer-bundled-bin: true' \
-        | doas tee /etc/rancher/k3s/config.yaml > /dev/null
-    " 2>/dev/null
+remote_write_config() {
+  local ip="$1"
+  local nodename="$2"
+  local nodeip="$3"
+  local token="$4"
+  local url="$5"
 
-    # Start agent
-    ssh_cmd "$SSH_TARGET" "
-      doas rc-service k3s-agent start 2>/dev/null || \
-      doas systemctl start k3s-agent 2>/dev/null || \
-      doas k3s agent --config /etc/rancher/k3s/config.yaml &
-    " 2>/dev/null
+  # For Alpine: config.yaml is standard
+  ssh_run "$ip" "doas mkdir -p /etc/rancher/k3s && doas sh -c 'cat > /etc/rancher/k3s/config.yaml <<EOF
+server: \"$url\"
+token: \"$token\"
+node-name: \"$nodename\"
+node-ip: \"$nodeip\"
+# prefer bundled binaries when available
+prefer-bundled-bin: true
+EOF
+chmod 600 /etc/rancher/k3s/config.yaml
+'"
+}
 
-    echo -e "    ${GREEN}✓${NC} Agent reconfigured and started"
+remote_start_agent() {
+  local ip="$1"
+  ssh_run "$ip" '
+    set +e
+    if command -v systemctl >/dev/null 2>&1; then
+      doas systemctl enable --now k3s-agent 2>/dev/null || doas systemctl restart k3s-agent 2>/dev/null || true
+    else
+      doas rc-update add k3s-agent default 2>/dev/null || true
+      doas rc-service k3s-agent start 2>/dev/null || doas rc-service k3s-agent restart 2>/dev/null || true
+    fi
+    exit 0
+  '
+}
+
+remote_force_install_agent() {
+  local ip="$1"
+  local nodename="$2"
+  local nodeip="$3"
+  local token="$4"
+  local url="$5"
+
+  # Uses official install script; for Alpine this is generally fine.
+  # INSTALL_K3S_EXEC gets baked into service
+  ssh_run "$ip" "doas sh -c '
+    set -e
+    apk add --no-cache curl ca-certificates >/dev/null 2>&1 || true
+    # uninstall if present
+    if [ -x /usr/local/bin/k3s-agent-uninstall.sh ]; then /usr/local/bin/k3s-agent-uninstall.sh || true; fi
+    if [ -x /usr/local/bin/k3s-uninstall.sh ]; then /usr/local/bin/k3s-uninstall.sh || true; fi
+    rm -rf /etc/rancher/k3s /var/lib/rancher/k3s 2>/dev/null || true
+
+    export K3S_URL=\"$url\"
+    export K3S_TOKEN=\"$token\"
+    export INSTALL_K3S_EXEC=\"agent --node-ip=$nodeip --node-name=$nodename --prefer-bundled-bin\"
+
+    curl -sfL https://get.k3s.io | sh -
+  '"
+}
+
+# --- main ---
+for node in "${TARGET_NODES[@]}"; do
+  ip="${NODE_IP[$node]:-}"
+  if [[ -z "$ip" ]]; then
+    echo "Skipping $node (no IP known)" >&2
+    continue
   fi
 
-  # Verify agent process is running (give it a moment)
-  sleep 3
-  AGENT_RUNNING=$(ssh_cmd "$SSH_TARGET" "pgrep -f 'k3s agent' >/dev/null 2>&1 && echo yes || echo no" 2>/dev/null)
-  if [ "$AGENT_RUNNING" = "yes" ]; then
-    echo -e "    ${GREEN}✓${NC} Agent process running"
-    OK=$((OK + 1))
+  echo "===== $node ($ip) ====="
+
+  if [[ $DIAGNOSE_ONLY -eq 1 ]]; then
+    remote_status "$ip" || true
+    echo
+    continue
+  fi
+
+  # Make sure worker can curl/https
+  remote_install_prereqs "$ip" || true
+
+  # stop any running agent/server bits
+  remote_stop_k3s "$ip" || true
+
+  if [[ $FORCE_INSTALL -eq 1 ]]; then
+    echo "[$node] force install k3s agent..."
+    remote_force_install_agent "$ip" "$node" "$ip" "$TOKEN" "$K3S_URL"
   else
-    echo -e "    ${RED}✗${NC} Agent not running — check: ssh $SSH_TARGET 'doas journalctl -u k3s-agent --no-pager -n 20'"
-    FAIL=$((FAIL + 1))
+    # If k3s missing, do install anyway
+    if ! ssh_run "$ip" "command -v k3s >/dev/null 2>&1"; then
+      echo "[$node] k3s missing, installing agent..."
+      remote_force_install_agent "$ip" "$node" "$ip" "$TOKEN" "$K3S_URL"
+    else
+      echo "[$node] k3s present, writing config + starting agent..."
+      remote_write_config "$ip" "$node" "$ip" "$TOKEN" "$K3S_URL"
+      remote_start_agent "$ip"
+    fi
   fi
+
+  echo "[$node] status after change:"
+  remote_status "$ip" || true
+  echo
 done
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Step 4: Verify cluster membership
-# ═══════════════════════════════════════════════════════════════════════════════
-
-banner "Step 4: Verifying cluster membership"
-echo ""
-echo -e "  ${YELLOW}Waiting 15s for nodes to register...${NC}"
-sleep 15
-
-# Get node list from control plane
-NODE_STATUS=$(doas kubectl get nodes -o wide 2>/dev/null || \
-  ssh_cmd "user@${SERVER_IP}" "doas kubectl get nodes -o wide" 2>/dev/null || \
-  echo "ERROR: Could not reach kubectl")
-
-echo ""
-echo "$NODE_STATUS"
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Summary
-# ═══════════════════════════════════════════════════════════════════════════════
-
-echo ""
-echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║              K3S AGENT SETUP COMPLETE                       ║${NC}"
-echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "  Agents: ${GREEN}${OK} joined${NC}, ${RED}${FAIL} failed${NC}"
-echo -e "  Server: https://${SERVER_IP}:${SERVER_PORT}"
-echo ""
-echo -e "  ${BLUE}Check cluster:${NC}"
-echo -e "    doas kubectl get nodes -o wide"
-echo -e "    doas kubectl get pods -A"
-echo ""
-echo -e "  ${BLUE}If nodes show NotReady:${NC}"
-echo -e "    ssh user@<node-ip> 'doas journalctl -u k3s-agent --no-pager -n 30'"
-echo -e "    ssh user@<node-ip> 'doas rc-service k3s-agent restart'"
-echo ""
-echo -e "  ${BLUE}Force reinstall on all workers:${NC}"
-echo -e "    bash scripts/setup-k3s-agents.sh --install-agents"
-echo ""
+echo "===== cluster view from node1 ====="
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+k3s kubectl get nodes -o wide || true
