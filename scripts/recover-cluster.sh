@@ -162,6 +162,24 @@ else
   K3S_SVC_STATUS=$(run_on_node "$CP_IP" "$PRIV systemctl is-active k3s 2>/dev/null || $PRIV rc-service k3s status 2>/dev/null || echo stopped" 2>/dev/null || echo "unreachable")
   echo "  K3s service:   $K3S_SVC_STATUS"
 
+  # Check for --cluster-init in service file (forces etcd, breaks on state wipe)
+  CP_EXECSTART=$(run_on_node "$CP_IP" "$PRIV systemctl cat k3s 2>/dev/null | grep -A5 'ExecStart=' | head -10 || echo ''" 2>/dev/null || echo "")
+  if echo "$CP_EXECSTART" | grep -q 'cluster-init'; then
+    echo "  ${RED}WARNING: --cluster-init found in service file${NC}"
+    echo "    This forces embedded etcd (complex, single-node HA unnecessary)."
+    echo "    Remove it to use sqlite (simpler, more reliable for single CP)."
+    add_issue "--cluster-init in K3s service file forces etcd (should use sqlite for single CP)"
+    echo "1" > "$DIAG_DIR/has-cluster-init"
+  fi
+
+  # Check for cluster-init in config.yaml too
+  CP_CONF_CINIT=$(run_on_node "$CP_IP" "grep 'cluster-init' /etc/rancher/k3s/config.yaml 2>/dev/null || echo ''" 2>/dev/null || echo "")
+  if echo "$CP_CONF_CINIT" | grep -qi 'cluster-init.*true'; then
+    echo "  ${RED}WARNING: cluster-init: true found in config.yaml${NC}"
+    add_issue "cluster-init: true in config.yaml forces etcd"
+    echo "1" > "$DIAG_DIR/has-cluster-init"
+  fi
+
   if echo "$K3S_SVC_STATUS" | grep -qi "started\|running" || { echo "$K3S_SVC_STATUS" | grep -qi "active" && ! echo "$K3S_SVC_STATUS" | grep -qi "inactive\|activating"; }; then
     echo "  ${GREEN}Control plane service is running${NC}"
 
@@ -369,6 +387,22 @@ if [ -n "$CP_IP" ] && [ -f "$DIAG_DIR/$CP_NAME.reachable" ]; then
   if ! { echo "$CP_SVC_STATUS" | grep -qi "started\|running" || { echo "$CP_SVC_STATUS" | grep -qi "active" && ! echo "$CP_SVC_STATUS" | grep -qi "inactive\|activating"; }; }; then
     log_info "Fix 1: Starting K3s control plane on $CP_NAME..."
 
+    # Remove --cluster-init from service file if present (forces etcd, breaks on state wipe)
+    # A single control plane should use sqlite (the K3s default without --cluster-init)
+    if [ -f "$DIAG_DIR/has-cluster-init" ]; then
+      echo "  Removing --cluster-init from K3s service..."
+      # Create a systemd drop-in that overrides ExecStart without --cluster-init
+      run_on_node "$CP_IP" "$PRIV mkdir -p /etc/systemd/system/k3s.service.d && printf '[Service]\nExecStart=\nExecStart=/usr/local/bin/k3s server\n' | $PRIV tee /etc/systemd/system/k3s.service.d/10-no-cluster-init.conf >/dev/null && $PRIV systemctl daemon-reload" 2>/dev/null
+      echo "  ${GREEN}Created drop-in override to remove --cluster-init${NC}"
+
+      # Remove cluster-init from config.yaml if present
+      run_on_node "$CP_IP" "$PRIV sed -i '/cluster-init/d' /etc/rancher/k3s/config.yaml 2>/dev/null || true" 2>/dev/null
+
+      # Wipe server state (etcd data is incompatible with sqlite)
+      echo "  Wiping stale etcd server state..."
+      run_on_node "$CP_IP" "$PRIV rm -rf /var/lib/rancher/k3s/server" 2>/dev/null
+    fi
+
     # Ensure config exists with prefer-bundled-bin (bypasses host iptables/nftables issues)
     # K3s Known Issues: iptables/nftables incompatibility is a documented problem.
     # prefer-bundled-bin makes K3s use its own known-good iptables v1.8.8.
@@ -407,10 +441,11 @@ if [ -n "$CP_IP" ] && [ -f "$DIAG_DIR/$CP_NAME.reachable" ]; then
       run_on_node "$CP_IP" "$PRIV journalctl -u k3s -n 30 --no-pager 2>/dev/null || $PRIV $K3S_BIN server --log /dev/stderr 2>&1 | tail -30" 2>/dev/null | while IFS= read -r line; do echo "    $line"; done
       echo ""
       echo "  ${YELLOW}Suggested fixes:${NC}"
-      echo "    1. Ensure prefer-bundled-bin: true in /etc/rancher/k3s/config.yaml"
-      echo "    2. If etcd fails: remove cluster-init and use default sqlite datastore"
-      echo "    3. Wipe server state: $PRIV rm -rf /var/lib/rancher/k3s/server && $PRIV systemctl restart k3s"
-      echo "    4. Reinstall: curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='server --node-ip=$CP_IP' $PRIV sh -"
+      echo "    1. Check for --cluster-init: $PRIV systemctl cat k3s | grep cluster-init"
+      echo "       If found, remove it (forces etcd; sqlite is simpler for single CP)"
+      echo "    2. Ensure prefer-bundled-bin: true in /etc/rancher/k3s/config.yaml"
+      echo "    3. Wipe all state: $PRIV rm -rf /var/lib/rancher/k3s/ && $PRIV systemctl restart k3s"
+      echo "    4. Fresh install: curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='server --node-ip=$CP_IP --prefer-bundled-bin' sh -"
       FAILED_FIX=$((FAILED_FIX + 1))
     fi
   else
