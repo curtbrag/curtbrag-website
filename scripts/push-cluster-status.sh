@@ -530,16 +530,22 @@ if command -v redis-cli >/dev/null 2>&1; then
   if redis-cli -h "$REDIS_HOST" PING 2>/dev/null | grep -q PONG; then
     log "Collecting job queue metrics from Redis..."
 
-    # Queue depths
+    # Queue depths (all pipeline types)
     Q_SHELL=$(redis-cli -h "$REDIS_HOST" LLEN jobs:shell 2>/dev/null || echo 0)
     Q_WHISPER=$(redis-cli -h "$REDIS_HOST" LLEN jobs:whisper 2>/dev/null || echo 0)
     Q_LLM=$(redis-cli -h "$REDIS_HOST" LLEN jobs:llm 2>/dev/null || echo 0)
     Q_GENERIC=$(redis-cli -h "$REDIS_HOST" LLEN jobs:generic 2>/dev/null || echo 0)
+    Q_IMAGE=$(redis-cli -h "$REDIS_HOST" LLEN jobs:image 2>/dev/null || echo 0)
+    Q_AUDIO=$(redis-cli -h "$REDIS_HOST" LLEN jobs:audio 2>/dev/null || echo 0)
     R_SHELL=$(redis-cli -h "$REDIS_HOST" LLEN results:shell 2>/dev/null || echo 0)
     R_WHISPER=$(redis-cli -h "$REDIS_HOST" LLEN results:whisper 2>/dev/null || echo 0)
     R_LLM=$(redis-cli -h "$REDIS_HOST" LLEN results:llm 2>/dev/null || echo 0)
+    R_IMAGE=$(redis-cli -h "$REDIS_HOST" LLEN results:image 2>/dev/null || echo 0)
+    R_AUDIO=$(redis-cli -h "$REDIS_HOST" LLEN results:audio 2>/dev/null || echo 0)
     TOTAL_JOBS_DONE=$(redis-cli -h "$REDIS_HOST" GET stats:total:jobs_done 2>/dev/null || echo 0)
     [ -z "$TOTAL_JOBS_DONE" ] && TOTAL_JOBS_DONE=0
+    TOTAL_DISPATCHED=$(redis-cli -h "$REDIS_HOST" GET stats:total:dispatched 2>/dev/null || echo 0)
+    [ -z "$TOTAL_DISPATCHED" ] && TOTAL_DISPATCHED=0
 
     # Per-worker status
     WORKER_LIST=""
@@ -572,18 +578,24 @@ if command -v redis-cli >/dev/null 2>&1; then
       --argjson q_whisper "$Q_WHISPER" \
       --argjson q_llm "$Q_LLM" \
       --argjson q_generic "$Q_GENERIC" \
+      --argjson q_image "$Q_IMAGE" \
+      --argjson q_audio "$Q_AUDIO" \
       --argjson r_shell "$R_SHELL" \
       --argjson r_whisper "$R_WHISPER" \
       --argjson r_llm "$R_LLM" \
+      --argjson r_image "$R_IMAGE" \
+      --argjson r_audio "$R_AUDIO" \
       --argjson total_done "${TOTAL_JOBS_DONE:-0}" \
+      --argjson total_dispatched "${TOTAL_DISPATCHED:-0}" \
       "{
-        queues: {shell: \$q_shell, whisper: \$q_whisper, llm: \$q_llm, generic: \$q_generic},
-        results: {shell: \$r_shell, whisper: \$r_whisper, llm: \$r_llm},
+        queues: {shell: \$q_shell, whisper: \$q_whisper, llm: \$q_llm, generic: \$q_generic, image: \$q_image, audio: \$q_audio},
+        results: {shell: \$r_shell, whisper: \$r_whisper, llm: \$r_llm, image: \$r_image, audio: \$r_audio},
         total_jobs_done: \$total_done,
+        total_dispatched: \$total_dispatched,
         workers: [${WORKER_LIST}]
       }")
 
-    log "Job queue: $Q_SHELL shell, $Q_WHISPER whisper, $Q_LLM llm queued | $TOTAL_JOBS_DONE total done"
+    log "Job queue: shell=$Q_SHELL whisper=$Q_WHISPER llm=$Q_LLM image=$Q_IMAGE audio=$Q_AUDIO | dispatched=$TOTAL_DISPATCHED done=$TOTAL_JOBS_DONE"
   else
     log "Redis not reachable at $REDIS_HOST — skipping job queue metrics"
   fi
