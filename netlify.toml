@@ -24,13 +24,13 @@
   status = 200
 
 [[redirects]]
-  from = "/cluster"
-  to = "/cluster/index.html"
+  from = "/cluster/dashboard"
+  to = "/cluster/dashboard.html"
   status = 200
 
 [[redirects]]
-  from = "/cluster/"
-  to = "/cluster/index.html"
+  from = "/cluster/dashboard/"
+  to = "/cluster/dashboard.html"
   status = 200
 
 [[redirects]]
