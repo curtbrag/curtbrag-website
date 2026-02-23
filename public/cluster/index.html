@@ -1625,10 +1625,18 @@
         <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem">
           <i class="fa-solid fa-list-check" style="color:var(--blue)"></i> Queue Breakdown
         </div>
-        <div class="mining-stats" style="gap:0.5rem">
+        <div class="mining-stats" style="gap:0.5rem;flex-wrap:wrap">
           <div class="mining-stat" style="padding:0.4rem 0.6rem">
             <div class="mining-stat-value" id="jqShellQueue" style="font-size:1rem">0</div>
             <div class="mining-stat-label" style="font-size:0.65rem">Shell</div>
+          </div>
+          <div class="mining-stat" style="padding:0.4rem 0.6rem">
+            <div class="mining-stat-value" id="jqImageQueue" style="font-size:1rem">0</div>
+            <div class="mining-stat-label" style="font-size:0.65rem">Image</div>
+          </div>
+          <div class="mining-stat" style="padding:0.4rem 0.6rem">
+            <div class="mining-stat-value" id="jqAudioQueue" style="font-size:1rem">0</div>
+            <div class="mining-stat-label" style="font-size:0.65rem">Audio</div>
           </div>
           <div class="mining-stat" style="padding:0.4rem 0.6rem">
             <div class="mining-stat-value" id="jqWhisperQueue" style="font-size:1rem">0</div>
@@ -1641,6 +1649,33 @@
           <div class="mining-stat" style="padding:0.4rem 0.6rem">
             <div class="mining-stat-value" id="jqGenericQueue" style="font-size:1rem">0</div>
             <div class="mining-stat-label" style="font-size:0.65rem">Generic</div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border)">
+        <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem">
+          <i class="fa-solid fa-chart-bar" style="color:var(--green)"></i> Pipeline Results
+        </div>
+        <div class="mining-stats" style="gap:0.5rem;flex-wrap:wrap">
+          <div class="mining-stat" style="padding:0.4rem 0.6rem">
+            <div class="mining-stat-value" id="jqImageResults" style="font-size:1rem">0</div>
+            <div class="mining-stat-label" style="font-size:0.65rem">Images</div>
+          </div>
+          <div class="mining-stat" style="padding:0.4rem 0.6rem">
+            <div class="mining-stat-value" id="jqAudioResults" style="font-size:1rem">0</div>
+            <div class="mining-stat-label" style="font-size:0.65rem">Audio</div>
+          </div>
+          <div class="mining-stat" style="padding:0.4rem 0.6rem">
+            <div class="mining-stat-value" id="jqWhisperResults" style="font-size:1rem">0</div>
+            <div class="mining-stat-label" style="font-size:0.65rem">Transcripts</div>
+          </div>
+          <div class="mining-stat" style="padding:0.4rem 0.6rem">
+            <div class="mining-stat-value" id="jqLlmResults" style="font-size:1rem">0</div>
+            <div class="mining-stat-label" style="font-size:0.65rem">LLM</div>
+          </div>
+          <div class="mining-stat" style="padding:0.4rem 0.6rem">
+            <div class="mining-stat-value" id="jqDispatchedCount" style="font-size:1rem">0</div>
+            <div class="mining-stat-label" style="font-size:0.65rem">Dispatched</div>
           </div>
         </div>
       </div>
@@ -2971,8 +3006,9 @@
       var results = jobQueue.results || {};
       var workers = jobQueue.workers || [];
       var totalDone = jobQueue.total_jobs_done || 0;
-      var totalQueued = (queues.shell || 0) + (queues.whisper || 0) + (queues.llm || 0) + (queues.generic || 0);
-      var totalResults = (results.shell || 0) + (results.whisper || 0) + (results.llm || 0);
+      var totalDispatched = jobQueue.total_dispatched || 0;
+      var totalQueued = (queues.shell || 0) + (queues.whisper || 0) + (queues.llm || 0) + (queues.generic || 0) + (queues.image || 0) + (queues.audio || 0);
+      var totalResults = (results.shell || 0) + (results.whisper || 0) + (results.llm || 0) + (results.image || 0) + (results.audio || 0);
       var activeWorkers = workers.filter(function(w) { return w.heartbeat_age !== null && w.heartbeat_age < 30; }).length;
 
       document.getElementById('jqActiveWorkers').textContent = activeWorkers + '/' + workers.length;
@@ -2981,9 +3017,18 @@
       document.getElementById('jqResultsCount').textContent = totalResults;
 
       document.getElementById('jqShellQueue').textContent = queues.shell || 0;
+      document.getElementById('jqImageQueue').textContent = queues.image || 0;
+      document.getElementById('jqAudioQueue').textContent = queues.audio || 0;
       document.getElementById('jqWhisperQueue').textContent = queues.whisper || 0;
       document.getElementById('jqLlmQueue').textContent = queues.llm || 0;
       document.getElementById('jqGenericQueue').textContent = queues.generic || 0;
+
+      // Pipeline results
+      document.getElementById('jqImageResults').textContent = results.image || 0;
+      document.getElementById('jqAudioResults').textContent = results.audio || 0;
+      document.getElementById('jqWhisperResults').textContent = results.whisper || 0;
+      document.getElementById('jqLlmResults').textContent = results.llm || 0;
+      document.getElementById('jqDispatchedCount').textContent = totalDispatched;
 
       var statusEl = document.getElementById('jobQueueStatus');
       if (activeWorkers > 0) {

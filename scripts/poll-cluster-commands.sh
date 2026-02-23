@@ -437,8 +437,18 @@ echo \"mining level $mining_level (${HINT}% CPU)\""
         Q_SHELL=$(redis-cli -h "$REDIS_HOST" LLEN jobs:shell 2>/dev/null || echo 0)
         Q_WHISPER=$(redis-cli -h "$REDIS_HOST" LLEN jobs:whisper 2>/dev/null || echo 0)
         Q_LLM=$(redis-cli -h "$REDIS_HOST" LLEN jobs:llm 2>/dev/null || echo 0)
+        Q_IMAGE=$(redis-cli -h "$REDIS_HOST" LLEN jobs:image 2>/dev/null || echo 0)
+        Q_AUDIO=$(redis-cli -h "$REDIS_HOST" LLEN jobs:audio 2>/dev/null || echo 0)
+        Q_GENERIC=$(redis-cli -h "$REDIS_HOST" LLEN jobs:generic 2>/dev/null || echo 0)
+        R_SHELL=$(redis-cli -h "$REDIS_HOST" LLEN results:shell 2>/dev/null || echo 0)
+        R_WHISPER=$(redis-cli -h "$REDIS_HOST" LLEN results:whisper 2>/dev/null || echo 0)
+        R_IMAGE=$(redis-cli -h "$REDIS_HOST" LLEN results:image 2>/dev/null || echo 0)
+        R_AUDIO=$(redis-cli -h "$REDIS_HOST" LLEN results:audio 2>/dev/null || echo 0)
         TOTAL=$(redis-cli -h "$REDIS_HOST" GET stats:total:jobs_done 2>/dev/null || echo 0)
-        QINFO="queued: shell=$Q_SHELL whisper=$Q_WHISPER llm=$Q_LLM | total done: $TOTAL"
+        DISPATCHED=$(redis-cli -h "$REDIS_HOST" GET stats:total:dispatched 2>/dev/null || echo 0)
+        [ -z "$TOTAL" ] && TOTAL=0
+        [ -z "$DISPATCHED" ] && DISPATCHED=0
+        QINFO="queued: shell=$Q_SHELL whisper=$Q_WHISPER llm=$Q_LLM image=$Q_IMAGE audio=$Q_AUDIO generic=$Q_GENERIC | results: shell=$R_SHELL whisper=$R_WHISPER image=$R_IMAGE audio=$R_AUDIO | dispatched=$DISPATCHED done=$TOTAL"
         report_result "$cmd_id" "$QINFO" "" "$cmd" "$target"
       else
         report_result "$cmd_id" "error: redis not reachable at $REDIS_HOST" "" "$cmd" "$target"
