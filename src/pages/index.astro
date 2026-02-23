@@ -231,6 +231,75 @@ import Layout from '../layouts/Layout.astro';
   <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
   <div class="section-divider mx-4"></div>
 
+  <!-- ═══════════════════════════════════ PHONE CLUSTER WIDGET ═══════════════════════════════════ -->
+  <section class="py-14 md:py-20 reveal">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <h2 class="text-2xl font-bold mb-1">Phone Cluster</h2>
+      <div class="w-16 h-0.5 bg-gradient-to-r from-brand to-transparent mb-8"></div>
+
+      <a href="/cluster" class="block card-glow p-6 group">
+        <div class="flex flex-col md:flex-row md:items-center gap-6">
+
+          <!-- Left: Icon + Title -->
+          <div class="flex items-center gap-4 md:w-auto">
+            <div class="text-4xl text-brand card-icon">
+              <i class="fa-solid fa-mobile-screen-button"></i>
+            </div>
+            <div>
+              <h3 class="text-lg font-semibold group-hover:text-brand transition">10-Node Phone Cluster</h3>
+              <p class="text-text-secondary text-sm">OnePlus 6T &bull; postmarketOS &bull; K3s &bull; XMR Mining</p>
+            </div>
+          </div>
+
+          <!-- Center: Node Dots Grid -->
+          <div class="flex-1 flex items-center justify-center">
+            <div class="flex gap-2 flex-wrap justify-center" id="cluster-widget-dots">
+              <!-- 10 placeholder dots, filled by JS -->
+              <span class="w-3 h-3 rounded-full bg-border" title="node1"></span>
+              <span class="w-3 h-3 rounded-full bg-border" title="node2"></span>
+              <span class="w-3 h-3 rounded-full bg-border" title="node3"></span>
+              <span class="w-3 h-3 rounded-full bg-border" title="node4"></span>
+              <span class="w-3 h-3 rounded-full bg-border" title="node5"></span>
+              <span class="w-3 h-3 rounded-full bg-border" title="node6"></span>
+              <span class="w-3 h-3 rounded-full bg-border" title="node7"></span>
+              <span class="w-3 h-3 rounded-full bg-border" title="node8"></span>
+              <span class="w-3 h-3 rounded-full bg-border" title="node9"></span>
+              <span class="w-3 h-3 rounded-full bg-border" title="node10"></span>
+            </div>
+          </div>
+
+          <!-- Right: Stats -->
+          <div class="flex items-center gap-6 md:gap-8 justify-center md:justify-end">
+            <div class="text-center">
+              <div class="font-mono text-2xl font-bold" id="cluster-widget-nodes">--</div>
+              <div class="text-muted text-[0.65rem] uppercase tracking-wide">Online</div>
+            </div>
+            <div class="text-center">
+              <div class="font-mono text-2xl font-bold" id="cluster-widget-health">--</div>
+              <div class="text-muted text-[0.65rem] uppercase tracking-wide">Health</div>
+            </div>
+            <div class="text-center">
+              <div class="font-mono text-2xl font-bold text-yellow" id="cluster-widget-hash">--</div>
+              <div class="text-muted text-[0.65rem] uppercase tracking-wide">Hashrate</div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- CTA -->
+        <div class="mt-4 pt-4 border-t border-border flex items-center justify-between">
+          <span class="text-muted text-xs" id="cluster-widget-status">Fetching cluster status...</span>
+          <span class="inline-flex items-center gap-1 text-brand text-sm font-semibold group-hover:gap-2 transition-all">
+            <i class="fa-solid fa-arrow-right text-xs"></i> View Dashboard
+          </span>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DIVIDER ═══════════════════════ -->
+  <div class="section-divider mx-4"></div>
+
   <!-- ═══════════════════════════════════════ PAYMENTS ═══════════════════════════════════════ -->
   <section class="py-14 md:py-20 reveal">
     <div class="max-w-6xl mx-auto px-4 sm:px-6">
@@ -369,6 +438,78 @@ import Layout from '../layouts/Layout.astro';
   </div>
 
 </Layout>
+
+<!-- ═══════════════════════════════════ CLUSTER WIDGET SCRIPT ═══════════════════════════════════ -->
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    async function loadClusterWidget() {
+      try {
+        const res = await fetch('/.netlify/functions/cluster-status');
+        if (!res.ok) return;
+        const data = await res.json();
+        const summary = data.summary || {};
+        const nodes = data.nodes || [];
+        const isDemo = data.isDemo || data.demo;
+
+        // Update stats
+        const nodesEl = document.getElementById('cluster-widget-nodes');
+        const healthEl = document.getElementById('cluster-widget-health');
+        const hashEl = document.getElementById('cluster-widget-hash');
+        const statusEl = document.getElementById('cluster-widget-status');
+
+        if (nodesEl) {
+          nodesEl.textContent = `${summary.nodesReady || 0}/${summary.nodesTotal || 0}`;
+          if (summary.nodesReady === summary.nodesTotal && summary.nodesTotal > 0) {
+            nodesEl.style.color = '#22c55e';
+          } else if ((summary.nodesReady || 0) > 0) {
+            nodesEl.style.color = '#eab308';
+          } else {
+            nodesEl.style.color = '#ef4444';
+          }
+        }
+
+        if (healthEl) {
+          const h = summary.healthScore ?? 0;
+          healthEl.textContent = h + '%';
+          if (h >= 80) healthEl.style.color = '#22c55e';
+          else if (h >= 50) healthEl.style.color = '#eab308';
+          else healthEl.style.color = '#ef4444';
+        }
+
+        if (hashEl && data.mining) {
+          hashEl.textContent = data.mining.totalHashrate || '--';
+        }
+
+        if (statusEl) {
+          if (isDemo) {
+            statusEl.textContent = 'Demo mode — no live data yet';
+          } else if (data.stale) {
+            statusEl.textContent = `Data is ${data.ageMinutes}m old`;
+          } else {
+            statusEl.textContent = `Live — updated ${new Date(data.lastUpdate).toLocaleTimeString()}`;
+          }
+        }
+
+        // Update node dots
+        const dotsContainer = document.getElementById('cluster-widget-dots');
+        if (dotsContainer && nodes.length > 0) {
+          dotsContainer.innerHTML = nodes.map((n: any) => {
+            const isReady = n.status === 'Ready';
+            const color = isReady ? '#22c55e' : '#ef4444';
+            const shadow = isReady ? 'box-shadow:0 0 6px rgba(34,197,94,0.4)' : '';
+            return `<span class="w-3 h-3 rounded-full transition-colors" style="background:${color};${shadow}" title="${n.name}: ${n.status}"></span>`;
+          }).join('');
+        }
+      } catch {
+        const statusEl = document.getElementById('cluster-widget-status');
+        if (statusEl) statusEl.textContent = 'Cluster status unavailable';
+      }
+    }
+
+    loadClusterWidget();
+    setInterval(loadClusterWidget, 30000);
+  });
+</script>
 
 <!-- ═══════════════════════════════════ ALINA CHAT SCRIPT ═══════════════════════════════════ -->
 <script>

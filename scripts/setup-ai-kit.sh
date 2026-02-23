@@ -16,7 +16,8 @@
 # ║    bash scripts/setup-ai-kit.sh --password 0735 --nodes 2,5,7      ║
 # ╚══════════════════════════════════════════════════════════════════════╝
 
-set -e
+# No set -e — we want to continue past failed nodes
+# set -e
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -82,19 +83,20 @@ done
 
 ssh_cmd() {
   local target="$1"; shift
+  local cmd_timeout="${SSH_CMD_TIMEOUT:-120}"
   if [ -n "${SSH_PASS:-}" ]; then
-    sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$target" "$@"
+    timeout "$cmd_timeout" sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o StrictHostKeyChecking=accept-new "$target" "$@"
   else
-    ssh -p "$SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$target" "$@"
+    timeout "$cmd_timeout" ssh -p "$SSH_PORT" -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$target" "$@"
   fi
 }
 
 scp_cmd() {
   local src="$1" dst="$2"
   if [ -n "${SSH_PASS:-}" ]; then
-    sshpass -p "$SSH_PASS" scp -P "$SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$src" "$dst" 2>/dev/null
+    timeout 60 sshpass -p "$SSH_PASS" scp -P "$SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$src" "$dst" 2>/dev/null
   else
-    scp -P "$SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$src" "$dst" 2>/dev/null
+    timeout 60 scp -P "$SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$src" "$dst" 2>/dev/null
   fi
 }
 
@@ -204,22 +206,26 @@ else
 
     printf "  node%-2s (%s): " "$N" "$IP"
 
-    if ! ssh_cmd "user@$IP" "echo ok" &>/dev/null; then
+    if ! SSH_CMD_TIMEOUT=15 ssh_cmd "user@$IP" "echo ok" &>/dev/null; then
       echo -e "${RED}unreachable${NC}"
       continue
     fi
 
     # Install ffmpeg + imagemagick (content pipeline deps)
-    ssh_cmd "user@$IP" "
+    if SSH_CMD_TIMEOUT=120 ssh_cmd "user@$IP" "
       doas apk add ffmpeg imagemagick python3 2>/dev/null
-    " &>/dev/null
-
-    echo -e "${GREEN}deps installed${NC}"
+    " &>/dev/null; then
+      echo -e "${GREEN}deps installed${NC}"
+    else
+      echo -e "${YELLOW}deps install timed out or failed — skipping${NC}"
+    fi
   done
 
   echo ""
   echo -e "  ${YELLOW}Deploying workers...${NC}"
-  bash "$SCRIPT_DIR/deploy-workers.sh" $DEPLOY_ARGS
+  if ! bash "$SCRIPT_DIR/deploy-workers.sh" $DEPLOY_ARGS; then
+    echo -e "  ${YELLOW}⚠ Worker deployment had errors — check output above${NC}"
+  fi
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -236,9 +242,18 @@ else
   chmod +x "$CLUSTER_DIR/dispatcher.py"
   echo -e "  ${GREEN}✓${NC} Dispatcher copied to $CLUSTER_DIR/dispatcher.py"
 
+  # Detect privilege escalation
+  if command -v doas &>/dev/null; then
+    PRIV="doas"
+  elif command -v sudo &>/dev/null; then
+    PRIV="sudo"
+  else
+    PRIV=""
+  fi
+
   # Create systemd service for dispatcher (if systemd available)
-  if command -v systemctl &>/dev/null; then
-    sudo tee /etc/systemd/system/cluster-dispatcher.service > /dev/null << DSVC
+  if command -v systemctl &>/dev/null && systemctl --version &>/dev/null; then
+    $PRIV tee /etc/systemd/system/cluster-dispatcher.service > /dev/null << DSVC
 [Unit]
 Description=Cluster AI Dispatcher — inbox watcher
 After=network-online.target redis-server.service
@@ -258,16 +273,16 @@ StandardError=append:$CLUSTER_DIR/logs/dispatcher.log
 [Install]
 WantedBy=multi-user.target
 DSVC
-    sudo systemctl daemon-reload
-    sudo systemctl enable cluster-dispatcher
-    sudo systemctl restart cluster-dispatcher
+    $PRIV systemctl daemon-reload
+    $PRIV systemctl enable cluster-dispatcher
+    $PRIV systemctl restart cluster-dispatcher
     sleep 2
 
     if systemctl is-active --quiet cluster-dispatcher; then
       echo -e "  ${GREEN}✓${NC} Dispatcher running (systemd)"
     else
       echo -e "  ${RED}✗${NC} Dispatcher failed to start"
-      echo -e "  ${YELLOW}  Check: sudo journalctl -u cluster-dispatcher -n 20${NC}"
+      echo -e "  ${YELLOW}  Check: journalctl -u cluster-dispatcher -n 20${NC}"
     fi
   else
     # Fallback: start with nohup

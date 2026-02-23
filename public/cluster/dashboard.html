@@ -1164,6 +1164,28 @@
     /* Events Panel */
     .events-body { max-height: 300px; overflow-y: auto; }
     .events-body.collapsed { display: none; }
+
+    /* Node Stability Indicator */
+    .stability-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
+    .stability-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.5rem; }
+    .stability-cell { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; text-align: center; }
+    .stability-name { font-size: 0.75rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .stability-score { font-family: 'JetBrains Mono', monospace; font-size: 1rem; font-weight: 700; }
+    .stability-score.stable { color: var(--green); }
+    .stability-score.flapping { color: var(--yellow); }
+    .stability-score.unstable { color: var(--red); }
+    .stability-label { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 0.1rem; }
+    .stability-bar { height: 4px; border-radius: 2px; margin-top: 0.3rem; overflow: hidden; display: flex; }
+    .stability-seg { height: 100%; }
+    .stability-seg.up { background: var(--green); }
+    .stability-seg.down { background: var(--red); }
+
+    /* Breadcrumb */
+    .breadcrumb { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1.5rem; background: var(--bg-elevated); border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+    .breadcrumb a { color: var(--brand); text-decoration: none; display: flex; align-items: center; gap: 0.3rem; }
+    .breadcrumb a:hover { text-decoration: underline; }
+    .breadcrumb .sep { color: var(--muted); }
+    .breadcrumb .current { color: var(--text); font-weight: 600; }
   </style>
 </head>
 <body>
@@ -1177,10 +1199,18 @@
 
   <nav class="nav">
     <a href="/"><i class="fa-solid fa-house"></i> Home</a>
-    <a href="/cluster" class="active"><i class="fa-solid fa-server"></i> Cluster</a>
+    <a href="/cluster"><i class="fa-solid fa-server"></i> Cluster Overview</a>
+    <a href="/cluster/dashboard" class="active"><i class="fa-solid fa-sliders"></i> Advanced Dashboard</a>
     <a href="/shop"><i class="fa-solid fa-cart-shopping"></i> Shop</a>
     <a href="/gallery"><i class="fa-solid fa-images"></i> Gallery</a>
   </nav>
+
+  <!-- Breadcrumb -->
+  <div class="breadcrumb">
+    <a href="/cluster"><i class="fa-solid fa-arrow-left"></i> Cluster Overview</a>
+    <span class="sep">/</span>
+    <span class="current">Advanced Dashboard</span>
+  </div>
 
   <!-- API Config Bar -->
   <div class="api-config">
@@ -1428,6 +1458,15 @@
       <div class="health-label"><i class="fa-solid fa-heart-pulse"></i> Cluster Health</div>
       <div class="health-track"><div class="health-fill good" id="healthFill" style="width: 0%"></div></div>
       <div class="health-pct" id="healthPct">--%</div>
+    </div>
+
+    <!-- Node Stability Panel -->
+    <div class="stability-panel" id="stabilityPanel" style="display:none">
+      <div class="section-header" style="margin-bottom:0.5rem">
+        <h2 class="section-title" style="font-size:0.95rem"><i class="fa-solid fa-wave-square"></i> Node Stability</h2>
+        <span class="section-badge" id="stabilityBadge">--</span>
+      </div>
+      <div class="stability-grid" id="stabilityGrid"></div>
     </div>
 
     <!-- Health Graph -->
@@ -2490,6 +2529,7 @@
 
         window._lastNodes = data.nodes || [];
         renderNodes(window._lastNodes);
+        trackNodeStability(window._lastNodes);
         document.getElementById('nodeBadge').textContent = `${window._lastNodes.length} nodes`;
 
         allPods = data.pods || [];
@@ -4174,6 +4214,89 @@
         return true;
       }
       return false;
+    }
+
+    // ─── Node Stability Tracking ──────────────────────────────────────────
+    var stabilityHistory = JSON.parse(localStorage.getItem('clusterStability') || '{}');
+    var STABILITY_MAX_SAMPLES = 30; // Track last 30 checks (~5 minutes at 10s interval)
+
+    function trackNodeStability(nodes) {
+      var now = Date.now();
+      nodes.forEach(function(n) {
+        if (!stabilityHistory[n.name]) {
+          stabilityHistory[n.name] = [];
+        }
+        var hist = stabilityHistory[n.name];
+        hist.push({ ts: now, ready: n.status === 'Ready' });
+        // Trim to max samples
+        while (hist.length > STABILITY_MAX_SAMPLES) hist.shift();
+      });
+      try { localStorage.setItem('clusterStability', JSON.stringify(stabilityHistory)); } catch(e) {}
+      renderStability(nodes);
+    }
+
+    function renderStability(nodes) {
+      var panel = document.getElementById('stabilityPanel');
+      var grid = document.getElementById('stabilityGrid');
+      var badge = document.getElementById('stabilityBadge');
+      if (!panel || !grid) return;
+
+      var flapCount = 0;
+      var html = '';
+
+      nodes.forEach(function(n) {
+        var hist = stabilityHistory[n.name] || [];
+        if (hist.length < 2) return; // Need at least 2 samples
+
+        // Count state transitions
+        var transitions = 0;
+        for (var i = 1; i < hist.length; i++) {
+          if (hist[i].ready !== hist[i-1].ready) transitions++;
+        }
+
+        // Calculate uptime percentage
+        var upCount = hist.filter(function(h) { return h.ready; }).length;
+        var upPct = Math.round((upCount / hist.length) * 100);
+
+        // Determine stability
+        var score, label, cls;
+        if (transitions === 0) {
+          score = '100%';
+          label = 'Stable';
+          cls = 'stable';
+        } else if (transitions <= 2) {
+          score = upPct + '%';
+          label = 'Minor flap';
+          cls = 'flapping';
+          flapCount++;
+        } else {
+          score = upPct + '%';
+          label = 'Unstable (' + transitions + ' flaps)';
+          cls = 'unstable';
+          flapCount++;
+        }
+
+        // Build stability bar segments
+        var barHtml = '';
+        hist.forEach(function(h) {
+          var pctWidth = (100 / hist.length).toFixed(2);
+          barHtml += '<div class="stability-seg ' + (h.ready ? 'up' : 'down') + '" style="width:' + pctWidth + '%"></div>';
+        });
+
+        html += '<div class="stability-cell">' +
+          '<div class="stability-name">' + n.name + '</div>' +
+          '<div class="stability-score ' + cls + '">' + score + '</div>' +
+          '<div class="stability-label">' + label + '</div>' +
+          '<div class="stability-bar">' + barHtml + '</div>' +
+          '</div>';
+      });
+
+      if (html) {
+        panel.style.display = '';
+        grid.innerHTML = html;
+        badge.textContent = flapCount > 0 ? flapCount + ' flapping' : 'All stable';
+        badge.style.color = flapCount > 0 ? 'var(--yellow)' : 'var(--green)';
+      }
     }
 
     // ─── Auto-Refresh Countdown ─────────────────────────────────────────

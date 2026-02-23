@@ -12,7 +12,8 @@
 # ║    - Configures auto-restart via init system                        ║
 # ╚══════════════════════════════════════════════════════════════════════╝
 
-set -e
+# No set -e — we want to continue past failed nodes
+# set -e
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -29,9 +30,16 @@ if [ -f "$SCRIPT_DIR/cluster-nodes.conf" ]; then
   load_node_config
 fi
 
-# Redis host — default to NEXUS ethernet IP, fall back to WiFi
-REDIS_HOST="${REDIS_HOST:-10.0.0.1}"
-WORKER_QUEUES="${WORKER_QUEUES:-shell,whisper,llm,generic}"
+# Redis host — auto-detect: use first non-loopback IP if running on the Redis host
+if [ -z "${REDIS_HOST:-}" ]; then
+  # If redis-cli works locally, we ARE the Redis host — use our WiFi IP so phones can reach us
+  if redis-cli ping 2>/dev/null | grep -q PONG; then
+    REDIS_HOST=$(ip -4 addr show wlan0 2>/dev/null | grep -oP 'inet \K[\d.]+' || echo "192.168.1.206")
+  else
+    REDIS_HOST="10.0.0.1"
+  fi
+fi
+WORKER_QUEUES="${WORKER_QUEUES:-shell,whisper,llm,generic,image,audio}"
 
 # Parse args
 SSH_PORT="${SSH_PORT:-22}"
@@ -70,19 +78,20 @@ done
 
 ssh_cmd() {
   local target="$1"; shift
+  local cmd_timeout="${SSH_CMD_TIMEOUT:-120}"
   if [ -n "${SSH_PASS:-}" ]; then
-    sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$target" "$@"
+    timeout "$cmd_timeout" sshpass -p "$SSH_PASS" ssh -p "$SSH_PORT" -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o StrictHostKeyChecking=accept-new "$target" "$@"
   else
-    ssh -p "$SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$target" "$@"
+    timeout "$cmd_timeout" ssh -p "$SSH_PORT" -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$target" "$@"
   fi
 }
 
 scp_cmd() {
   local src="$1" dst="$2"
   if [ -n "${SSH_PASS:-}" ]; then
-    sshpass -p "$SSH_PASS" scp -P "$SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$src" "$dst" 2>/dev/null
+    timeout 60 sshpass -p "$SSH_PASS" scp -P "$SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$src" "$dst" 2>/dev/null
   else
-    scp -P "$SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$src" "$dst" 2>/dev/null
+    timeout 60 scp -P "$SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$src" "$dst" 2>/dev/null
   fi
 }
 
@@ -204,7 +213,7 @@ chmod 600 /home/user/.worker-env" 2>/dev/null
   ssh_cmd "$SSH_TARGET" "pkill -f 'worker.py' 2>/dev/null; sleep 1; true" 2>/dev/null
 
   # Detect init system and create service
-  INIT_SYS=$(ssh_cmd "$SSH_TARGET" "command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1 && echo systemd || { command -v rc-service >/dev/null 2>&1 && echo openrc; } || echo none" 2>/dev/null)
+  INIT_SYS=$(ssh_cmd "$SSH_TARGET" "command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1 && echo systemd || { { command -v rc-service >/dev/null 2>&1 || [ -f /sbin/openrc-run ]; } && echo openrc; } || echo none" 2>/dev/null)
 
   if [ "$INIT_SYS" = "systemd" ]; then
     ssh_cmd "$SSH_TARGET" "doas tee /etc/systemd/system/cluster-worker.service > /dev/null" << 'SVC'
@@ -249,8 +258,8 @@ start_pre() {
   export REDIS_HOST NODE_NAME WORKER_QUEUES
 }
 ORCSVC
-    ssh_cmd "$SSH_TARGET" "doas rc-update add cluster-worker default 2>/dev/null; doas rc-service cluster-worker restart" 2>/dev/null
-    echo -e "  ${GREEN}✓${NC} Worker running (OpenRC)"
+    ssh_cmd "$SSH_TARGET" "doas rc-update add cluster-worker default 2>/dev/null; doas rc-service cluster-worker restart 2>/dev/null || true" 2>/dev/null
+    echo -e "  ${GREEN}✓${NC} Worker started (OpenRC)"
 
   else
     # Fallback: nohup
@@ -263,8 +272,8 @@ ORCSVC
   fi
 
   # Verify
-  sleep 2
-  if ssh_cmd "$SSH_TARGET" "pgrep -f 'worker.py' >/dev/null 2>&1" 2>/dev/null; then
+  sleep 5
+  if SSH_CMD_TIMEOUT=15 ssh_cmd "$SSH_TARGET" "pgrep -f 'worker.py' >/dev/null 2>&1" 2>/dev/null; then
     echo -e "  ${GREEN}✓${NC} Worker verified running"
     OK=$((OK + 1))
   else
