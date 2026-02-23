@@ -91,6 +91,26 @@ echo "CLUSTER_API_KEY=\"$CLUSTER_API_KEY\"" > "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 echo "  API key saved to $ENV_FILE"
 
+# Bootstrap credentials on Netlify Blobs (one-time setup)
+# Without this, push-cluster-status.sh gets 401 and dashboard commands get 503
+echo "[0b/5] Bootstrapping Netlify credentials..."
+CRED_PAYLOAD="{\"action\":\"setup-credentials\",\"apiKey\":\"${CLUSTER_API_KEY}\""
+if [ -n "${CLUSTER_WEB_PASSWORD:-}" ]; then
+  CRED_PAYLOAD="${CRED_PAYLOAD},\"webPassword\":\"${CLUSTER_WEB_PASSWORD}\""
+fi
+CRED_PAYLOAD="${CRED_PAYLOAD}}"
+CRED_RESP=$(curl -sf -X POST "https://curtbrag.com/.netlify/functions/cluster-control" \
+  -H "Content-Type: application/json" \
+  -d "$CRED_PAYLOAD" 2>/dev/null || echo '{}')
+if echo "$CRED_RESP" | grep -q '"success"' 2>/dev/null; then
+  echo "  Netlify credentials configured"
+elif echo "$CRED_RESP" | grep -q 'already configured' 2>/dev/null; then
+  echo "  Netlify credentials already set"
+else
+  echo "  WARNING: Could not bootstrap Netlify credentials"
+  echo "  If push still fails, set CLUSTER_API_KEY in Netlify site settings"
+fi
+
 # Step 1: Download fixed scripts
 echo "[1/5] Downloading fixed scripts..."
 for s in push-cluster-status.sh poll-cluster-commands.sh cluster-nodes.conf; do

@@ -371,9 +371,23 @@ echo \"mining level $mining_level (${HINT}% CPU)\""
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       if [ "$display_mode" = "off" ]; then
-        DISPLAY_CMD="doas systemctl stop cage@tty7 2>/dev/null; doas rc-service cage stop 2>/dev/null; echo 'display off'"
+        # Turn off backlight — greetd stays running but screen goes dark
+        DISPLAY_CMD="doas sh -c 'for f in /sys/class/backlight/*/bl_power; do echo 4 > \"\$f\"; done' 2>/dev/null; echo 'display off'"
       else
-        DISPLAY_CMD="mkdir -p /home/user/display && echo '$display_mode' > /home/user/display/.mode && { doas systemctl restart cage@tty7 2>/dev/null || doas rc-service cage restart 2>/dev/null || doas rc-service greetd restart 2>/dev/null; } && echo 'display mode set to $display_mode'"
+        # These phones use greetd -> cage -> foot -> wrapper script
+        # SSH-launched cage has no DRM seat access and runs blind.
+        # The ONLY way to change the display is:
+        #   1. Write the mode file
+        #   2. Ensure greetd config points to the wrapper
+        #   3. Reboot (greetd re-reads config at boot with proper seat allocation)
+        DISPLAY_CMD="mkdir -p /home/user/display
+echo '$display_mode' > /home/user/display/.mode
+# Ensure greetd config points to wrapper (not directly to nodeid.sh)
+if ! grep -q greetd-wrapper /etc/greetd/config.toml 2>/dev/null; then
+  printf '[terminal]\nvt = 7\n\n[default_session]\ncommand = \"cage -s -- foot -f monospace:size=18 -e /home/user/display/greetd-wrapper.sh\"\nuser = \"user\"\n' | doas tee /etc/greetd/config.toml >/dev/null
+fi
+echo 'mode set to $display_mode, rebooting...'
+doas reboot"
       fi
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         run_on_all_tracked "$DISPLAY_CMD" "$RESULT_DIR" "$PHONE_NODES"

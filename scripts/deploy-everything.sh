@@ -58,6 +58,7 @@ while [[ $# -gt 0 ]]; do
     --stagger) STAGGER_SECS="$2"; shift 2;;
     --skip-mining) SKIP_MINING=1; shift;;
     --skip-nexus) SKIP_NEXUS=1; shift;;
+    --skip-display) SKIP_DISPLAY=1; shift;;
     --ssh-port) SSH_PORT="$2"; shift 2;;
     --diagnose) DIAGNOSE=1; shift;;
     -h|--help)
@@ -68,6 +69,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --stagger N        Seconds between starting each miner (default: 30)"
       echo "  --skip-mining      Skip mining setup on phones"
       echo "  --skip-nexus       Skip API server setup on this machine"
+      echo "  --skip-display     Skip phone display system setup"
       echo "  --ssh-port PORT    SSH port (default: 22, Termux uses 8022)"
       echo "  --diagnose         Run SSH diagnostics on all nodes"
       exit 0;;
@@ -168,6 +170,22 @@ setup_nexus_prime() {
     echo -n "  API key for push/poller (CLUSTER_API_KEY): "
     read -r CLUSTER_API_KEY
     export CLUSTER_API_KEY
+  fi
+
+  # Bootstrap credentials on Netlify (stored in Netlify Blobs)
+  # This is critical — without it, push-cluster-status.sh gets 401 and commands get 503
+  echo -e "\n${YELLOW}  Bootstrapping Netlify credentials...${NC}"
+  NETLIFY_CRED_RESP=$(curl -s -X POST "https://curtbrag.com/.netlify/functions/cluster-control" \
+    -H "Content-Type: application/json" \
+    -d "{\"action\":\"setup-credentials\",\"webPassword\":\"${CLUSTER_WEB_PASSWORD}\",\"apiKey\":\"${CLUSTER_API_KEY}\"}" 2>/dev/null)
+  if echo "$NETLIFY_CRED_RESP" | grep -q '"success"'; then
+    echo -e "  ${GREEN}✓${NC} Netlify credentials configured"
+  elif echo "$NETLIFY_CRED_RESP" | grep -q 'already configured'; then
+    echo -e "  ${GREEN}✓${NC} Netlify credentials already set"
+  else
+    echo -e "  ${YELLOW}⚠${NC} Netlify credential setup response: $NETLIFY_CRED_RESP"
+    echo -e "  ${YELLOW}  If push/commands fail, set CLUSTER_API_KEY and CLUSTER_WEB_PASSWORD"
+    echo -e "  ${YELLOW}  in Netlify site settings > Environment Variables${NC}"
   fi
 
   # Check prerequisites
@@ -454,6 +472,64 @@ deploy_mining() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# STEP 3.5: Deploy display system to all phones
+# ═══════════════════════════════════════════════════════════════════════════════
+
+setup_display_system() {
+  banner "STEP 3.5 — Phone Display System (greetd + nodeid)"
+
+  local OK=0 FAIL=0
+  for name in $(echo "${!NODES[@]}" | tr ' ' '\n' | sort); do
+    local IP="${NODES[$name]}"
+    local SSH_TARGET="user@${IP}"
+    local NUM="${name#node}"
+
+    echo -e "${YELLOW}  [${name}]${NC} ${IP}"
+
+    # Check SSH
+    if ! ssh_cmd "$SSH_TARGET" "echo ok" &>/dev/null; then
+      echo -e "    ${RED}✗${NC} Cannot SSH — skipping"
+      FAIL=$((FAIL + 1))
+      continue
+    fi
+
+    # Create display directory
+    ssh_cmd "$SSH_TARGET" "mkdir -p /home/user/display" 2>/dev/null
+
+    # Copy wrapper script
+    scp_cmd "$SCRIPT_DIR/greetd-wrapper.sh" "${SSH_TARGET}:/home/user/display/greetd-wrapper.sh" 2>/dev/null \
+      && ssh_cmd "$SSH_TARGET" "chmod +x /home/user/display/greetd-wrapper.sh" 2>/dev/null
+
+    # Generate per-node nodeid.sh from template
+    local TMPFILE="/tmp/nodeid-${name}.sh"
+    sed "s/__NODE_NUM__/${NUM}/g" "$SCRIPT_DIR/nodeid-template.sh" > "$TMPFILE"
+    scp_cmd "$TMPFILE" "${SSH_TARGET}:/home/user/display/nodeid.sh" 2>/dev/null \
+      && ssh_cmd "$SSH_TARGET" "chmod +x /home/user/display/nodeid.sh" 2>/dev/null
+    rm -f "$TMPFILE"
+
+    # Set initial mode to nodeid
+    ssh_cmd "$SSH_TARGET" "echo 'nodeid' > /home/user/display/.mode" 2>/dev/null
+
+    # Update greetd config to use wrapper
+    # IMPORTANT: Edit /etc/greetd/config.toml (the REAL config, NOT /etc/phrog/greetd-config.toml)
+    ssh_cmd "$SSH_TARGET" "printf '[terminal]\nvt = 7\n\n[default_session]\ncommand = \"cage -s -- foot -f monospace:size=18 -e /home/user/display/greetd-wrapper.sh\"\nuser = \"user\"\n' | doas tee /etc/greetd/config.toml >/dev/null" 2>/dev/null
+
+    # Ensure greetd is enabled and not masked
+    ssh_cmd "$SSH_TARGET" "doas systemctl unmask greetd 2>/dev/null; doas systemctl enable greetd 2>/dev/null" 2>/dev/null
+
+    # Remove any rogue cage services that compete for DRM device
+    ssh_cmd "$SSH_TARGET" "doas systemctl disable cage@tty7.service cage-kiosk.service 2>/dev/null; doas rm -f /etc/systemd/system/cage@.service /etc/systemd/system/cage-kiosk.service; doas systemctl daemon-reload 2>/dev/null" 2>/dev/null
+
+    echo -e "    ${GREEN}✓${NC} Display configured (mode: nodeid)"
+    OK=$((OK + 1))
+  done
+
+  echo ""
+  echo -e "  Display: ${GREEN}${OK} configured${NC}, ${RED}${FAIL} failed${NC}"
+  echo -e "  ${YELLOW}Phones need a reboot for display changes to take effect.${NC}"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # STEP 4: node1 — Push script + Command poller
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -551,6 +627,13 @@ else
   echo -e "${YELLOW}Skipping mining setup (--skip-mining)${NC}"
 fi
 
+# Step 3.5: Display system
+if [ -z "${SKIP_DISPLAY:-}" ]; then
+  setup_display_system
+else
+  echo -e "${YELLOW}Skipping display setup (--skip-display)${NC}"
+fi
+
 # Step 4: node1 push + poller
 setup_node1_services
 
@@ -566,8 +649,10 @@ echo ""
 echo -e "  ${GREEN}API Server:${NC}   Running on this machine, port ${API_PORT}"
 echo -e "  ${GREEN}Tailscale:${NC}    Funnel exposing API to internet"
 echo -e "  ${GREEN}Mining:${NC}       xmrig on all phones -> MoneroOcean"
+echo -e "  ${GREEN}Display:${NC}      greetd wrapper + nodeid on all phones"
 echo -e "  ${GREEN}Dashboard:${NC}    node1 pushing status every 5 min"
 echo -e "  ${GREEN}Poller:${NC}       node1 polling for commands"
+echo -e "  ${GREEN}Netlify:${NC}      Credentials bootstrapped to Netlify Blobs"
 echo ""
 echo -e "  ${BLUE}Check mining:${NC}"
 echo -e "    https://moneroocean.stream/#/dashboard?addr=${WALLET}"
