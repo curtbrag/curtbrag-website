@@ -6,7 +6,7 @@ set -euo pipefail
 # Run from node1 or Steam Deck
 # =========================
 
-SCRIPTDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPTDIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 ROOTDIR="$(cd "$SCRIPTDIR/.." && pwd)"
 
 ELEVATE=""
@@ -64,6 +64,8 @@ declare -A NODE_IP=()
 CONF_CANDIDATES=(
   "${SCRIPTDIR}/cluster-nodes.conf"
   "${ROOTDIR}/cluster-nodes.conf"
+  "./scripts/cluster-nodes.conf"
+  "./cluster-nodes.conf"
 )
 
 load_from_node_list() {
