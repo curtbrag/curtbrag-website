@@ -9,13 +9,6 @@ set -euo pipefail
 SCRIPTDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOTDIR="$(cd "$SCRIPTDIR/.." && pwd)"
 
-# Conf file: try scripts/cluster-nodes.conf first (existing repo format),
-# then repo root (simple "name ip" format)
-CONF_FILE=""
-for f in "$SCRIPTDIR/cluster-nodes.conf" "$ROOTDIR/cluster-nodes.conf"; do
-  [[ -f "$f" ]] && CONF_FILE="$f" && break
-done
-
 ELEVATE=""
 if command -v doas >/dev/null 2>&1; then
   ELEVATE="doas"
@@ -63,35 +56,63 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- discover nodes ---
+# Supports BOTH:
+#  1) scripts/cluster-nodes.conf with NODE_LIST="node1:192.168.1.206:control-plane node2:192.168.1.207:worker ..."
+#     (shell sourced)
+#  2) simple lines: "node2 192.168.1.207" (any file)
 declare -A NODE_IP=()
 
-if [[ -n "$CONF_FILE" ]]; then
-  # Detect format: existing repo uses NODE_LIST="name:ip:role ..." as shell variable
-  if grep -q '^NODE_LIST=' "$CONF_FILE" 2>/dev/null; then
-    # Source it to get NODE_LIST, then parse colon-separated entries
-    # shellcheck disable=SC1090
-    . "$CONF_FILE"
-    for entry in $NODE_LIST; do
-      name="${entry%%:*}"
-      rest="${entry#*:}"
-      ip="${rest%%:*}"
-      [[ -z "$name" || -z "$ip" ]] && continue
-      NODE_IP["$name"]="$ip"
-    done
-  else
-    # Simple "name ip" format
-    while read -r name ip; do
-      [[ -z "${name:-}" || -z "${ip:-}" ]] && continue
-      [[ "$name" =~ ^# ]] && continue
-      NODE_IP["$name"]="$ip"
-    done < <(grep -v '^\s*$' "$CONF_FILE" || true)
-  fi
-fi
+CONF_CANDIDATES=(
+  "${SCRIPTDIR}/cluster-nodes.conf"
+  "${ROOTDIR}/cluster-nodes.conf"
+)
 
-# Fallback: node2..node10 with 192.168.1.207..215 (matches existing cluster-nodes.conf)
+load_from_node_list() {
+  local f="$1"
+  # shellcheck disable=SC1090
+  source "$f"
+
+  # NODE_LIST expected as space-separated entries: name:ip:role
+  if [[ -z "${NODE_LIST:-}" ]]; then
+    return 1
+  fi
+
+  local entry name ip role
+  for entry in $NODE_LIST; do
+    IFS=':' read -r name ip role <<< "$entry"
+    [[ -z "${name:-}" || -z "${ip:-}" ]] && continue
+    NODE_IP["$name"]="$ip"
+  done
+
+  [[ ${#NODE_IP[@]} -gt 0 ]]
+}
+
+load_from_lines() {
+  local f="$1"
+  local name ip
+  while read -r name ip; do
+    [[ -z "${name:-}" || -z "${ip:-}" ]] && continue
+    [[ "$name" =~ ^# ]] && continue
+    NODE_IP["$name"]="$ip"
+  done < <(grep -v '^\s*$' "$f" || true)
+
+  [[ ${#NODE_IP[@]} -gt 0 ]]
+}
+
+for f in "${CONF_CANDIDATES[@]}"; do
+  [[ -f "$f" ]] || continue
+
+  if grep -qE '^\s*NODE_LIST=' "$f"; then
+    load_from_node_list "$f" && break
+  else
+    load_from_lines "$f" && break
+  fi
+done
+
+# Fallback if no conf found / parsed
 if [[ ${#NODE_IP[@]} -eq 0 ]]; then
   for i in {2..10}; do
-    NODE_IP["node${i}"]="192.168.1.$((205+i))"
+    NODE_IP["node${i}"]="192.168.1.$((205+i))"  # node2=207 .. node10=215
   done
 fi
 
@@ -141,6 +162,11 @@ read_token() {
 TOKEN="$(read_token | tr -d '\r\n')"
 if [[ -z "$TOKEN" ]]; then
   echo "ERROR: token empty" >&2
+  exit 1
+fi
+
+if [[ ${#TOKEN} -lt 20 ]]; then
+  echo "ERROR: token looks too short (${#TOKEN} chars). Read failed?" >&2
   exit 1
 fi
 
@@ -256,6 +282,11 @@ remote_force_install_agent() {
     curl -sfL https://get.k3s.io | sh -
   '"
 }
+
+# --- pre-flight: warn about missing IPs ---
+for node in "${TARGET_NODES[@]}"; do
+  [[ -n "${NODE_IP[$node]:-}" ]] || echo "WARN: $node has no IP in config" >&2
+done
 
 # --- main ---
 for node in "${TARGET_NODES[@]}"; do
