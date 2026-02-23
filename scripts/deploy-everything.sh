@@ -25,7 +25,7 @@ NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
-API_DIR="$REPO_DIR/cluster/api"
+API_DIR="$REPO_DIR/cluster/api"  # Legacy — local API server is no longer used
 
 WALLET="44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT"
 POOL="gulf.moneroocean.stream:20128"
@@ -57,6 +57,7 @@ while [[ $# -gt 0 ]]; do
     --password) SSH_PASS="$2"; shift 2;;
     --stagger) STAGGER_SECS="$2"; shift 2;;
     --skip-mining) SKIP_MINING=1; shift;;
+    --skip-display) SKIP_DISPLAY=1; shift;;
     --skip-nexus) SKIP_NEXUS=1; shift;;
     --ssh-port) SSH_PORT="$2"; shift 2;;
     --diagnose) DIAGNOSE=1; shift;;
@@ -67,7 +68,8 @@ while [[ $# -gt 0 ]]; do
       echo "  --cpu N            CPU % hint for miners (default: 75)"
       echo "  --stagger N        Seconds between starting each miner (default: 30)"
       echo "  --skip-mining      Skip mining setup on phones"
-      echo "  --skip-nexus       Skip API server setup on this machine"
+      echo "  --skip-display     Skip display system setup on phones"
+      echo "  --skip-nexus       Skip credential bootstrap + Tailscale"
       echo "  --ssh-port PORT    SSH port (default: 22, Termux uses 8022)"
       echo "  --diagnose         Run SSH diagnostics on all nodes"
       exit 0;;
@@ -156,7 +158,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════
 
 setup_nexus_prime() {
-  banner "STEP 1/4 — Cluster API Server (this machine)"
+  banner "STEP 1/5 — Netlify Credential Bootstrap"
 
   # Prompt for credentials if not set
   if [ -z "${CLUSTER_WEB_PASSWORD:-}" ]; then
@@ -173,7 +175,7 @@ setup_nexus_prime() {
   # Check prerequisites
   echo -e "\n${YELLOW}  Checking prerequisites...${NC}"
   local MISSING=0
-  for cmd in node ssh; do
+  for cmd in ssh curl; do
     if command -v "$cmd" &>/dev/null; then
       echo -e "  ${GREEN}✓${NC} $cmd"
     else
@@ -181,78 +183,44 @@ setup_nexus_prime() {
     fi
   done
   command -v kubectl &>/dev/null && echo -e "  ${GREEN}✓${NC} kubectl" || echo -e "  ${YELLOW}⚠${NC} kubectl not found (optional)"
-  command -v adb &>/dev/null && echo -e "  ${GREEN}✓${NC} adb" || echo -e "  ${YELLOW}⚠${NC} adb not found (optional)"
   [ "$MISSING" -eq 1 ] && { echo -e "${RED}  Missing required tools.${NC}"; return 1; }
 
-  # Verify API server files exist
-  if [ ! -f "$API_DIR/server.js" ]; then
-    echo -e "  ${RED}✗${NC} server.js not found at $API_DIR"
-    return 1
+  # Bootstrap credentials into Netlify Blobs via the setup-credentials endpoint
+  # This is required: without it, the Netlify functions return 401/503 because
+  # CLUSTER_API_KEY and CLUSTER_WEB_PASSWORD aren't set as env vars on Netlify
+  echo -e "\n${YELLOW}  Bootstrapping credentials into Netlify...${NC}"
+  BOOTSTRAP_RESP=$(curl -sf -X POST "https://curtbrag.com/.netlify/functions/cluster-control" \
+    -H "Content-Type: application/json" \
+    -d "{\"action\":\"setup-credentials\",\"apiKey\":\"${CLUSTER_API_KEY}\",\"webPassword\":\"${CLUSTER_WEB_PASSWORD}\"}" 2>/dev/null || echo "")
+  if echo "$BOOTSTRAP_RESP" | grep -q '"success"'; then
+    echo -e "  ${GREEN}✓${NC} Credentials stored in Netlify Blobs"
+  elif echo "$BOOTSTRAP_RESP" | grep -q 'already configured'; then
+    echo -e "  ${GREEN}✓${NC} Credentials already configured in Netlify"
+  else
+    echo -e "  ${YELLOW}⚠${NC} Credential bootstrap response: ${BOOTSTRAP_RESP:-no response}"
+    echo -e "  ${YELLOW}  (Dashboard commands may not work until credentials are set)${NC}"
   fi
-  echo -e "  ${GREEN}✓${NC} server.js found"
 
-  # Write env file
+  # Save credentials locally for reference
   ENV_FILE="/etc/cluster-api.env"
   sudo tee "$ENV_FILE" > /dev/null << EOF
 CLUSTER_WEB_PASSWORD=${CLUSTER_WEB_PASSWORD}
 CLUSTER_API_KEY=${CLUSTER_API_KEY}
 XMR_WALLET=${WALLET}
-CLUSTER_API_PORT=${API_PORT}
 EOF
   sudo chmod 600 "$ENV_FILE"
   echo -e "  ${GREEN}✓${NC} Credentials saved to $ENV_FILE"
 
-  # Create and start systemd service
-  if command -v systemctl &>/dev/null; then
-    echo -e "\n${YELLOW}  Creating systemd service...${NC}"
-    sudo tee /etc/systemd/system/cluster-api.service > /dev/null << EOF
-[Unit]
-Description=CurtBrag Cluster API Server
-After=network.target
-
-[Service]
-Type=simple
-User=$(whoami)
-WorkingDirectory=${API_DIR}
-ExecStart=$(which node) server.js
-Restart=always
-RestartSec=5
-EnvironmentFile=${ENV_FILE}
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    sudo systemctl daemon-reload
-    sudo systemctl enable cluster-api 2>/dev/null
-    sudo systemctl restart cluster-api
-    sleep 2
-
-    if systemctl is-active --quiet cluster-api; then
-      echo -e "  ${GREEN}✓${NC} cluster-api service running"
-    else
-      echo -e "  ${RED}✗${NC} Service failed — check: sudo journalctl -u cluster-api -n 20"
-      return 1
-    fi
+  # Verify Netlify functions are responding
+  echo -e "\n${YELLOW}  Verifying Netlify API...${NC}"
+  STATUS_RESP=$(curl -sf "https://curtbrag.com/.netlify/functions/cluster-status" 2>/dev/null || echo "")
+  if [ -n "$STATUS_RESP" ]; then
+    echo -e "  ${GREEN}✓${NC} Netlify cluster-status function responding"
   else
-    echo -e "\n${YELLOW}  No systemd — starting server directly...${NC}"
-    cd "$API_DIR"
-    CLUSTER_WEB_PASSWORD="$CLUSTER_WEB_PASSWORD" CLUSTER_API_KEY="$CLUSTER_API_KEY" \
-      XMR_WALLET="$WALLET" CLUSTER_API_PORT="$API_PORT" \
-      nohup node server.js > /var/log/cluster-api.log 2>&1 &
-    cd - > /dev/null
-    sleep 2
-    echo -e "  ${GREEN}✓${NC} Server started (PID: $!)"
+    echo -e "  ${YELLOW}⚠${NC} cluster-status function not responding (may need Netlify redeploy)"
   fi
 
-  # Quick health check
-  HEALTH=$(curl -s "http://localhost:${API_PORT}/api/health" 2>/dev/null)
-  if echo "$HEALTH" | grep -q '"status"'; then
-    echo -e "  ${GREEN}✓${NC} API health check passed"
-  else
-    echo -e "  ${YELLOW}⚠${NC} API didn't respond yet (may need a moment)"
-  fi
-
-  echo -e "\n  ${GREEN}API server is live on port ${API_PORT}${NC}"
+  echo -e "\n  ${GREEN}Credentials configured — Netlify serverless functions handle the API${NC}"
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -260,7 +228,7 @@ EOF
 # ═══════════════════════════════════════════════════════════════════════════════
 
 setup_tailscale_funnel() {
-  banner "STEP 2/4 — Tailscale Funnel"
+  banner "STEP 2/5 — Tailscale Funnel"
 
   if ! command -v tailscale &>/dev/null; then
     echo -e "  ${YELLOW}⚠${NC} Tailscale not installed. Attempting auto-install..."
@@ -430,7 +398,7 @@ ORCSVC
 }
 
 deploy_mining() {
-  banner "STEP 3/4 — Deploy xmrig to All Phones"
+  banner "STEP 3/5 — Deploy xmrig to All Phones"
   echo -e "  Pool:   ${POOL}"
   echo -e "  Wallet: ${WALLET:0:12}...${WALLET: -8}"
   echo -e "  CPU:    ${CPU_HINT}%"
@@ -454,11 +422,85 @@ deploy_mining() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# STEP 4: node1 — Push script + Command poller
+# STEP 4: Deploy display system to all phones
+# ═══════════════════════════════════════════════════════════════════════════════
+
+deploy_display_system() {
+  banner "STEP 4/5 — Display System (greetd + nodeid)"
+
+  # Deploy wrapper and nodeid scripts to each phone
+  # The display stack is: greetd → cage → foot → script
+  # greetd-wrapper.sh reads .mode and launches the right display
+  # nodeid.sh shows node number, IPs, battery, uptime
+
+  local OK=0 FAIL=0
+  for name in $(echo "${!NODES[@]}" | tr ' ' '\n' | sort); do
+    local IP="${NODES[$name]}"
+    local SSH_TARGET="user@${IP}"
+    local NODE_NUM="${name#node}"
+
+    echo -e "${YELLOW}  [${name}]${NC} ${IP}"
+
+    if ! ssh_cmd "$SSH_TARGET" "echo ok" &>/dev/null; then
+      echo -e "    ${RED}✗${NC} Cannot SSH — skipping"
+      FAIL=$((FAIL + 1))
+      continue
+    fi
+
+    # Create display directory
+    ssh_cmd "$SSH_TARGET" "mkdir -p /home/user/display" 2>/dev/null
+
+    # Deploy greetd-wrapper.sh
+    scp_cmd "$SCRIPT_DIR/greetd-wrapper.sh" "${SSH_TARGET}:/home/user/display/greetd-wrapper.sh" 2>/dev/null
+    ssh_cmd "$SSH_TARGET" "chmod +x /home/user/display/greetd-wrapper.sh" 2>/dev/null
+
+    # Generate and deploy per-node nodeid.sh from template
+    local TMPSCRIPT="/tmp/nodeid-node${NODE_NUM}.sh"
+
+    # Get the ethernet IP for this node from the reference
+    local ETH_IP
+    case "$NODE_NUM" in
+      1) ETH_IP="10.0.0.11" ;; 2) ETH_IP="10.0.0.2" ;; 3) ETH_IP="10.0.0.3" ;;
+      4) ETH_IP="10.0.0.4" ;; 5) ETH_IP="10.0.0.5" ;; 6) ETH_IP="10.0.0.6" ;;
+      7) ETH_IP="10.0.0.7" ;; 8) ETH_IP="10.0.0.8" ;; 9) ETH_IP="10.0.0.9" ;;
+      10) ETH_IP="10.0.0.10" ;; *) ETH_IP="unknown" ;;
+    esac
+
+    # Use sed to customize the template for this node
+    sed -e "s/%%NODE_NUM%%/${NODE_NUM}/g" \
+        -e "s/%%ETH_IP%%/${ETH_IP}/g" \
+        -e "s/%%WIFI_IP%%/${IP}/g" \
+        "$SCRIPT_DIR/nodeid-template.sh" > "$TMPSCRIPT"
+    chmod +x "$TMPSCRIPT"
+
+    scp_cmd "$TMPSCRIPT" "${SSH_TARGET}:/home/user/display/nodeid.sh" 2>/dev/null
+    rm -f "$TMPSCRIPT"
+
+    # Set display mode to nodeid
+    ssh_cmd "$SSH_TARGET" "echo nodeid > /home/user/display/.mode" 2>/dev/null
+
+    # Update greetd config to use the wrapper (requires root)
+    # IMPORTANT: edit /etc/greetd/config.toml — NOT /etc/phrog/greetd-config.toml
+    ssh_cmd "$SSH_TARGET" 'doas sh -c "
+      cp /etc/greetd/config.toml /etc/greetd/config.toml.bak 2>/dev/null
+      printf \"[terminal]\nvt = 7\n\n[default_session]\ncommand = \\\"cage -s -- foot -f monospace:size=18 -e /home/user/display/greetd-wrapper.sh\\\"\nuser = \\\"user\\\"\n\" > /etc/greetd/config.toml
+    "' 2>/dev/null
+
+    echo -e "    ${GREEN}✓${NC} Display system deployed (mode: nodeid)"
+    OK=$((OK + 1))
+  done
+
+  echo ""
+  echo -e "  Display: ${GREEN}${OK} deployed${NC}, ${RED}${FAIL} failed${NC}"
+  echo -e "  ${YELLOW}Note: Reboot phones to activate display changes${NC}"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STEP 5: node1 — Push script + Command poller
 # ═══════════════════════════════════════════════════════════════════════════════
 
 setup_node1_services() {
-  banner "STEP 4/4 — node1: Push Script + Command Poller"
+  banner "STEP 5/5 — node1: Push Script + Command Poller"
 
   local NODE1_IP="${NODES[node1]}"
   local NODE1_SSH="user@${NODE1_IP}"
@@ -551,7 +593,14 @@ else
   echo -e "${YELLOW}Skipping mining setup (--skip-mining)${NC}"
 fi
 
-# Step 4: node1 push + poller
+# Step 4: Display system
+if [ -z "${SKIP_DISPLAY:-}" ]; then
+  deploy_display_system
+else
+  echo -e "${YELLOW}Skipping display setup (--skip-display)${NC}"
+fi
+
+# Step 5: node1 push + poller
 setup_node1_services
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -563,9 +612,10 @@ echo -e "${GREEN}╔════════════════════
 echo -e "${GREEN}║                    DEPLOY COMPLETE                          ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "  ${GREEN}API Server:${NC}   Running on this machine, port ${API_PORT}"
-echo -e "  ${GREEN}Tailscale:${NC}    Funnel exposing API to internet"
+echo -e "  ${GREEN}Credentials:${NC} Stored in Netlify Blobs"
+echo -e "  ${GREEN}API:${NC}          Netlify serverless functions (curtbrag.com)"
 echo -e "  ${GREEN}Mining:${NC}       xmrig on all phones -> MoneroOcean"
+echo -e "  ${GREEN}Display:${NC}      greetd + cage + nodeid on all phones"
 echo -e "  ${GREEN}Dashboard:${NC}    node1 pushing status every 5 min"
 echo -e "  ${GREEN}Poller:${NC}       node1 polling for commands"
 echo ""

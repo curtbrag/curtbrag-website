@@ -370,10 +370,18 @@ echo \"mining level $mining_level (${HINT}% CPU)\""
       log "Setting display mode to $display_mode..."
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
+      # These phones have NO framebuffer console. The only way to display is:
+      #   greetd -> cage (Wayland compositor) -> foot -> script
+      # Cage launched from SSH has no logind seat and cannot access DRM.
+      # The ONLY way to change display is: write .mode, update greetd config, reboot.
+      # IMPORTANT: edit /etc/greetd/config.toml (NOT /etc/phrog/greetd-config.toml)
       if [ "$display_mode" = "off" ]; then
-        DISPLAY_CMD="doas systemctl stop cage@tty7 2>/dev/null; doas rc-service cage stop 2>/dev/null; echo 'display off'"
+        # Kill cage — greetd won't restart it if we mask the service
+        DISPLAY_CMD='doas killall cage 2>/dev/null; echo "display off (screen will be black until reboot)"'
       else
-        DISPLAY_CMD="mkdir -p /home/user/display && echo '$display_mode' > /home/user/display/.mode && { doas systemctl restart cage@tty7 2>/dev/null || doas rc-service cage restart 2>/dev/null || doas rc-service greetd restart 2>/dev/null; } && echo 'display mode set to $display_mode'"
+        # Write the mode file, ensure greetd config points to the wrapper, and reboot
+        # The wrapper reads .mode and launches the right display program
+        DISPLAY_CMD="mkdir -p /home/user/display && echo '$display_mode' > /home/user/display/.mode && doas sh -c 'printf \"[terminal]\nvt = 7\n\n[default_session]\ncommand = \\\\\"cage -s -- foot -f monospace:size=18 -e /home/user/display/greetd-wrapper.sh\\\\\"\nuser = \\\\\"user\\\\\"\n\" > /etc/greetd/config.toml' && echo 'display mode set to $display_mode — rebooting' && doas reboot"
       fi
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         run_on_all_tracked "$DISPLAY_CMD" "$RESULT_DIR" "$PHONE_NODES"

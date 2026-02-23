@@ -91,6 +91,22 @@ echo "CLUSTER_API_KEY=\"$CLUSTER_API_KEY\"" > "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 echo "  API key saved to $ENV_FILE"
 
+# Bootstrap credentials into Netlify Blobs if web password is available
+# Without this, Netlify functions return 401/503 (no env vars set on Netlify)
+if [ -n "${CLUSTER_WEB_PASSWORD:-}" ]; then
+  echo "  Bootstrapping credentials into Netlify..."
+  BOOTSTRAP_RESP=$(curl -sf -X POST "https://curtbrag.com/.netlify/functions/cluster-control" \
+    -H "Content-Type: application/json" \
+    -d "{\"action\":\"setup-credentials\",\"apiKey\":\"${CLUSTER_API_KEY}\",\"webPassword\":\"${CLUSTER_WEB_PASSWORD}\"}" 2>/dev/null || echo "")
+  if echo "$BOOTSTRAP_RESP" | grep -q '"success"'; then
+    echo "  Credentials stored in Netlify Blobs"
+  elif echo "$BOOTSTRAP_RESP" | grep -q 'already configured'; then
+    echo "  Credentials already configured"
+  else
+    echo "  Note: Credential bootstrap response: ${BOOTSTRAP_RESP:-no response}"
+  fi
+fi
+
 # Step 1: Download fixed scripts
 echo "[1/5] Downloading fixed scripts..."
 for s in push-cluster-status.sh poll-cluster-commands.sh cluster-nodes.conf; do
