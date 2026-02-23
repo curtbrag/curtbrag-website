@@ -521,6 +521,76 @@ fi
 
 log "Summary: $NODES_READY/$NODES_TOTAL nodes, $PODS_RUNNING/$PODS_TOTAL pods, health=$HEALTH_SCORE%"
 
+# ── Job queue metrics (Redis workers) ─────────────────────────────────
+# Collect worker status and queue depths if Redis is reachable
+
+WORKERS_JSON="[]"
+if command -v redis-cli >/dev/null 2>&1; then
+  REDIS_HOST="${REDIS_HOST:-10.0.0.1}"
+  if redis-cli -h "$REDIS_HOST" PING 2>/dev/null | grep -q PONG; then
+    log "Collecting job queue metrics from Redis..."
+
+    # Queue depths
+    Q_SHELL=$(redis-cli -h "$REDIS_HOST" LLEN jobs:shell 2>/dev/null || echo 0)
+    Q_WHISPER=$(redis-cli -h "$REDIS_HOST" LLEN jobs:whisper 2>/dev/null || echo 0)
+    Q_LLM=$(redis-cli -h "$REDIS_HOST" LLEN jobs:llm 2>/dev/null || echo 0)
+    Q_GENERIC=$(redis-cli -h "$REDIS_HOST" LLEN jobs:generic 2>/dev/null || echo 0)
+    R_SHELL=$(redis-cli -h "$REDIS_HOST" LLEN results:shell 2>/dev/null || echo 0)
+    R_WHISPER=$(redis-cli -h "$REDIS_HOST" LLEN results:whisper 2>/dev/null || echo 0)
+    R_LLM=$(redis-cli -h "$REDIS_HOST" LLEN results:llm 2>/dev/null || echo 0)
+    TOTAL_JOBS_DONE=$(redis-cli -h "$REDIS_HOST" GET stats:total:jobs_done 2>/dev/null || echo 0)
+    [ -z "$TOTAL_JOBS_DONE" ] && TOTAL_JOBS_DONE=0
+
+    # Per-worker status
+    WORKER_LIST=""
+    for i in $(seq 1 10); do
+      W_INFO=$(redis-cli -h "$REDIS_HOST" GET "worker:node${i}" 2>/dev/null)
+      W_HB=$(redis-cli -h "$REDIS_HOST" GET "worker:node${i}:heartbeat" 2>/dev/null)
+      W_ACTIVE=$(redis-cli -h "$REDIS_HOST" GET "worker:node${i}:active" 2>/dev/null)
+      W_JOBS=$(redis-cli -h "$REDIS_HOST" GET "stats:node${i}:jobs_done" 2>/dev/null || echo 0)
+      [ -z "$W_JOBS" ] && W_JOBS=0
+
+      if [ -n "$W_INFO" ] && [ "$W_INFO" != "(nil)" ]; then
+        HB_AGO=""
+        if [ -n "$W_HB" ] && [ "$W_HB" != "(nil)" ]; then
+          NOW=$(date +%s)
+          HB_AGO=$((NOW - W_HB))
+        fi
+        WORKER_ENTRY=$(jq -n \
+          --arg name "node${i}" \
+          --arg info "$W_INFO" \
+          --argjson heartbeat_age "${HB_AGO:-null}" \
+          --arg active "${W_ACTIVE:-}" \
+          --argjson jobs_done "$W_JOBS" \
+          '{name: $name, heartbeat_age: $heartbeat_age, active: $active, jobs_done: $jobs_done}')
+        WORKER_LIST="${WORKER_LIST:+$WORKER_LIST,}$WORKER_ENTRY"
+      fi
+    done
+
+    WORKERS_JSON=$(jq -n \
+      --argjson q_shell "$Q_SHELL" \
+      --argjson q_whisper "$Q_WHISPER" \
+      --argjson q_llm "$Q_LLM" \
+      --argjson q_generic "$Q_GENERIC" \
+      --argjson r_shell "$R_SHELL" \
+      --argjson r_whisper "$R_WHISPER" \
+      --argjson r_llm "$R_LLM" \
+      --argjson total_done "${TOTAL_JOBS_DONE:-0}" \
+      "{
+        queues: {shell: \$q_shell, whisper: \$q_whisper, llm: \$q_llm, generic: \$q_generic},
+        results: {shell: \$r_shell, whisper: \$r_whisper, llm: \$r_llm},
+        total_jobs_done: \$total_done,
+        workers: [${WORKER_LIST}]
+      }")
+
+    log "Job queue: $Q_SHELL shell, $Q_WHISPER whisper, $Q_LLM llm queued | $TOTAL_JOBS_DONE total done"
+  else
+    log "Redis not reachable at $REDIS_HOST — skipping job queue metrics"
+  fi
+else
+  log "redis-cli not installed — skipping job queue metrics"
+fi
+
 # ── Build & push payload ────────────────────────────────────────────
 
 PAYLOAD=$(jq -n \
@@ -541,6 +611,7 @@ PAYLOAD=$(jq -n \
   --argjson podsFailed "$PODS_FAILED" \
   --argjson totalRestarts "$TOTAL_RESTARTS" \
   --argjson healthScore "$HEALTH_SCORE" \
+  --argjson jobQueue "$WORKERS_JSON" \
   '{
     nodes: $nodes,
     pods: $pods,
@@ -551,6 +622,7 @@ PAYLOAD=$(jq -n \
     mining: $mining,
     events: $events,
     nodeScheduling: $nodeScheduling,
+    jobQueue: $jobQueue,
     summary: {
       nodesReady: $nodesReady,
       nodesTotal: $nodesTotal,

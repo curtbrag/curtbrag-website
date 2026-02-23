@@ -370,10 +370,18 @@ echo \"mining level $mining_level (${HINT}% CPU)\""
       log "Setting display mode to $display_mode..."
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
+      # These phones have NO framebuffer console. The only way to display is:
+      #   greetd -> cage (Wayland compositor) -> foot -> script
+      # Cage launched from SSH has no logind seat and cannot access DRM.
+      # The ONLY way to change display is: write .mode, update greetd config, reboot.
+      # IMPORTANT: edit /etc/greetd/config.toml (NOT /etc/phrog/greetd-config.toml)
       if [ "$display_mode" = "off" ]; then
-        DISPLAY_CMD="doas systemctl stop cage@tty7 2>/dev/null; doas rc-service cage stop 2>/dev/null; echo 'display off'"
+        # Kill cage — greetd won't restart it if we mask the service
+        DISPLAY_CMD='doas killall cage 2>/dev/null; echo "display off (screen will be black until reboot)"'
       else
-        DISPLAY_CMD="mkdir -p /home/user/display && echo '$display_mode' > /home/user/display/.mode && { doas systemctl restart cage@tty7 2>/dev/null || doas rc-service cage restart 2>/dev/null || doas rc-service greetd restart 2>/dev/null; } && echo 'display mode set to $display_mode'"
+        # Write the mode file, ensure greetd config points to the wrapper, and reboot
+        # The wrapper reads .mode and launches the right display program
+        DISPLAY_CMD="mkdir -p /home/user/display && echo '$display_mode' > /home/user/display/.mode && doas sh -c 'printf \"[terminal]\nvt = 7\n\n[default_session]\ncommand = \\\\\"cage -s -- foot -f monospace:size=18 -e /home/user/display/greetd-wrapper.sh\\\\\"\nuser = \\\\\"user\\\\\"\n\" > /etc/greetd/config.toml' && echo 'display mode set to $display_mode — rebooting' && doas reboot"
       fi
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         run_on_all_tracked "$DISPLAY_CMD" "$RESULT_DIR" "$PHONE_NODES"
@@ -382,6 +390,73 @@ echo \"mining level $mining_level (${HINT}% CPU)\""
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
+      ;;
+    worker-start)
+      log "Starting workers on $target..."
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
+      WORKER_CMD='. /home/user/.worker-env 2>/dev/null; export REDIS_HOST NODE_NAME WORKER_QUEUES; pkill -f "worker.py" 2>/dev/null; sleep 1; nohup python3 /home/user/worker.py >> /home/user/worker.log 2>&1 & sleep 2; pgrep -f "worker.py" >/dev/null && echo "worker started (PID: $(pgrep -f worker.py | head -1))" || echo "worker failed to start"'
+      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
+        run_on_all_tracked "$WORKER_CMD" "$RESULT_DIR"
+      else
+        run_on_node_tracked "$(resolve_ip "$target")" "$WORKER_CMD" "$RESULT_DIR" "$target"
+      fi
+      RESULT=$(collect_results "$RESULT_DIR")
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
+      ;;
+    worker-stop)
+      log "Stopping workers on $target..."
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
+      WORKER_CMD='pkill -f "worker.py" 2>/dev/null && echo "worker stopped" || echo "no worker running"'
+      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
+        run_on_all_tracked "$WORKER_CMD" "$RESULT_DIR"
+      else
+        run_on_node_tracked "$(resolve_ip "$target")" "$WORKER_CMD" "$RESULT_DIR" "$target"
+      fi
+      RESULT=$(collect_results "$RESULT_DIR")
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
+      ;;
+    worker-status)
+      log "Checking worker status..."
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
+      STATUS_CMD='W_PID=$(pgrep -f "worker.py" 2>/dev/null | head -1); if [ -n "$W_PID" ]; then echo "running (PID: $W_PID)"; tail -5 /home/user/worker.log 2>/dev/null; else echo "not running"; fi'
+      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
+        run_on_all_tracked "$STATUS_CMD" "$RESULT_DIR"
+      else
+        run_on_node_tracked "$(resolve_ip "$target")" "$STATUS_CMD" "$RESULT_DIR" "$target"
+      fi
+      RESULT=$(collect_results "$RESULT_DIR")
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
+      ;;
+    queue-status)
+      log "Checking job queue status..."
+      REDIS_HOST="${REDIS_HOST:-10.0.0.1}"
+      if command -v redis-cli >/dev/null 2>&1 && redis-cli -h "$REDIS_HOST" PING 2>/dev/null | grep -q PONG; then
+        Q_SHELL=$(redis-cli -h "$REDIS_HOST" LLEN jobs:shell 2>/dev/null || echo 0)
+        Q_WHISPER=$(redis-cli -h "$REDIS_HOST" LLEN jobs:whisper 2>/dev/null || echo 0)
+        Q_LLM=$(redis-cli -h "$REDIS_HOST" LLEN jobs:llm 2>/dev/null || echo 0)
+        TOTAL=$(redis-cli -h "$REDIS_HOST" GET stats:total:jobs_done 2>/dev/null || echo 0)
+        QINFO="queued: shell=$Q_SHELL whisper=$Q_WHISPER llm=$Q_LLM | total done: $TOTAL"
+        report_result "$cmd_id" "$QINFO" "" "$cmd" "$target"
+      else
+        report_result "$cmd_id" "error: redis not reachable at $REDIS_HOST" "" "$cmd" "$target"
+      fi
+      ;;
+    submit-job)
+      log "Submitting job to queue..."
+      REDIS_HOST="${REDIS_HOST:-10.0.0.1}"
+      JOB_TYPE=$(echo "$extra" | jq -r '.job_type // "shell"' 2>/dev/null || echo "shell")
+      JOB_DATA=$(echo "$extra" | jq -r '.job_data // empty' 2>/dev/null || echo "")
+      if [ -z "$JOB_DATA" ]; then
+        report_result "$cmd_id" "error: no job_data in extra fields" "" "$cmd" "$target"
+      elif command -v redis-cli >/dev/null 2>&1; then
+        redis-cli -h "$REDIS_HOST" LPUSH "jobs:$JOB_TYPE" "$JOB_DATA" >/dev/null 2>&1
+        report_result "$cmd_id" "job submitted to jobs:$JOB_TYPE" "" "$cmd" "$target"
+      else
+        report_result "$cmd_id" "error: redis-cli not installed" "" "$cmd" "$target"
+      fi
       ;;
     browse)
       if [ -z "$url" ]; then

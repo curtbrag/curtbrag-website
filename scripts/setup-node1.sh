@@ -117,6 +117,24 @@ else
   echo "    CLUSTER_WEB_PASSWORD=your-pw sh setup-node1.sh"
 fi
 
+# Bootstrap credentials into Netlify Blobs if we have both values
+# This is needed on first setup: without it, Netlify functions return 401/503
+if [ -n "${CLUSTER_API_KEY:-}" ] && [ -n "${CLUSTER_WEB_PASSWORD:-}" ]; then
+  echo "  Bootstrapping credentials into Netlify Blobs..."
+  BOOTSTRAP_RESP=$(curl -sf -X POST "https://curtbrag.com/.netlify/functions/cluster-control" \
+    -H "Content-Type: application/json" \
+    -d "{\"action\":\"setup-credentials\",\"apiKey\":\"${CLUSTER_API_KEY}\",\"webPassword\":\"${CLUSTER_WEB_PASSWORD}\"}" 2>/dev/null || echo "")
+  if echo "$BOOTSTRAP_RESP" | grep -q '"success"'; then
+    echo "  Credentials stored in Netlify Blobs"
+  elif echo "$BOOTSTRAP_RESP" | grep -q 'already configured'; then
+    echo "  Credentials already configured"
+  else
+    echo "  WARNING: Credential bootstrap failed: ${BOOTSTRAP_RESP:-no response}"
+  fi
+elif [ -n "${CLUSTER_API_KEY:-}" ]; then
+  echo "  Note: Set CLUSTER_WEB_PASSWORD to enable Netlify credential bootstrap"
+fi
+
 # Ensure .profile sources the env file on login
 if ! grep -q "cluster-env" "$INSTALL_DIR/.profile" 2>/dev/null; then
   echo '[ -f ~/.cluster-env ] && . ~/.cluster-env' >> "$INSTALL_DIR/.profile"
