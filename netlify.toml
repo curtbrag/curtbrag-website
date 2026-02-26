@@ -38,6 +38,62 @@
   to = "/cluster/eyecandy.html"
   status = 200
 
+# Legacy .html → clean Astro URL redirects
+[[redirects]]
+  from = "/zelle.html"
+  to = "/zelle/"
+  status = 301
+
+[[redirects]]
+  from = "/yougood.html"
+  to = "/yougood/"
+  status = 301
+
+[[redirects]]
+  from = "/contact.html"
+  to = "/contact/"
+  status = 301
+
+[[redirects]]
+  from = "/thanks.html"
+  to = "/thanks/"
+  status = 301
+
+[[redirects]]
+  from = "/privacy.html"
+  to = "/privacy/"
+  status = 301
+
+[[redirects]]
+  from = "/terms.html"
+  to = "/terms/"
+  status = 301
+
+[[redirects]]
+  from = "/addyourride.html"
+  to = "/addyourride/"
+  status = 301
+
+[[redirects]]
+  from = "/cars.html"
+  to = "/gallery/cars/"
+  status = 301
+
+[[redirects]]
+  from = "/call.html"
+  to = "/"
+  status = 301
+
+[[redirects]]
+  from = "/sms.html"
+  to = "/"
+  status = 301
+
+[[redirects]]
+  from = "/email.html"
+  to = "/"
+  status = 301
+
 # Security and caching headers
 [[headers]]
   for = "/*"
