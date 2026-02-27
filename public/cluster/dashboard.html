@@ -122,7 +122,7 @@
     .status-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
     .status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
     .status-dot.live { background: var(--green); box-shadow: 0 0 10px var(--green-glow); animation: pulse 2s infinite; }
-    .status-dot.demo { background: var(--yellow); box-shadow: 0 0 10px var(--yellow-glow); }
+    .status-dot.demo { background: var(--muted); }
     .status-dot.offline { background: var(--red); }
     @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(0.9); } }
     .refresh-btn {
@@ -144,13 +144,13 @@
     .refresh-btn.spinning i { animation: spin 1s linear infinite; }
     @keyframes spin { 100% { transform: rotate(360deg); } }
     .demo-banner {
-      background: linear-gradient(135deg, rgba(234, 179, 8, 0.1), rgba(234, 179, 8, 0.05));
-      border: 1px solid rgba(234, 179, 8, 0.3);
+      background: linear-gradient(135deg, rgba(138, 138, 138, 0.1), rgba(138, 138, 138, 0.05));
+      border: 1px solid rgba(138, 138, 138, 0.3);
       border-radius: 10px;
       padding: 0.875rem 1.25rem;
       margin-bottom: 1.25rem;
       font-size: 0.9rem;
-      color: var(--yellow);
+      color: var(--muted);
       display: none;
       align-items: center;
       gap: 0.75rem;
@@ -1493,10 +1493,10 @@
       <div class="cmd-history-body collapsed" id="cmdHistoryBody"></div>
     </div>
 
-    <!-- Demo Banner -->
+    <!-- Offline Banner -->
     <div class="demo-banner" id="demoBanner">
-      <i class="fa-solid fa-flask"></i>
-      <span>Demo Mode — No live data yet. Run <code style="background:rgba(255,255,255,0.1);padding:0 4px;border-radius:3px">push-cluster-status.sh</code> on node1 to push live data.</span>
+      <i class="fa-solid fa-circle-info"></i>
+      <span>The cluster is currently offline. Showing last known data.</span>
     </div>
 
     <!-- K3s Down Banner -->
@@ -2442,7 +2442,7 @@
 
         if (data.demo && !isDirectApi) {
           statusDot.className = 'status-dot demo';
-          statusText.textContent = 'Demo Mode';
+          statusText.textContent = 'Offline';
           if (demoBanner) demoBanner.classList.add('visible');
         } else if (data.stale && !isDirectApi) {
           statusDot.className = 'status-dot demo';

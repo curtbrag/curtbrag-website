@@ -62,10 +62,10 @@ import Layout from '../layouts/Layout.astro';
         </div>
       </div>
 
-      <!-- Demo Banner -->
-      <div id="demoBanner" class="hidden items-center gap-3 bg-yellow/10 border border-yellow/30 rounded-xl px-4 py-3 mb-6 text-sm text-yellow">
-        <i class="fa-solid fa-flask"></i>
-        <span>Preview Mode — The cluster is currently offline. Showing last known data.</span>
+      <!-- Offline Banner -->
+      <div id="demoBanner" class="hidden items-center gap-3 bg-muted/10 border border-border rounded-xl px-4 py-3 mb-6 text-sm text-muted">
+        <i class="fa-solid fa-circle-info"></i>
+        <span>The cluster is currently offline. Showing last known data.</span>
       </div>
 
       <!-- K3s Down Banner -->
@@ -287,7 +287,7 @@ import Layout from '../layouts/Layout.astro';
     box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
     animation: dot-pulse 2s infinite;
   }
-  .cluster-dot.demo { background: var(--color-yellow); box-shadow: 0 0 8px rgba(234, 179, 8, 0.3); }
+  .cluster-dot.demo { background: var(--color-muted); }
   .cluster-dot.offline { background: var(--color-red); }
 
   @keyframes dot-pulse {
@@ -394,7 +394,7 @@ import Layout from '../layouts/Layout.astro';
       // Status dot
       if (isDemo) {
         dot.className = 'cluster-dot demo';
-        statusText.textContent = 'Preview';
+        statusText.textContent = 'Offline';
         demoBanner.classList.remove('hidden');
         demoBanner.classList.add('flex');
       } else if (data.stale) {
