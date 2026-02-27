@@ -111,7 +111,7 @@ import Layout from '../layouts/Layout.astro';
               class="w-full max-h-64 object-cover rounded-lg border border-border"
             />
           </div>
-          <p id="file-error" class="text-xs text-red-500 mt-1" style="display:none">
+          <p id="file-error" class="text-xs text-red-500 mt-1" hidden style="display:none">
             File size exceeds 10MB. Please choose a smaller image.
           </p>
         </div>
@@ -152,12 +152,14 @@ import Layout from '../layouts/Layout.astro';
       const file = photoInput.files?.[0];
       if (!file) {
         imagePreview.classList.add('hidden');
+        fileError.hidden = true;
         fileError.style.display = 'none';
         return;
       }
 
       const maxSize = 10 * 1024 * 1024; // 10MB
       if (file.size > maxSize) {
+        fileError.hidden = false;
         fileError.style.display = '';
         imagePreview.classList.add('hidden');
         photoInput.value = '';
@@ -168,6 +170,7 @@ import Layout from '../layouts/Layout.astro';
         return;
       }
 
+      fileError.hidden = true;
       fileError.style.display = 'none';
       if (submitBtn) {
         submitBtn.removeAttribute('disabled');

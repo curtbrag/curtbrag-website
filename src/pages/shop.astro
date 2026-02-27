@@ -121,6 +121,7 @@ const storeStructuredData = {
         <div id="listing-loader" class="flex flex-col items-center justify-center py-12">
           <div id="listing-spinner" class="w-10 h-10 border-4 border-border border-t-brand rounded-full animate-spin mb-4"></div>
           <p id="listing-status" class="text-muted text-sm">Loading eBay listings...</p>
+          <p id="listing-hint" class="text-muted text-xs mt-2">If listings don't appear, visit the <a href="https://www.ebay.com/str/curtbrag" target="_blank" rel="noopener noreferrer" class="text-brand hover:underline">eBay store</a> directly.</p>
           <a id="listing-fallback" href="https://www.ebay.com/str/curtbrag" target="_blank" rel="noopener noreferrer" class="mt-3 text-brand text-sm font-semibold hover:underline" style="display:none">
             Listings not loading? Open store on eBay <i class="fa-solid fa-arrow-up-right-from-square text-xs ml-1"></i>
           </a>
@@ -135,6 +136,7 @@ const storeStructuredData = {
         var container = document.getElementById("auction-nudge-items");
         var loader = document.getElementById("listing-loader");
         var fallback = document.getElementById("listing-fallback");
+        var hint = document.getElementById("listing-hint");
         var spinner = document.getElementById("listing-spinner");
         var status = document.getElementById("listing-status");
         if (!container || !loader) return;
@@ -147,6 +149,7 @@ const storeStructuredData = {
             if (mutations[i].addedNodes.length > 0) {
               loaded = true;
               loader.style.display = "none";
+              if (hint) hint.style.display = "none";
               observer.disconnect();
               return;
             }
