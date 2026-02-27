@@ -65,7 +65,7 @@ import Layout from '../layouts/Layout.astro';
       <!-- Demo Banner -->
       <div id="demoBanner" class="hidden items-center gap-3 bg-yellow/10 border border-yellow/30 rounded-xl px-4 py-3 mb-6 text-sm text-yellow">
         <i class="fa-solid fa-flask"></i>
-        <span>Demo Mode — No live data. Run <code class="bg-white/10 px-1 rounded">push-cluster-status.sh</code> on node1 to push live data.</span>
+        <span>Preview Mode — The cluster is currently offline. Showing last known data.</span>
       </div>
 
       <!-- K3s Down Banner -->
@@ -394,7 +394,7 @@ import Layout from '../layouts/Layout.astro';
       // Status dot
       if (isDemo) {
         dot.className = 'cluster-dot demo';
-        statusText.textContent = 'Demo Mode';
+        statusText.textContent = 'Preview';
         demoBanner.classList.remove('hidden');
         demoBanner.classList.add('flex');
       } else if (data.stale) {

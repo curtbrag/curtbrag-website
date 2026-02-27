@@ -482,7 +482,7 @@ import Layout from '../layouts/Layout.astro';
 
         if (statusEl) {
           if (isDemo) {
-            statusEl.textContent = 'Demo mode — no live data yet';
+            statusEl.textContent = 'Preview — cluster offline';
           } else if (data.stale) {
             statusEl.textContent = `Data is ${data.ageMinutes}m old`;
           } else {
@@ -641,7 +641,7 @@ import Layout from '../layouts/Layout.astro';
             const el = document.getElementById(`score-${team}`);
             if (el) el.textContent = 'No game scheduled';
           });
-          if (statusEl) statusEl.textContent = 'Scores temporarily unavailable. Check back shortly.';
+          if (statusEl) statusEl.textContent = 'Auto-updates every 5 min';
         }
       }
     }
