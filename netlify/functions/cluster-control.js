@@ -232,8 +232,27 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify({ alive: false, lastPoll: null }) };
     }
 
-    // Flush stale commands from the queue (dashboard action)
+    // Auth check (for dashboard login validation)
+    if (params.action === 'auth-check') {
+      const webPassword = await getWebPassword();
+      if (!webPassword) {
+        return { statusCode: 503, headers, body: JSON.stringify({ error: 'Server not configured' }) };
+      }
+      if (!safeCompare(params.password || '', webPassword)) {
+        return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
+      }
+      return { statusCode: 200, headers, body: JSON.stringify({ authenticated: true }) };
+    }
+
+    // Flush stale commands from the queue (dashboard action, requires auth)
     if (params.action === 'flush-queue') {
+      const webPassword = await getWebPassword();
+      if (!webPassword) {
+        return { statusCode: 503, headers, body: JSON.stringify({ error: 'Server not configured' }) };
+      }
+      if (!safeCompare(params.password || '', webPassword)) {
+        return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
+      }
       const queue = await getQueue();
       if (queue.length === 0) {
         return { statusCode: 200, headers, body: JSON.stringify({ flushed: 0, message: 'Queue already empty' }) };
