@@ -334,20 +334,12 @@ import Layout from '../../layouts/Layout.astro';
 
     async function tryAuth(pw: string) {
       try {
-        // Test auth by sending a harmless status request with password
-        const res = await fetch(API);
-        if (!res.ok) throw new Error();
-        // Now test actual auth by sending a command request
-        const testRes = await fetch(API, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: 'debug', target: 'node1', password: pw })
-        });
+        const testRes = await fetch(`${API}?action=auth-check&password=${encodeURIComponent(pw)}`);
         if (testRes.status === 401) {
           loginError.classList.remove('hidden');
           return;
         }
-        // Auth succeeded
+        if (!testRes.ok) throw new Error();
         password = pw;
         sessionStorage.setItem('cluster-pw', pw);
         loginError.classList.add('hidden');
@@ -515,7 +507,7 @@ import Layout from '../../layouts/Layout.astro';
     // ── Flush Queue ──
     document.getElementById('flushQueueBtn')!.addEventListener('click', async () => {
       try {
-        const res = await fetch(`${API}?action=flush-queue`);
+        const res = await fetch(`${API}?action=flush-queue&password=${encodeURIComponent(password)}`);
         const data = await res.json();
         showToast(data.message || 'Queue flushed', 'green');
         loadQueueStatus();
