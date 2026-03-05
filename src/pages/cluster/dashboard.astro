@@ -1,0 +1,577 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="Cluster Control Panel - Curtis Bragdon" description="Authenticated control panel for managing the phone cluster.">
+
+  <section class="py-8 md:py-12">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6">
+
+      <!-- ═══════════════════ LOGIN GATE ═══════════════════ -->
+      <div id="loginGate" class="max-w-sm mx-auto mt-20">
+        <div class="text-center mb-6">
+          <div class="text-4xl mb-3"><i class="fa-solid fa-lock text-brand"></i></div>
+          <h1 class="text-2xl font-bold mb-2">Cluster Control</h1>
+          <p class="text-muted text-sm">Enter password to access the control panel.</p>
+        </div>
+        <div class="bg-panel border border-border rounded-xl p-6">
+          <div class="flex gap-2">
+            <input type="password" id="passwordInput" placeholder="Password" class="flex-1 bg-bg border border-border rounded-lg px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-brand" />
+            <button id="loginBtn" class="bg-brand hover:bg-brand/90 text-white font-semibold rounded-lg px-5 py-2.5 text-sm transition">
+              <i class="fa-solid fa-right-to-bracket"></i>
+            </button>
+          </div>
+          <div id="loginError" class="hidden text-red text-xs mt-2"><i class="fa-solid fa-circle-exclamation"></i> Invalid password</div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════ CONTROL PANEL (hidden until auth) ═══════════════════ -->
+      <div id="controlPanel" class="hidden">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+          <div class="flex items-center gap-3">
+            <i class="fa-solid fa-sliders text-brand text-xl"></i>
+            <h1 class="text-xl font-bold">Cluster Control</h1>
+            <span class="dash-pill" id="pollerStatus"><i class="fa-solid fa-circle text-[0.5rem]"></i> Poller: --</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <a href="/cluster" class="dash-btn-sm"><i class="fa-solid fa-arrow-left text-xs"></i> Dashboard</a>
+            <button id="logoutBtn" class="dash-btn-sm text-red"><i class="fa-solid fa-right-from-bracket text-xs"></i> Logout</button>
+          </div>
+        </div>
+
+        <!-- Target Selector -->
+        <div class="bg-panel border border-border rounded-xl p-4 mb-4">
+          <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-2 block">Target</label>
+          <select id="targetSelect" class="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-brand">
+            <optgroup label="Groups">
+              <option value="all" selected>all (every node)</option>
+              <option value="phones">phones (node1-10)</option>
+              <option value="pcs">pcs (neo, vikixii, nexus-prime)</option>
+            </optgroup>
+            <optgroup label="Phones">
+              <option value="node1">node1</option>
+              <option value="node2">node2</option>
+              <option value="node3">node3</option>
+              <option value="node4">node4</option>
+              <option value="node5">node5</option>
+              <option value="node6">node6</option>
+              <option value="node7">node7</option>
+              <option value="node8">node8</option>
+              <option value="node9">node9</option>
+              <option value="node10">node10</option>
+            </optgroup>
+            <optgroup label="PCs">
+              <option value="neo">neo</option>
+              <option value="vikixii">vikixii</option>
+              <option value="nexus-prime">nexus-prime</option>
+              <option value="steamdeck">steamdeck</option>
+            </optgroup>
+            <optgroup label="PiKVM">
+              <option value="pikvm-main">pikvm-main</option>
+              <option value="pikvm-2">pikvm-2</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="bg-panel border border-border rounded-xl p-4 mb-4">
+          <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block">Quick Actions</label>
+          <div class="flex flex-wrap gap-2">
+            <button class="dash-btn cmd-btn" data-cmd="wake"><i class="fa-solid fa-sun text-yellow"></i> Wake</button>
+            <button class="dash-btn cmd-btn" data-cmd="sleep"><i class="fa-solid fa-moon text-blue"></i> Sleep</button>
+            <button class="dash-btn cmd-btn" data-cmd="start"><i class="fa-solid fa-play text-green"></i> Start</button>
+            <button class="dash-btn cmd-btn" data-cmd="stop"><i class="fa-solid fa-stop text-red"></i> Stop</button>
+            <button class="dash-btn cmd-btn" data-cmd="restart"><i class="fa-solid fa-arrows-rotate text-brand"></i> Restart</button>
+            <button class="dash-btn cmd-btn" data-cmd="reboot"><i class="fa-solid fa-power-off text-red"></i> Reboot</button>
+            <button class="dash-btn cmd-btn" data-cmd="update"><i class="fa-solid fa-download text-blue"></i> Update</button>
+            <button class="dash-btn cmd-btn" data-cmd="debug"><i class="fa-solid fa-bug text-purple-400"></i> Debug</button>
+          </div>
+        </div>
+
+        <!-- Mining Controls -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div class="bg-panel border border-border rounded-xl p-4">
+            <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-coins text-yellow"></i> Mining</label>
+            <div class="flex gap-2 mb-3">
+              <button class="dash-btn flex-1 cmd-btn" data-cmd="mining-start"><i class="fa-solid fa-play text-green"></i> Start Mining</button>
+              <button class="dash-btn flex-1 cmd-btn" data-cmd="mining-stop"><i class="fa-solid fa-stop text-red"></i> Stop Mining</button>
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs text-muted">Mining Level</span>
+                <span class="text-xs font-mono font-bold" id="miningLevelVal">2</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <input type="range" id="miningLevelSlider" min="0" max="4" value="2" class="flex-1 accent-yellow" />
+                <button class="dash-btn-sm cmd-btn" data-cmd="mining-level" id="setMiningLevelBtn"><i class="fa-solid fa-check"></i> Set</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Brightness -->
+          <div class="bg-panel border border-border rounded-xl p-4">
+            <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-sun text-yellow"></i> Brightness</label>
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs text-muted">Level</span>
+              <span class="text-xs font-mono font-bold" id="brightnessVal">128</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <input type="range" id="brightnessSlider" min="0" max="255" value="128" class="flex-1 accent-yellow" />
+              <button class="dash-btn-sm" id="setBrightnessBtn"><i class="fa-solid fa-check"></i> Set</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Display Mode -->
+        <div class="bg-panel border border-border rounded-xl p-4 mb-4">
+          <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-display text-blue"></i> Display Mode</label>
+          <div class="flex flex-wrap gap-2">
+            <button class="dash-btn display-btn" data-mode="matrix"><i class="fa-solid fa-terminal text-green"></i> Matrix</button>
+            <button class="dash-btn display-btn" data-mode="stats"><i class="fa-solid fa-chart-bar text-blue"></i> Stats</button>
+            <button class="dash-btn display-btn" data-mode="bonsai"><i class="fa-solid fa-tree text-green"></i> Bonsai</button>
+            <button class="dash-btn display-btn" data-mode="cycle"><i class="fa-solid fa-arrows-spin text-brand"></i> Cycle</button>
+            <button class="dash-btn display-btn" data-mode="off"><i class="fa-solid fa-power-off text-muted"></i> Off</button>
+          </div>
+        </div>
+
+        <!-- SSH Command -->
+        <div class="bg-panel border border-border rounded-xl p-4 mb-4">
+          <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-terminal text-green"></i> SSH Command</label>
+          <div class="flex gap-2">
+            <input type="text" id="sshInput" placeholder="e.g. uptime, free -h, df -h" class="flex-1 bg-bg border border-border rounded-lg px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-brand" />
+            <button class="dash-btn" id="sshBtn"><i class="fa-solid fa-paper-plane"></i> Send</button>
+          </div>
+          <div id="sshOutput" class="hidden mt-3 bg-bg border border-border rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-y-auto"></div>
+        </div>
+
+        <!-- Browse URL -->
+        <div class="bg-panel border border-border rounded-xl p-4 mb-4">
+          <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-globe text-blue"></i> Browse URL</label>
+          <div class="flex gap-2">
+            <input type="url" id="browseInput" placeholder="https://example.com" class="flex-1 bg-bg border border-border rounded-lg px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-brand" />
+            <button class="dash-btn" id="browseBtn"><i class="fa-solid fa-paper-plane"></i> Open</button>
+          </div>
+        </div>
+
+        <!-- Screenshots -->
+        <div class="bg-panel border border-border rounded-xl p-4 mb-4">
+          <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-camera text-brand"></i> Screenshots</label>
+          <div class="flex gap-2 mb-3">
+            <button class="dash-btn cmd-btn" data-cmd="screenshot"><i class="fa-solid fa-camera"></i> Capture</button>
+            <button class="dash-btn" id="viewScreenshotsBtn"><i class="fa-solid fa-images"></i> View All</button>
+          </div>
+          <div id="screenshotGrid" class="hidden grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2"></div>
+        </div>
+
+        <!-- Command Queue & History -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <!-- Queue -->
+          <div class="bg-panel border border-border rounded-xl p-4">
+            <div class="flex items-center justify-between mb-3">
+              <label class="text-xs font-semibold text-muted uppercase tracking-wide"><i class="fa-solid fa-list-check text-brand"></i> Command Queue</label>
+              <button class="dash-btn-sm text-red" id="flushQueueBtn"><i class="fa-solid fa-trash text-xs"></i> Flush</button>
+            </div>
+            <div id="queueList" class="space-y-1 text-xs font-mono max-h-48 overflow-y-auto">
+              <div class="text-muted">No pending commands</div>
+            </div>
+          </div>
+
+          <!-- History -->
+          <div class="bg-panel border border-border rounded-xl p-4">
+            <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-clock-rotate-left text-muted"></i> Recent History</label>
+            <div id="historyList" class="space-y-1 text-xs font-mono max-h-48 overflow-y-auto">
+              <div class="text-muted">No history yet</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Toast -->
+        <div id="toast" class="fixed bottom-6 right-6 bg-panel border border-border rounded-xl px-5 py-3 text-sm shadow-2xl transition-all duration-300 translate-y-20 opacity-0 pointer-events-none z-50">
+          <span id="toastMsg"></span>
+        </div>
+
+      </div><!-- /controlPanel -->
+    </div>
+  </section>
+
+</Layout>
+
+<style>
+  .dash-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    transition: all 0.15s;
+    cursor: pointer;
+    color: var(--color-text);
+  }
+  .dash-btn:hover { border-color: var(--color-brand); background: var(--color-panel); }
+  .dash-btn:active { transform: scale(0.97); }
+  .dash-btn:disabled { opacity: 0.4; pointer-events: none; }
+
+  .dash-btn-sm {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    padding: 0.375rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    transition: all 0.15s;
+    cursor: pointer;
+    color: var(--color-text);
+  }
+  .dash-btn-sm:hover { border-color: var(--color-brand); }
+
+  .dash-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 9999px;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--color-muted);
+  }
+
+  select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.75rem center;
+    background-repeat: no-repeat;
+    background-size: 1.25rem;
+    color: var(--color-text);
+  }
+
+  input[type="range"] {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--color-border);
+  }
+
+  .screenshot-thumb {
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    background: var(--color-bg);
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .screenshot-thumb:hover { border-color: var(--color-brand); }
+  .screenshot-thumb img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  /* Screenshot modal */
+  .screen-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .screen-modal img {
+    max-width: 90vw;
+    max-height: 90vh;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-border);
+  }
+</style>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const API = '/.netlify/functions/cluster-control';
+    let password = sessionStorage.getItem('cluster-pw') || '';
+
+    // DOM refs
+    const loginGate = document.getElementById('loginGate')!;
+    const controlPanel = document.getElementById('controlPanel')!;
+    const passwordInput = document.getElementById('passwordInput') as HTMLInputElement;
+    const loginBtn = document.getElementById('loginBtn')!;
+    const loginError = document.getElementById('loginError')!;
+    const logoutBtn = document.getElementById('logoutBtn')!;
+    const targetSelect = document.getElementById('targetSelect') as HTMLSelectElement;
+    const miningLevelSlider = document.getElementById('miningLevelSlider') as HTMLInputElement;
+    const miningLevelVal = document.getElementById('miningLevelVal')!;
+    const brightnessSlider = document.getElementById('brightnessSlider') as HTMLInputElement;
+    const brightnessVal = document.getElementById('brightnessVal')!;
+    const sshInput = document.getElementById('sshInput') as HTMLInputElement;
+    const browseInput = document.getElementById('browseInput') as HTMLInputElement;
+    const toast = document.getElementById('toast')!;
+    const toastMsg = document.getElementById('toastMsg')!;
+
+    // ── Auth ──
+    if (password) {
+      tryAuth(password);
+    }
+
+    loginBtn.addEventListener('click', () => tryAuth(passwordInput.value));
+    passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryAuth(passwordInput.value); });
+
+    logoutBtn.addEventListener('click', () => {
+      password = '';
+      sessionStorage.removeItem('cluster-pw');
+      loginGate.classList.remove('hidden');
+      controlPanel.classList.add('hidden');
+    });
+
+    async function tryAuth(pw: string) {
+      try {
+        // Test auth by sending a harmless status request with password
+        const res = await fetch(API);
+        if (!res.ok) throw new Error();
+        // Now test actual auth by sending a command request
+        const testRes = await fetch(API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: 'debug', target: 'node1', password: pw })
+        });
+        if (testRes.status === 401) {
+          loginError.classList.remove('hidden');
+          return;
+        }
+        // Auth succeeded
+        password = pw;
+        sessionStorage.setItem('cluster-pw', pw);
+        loginError.classList.add('hidden');
+        loginGate.classList.add('hidden');
+        controlPanel.classList.remove('hidden');
+        loadQueueStatus();
+        checkPollerStatus();
+      } catch {
+        loginError.classList.remove('hidden');
+      }
+    }
+
+    // ── Send Command ──
+    async function sendCommand(command: string, extra: Record<string, any> = {}) {
+      const target = targetSelect.value;
+      try {
+        const res = await fetch(API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command, target, password, ...extra })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast(`Queued: ${command} → ${target}`, 'green');
+          // If it's an SSH command, poll for the result
+          if (command === 'ssh' && data.id) {
+            pollCommandResult(data.id);
+          }
+          loadQueueStatus();
+          return data;
+        } else {
+          showToast(`Error: ${data.error || 'Failed'}`, 'red');
+          return null;
+        }
+      } catch {
+        showToast('Network error', 'red');
+        return null;
+      }
+    }
+
+    // ── Quick Action Buttons ──
+    document.querySelectorAll('.cmd-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cmd = (btn as HTMLElement).dataset.cmd!;
+        if (cmd === 'mining-level') {
+          sendCommand(cmd, { miningLevel: parseInt(miningLevelSlider.value) });
+        } else {
+          sendCommand(cmd);
+        }
+      });
+    });
+
+    // ── Display Mode Buttons ──
+    document.querySelectorAll('.display-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = (btn as HTMLElement).dataset.mode!;
+        sendCommand('display-mode', { displayMode: mode });
+      });
+    });
+
+    // ── Brightness ──
+    document.getElementById('setBrightnessBtn')!.addEventListener('click', () => {
+      sendCommand('brightness', { sshCmd: brightnessSlider.value });
+    });
+
+    // ── SSH ──
+    document.getElementById('sshBtn')!.addEventListener('click', () => {
+      const cmd = sshInput.value.trim();
+      if (!cmd) return;
+      sendCommand('ssh', { sshCmd: cmd });
+      sshInput.value = '';
+    });
+    sshInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('sshBtn')!.click();
+    });
+
+    // ── Browse ──
+    document.getElementById('browseBtn')!.addEventListener('click', () => {
+      const url = browseInput.value.trim();
+      if (!url) return;
+      sendCommand('browse', { url });
+    });
+
+    // ── Screenshots ──
+    document.getElementById('viewScreenshotsBtn')!.addEventListener('click', loadScreenshots);
+
+    async function loadScreenshots() {
+      const grid = document.getElementById('screenshotGrid')!;
+      grid.classList.remove('hidden');
+      grid.innerHTML = '<div class="col-span-full text-center text-muted text-xs py-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</div>';
+
+      try {
+        const res = await fetch(`${API}?action=screenshots`);
+        const data = await res.json();
+        if (!data.screens || data.screens.length === 0) {
+          grid.innerHTML = '<div class="col-span-full text-center text-muted text-xs py-4">No screenshots available</div>';
+          return;
+        }
+        grid.innerHTML = data.screens.map((s: any) => {
+          if (!s.image) {
+            return `<div class="screenshot-thumb p-3 text-center">
+              <div class="text-xs font-semibold mb-1">${s.device}</div>
+              <div class="text-muted text-[0.65rem]">${s.status || 'N/A'}</div>
+            </div>`;
+          }
+          return `<div class="screenshot-thumb" data-device="${s.device}">
+            <img src="${s.image}" alt="${s.device}" loading="lazy" />
+            <div class="px-2 py-1 text-[0.65rem] font-semibold text-center">${s.device}</div>
+          </div>`;
+        }).join('');
+
+        // Click to enlarge
+        grid.querySelectorAll('.screenshot-thumb[data-device]').forEach(thumb => {
+          thumb.addEventListener('click', () => {
+            const img = thumb.querySelector('img');
+            if (!img) return;
+            const modal = document.createElement('div');
+            modal.className = 'screen-modal';
+            modal.innerHTML = `<img src="${img.src}" alt="${(thumb as HTMLElement).dataset.device}" />`;
+            modal.addEventListener('click', () => modal.remove());
+            document.body.appendChild(modal);
+          });
+        });
+      } catch {
+        grid.innerHTML = '<div class="col-span-full text-center text-red text-xs py-4">Failed to load screenshots</div>';
+      }
+    }
+
+    // ── Queue & History ──
+    async function loadQueueStatus() {
+      try {
+        const res = await fetch(API);
+        const data = await res.json();
+
+        const queueList = document.getElementById('queueList')!;
+        if (data.queue && data.queue.length > 0) {
+          queueList.innerHTML = data.queue.map((c: any) => {
+            const age = Math.round((Date.now() - new Date(c.queuedAt).getTime()) / 1000);
+            return `<div class="flex items-center justify-between bg-bg border border-border rounded px-2 py-1.5">
+              <span><i class="fa-solid fa-clock text-yellow text-[0.6rem]"></i> ${c.command} → ${c.target}</span>
+              <span class="text-muted">${age}s ago</span>
+            </div>`;
+          }).join('');
+        } else {
+          queueList.innerHTML = '<div class="text-muted">No pending commands</div>';
+        }
+
+        const historyList = document.getElementById('historyList')!;
+        if (data.history && data.history.length > 0) {
+          historyList.innerHTML = data.history.reverse().map((h: any) => {
+            const icon = h.result && h.result.startsWith('expired') ? 'fa-clock text-yellow' :
+                         h.result && h.result.startsWith('flushed') ? 'fa-trash text-muted' :
+                         'fa-check text-green';
+            return `<div class="flex items-center justify-between bg-bg border border-border rounded px-2 py-1.5">
+              <span><i class="fa-solid ${icon} text-[0.6rem]"></i> ${h.command || '?'} → ${h.target || '?'}</span>
+              <span class="text-muted">${h.result ? h.result.substring(0, 40) : 'done'}</span>
+            </div>`;
+          }).join('');
+        } else {
+          historyList.innerHTML = '<div class="text-muted">No history yet</div>';
+        }
+      } catch { /* silent */ }
+    }
+
+    // ── Flush Queue ──
+    document.getElementById('flushQueueBtn')!.addEventListener('click', async () => {
+      try {
+        const res = await fetch(`${API}?action=flush-queue`);
+        const data = await res.json();
+        showToast(data.message || 'Queue flushed', 'green');
+        loadQueueStatus();
+      } catch {
+        showToast('Failed to flush queue', 'red');
+      }
+    });
+
+    // ── Poll SSH result ──
+    async function pollCommandResult(id: string, attempts = 0) {
+      if (attempts > 30) return; // give up after ~30s
+      try {
+        const res = await fetch(`${API}?action=command-status&id=${id}`);
+        const data = await res.json();
+        if (data.status === 'completed') {
+          const outputEl = document.getElementById('sshOutput')!;
+          outputEl.classList.remove('hidden');
+          outputEl.textContent = data.output || data.result || '(no output)';
+          loadQueueStatus();
+          return;
+        }
+        // Still queued or executing, poll again
+        setTimeout(() => pollCommandResult(id, attempts + 1), 1000);
+      } catch { /* silent */ }
+    }
+
+    // ── Poller Status ──
+    async function checkPollerStatus() {
+      try {
+        const res = await fetch(`${API}?action=poller-status`);
+        const data = await res.json();
+        const el = document.getElementById('pollerStatus')!;
+        if (data.alive) {
+          el.innerHTML = '<i class="fa-solid fa-circle text-green text-[0.5rem]"></i> Poller: Online';
+        } else {
+          el.innerHTML = '<i class="fa-solid fa-circle text-red text-[0.5rem]"></i> Poller: Offline';
+        }
+      } catch { /* silent */ }
+    }
+
+    // ── Slider displays ──
+    miningLevelSlider.addEventListener('input', () => { miningLevelVal.textContent = miningLevelSlider.value; });
+    brightnessSlider.addEventListener('input', () => { brightnessVal.textContent = brightnessSlider.value; });
+
+    // ── Toast ──
+    function showToast(msg: string, color: string) {
+      toastMsg.textContent = msg;
+      toast.style.borderColor = color === 'green' ? 'var(--color-green)' : color === 'red' ? 'var(--color-red)' : 'var(--color-border)';
+      toast.classList.remove('translate-y-20', 'opacity-0', 'pointer-events-none');
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0', 'pointer-events-none');
+      }, 3000);
+    }
+
+    // ── Auto-refresh queue ──
+    setInterval(loadQueueStatus, 5000);
+    setInterval(checkPollerStatus, 15000);
+  });
+</script>
