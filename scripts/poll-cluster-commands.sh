@@ -51,8 +51,10 @@ else
   ALL_NODES="node1:192.168.1.206 node2:192.168.1.207 node3:192.168.1.208 node4:192.168.1.209 node5:192.168.1.210 node6:192.168.1.211 node7:192.168.1.212 node8:192.168.1.213 node9:192.168.1.214 node10:192.168.1.215"
   log "WARN: cluster-nodes.conf not found, using hardcoded IPs"
 fi
-# Use PHONE_NODES from config (workers only); fall back to ALL_NODES if empty
+# Ensure PHONE_NODES is populated; fall back to ALL_NODES if empty
 [ -z "${PHONE_NODES:-}" ] && PHONE_NODES="$ALL_NODES"
+# PC_NODES may be empty if no PCs configured — that's fine
+[ -z "${PC_NODES:-}" ] && PC_NODES=""
 
 # Resolve node name to IP
 resolve_ip() {
@@ -186,6 +188,34 @@ report_result() {
   fi
 }
 
+# Resolve target group to node list
+# Usage: nodes=$(resolve_target_nodes "$target" "$scope")
+#   scope: "all" = phones+PCs, "phones" = phones only
+resolve_target_nodes() {
+  local _target="$1"
+  local _scope="${2:-all}"
+  case "$_target" in
+    all)
+      if [ "$_scope" = "phones" ]; then
+        echo "$PHONE_NODES"
+      else
+        echo "$ALL_NODES"
+      fi
+      ;;
+    phones) echo "$PHONE_NODES" ;;
+    pcs)    echo "$PC_NODES" ;;
+    *)      echo "" ;;  # individual node, not a group
+  esac
+}
+
+# Check if target is a group (all/phones/pcs) vs individual node
+is_group_target() {
+  case "$1" in
+    all|phones|pcs) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 execute_command() {
   local cmd="$1"
   local target="$2"
@@ -220,8 +250,13 @@ export WAYLAND_DISPLAY=wayland-0
 export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$UID_NUM/bus
 dbus-send --session --dest=org.gnome.ScreenSaver --type=method_call /org/gnome/ScreenSaver org.gnome.ScreenSaver.SetActive boolean:false 2>/dev/null
 true'
-      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "$WAKE_CMD" "$RESULT_DIR" "$PHONE_NODES"
+      if [ "$target" = "pcs" ]; then
+        report_result "$cmd_id" "skipped: wake is phone-only" "" "$cmd" "$target"
+        return
+      fi
+      NODES=$(resolve_target_nodes "$target" "phones")
+      if [ -n "$NODES" ]; then
+        run_on_all_tracked "$WAKE_CMD" "$RESULT_DIR" "$NODES"
       else
         run_on_node_tracked "$(resolve_ip "$target")" "$WAKE_CMD" "$RESULT_DIR" "$target"
       fi
@@ -232,8 +267,13 @@ true'
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       SLEEP_CMD="doas sh -c 'for f in /sys/class/backlight/*/bl_power; do echo 4 > \"\$f\"; done'"
-      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "$SLEEP_CMD" "$RESULT_DIR" "$PHONE_NODES"
+      if [ "$target" = "pcs" ]; then
+        report_result "$cmd_id" "skipped: sleep is phone-only" "" "$cmd" "$target"
+        return
+      fi
+      NODES=$(resolve_target_nodes "$target" "phones")
+      if [ -n "$NODES" ]; then
+        run_on_all_tracked "$SLEEP_CMD" "$RESULT_DIR" "$NODES"
       else
         run_on_node_tracked "$(resolve_ip "$target")" "$SLEEP_CMD" "$RESULT_DIR" "$target"
       fi
@@ -243,8 +283,9 @@ true'
     restart)
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
-      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        for entry in $ALL_NODES; do
+      NODES=$(resolve_target_nodes "$target" "all")
+      if [ -n "$NODES" ]; then
+        for entry in $NODES; do
           name="${entry%%:*}"; ip="${entry##*:}"
           SVC=$(k3s_svc "$name")
           run_on_node_tracked "$ip" "doas systemctl restart $SVC 2>/dev/null || doas rc-service $SVC restart" "$RESULT_DIR" "$name" &
@@ -261,8 +302,9 @@ true'
     start)
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
-      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        for entry in $ALL_NODES; do
+      NODES=$(resolve_target_nodes "$target" "all")
+      if [ -n "$NODES" ]; then
+        for entry in $NODES; do
           name="${entry%%:*}"; ip="${entry##*:}"
           SVC=$(k3s_svc "$name")
           run_on_node_tracked "$ip" "doas systemctl start $SVC 2>/dev/null || doas rc-service $SVC start" "$RESULT_DIR" "$name" &
@@ -279,8 +321,9 @@ true'
     stop)
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
-      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        for entry in $ALL_NODES; do
+      NODES=$(resolve_target_nodes "$target" "all")
+      if [ -n "$NODES" ]; then
+        for entry in $NODES; do
           name="${entry%%:*}"; ip="${entry##*:}"
           SVC=$(k3s_svc "$name")
           run_on_node_tracked "$ip" "doas systemctl stop $SVC 2>/dev/null || doas rc-service $SVC stop" "$RESULT_DIR" "$name" &
@@ -310,8 +353,9 @@ if pgrep xmrig >/dev/null 2>&1; then
 else
   doas systemctl status xmrig 2>/dev/null || doas rc-service xmrig status >&2; exit 1
 fi'
-      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "$MINING_START_CMD" "$RESULT_DIR"
+      NODES=$(resolve_target_nodes "$target" "all")
+      if [ -n "$NODES" ]; then
+        run_on_all_tracked "$MINING_START_CMD" "$RESULT_DIR" "$NODES"
       else
         run_on_node_tracked "$(resolve_ip "$target")" "$MINING_START_CMD" "$RESULT_DIR" "$target"
       fi
@@ -322,8 +366,9 @@ fi'
       log "Stopping miners..."
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
-      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "doas systemctl stop xmrig 2>/dev/null || doas rc-service xmrig stop" "$RESULT_DIR"
+      NODES=$(resolve_target_nodes "$target" "all")
+      if [ -n "$NODES" ]; then
+        run_on_all_tracked "doas systemctl stop xmrig 2>/dev/null || doas rc-service xmrig stop" "$RESULT_DIR" "$NODES"
       else
         run_on_node_tracked "$(resolve_ip "$target")" "doas systemctl stop xmrig 2>/dev/null || doas rc-service xmrig stop" "$RESULT_DIR" "$target"
       fi
@@ -358,8 +403,9 @@ echo \"mining level $mining_level (${HINT}% CPU)\""
           return
           ;;
       esac
-      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "$LEVEL_CMD" "$RESULT_DIR"
+      NODES=$(resolve_target_nodes "$target" "all")
+      if [ -n "$NODES" ]; then
+        run_on_all_tracked "$LEVEL_CMD" "$RESULT_DIR" "$NODES"
       else
         run_on_node_tracked "$(resolve_ip "$target")" "$LEVEL_CMD" "$RESULT_DIR" "$target"
       fi
@@ -383,8 +429,13 @@ echo \"mining level $mining_level (${HINT}% CPU)\""
         # The wrapper reads .mode and launches the right display program
         DISPLAY_CMD="mkdir -p /home/user/display && echo '$display_mode' > /home/user/display/.mode && doas sh -c 'printf \"[terminal]\nvt = 7\n\n[default_session]\ncommand = \\\\\"cage -s -- foot -f monospace:size=18 -e /home/user/display/greetd-wrapper.sh\\\\\"\nuser = \\\\\"user\\\\\"\n\" > /etc/greetd/config.toml' && echo 'display mode set to $display_mode — rebooting' && doas reboot"
       fi
-      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "$DISPLAY_CMD" "$RESULT_DIR" "$PHONE_NODES"
+      if [ "$target" = "pcs" ]; then
+        report_result "$cmd_id" "skipped: display-mode is phone-only" "" "$cmd" "$target"
+        return
+      fi
+      NODES=$(resolve_target_nodes "$target" "phones")
+      if [ -n "$NODES" ]; then
+        run_on_all_tracked "$DISPLAY_CMD" "$RESULT_DIR" "$NODES"
       else
         run_on_node_tracked "$(resolve_ip "$target")" "$DISPLAY_CMD" "$RESULT_DIR" "$target"
       fi
@@ -396,8 +447,9 @@ echo \"mining level $mining_level (${HINT}% CPU)\""
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       WORKER_CMD='. /home/user/.worker-env 2>/dev/null; export REDIS_HOST NODE_NAME WORKER_QUEUES; pkill -f "worker.py" 2>/dev/null; sleep 1; nohup python3 /home/user/worker.py >> /home/user/worker.log 2>&1 & sleep 2; pgrep -f "worker.py" >/dev/null && echo "worker started (PID: $(pgrep -f worker.py | head -1))" || echo "worker failed to start"'
-      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "$WORKER_CMD" "$RESULT_DIR"
+      NODES=$(resolve_target_nodes "$target" "all")
+      if [ -n "$NODES" ]; then
+        run_on_all_tracked "$WORKER_CMD" "$RESULT_DIR" "$NODES"
       else
         run_on_node_tracked "$(resolve_ip "$target")" "$WORKER_CMD" "$RESULT_DIR" "$target"
       fi
@@ -409,8 +461,9 @@ echo \"mining level $mining_level (${HINT}% CPU)\""
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       WORKER_CMD='pkill -f "worker.py" 2>/dev/null && echo "worker stopped" || echo "no worker running"'
-      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "$WORKER_CMD" "$RESULT_DIR"
+      NODES=$(resolve_target_nodes "$target" "all")
+      if [ -n "$NODES" ]; then
+        run_on_all_tracked "$WORKER_CMD" "$RESULT_DIR" "$NODES"
       else
         run_on_node_tracked "$(resolve_ip "$target")" "$WORKER_CMD" "$RESULT_DIR" "$target"
       fi
@@ -422,8 +475,9 @@ echo \"mining level $mining_level (${HINT}% CPU)\""
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
       STATUS_CMD='W_PID=$(pgrep -f "worker.py" 2>/dev/null | head -1); if [ -n "$W_PID" ]; then echo "running (PID: $W_PID)"; tail -5 /home/user/worker.log 2>/dev/null; else echo "not running"; fi'
-      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        run_on_all_tracked "$STATUS_CMD" "$RESULT_DIR"
+      NODES=$(resolve_target_nodes "$target" "all")
+      if [ -n "$NODES" ]; then
+        run_on_all_tracked "$STATUS_CMD" "$RESULT_DIR" "$NODES"
       else
         run_on_node_tracked "$(resolve_ip "$target")" "$STATUS_CMD" "$RESULT_DIR" "$target"
       fi
@@ -492,8 +546,13 @@ command = \"cage -- firefox-esr --kiosk $safe_url\"
 user = \"user\"
 GREETDEOF
 doas systemctl restart greetd 2>/dev/null || doas rc-service greetd restart 2>/dev/null"
-        if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-          run_on_all_tracked "$BROWSE_CMD" "$RESULT_DIR" "$PHONE_NODES"
+        if [ "$target" = "pcs" ]; then
+          report_result "$cmd_id" "skipped: browse is phone-only" "" "$cmd" "$target"
+          return
+        fi
+        NODES=$(resolve_target_nodes "$target" "phones")
+        if [ -n "$NODES" ]; then
+          run_on_all_tracked "$BROWSE_CMD" "$RESULT_DIR" "$NODES"
         else
           run_on_node_tracked "$(resolve_ip "$target")" "$BROWSE_CMD" "$RESULT_DIR" "$target"
         fi
@@ -559,8 +618,9 @@ HEAD_SCRIPT=$(head -15 "$0" 2>/dev/null)"
           echo "fail" > "$RESULT_DIR/$name"
         fi
       }
-      if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-        for entry in $ALL_NODES; do
+      NODES=$(resolve_target_nodes "$target" "all")
+      if [ -n "$NODES" ]; then
+        for entry in $NODES; do
           name="${entry%%:*}"; ip="${entry##*:}"
           reboot_node "$name" "$ip" &
         done
@@ -587,10 +647,11 @@ HEAD_SCRIPT=$(head -15 "$0" 2>/dev/null)"
         OUTPUT=""
         FAIL=0
         TOTAL=0
-        if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
+        NODES=$(resolve_target_nodes "$target" "all")
+        if [ -n "$NODES" ]; then
           SSH_OUT_DIR="/tmp/sshout-$cmd_id"
           mkdir -p "$SSH_OUT_DIR"
-          for entry in $ALL_NODES; do
+          for entry in $NODES; do
             name="${entry%%:*}"; ip="${entry##*:}"
             TOTAL=$((TOTAL + 1))
             ( NODE_OUT=$(run_on_node_full "$ip" "$ssh_cmd")
@@ -603,7 +664,7 @@ HEAD_SCRIPT=$(head -15 "$0" 2>/dev/null)"
             ) &
           done
           wait
-          for entry in $ALL_NODES; do
+          for entry in $NODES; do
             name="${entry%%:*}"
             NODE_OUT=""
             [ -f "$SSH_OUT_DIR/${name}.out" ] && NODE_OUT=$(cat "$SSH_OUT_DIR/${name}.out")
@@ -679,6 +740,10 @@ else echo "CAPTURE_FAILED" && exit 1; fi'
         fi
       }
 
+      if [ "$target" = "pcs" ]; then
+        report_result "$cmd_id" "skipped: screenshot is phone-only" "" "$cmd" "$target"
+        return
+      fi
       if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
         for i in $(seq 1 10); do capture_node "$i" & done
         wait
@@ -717,10 +782,15 @@ else echo "CAPTURE_FAILED" && exit 1; fi'
       elif ! printf '%s' "$BRIGHTNESS_VAL" | grep -qE '^[0-9]+$' || [ "$BRIGHTNESS_VAL" -gt 255 ]; then
         report_result "$cmd_id" "error: brightness must be a number 0-255" "" "$cmd" "$target"
       else
+        if [ "$target" = "pcs" ]; then
+          report_result "$cmd_id" "skipped: brightness is phone-only" "" "$cmd" "$target"
+          return
+        fi
         log "Setting brightness to $BRIGHTNESS_VAL..."
         BRIGHT_CMD="doas sh -c 'for f in /sys/class/backlight/*/brightness; do echo $BRIGHTNESS_VAL > \"\$f\"; done' 2>/dev/null || doas sh -c 'echo $BRIGHTNESS_VAL > /sys/class/leds/lcd-backlight/brightness' 2>/dev/null"
-        if [ "$target" = "all" ] || [ "$target" = "phones" ]; then
-          run_on_all_tracked "$BRIGHT_CMD" "$RESULT_DIR" "$PHONE_NODES"
+        NODES=$(resolve_target_nodes "$target" "phones")
+        if [ -n "$NODES" ]; then
+          run_on_all_tracked "$BRIGHT_CMD" "$RESULT_DIR" "$NODES"
         else
           run_on_node_tracked "$(resolve_ip "$target")" "$BRIGHT_CMD" "$RESULT_DIR" "$target"
         fi
