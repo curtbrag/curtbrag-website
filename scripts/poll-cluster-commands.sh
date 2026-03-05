@@ -340,33 +340,69 @@ true'
     mining-start)
       log "Starting miners..."
       RESULT_DIR="/tmp/cmdres-$cmd_id"
-      mkdir -p "$RESULT_DIR"
+      MINING_OUT_DIR="/tmp/miningout-$cmd_id"
+      mkdir -p "$RESULT_DIR" "$MINING_OUT_DIR"
       # Start xmrig via systemctl (systemd) first, fall back to rc-service (OpenRC)
       MINING_START_CMD='
 if ! command -v xmrig >/dev/null 2>&1 && [ ! -f /usr/local/bin/xmrig ]; then
-  echo "xmrig not installed" >&2; exit 1
+  echo "xmrig not installed"; exit 1
 fi
 doas systemctl start xmrig 2>/dev/null || doas rc-service xmrig start 2>&1
 sleep 2
 if pgrep xmrig >/dev/null 2>&1; then
+  echo "started (PID: $(pgrep xmrig | head -1))"
   exit 0
 else
-  doas systemctl status xmrig 2>/dev/null || doas rc-service xmrig status >&2; exit 1
+  echo "failed to start:"
+  doas rc-service xmrig status 2>&1 || doas systemctl status xmrig 2>&1 || echo "no status available"
+  exit 1
 fi'
-      NODES=$(resolve_target_nodes "$target" "all")
+      # Mining is phone-only — use "phones" scope
+      NODES=$(resolve_target_nodes "$target" "phones")
       if [ -n "$NODES" ]; then
-        run_on_all_tracked "$MINING_START_CMD" "$RESULT_DIR" "$NODES"
+        for entry in $NODES; do
+          name="${entry%%:*}"; ip="${entry##*:}"
+          (
+            _out=$(run_on_node "$ip" "$MINING_START_CMD" 2>&1)
+            if [ $? -eq 0 ]; then
+              echo "ok" > "$RESULT_DIR/$name"
+            else
+              echo "fail" > "$RESULT_DIR/$name"
+            fi
+            echo "$_out" > "$MINING_OUT_DIR/$name.out"
+          ) &
+        done
+        wait
       else
-        run_on_node_tracked "$(resolve_ip "$target")" "$MINING_START_CMD" "$RESULT_DIR" "$target"
+        _out=$(run_on_node "$(resolve_ip "$target")" "$MINING_START_CMD" 2>&1)
+        if [ $? -eq 0 ]; then
+          echo "ok" > "$RESULT_DIR/$target"
+        else
+          echo "fail" > "$RESULT_DIR/$target"
+        fi
+        echo "$_out" > "$MINING_OUT_DIR/$target.out"
       fi
       RESULT=$(collect_results "$RESULT_DIR")
-      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
+      # Collect per-node output for debugging
+      MINING_OUTPUT=""
+      for f in "$MINING_OUT_DIR"/*.out; do
+        [ -f "$f" ] || continue
+        _name=$(basename "$f" .out)
+        _content=$(cat "$f")
+        MINING_OUTPUT="${MINING_OUTPUT}=== ${_name} ===
+${_content}
+"
+      done
+      rm -rf "$MINING_OUT_DIR"
+      TRUNC_OUTPUT=$(printf '%.4000s' "$MINING_OUTPUT")
+      report_result "$cmd_id" "$RESULT" "$TRUNC_OUTPUT" "$cmd" "$target"
       ;;
     mining-stop)
       log "Stopping miners..."
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
-      NODES=$(resolve_target_nodes "$target" "all")
+      # Mining is phone-only — use "phones" scope
+      NODES=$(resolve_target_nodes "$target" "phones")
       if [ -n "$NODES" ]; then
         run_on_all_tracked "doas systemctl stop xmrig 2>/dev/null || doas rc-service xmrig stop" "$RESULT_DIR" "$NODES"
       else
@@ -403,7 +439,8 @@ echo \"mining level $mining_level (${HINT}% CPU)\""
           return
           ;;
       esac
-      NODES=$(resolve_target_nodes "$target" "all")
+      # Mining is phone-only — use "phones" scope
+      NODES=$(resolve_target_nodes "$target" "phones")
       if [ -n "$NODES" ]; then
         run_on_all_tracked "$LEVEL_CMD" "$RESULT_DIR" "$NODES"
       else
