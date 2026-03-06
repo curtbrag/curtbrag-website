@@ -144,6 +144,10 @@ import Layout from '../../layouts/Layout.astro';
             <input type="text" id="sshInput" placeholder="e.g. uptime, free -h, df -h" class="flex-1 bg-bg border border-border rounded-lg px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-brand" />
             <button class="dash-btn" id="sshBtn"><i class="fa-solid fa-paper-plane"></i> Send</button>
           </div>
+          <div id="sshOutput" class="hidden mt-3 bg-bg border border-border rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto relative">
+            <button onclick="this.parentElement.classList.add('hidden')" class="absolute top-1 right-2 text-muted hover:text-white text-sm">&times;</button>
+            <pre id="sshOutputText" class="whitespace-pre-wrap"></pre>
+          </div>
           <div id="sshOutput" class="hidden mt-3 bg-bg border border-border rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"></div>
         </div>
 
@@ -532,6 +536,8 @@ import Layout from '../../layouts/Layout.astro';
         if (data.status === 'completed') {
           const outputEl = document.getElementById('sshOutput')!;
           outputEl.classList.remove('hidden');
+          document.getElementById('sshOutputText')!.textContent = `[${command}] ${data.result || 'done'}\n\n${data.output || '(no output)'}`;
+          outputEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           outputEl.textContent = `[${command}] ${data.result || 'done'}\n\n${data.output || '(no output)'}`;
           loadQueueStatus();
           return;
