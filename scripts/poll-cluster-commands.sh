@@ -342,48 +342,16 @@ true'
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       MINING_OUT_DIR="/tmp/miningout-$cmd_id"
       mkdir -p "$RESULT_DIR" "$MINING_OUT_DIR"
-      # Start xmrig — auto-create config and systemd service if missing
-      # Build per-node command with worker name substituted
-      build_mining_start_cmd() {
-        local worker_name="$1"
-        cat <<'MSCRIPT_TOP'
+      # Start xmrig — auto-create systemd service if missing
+      MINING_START_CMD='
 XMRIG_BIN=$(command -v xmrig 2>/dev/null)
 [ -z "$XMRIG_BIN" ] && [ -x /usr/local/bin/xmrig ] && XMRIG_BIN=/usr/local/bin/xmrig
 if [ -z "$XMRIG_BIN" ]; then
   echo "xmrig not installed"; exit 1
 fi
-# Create xmrig config if it does not exist
-if [ ! -f /etc/xmrig/config.json ]; then
-  doas mkdir -p /etc/xmrig
-MSCRIPT_TOP
-        # Write config with worker name interpolated
-        cat <<MSCRIPT_CFG
-  doas tee /etc/xmrig/config.json >/dev/null <<'CFGEOF'
-{
-  "autosave": true,
-  "cpu": { "enabled": true, "huge-pages": true, "max-threads-hint": 75 },
-  "opencl": false,
-  "cuda": false,
-  "donate-level": 1,
-  "pools": [{
-    "url": "gulf.moneroocean.stream:20128",
-    "user": "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT",
-    "pass": "${worker_name}",
-    "keepalive": true,
-    "tls": true
-  }],
-  "http": { "enabled": true, "host": "127.0.0.1", "port": 18080, "access-token": "", "restricted": true },
-  "log-file": "/var/log/xmrig.log",
-  "print-time": 60
-}
-CFGEOF
-MSCRIPT_CFG
-        cat <<'MSCRIPT_BOT'
-  echo "created xmrig config"
-fi
 # Create systemd service if it does not exist
 if [ ! -f /etc/systemd/system/xmrig.service ] && command -v systemctl >/dev/null 2>&1; then
-  doas tee /etc/systemd/system/xmrig.service >/dev/null <<'SVCEOF'
+  doas tee /etc/systemd/system/xmrig.service >/dev/null <<SVCEOF
 [Unit]
 Description=XMRig Monero Miner
 After=network-online.target
