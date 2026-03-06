@@ -148,6 +148,7 @@ import Layout from '../../layouts/Layout.astro';
             <button onclick="this.parentElement.classList.add('hidden')" class="absolute top-1 right-2 text-muted hover:text-white text-sm">&times;</button>
             <pre id="sshOutputText" class="whitespace-pre-wrap"></pre>
           </div>
+          <div id="sshOutput" class="hidden mt-3 bg-bg border border-border rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"></div>
         </div>
 
         <!-- Browse URL -->
@@ -537,6 +538,7 @@ import Layout from '../../layouts/Layout.astro';
           outputEl.classList.remove('hidden');
           document.getElementById('sshOutputText')!.textContent = `[${command}] ${data.result || 'done'}\n\n${data.output || '(no output)'}`;
           outputEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          outputEl.textContent = `[${command}] ${data.result || 'done'}\n\n${data.output || '(no output)'}`;
           loadQueueStatus();
           return;
         }
