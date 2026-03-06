@@ -342,19 +342,55 @@ true'
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       MINING_OUT_DIR="/tmp/miningout-$cmd_id"
       mkdir -p "$RESULT_DIR" "$MINING_OUT_DIR"
-      # Start xmrig via systemctl (systemd) first, fall back to rc-service (OpenRC)
+      # Start xmrig — auto-create systemd service if missing
       MINING_START_CMD='
-if ! command -v xmrig >/dev/null 2>&1 && [ ! -f /usr/local/bin/xmrig ]; then
+XMRIG_BIN=$(command -v xmrig 2>/dev/null)
+[ -z "$XMRIG_BIN" ] && [ -x /usr/local/bin/xmrig ] && XMRIG_BIN=/usr/local/bin/xmrig
+if [ -z "$XMRIG_BIN" ]; then
   echo "xmrig not installed"; exit 1
 fi
-doas systemctl start xmrig 2>/dev/null || doas rc-service xmrig start 2>&1
+# Create systemd service if it does not exist
+if [ ! -f /etc/systemd/system/xmrig.service ] && command -v systemctl >/dev/null 2>&1; then
+  doas tee /etc/systemd/system/xmrig.service >/dev/null <<SVCEOF
+[Unit]
+Description=XMRig Monero Miner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/xmrig --config=/etc/xmrig/config.json --no-color
+Restart=always
+RestartSec=15
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+  doas systemctl daemon-reload
+  echo "created xmrig.service"
+fi
+# Ensure symlink exists
+[ "$XMRIG_BIN" != "/usr/local/bin/xmrig" ] && [ ! -e /usr/local/bin/xmrig ] && doas ln -sf "$XMRIG_BIN" /usr/local/bin/xmrig
+# Start via systemd (primary) or OpenRC (fallback)
+if command -v systemctl >/dev/null 2>&1; then
+  doas systemctl start xmrig 2>&1
+elif command -v rc-service >/dev/null 2>&1; then
+  doas rc-service xmrig start 2>&1
+else
+  echo "no init system found"; exit 1
+fi
 sleep 2
 if pgrep xmrig >/dev/null 2>&1; then
   echo "started (PID: $(pgrep xmrig | head -1))"
   exit 0
 else
   echo "failed to start:"
-  doas rc-service xmrig status 2>&1 || doas systemctl status xmrig 2>&1 || echo "no status available"
+  if command -v systemctl >/dev/null 2>&1; then
+    doas systemctl status xmrig 2>&1
+  elif command -v rc-service >/dev/null 2>&1; then
+    doas rc-service xmrig status 2>&1
+  fi
   exit 1
 fi'
       # Mining is phone-only — use "phones" scope
