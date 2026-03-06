@@ -400,6 +400,46 @@ ${_content}
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
       ;;
+    mining-status)
+      log "Checking mining status..."
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      MINING_OUT_DIR="/tmp/miningstat-$cmd_id"
+      mkdir -p "$RESULT_DIR" "$MINING_OUT_DIR"
+      MINING_STATUS_CMD='echo "=== xmrig process ==="; pgrep -a xmrig 2>/dev/null || echo "NOT RUNNING"; echo "=== systemctl status ==="; doas systemctl is-active xmrig 2>/dev/null || echo "inactive"; doas systemctl status xmrig --no-pager -l 2>/dev/null | head -15 || true; echo "=== xmrig API ==="; curl -s --connect-timeout 3 --max-time 5 http://127.0.0.1:18080/1/summary 2>/dev/null | head -c 500 || echo "API unreachable"; echo ""; echo "=== config check ==="; if [ -f /etc/xmrig/config.json ]; then echo "config exists"; head -c 200 /etc/xmrig/config.json; else echo "NO CONFIG"; fi; echo ""; echo "=== recent log ==="; tail -10 /var/log/xmrig.log 2>/dev/null || doas journalctl -u xmrig --no-pager -n 10 2>/dev/null || echo "no logs"'
+      NODES=$(resolve_target_nodes "$target" "phones")
+      if [ -n "$NODES" ]; then
+        for entry in $NODES; do
+          name="${entry%%:*}"; ip="${entry##*:}"
+          (
+            _out=$(run_on_node_full "$ip" "$MINING_STATUS_CMD" 2>&1)
+            if [ $? -eq 0 ]; then
+              echo "ok" > "$RESULT_DIR/$name"
+            else
+              echo "ok" > "$RESULT_DIR/$name"
+            fi
+            echo "$_out" > "$MINING_OUT_DIR/$name.out"
+          ) &
+        done
+        wait
+      else
+        _out=$(run_on_node_full "$(resolve_ip "$target")" "$MINING_STATUS_CMD" 2>&1)
+        echo "ok" > "$RESULT_DIR/$target"
+        echo "$_out" > "$MINING_OUT_DIR/$target.out"
+      fi
+      RESULT=$(collect_results "$RESULT_DIR")
+      MINING_OUTPUT=""
+      for f in "$MINING_OUT_DIR"/*.out; do
+        [ -f "$f" ] || continue
+        _name=$(basename "$f" .out)
+        _content=$(cat "$f")
+        MINING_OUTPUT="${MINING_OUTPUT}=== ${_name} ===
+${_content}
+"
+      done
+      rm -rf "$MINING_OUT_DIR"
+      TRUNC_OUTPUT=$(printf '%.4000s' "$MINING_OUTPUT")
+      report_result "$cmd_id" "$RESULT" "$TRUNC_OUTPUT" "$cmd" "$target"
+      ;;
     mining-level)
       log "Setting mining level to $mining_level..."
       RESULT_DIR="/tmp/cmdres-$cmd_id"
