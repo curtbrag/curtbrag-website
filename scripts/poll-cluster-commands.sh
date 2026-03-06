@@ -56,6 +56,9 @@ fi
 # PC_NODES may be empty if no PCs configured — that's fine
 [ -z "${PC_NODES:-}" ] && PC_NODES=""
 
+# Mining start command — defined here (not inside case block) for BusyBox ash compatibility
+MINING_START_CMD='XMRIG_BIN=$(command -v xmrig 2>/dev/null); [ -z "$XMRIG_BIN" ] && [ -x /usr/local/bin/xmrig ] && XMRIG_BIN=/usr/local/bin/xmrig; if [ -z "$XMRIG_BIN" ]; then echo "xmrig not installed"; exit 1; fi; if [ ! -f /etc/xmrig/config.json ]; then WORKER=$(hostname 2>/dev/null || echo unknown); doas mkdir -p /etc/xmrig; printf "%s\n" "{" "  \"autosave\": true," "  \"cpu\": { \"enabled\": true, \"huge-pages\": true, \"max-threads-hint\": 75 }," "  \"opencl\": false, \"cuda\": false, \"donate-level\": 1," "  \"pools\": [{ \"url\": \"gulf.moneroocean.stream:20128\", \"user\": \"44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT\", \"pass\": \"$WORKER\", \"keepalive\": true, \"tls\": true }]," "  \"http\": { \"enabled\": true, \"host\": \"127.0.0.1\", \"port\": 18080, \"access-token\": \"\", \"restricted\": true }," "  \"log-file\": \"/var/log/xmrig.log\", \"print-time\": 60" "}" | doas tee /etc/xmrig/config.json >/dev/null; echo "created xmrig config (worker=$WORKER)"; fi; if [ ! -f /etc/systemd/system/xmrig.service ] && command -v systemctl >/dev/null 2>&1; then printf "%s\n" "[Unit]" "Description=XMRig Monero Miner" "After=network-online.target" "Wants=network-online.target" "" "[Service]" "Type=simple" "ExecStart=/usr/local/bin/xmrig --config=/etc/xmrig/config.json --no-color" "Restart=always" "RestartSec=15" "Nice=10" "" "[Install]" "WantedBy=multi-user.target" | doas tee /etc/systemd/system/xmrig.service >/dev/null; doas systemctl daemon-reload; echo "created xmrig.service"; fi; [ "$XMRIG_BIN" != "/usr/local/bin/xmrig" ] && [ ! -e /usr/local/bin/xmrig ] && doas ln -sf "$XMRIG_BIN" /usr/local/bin/xmrig; if command -v systemctl >/dev/null 2>&1; then doas systemctl start xmrig 2>&1; elif command -v rc-service >/dev/null 2>&1; then doas rc-service xmrig start 2>&1; else echo "no init system found"; exit 1; fi; sleep 2; if pgrep xmrig >/dev/null 2>&1; then echo "started (PID: $(pgrep xmrig | head -1))"; exit 0; else echo "failed to start:"; if command -v systemctl >/dev/null 2>&1; then doas systemctl status xmrig 2>&1; fi; exit 1; fi'
+
 # Resolve node name to IP
 resolve_ip() {
   if [ -f "$SCRIPT_DIR/cluster-nodes.conf" ]; then
@@ -342,40 +345,7 @@ true'
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       MINING_OUT_DIR="/tmp/miningout-$cmd_id"
       mkdir -p "$RESULT_DIR" "$MINING_OUT_DIR"
-      # Start xmrig — auto-create config and systemd service if missing
-      # Uses hostname on remote node as worker name to avoid complex heredoc nesting
-      MINING_START_CMD='
-XMRIG_BIN=$(command -v xmrig 2>/dev/null)
-[ -z "$XMRIG_BIN" ] && [ -x /usr/local/bin/xmrig ] && XMRIG_BIN=/usr/local/bin/xmrig
-if [ -z "$XMRIG_BIN" ]; then echo "xmrig not installed"; exit 1; fi
-if [ ! -f /etc/xmrig/config.json ]; then
-  WORKER=$(hostname 2>/dev/null || echo unknown)
-  doas mkdir -p /etc/xmrig
-  printf "%s\n" "{" "  \"autosave\": true," "  \"cpu\": { \"enabled\": true, \"huge-pages\": true, \"max-threads-hint\": 75 }," "  \"opencl\": false, \"cuda\": false, \"donate-level\": 1," "  \"pools\": [{ \"url\": \"gulf.moneroocean.stream:20128\", \"user\": \"44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT\", \"pass\": \"$WORKER\", \"keepalive\": true, \"tls\": true }]," "  \"http\": { \"enabled\": true, \"host\": \"127.0.0.1\", \"port\": 18080, \"access-token\": \"\", \"restricted\": true }," "  \"log-file\": \"/var/log/xmrig.log\", \"print-time\": 60" "}" | doas tee /etc/xmrig/config.json >/dev/null
-  echo "created xmrig config (worker=$WORKER)"
-fi
-if [ ! -f /etc/systemd/system/xmrig.service ] && command -v systemctl >/dev/null 2>&1; then
-  printf "%s\n" "[Unit]" "Description=XMRig Monero Miner" "After=network-online.target" "Wants=network-online.target" "" "[Service]" "Type=simple" "ExecStart=/usr/local/bin/xmrig --config=/etc/xmrig/config.json --no-color" "Restart=always" "RestartSec=15" "Nice=10" "" "[Install]" "WantedBy=multi-user.target" | doas tee /etc/systemd/system/xmrig.service >/dev/null
-  doas systemctl daemon-reload
-  echo "created xmrig.service"
-fi
-[ "$XMRIG_BIN" != "/usr/local/bin/xmrig" ] && [ ! -e /usr/local/bin/xmrig ] && doas ln -sf "$XMRIG_BIN" /usr/local/bin/xmrig
-if command -v systemctl >/dev/null 2>&1; then
-  doas systemctl start xmrig 2>&1
-elif command -v rc-service >/dev/null 2>&1; then
-  doas rc-service xmrig start 2>&1
-else
-  echo "no init system found"; exit 1
-fi
-sleep 2
-if pgrep xmrig >/dev/null 2>&1; then
-  echo "started (PID: $(pgrep xmrig | head -1))"
-  exit 0
-else
-  echo "failed to start:"
-  if command -v systemctl >/dev/null 2>&1; then doas systemctl status xmrig 2>&1; fi
-  exit 1
-fi'
+      # MINING_START_CMD defined at top of script for BusyBox ash compatibility
       # Mining is phone-only — use "phones" scope
       NODES=$(resolve_target_nodes "$target" "phones")
       if [ -n "$NODES" ]; then
