@@ -144,7 +144,7 @@ import Layout from '../../layouts/Layout.astro';
             <input type="text" id="sshInput" placeholder="e.g. uptime, free -h, df -h" class="flex-1 bg-bg border border-border rounded-lg px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-brand" />
             <button class="dash-btn" id="sshBtn"><i class="fa-solid fa-paper-plane"></i> Send</button>
           </div>
-          <div id="sshOutput" class="hidden mt-3 bg-bg border border-border rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-y-auto"></div>
+          <div id="sshOutput" class="hidden mt-3 bg-bg border border-border rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"></div>
         </div>
 
         <!-- Browse URL -->
@@ -365,9 +365,9 @@ import Layout from '../../layouts/Layout.astro';
         const data = await res.json();
         if (res.ok && data.success) {
           showToast(`Queued: ${command} → ${target}`, 'green');
-          // If it's an SSH command, poll for the result
-          if (command === 'ssh' && data.id) {
-            pollCommandResult(data.id);
+          // Poll for result on commands that produce output
+          if (data.id && (command === 'ssh' || command === 'mining-status' || command === 'mining-start')) {
+            pollCommandResult(data.id, 0, command);
           }
           loadQueueStatus();
           return data;
@@ -524,20 +524,20 @@ import Layout from '../../layouts/Layout.astro';
     });
 
     // ── Poll SSH result ──
-    async function pollCommandResult(id: string, attempts = 0) {
-      if (attempts > 30) return; // give up after ~30s
+    async function pollCommandResult(id: string, attempts = 0, command = 'ssh') {
+      if (attempts > 60) return; // give up after ~60s
       try {
         const res = await fetch(`${API}?action=command-status&id=${id}`);
         const data = await res.json();
         if (data.status === 'completed') {
           const outputEl = document.getElementById('sshOutput')!;
           outputEl.classList.remove('hidden');
-          outputEl.textContent = data.output || data.result || '(no output)';
+          outputEl.textContent = `[${command}] ${data.result || 'done'}\n\n${data.output || '(no output)'}`;
           loadQueueStatus();
           return;
         }
         // Still queued or executing, poll again
-        setTimeout(() => pollCommandResult(id, attempts + 1), 1000);
+        setTimeout(() => pollCommandResult(id, attempts + 1, command), 1000);
       } catch { /* silent */ }
     }
 
