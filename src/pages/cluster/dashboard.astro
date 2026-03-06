@@ -182,7 +182,7 @@ import Layout from '../../layouts/Layout.astro';
           <!-- History -->
           <div class="bg-panel border border-border rounded-xl p-4">
             <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-clock-rotate-left text-muted"></i> Recent History</label>
-            <div id="historyList" class="space-y-1 text-xs font-mono max-h-48 overflow-y-auto">
+            <div id="historyList" class="space-y-1 text-xs font-mono max-h-96 overflow-y-auto">
               <div class="text-muted">No history yet</div>
             </div>
           </div>
@@ -490,13 +490,19 @@ import Layout from '../../layouts/Layout.astro';
 
         const historyList = document.getElementById('historyList')!;
         if (data.history && data.history.length > 0) {
-          historyList.innerHTML = data.history.reverse().map((h: any) => {
+          historyList.innerHTML = data.history.reverse().map((h: any, idx: number) => {
             const icon = h.result && h.result.startsWith('expired') ? 'fa-clock text-yellow' :
                          h.result && h.result.startsWith('flushed') ? 'fa-trash text-muted' :
+                         h.result && (h.result.startsWith('error') || h.result.startsWith('partial')) ? 'fa-xmark text-red' :
                          'fa-check text-green';
-            return `<div class="flex items-center justify-between bg-bg border border-border rounded px-2 py-1.5">
-              <span><i class="fa-solid ${icon} text-[0.6rem]"></i> ${h.command || '?'} → ${h.target || '?'}</span>
-              <span class="text-muted">${h.result ? h.result.substring(0, 40) : 'done'}</span>
+            const hasOutput = h.output && h.output.length > 0;
+            const outputId = `hist-output-${idx}`;
+            return `<div>
+              <div class="flex items-center justify-between bg-bg border border-border rounded px-2 py-1.5${hasOutput ? ' cursor-pointer hover:bg-panel' : ''}" ${hasOutput ? `onclick="document.getElementById('${outputId}').classList.toggle('hidden')"` : ''}>
+                <span><i class="fa-solid ${icon} text-[0.6rem]"></i> ${h.command || '?'} → ${h.target || '?'}</span>
+                <span class="text-muted">${h.result ? h.result.substring(0, 40) : 'done'}${hasOutput ? ' <i class="fa-solid fa-chevron-down text-[0.5rem]"></i>' : ''}</span>
+              </div>
+              ${hasOutput ? `<pre id="${outputId}" class="hidden bg-bg border border-border rounded mt-1 p-2 text-[0.65rem] text-muted whitespace-pre-wrap max-h-64 overflow-y-auto">${h.output.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>` : ''}
             </div>`;
           }).join('');
         } else {
