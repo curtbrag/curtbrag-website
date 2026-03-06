@@ -375,17 +375,14 @@ else
   echo "failed to start:"
   if command -v systemctl >/dev/null 2>&1; then doas systemctl status xmrig 2>&1; fi
   exit 1
-fi
-MSCRIPT_BOT
-      }
+fi'
       # Mining is phone-only — use "phones" scope
       NODES=$(resolve_target_nodes "$target" "phones")
       if [ -n "$NODES" ]; then
         for entry in $NODES; do
           name="${entry%%:*}"; ip="${entry##*:}"
           (
-            _cmd=$(build_mining_start_cmd "$name")
-            _out=$(run_on_node "$ip" "$_cmd" 2>&1)
+            _out=$(run_on_node "$ip" "$MINING_START_CMD" 2>&1)
             if [ $? -eq 0 ]; then
               echo "ok" > "$RESULT_DIR/$name"
             else
@@ -396,8 +393,7 @@ MSCRIPT_BOT
         done
         wait
       else
-        _cmd=$(build_mining_start_cmd "$target")
-        _out=$(run_on_node "$(resolve_ip "$target")" "$_cmd" 2>&1)
+        _out=$(run_on_node "$(resolve_ip "$target")" "$MINING_START_CMD" 2>&1)
         if [ $? -eq 0 ]; then
           echo "ok" > "$RESULT_DIR/$target"
         else
