@@ -392,14 +392,17 @@ else
     doas rc-service xmrig status 2>&1
   fi
   exit 1
-fi'
+fi
+MSCRIPT_BOT
+      }
       # Mining is phone-only — use "phones" scope
       NODES=$(resolve_target_nodes "$target" "phones")
       if [ -n "$NODES" ]; then
         for entry in $NODES; do
           name="${entry%%:*}"; ip="${entry##*:}"
           (
-            _out=$(run_on_node "$ip" "$MINING_START_CMD" 2>&1)
+            _cmd=$(build_mining_start_cmd "$name")
+            _out=$(run_on_node "$ip" "$_cmd" 2>&1)
             if [ $? -eq 0 ]; then
               echo "ok" > "$RESULT_DIR/$name"
             else
@@ -410,7 +413,8 @@ fi'
         done
         wait
       else
-        _out=$(run_on_node "$(resolve_ip "$target")" "$MINING_START_CMD" 2>&1)
+        _cmd=$(build_mining_start_cmd "$target")
+        _out=$(run_on_node "$(resolve_ip "$target")" "$_cmd" 2>&1)
         if [ $? -eq 0 ]; then
           echo "ok" > "$RESULT_DIR/$target"
         else
