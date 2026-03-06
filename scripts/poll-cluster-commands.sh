@@ -345,40 +345,7 @@ true'
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       MINING_OUT_DIR="/tmp/miningout-$cmd_id"
       mkdir -p "$RESULT_DIR" "$MINING_OUT_DIR"
-      # Start xmrig — auto-create config and systemd service if missing
-      # Uses hostname on remote node as worker name to avoid complex heredoc nesting
-      MINING_START_CMD='
-XMRIG_BIN=$(command -v xmrig 2>/dev/null)
-[ -z "$XMRIG_BIN" ] && [ -x /usr/local/bin/xmrig ] && XMRIG_BIN=/usr/local/bin/xmrig
-if [ -z "$XMRIG_BIN" ]; then echo "xmrig not installed"; exit 1; fi
-if [ ! -f /etc/xmrig/config.json ]; then
-  WORKER=$(hostname 2>/dev/null || echo unknown)
-  doas mkdir -p /etc/xmrig
-  printf "%s\n" "{" "  \"autosave\": true," "  \"cpu\": { \"enabled\": true, \"huge-pages\": true, \"max-threads-hint\": 75 }," "  \"opencl\": false, \"cuda\": false, \"donate-level\": 1," "  \"pools\": [{ \"url\": \"gulf.moneroocean.stream:20128\", \"user\": \"44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT\", \"pass\": \"$WORKER\", \"keepalive\": true, \"tls\": true }]," "  \"http\": { \"enabled\": true, \"host\": \"127.0.0.1\", \"port\": 18080, \"access-token\": \"\", \"restricted\": true }," "  \"log-file\": \"/var/log/xmrig.log\", \"print-time\": 60" "}" | doas tee /etc/xmrig/config.json >/dev/null
-  echo "created xmrig config (worker=$WORKER)"
-fi
-if [ ! -f /etc/systemd/system/xmrig.service ] && command -v systemctl >/dev/null 2>&1; then
-  printf "%s\n" "[Unit]" "Description=XMRig Monero Miner" "After=network-online.target" "Wants=network-online.target" "" "[Service]" "Type=simple" "ExecStart=/usr/local/bin/xmrig --config=/etc/xmrig/config.json --no-color" "Restart=always" "RestartSec=15" "Nice=10" "" "[Install]" "WantedBy=multi-user.target" | doas tee /etc/systemd/system/xmrig.service >/dev/null
-  doas systemctl daemon-reload
-  echo "created xmrig.service"
-fi
-[ "$XMRIG_BIN" != "/usr/local/bin/xmrig" ] && [ ! -e /usr/local/bin/xmrig ] && doas ln -sf "$XMRIG_BIN" /usr/local/bin/xmrig
-if command -v systemctl >/dev/null 2>&1; then
-  doas systemctl start xmrig 2>&1
-elif command -v rc-service >/dev/null 2>&1; then
-  doas rc-service xmrig start 2>&1
-else
-  echo "no init system found"; exit 1
-fi
-sleep 2
-if pgrep xmrig >/dev/null 2>&1; then
-  echo "started (PID: $(pgrep xmrig | head -1))"
-  exit 0
-else
-  echo "failed to start:"
-  if command -v systemctl >/dev/null 2>&1; then doas systemctl status xmrig 2>&1; fi
-  exit 1
-fi'
+      # MINING_START_CMD defined at top of script for BusyBox ash compatibility
       # Mining is phone-only — use "phones" scope
       NODES=$(resolve_target_nodes "$target" "phones")
       if [ -n "$NODES" ]; then
@@ -432,6 +399,46 @@ ${_content}
       fi
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
+      ;;
+    mining-status)
+      log "Checking mining status..."
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      MINING_OUT_DIR="/tmp/miningstat-$cmd_id"
+      mkdir -p "$RESULT_DIR" "$MINING_OUT_DIR"
+      MINING_STATUS_CMD='echo "=== xmrig process ==="; pgrep -a xmrig 2>/dev/null || echo "NOT RUNNING"; echo "=== systemctl status ==="; doas systemctl is-active xmrig 2>/dev/null || echo "inactive"; doas systemctl status xmrig --no-pager -l 2>/dev/null | head -15 || true; echo "=== xmrig API ==="; curl -s --connect-timeout 3 --max-time 5 http://127.0.0.1:18080/1/summary 2>/dev/null | head -c 500 || echo "API unreachable"; echo ""; echo "=== config check ==="; if [ -f /etc/xmrig/config.json ]; then echo "config exists"; head -c 200 /etc/xmrig/config.json; else echo "NO CONFIG"; fi; echo ""; echo "=== recent log ==="; tail -10 /var/log/xmrig.log 2>/dev/null || doas journalctl -u xmrig --no-pager -n 10 2>/dev/null || echo "no logs"'
+      NODES=$(resolve_target_nodes "$target" "phones")
+      if [ -n "$NODES" ]; then
+        for entry in $NODES; do
+          name="${entry%%:*}"; ip="${entry##*:}"
+          (
+            _out=$(run_on_node_full "$ip" "$MINING_STATUS_CMD" 2>&1)
+            if [ $? -eq 0 ]; then
+              echo "ok" > "$RESULT_DIR/$name"
+            else
+              echo "ok" > "$RESULT_DIR/$name"
+            fi
+            echo "$_out" > "$MINING_OUT_DIR/$name.out"
+          ) &
+        done
+        wait
+      else
+        _out=$(run_on_node_full "$(resolve_ip "$target")" "$MINING_STATUS_CMD" 2>&1)
+        echo "ok" > "$RESULT_DIR/$target"
+        echo "$_out" > "$MINING_OUT_DIR/$target.out"
+      fi
+      RESULT=$(collect_results "$RESULT_DIR")
+      MINING_OUTPUT=""
+      for f in "$MINING_OUT_DIR"/*.out; do
+        [ -f "$f" ] || continue
+        _name=$(basename "$f" .out)
+        _content=$(cat "$f")
+        MINING_OUTPUT="${MINING_OUTPUT}=== ${_name} ===
+${_content}
+"
+      done
+      rm -rf "$MINING_OUT_DIR"
+      TRUNC_OUTPUT=$(printf '%.4000s' "$MINING_OUTPUT")
+      report_result "$cmd_id" "$RESULT" "$TRUNC_OUTPUT" "$cmd" "$target"
       ;;
     mining-level)
       log "Setting mining level to $mining_level..."

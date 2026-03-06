@@ -504,7 +504,7 @@ exports.handler = async (event) => {
       return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
     }
 
-    const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'mining-level', 'display-mode', 'browse', 'update', 'reboot', 'ssh', 'screenshot', 'brightness', 'debug', 'pod-logs'];
+    const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'mining-status', 'mining-level', 'display-mode', 'browse', 'update', 'reboot', 'ssh', 'screenshot', 'brightness', 'debug', 'pod-logs'];
     if (!validCommands.includes(command)) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid command' }) };
     }
