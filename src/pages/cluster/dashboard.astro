@@ -399,8 +399,8 @@ import Layout from '../../layouts/Layout.astro';
     }
 
     // ── Send Command ──
-    async function sendCommand(command: string, extra: Record<string, any> = {}) {
-      const target = targetSelect.value;
+    async function sendCommand(command: string, extra: Record<string, any> = {}, targetOverride?: string) {
+      const target = targetOverride ?? targetSelect.value;
       try {
         const res = await fetch(API, {
           method: 'POST',
