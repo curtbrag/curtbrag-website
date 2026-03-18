@@ -31,6 +31,9 @@ if [ -f "$SCRIPT_DIR/cluster-nodes.conf" ]; then
   . "$SCRIPT_DIR/cluster-nodes.conf"
   load_node_config
   log "Loaded $NODE_COUNT nodes from cluster-nodes.conf"
+  # Count PC nodes for dynamic minersTotal
+  PC_COUNT=0
+  for _pc in ${PC_NODES:-}; do PC_COUNT=$((PC_COUNT + 1)); done
 else
   log "WARN: cluster-nodes.conf not found, using hardcoded IPs"
 fi
@@ -392,6 +395,30 @@ for i in $(seq 1 10); do
     fi
   ) &
 done
+
+# Check xmrig API on PC nodes in parallel
+for pc_entry in ${PC_NODES:-}; do
+  (
+    set +e
+    pc_name="${pc_entry%%:*}"
+    pc_ip="${pc_entry#*:}"
+    XMRIG=$(ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+      "user@$pc_ip" "curl -s --connect-timeout 3 --max-time 5 http://127.0.0.1:18080/1/summary 2>/dev/null" 2>/dev/null)
+    if [ -n "$XMRIG" ] && echo "$XMRIG" | jq . >/dev/null 2>&1; then
+      echo "$XMRIG" > "$TMP_DIR/mining_${pc_name}.tmp"
+    else
+      PROC_CHECK=""
+      ssh -p "$SSH_PORT" -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+        "user@$pc_ip" "pgrep xmrig >/dev/null 2>&1 && echo running" 2>/dev/null | grep -q running && PROC_CHECK="running"
+      if [ "$PROC_CHECK" = "running" ]; then
+        echo "PROC_RUNNING" > "$TMP_DIR/mining_${pc_name}.tmp"
+      else
+        echo "" > "$TMP_DIR/mining_${pc_name}.tmp"
+      fi
+    fi
+  ) &
+done
+
 wait || true
 
 for i in $(seq 1 10); do
@@ -440,7 +467,52 @@ for i in $(seq 1 10); do
     MINING_WORKERS=$(echo "$MINING_WORKERS" | jq --arg n "$NODE_NAME" --arg ml "$NODE_ML" '. + [{name:$n, hashrate:"0 H/s", hashrateRaw:0, status:"offline", accepted:0, miningLevel:$ml}]')
   fi
 done
-rm -f "$TMP_DIR"/mining_node*.tmp
+# Parse PC node mining results
+for pc_entry in ${PC_NODES:-}; do
+  pc_name="${pc_entry%%:*}"
+  TMPFILE="$TMP_DIR/mining_${pc_name}.tmp"
+  XMRIG=""
+  [ -f "$TMPFILE" ] && XMRIG=$(cat "$TMPFILE")
+
+  if [ "$XMRIG" = "PROC_RUNNING" ]; then
+    MINING_WORKERS=$(echo "$MINING_WORKERS" | jq --arg n "$pc_name" \
+      '. + [{name:$n, hashrate:"? H/s", hashrateRaw:0, status:"mining", accepted:0, note:"api_timeout"}]')
+    log "  $pc_name mining (process running, API unavailable)"
+  elif [ -n "$XMRIG" ] && echo "$XMRIG" | jq . >/dev/null 2>&1; then
+    HR=$(echo "$XMRIG" | jq '.hashrate.total[0] // 0')
+    ACC=$(echo "$XMRIG" | jq '.results.shares_good // 0')
+    TOT_SH=$(echo "$XMRIG" | jq '.results.shares_total // 0')
+    REJ=$((TOT_SH - ACC))
+    UPT=$(echo "$XMRIG" | jq '.uptime // 0')
+    ALGO=$(echo "$XMRIG" | jq -r '.algo // "unknown"')
+    THREADS=$(echo "$XMRIG" | jq '.cpu.threads // null')
+
+    HR_INT=$(printf '%.0f' "$HR" 2>/dev/null || echo 0)
+    if [ "$HR_INT" -ge 1000000 ] 2>/dev/null; then
+      HR_FMT="$(awk "BEGIN{printf \"%.2f\", $HR/1000000}") MH/s"
+    elif [ "$HR_INT" -ge 1000 ] 2>/dev/null; then
+      HR_FMT="$(awk "BEGIN{printf \"%.2f\", $HR/1000}") KH/s"
+    else
+      HR_FMT="${HR_INT} H/s"
+    fi
+
+    MINING_WORKERS=$(echo "$MINING_WORKERS" | jq \
+      --arg n "$pc_name" --arg hr "$HR_FMT" --argjson hrr "$HR" \
+      --argjson acc "$ACC" --argjson rej "$REJ" --argjson upt "$UPT" \
+      --arg algo "$ALGO" --argjson thr "$THREADS" \
+      '. + [{name:$n, hashrate:$hr, hashrateRaw:$hrr, status:"mining", accepted:$acc, rejected:$rej, uptime:$upt, algo:$algo, threads:$thr}]')
+
+    TOTAL_HR=$(awk "BEGIN{printf \"%.2f\", $TOTAL_HR + $HR}")
+    TOTAL_ACC=$((TOTAL_ACC + ACC))
+    TOTAL_REJ=$((TOTAL_REJ + REJ))
+    log "  $pc_name mining: $HR_FMT"
+  else
+    MINING_WORKERS=$(echo "$MINING_WORKERS" | jq --arg n "$pc_name" \
+      '. + [{name:$n, hashrate:"0 H/s", hashrateRaw:0, status:"offline", accepted:0}]')
+    log "  $pc_name not mining"
+  fi
+done
+rm -f "$TMP_DIR"/mining_*.tmp
 
 MINERS_RUNNING=$(echo "$MINING_WORKERS" | jq '[.[] | select(.status=="mining")] | length')
 
@@ -474,13 +546,9 @@ MONTHLY_FMT=$(printf '$%.2f' "$MONTHLY_USD" 2>/dev/null || echo '$0.00')
 MINING_ENABLED="false"
 [ "$MINERS_RUNNING" -gt 0 ] && MINING_ENABLED="true"
 
-# Read pool name dynamically from node1's metrics (already collected)
+# Read pool URL dynamically from node1's metrics (already collected)
 POOL_URL=$(echo "$METRICS_JSON" | jq -r '.node1.miningPool // "unknown"')
-case "$POOL_URL" in
-  *moneroocean*) POOL_NAME="MoneroOcean" ;;
-  *supportxmr*) POOL_NAME="supportxmr" ;;
-  *) POOL_NAME="$POOL_URL" ;;
-esac
+POOL_NAME="$POOL_URL"
 
 MINING_JSON=$(jq -n \
   --argjson en "$MINING_ENABLED" --argjson mr "$MINERS_RUNNING" \
@@ -488,7 +556,8 @@ MINING_JSON=$(jq -n \
   --argjson tacc "$TOTAL_ACC" --argjson trej "$TOTAL_REJ" \
   --arg ed "$DAILY_FMT" --arg em "$MONTHLY_FMT" \
   --argjson wk "$MINING_WORKERS" --arg pool "$POOL_NAME" --arg poolUrl "$POOL_URL" \
-  '{enabled:$en, minersRunning:$mr, minersTotal:10, totalHashrate:$thr, totalHashrateRaw:$thrr, totalAccepted:$tacc, totalRejected:$trej, coin:"XMR", pool:$pool, poolUrl:$poolUrl, estimatedDaily:$ed, estimatedMonthly:$em, workers:$wk}')
+  --argjson mt "$((10 + ${PC_COUNT:-0}))" \
+  '{enabled:$en, minersRunning:$mr, minersTotal:$mt, totalHashrate:$thr, totalHashrateRaw:$thrr, totalAccepted:$tacc, totalRejected:$trej, coin:"XMR", pool:$pool, poolUrl:$poolUrl, estimatedDaily:$ed, estimatedMonthly:$em, workers:$wk}')
 log "Mining: $MINERS_RUNNING running, total $THR_FMT"
 
 # ── Summary ─────────────────────────────────────────────────────────
