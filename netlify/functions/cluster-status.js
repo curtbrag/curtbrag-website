@@ -323,8 +323,9 @@ exports.handler = async function(event, context) {
     if (rawStatus && rawStatus.lastUpdate) {
       // Clone to avoid mutating the cached object
       const status = JSON.parse(JSON.stringify(rawStatus));
-      const age = Date.now() - new Date(status.lastUpdate).getTime();
-      const ageMinutes = Math.round(age / 60000);
+      const parsedUpdate = new Date(status.lastUpdate).getTime();
+      const age = isNaN(parsedUpdate) ? Infinity : Date.now() - parsedUpdate;
+      const ageMinutes = isNaN(parsedUpdate) ? null : Math.round(age / 60000);
       // Stale after 6 minutes (one cron interval + 1 min buffer)
       if (age > 6 * 60 * 1000) {
         status.stale = true;

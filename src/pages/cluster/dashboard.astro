@@ -99,6 +99,10 @@ import Layout from '../../layouts/Layout.astro';
               <button class="dash-btn flex-1 cmd-btn" data-cmd="mining-stop"><i class="fa-solid fa-stop text-red"></i> Stop</button>
               <button class="dash-btn flex-1 cmd-btn" data-cmd="mining-status"><i class="fa-solid fa-magnifying-glass text-cyan"></i> Status</button>
             </div>
+            <div id="miningOutput" class="hidden mt-2 bg-bg border border-border rounded p-2 text-xs font-mono whitespace-pre-wrap max-h-32 overflow-y-auto relative">
+              <button onclick="this.parentElement.classList.add('hidden')" class="absolute top-1 right-2 text-muted hover:text-white text-sm">&times;</button>
+              <pre id="miningOutputText" class="whitespace-pre-wrap"></pre>
+            </div>
             <div>
               <div class="flex items-center justify-between mb-1">
                 <span class="text-xs text-muted">Mining Level</span>
@@ -599,14 +603,19 @@ import Layout from '../../layouts/Layout.astro';
     // ── Poll command result (SSH, pod-logs, mining-status) ──
     async function pollCommandResult(id: string, attempts = 0, command = 'ssh') {
       if (attempts > 60) {
+        const msg = '[Timed out: no result after 60s. Node may be offline.]';
         if (command === 'pod-logs') {
           const outputEl = document.getElementById('podLogsOutput')!;
           outputEl.classList.remove('hidden');
-          document.getElementById('podLogsText')!.textContent = '[Timed out: no result after 60s. Node may be offline.]';
+          document.getElementById('podLogsText')!.textContent = msg;
+        } else if (command === 'mining-start' || command === 'mining-stop' || command === 'mining-status') {
+          const outputEl = document.getElementById('miningOutput')!;
+          outputEl.classList.remove('hidden');
+          document.getElementById('miningOutputText')!.textContent = msg;
         } else {
           const outputEl = document.getElementById('sshOutput')!;
           outputEl.classList.remove('hidden');
-          document.getElementById('sshOutputText')!.textContent = '[Timed out: no result after 60s. Node may be offline.]';
+          document.getElementById('sshOutputText')!.textContent = msg;
         }
         return;
       }
@@ -618,6 +627,11 @@ import Layout from '../../layouts/Layout.astro';
             const outputEl = document.getElementById('podLogsOutput')!;
             outputEl.classList.remove('hidden');
             document.getElementById('podLogsText')!.textContent = data.output || data.result || '(no output)';
+            outputEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          } else if (command === 'mining-start' || command === 'mining-stop' || command === 'mining-status') {
+            const outputEl = document.getElementById('miningOutput')!;
+            outputEl.classList.remove('hidden');
+            document.getElementById('miningOutputText')!.textContent = `[${command}] ${data.result || 'done'}\n\n${data.output || ''}`.trim();
             outputEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           } else {
             const outputEl = document.getElementById('sshOutput')!;
