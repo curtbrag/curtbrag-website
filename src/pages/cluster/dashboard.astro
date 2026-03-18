@@ -148,7 +148,6 @@ import Layout from '../../layouts/Layout.astro';
             <button onclick="this.parentElement.classList.add('hidden')" class="absolute top-1 right-2 text-muted hover:text-white text-sm">&times;</button>
             <pre id="sshOutputText" class="whitespace-pre-wrap"></pre>
           </div>
-          <div id="sshOutput" class="hidden mt-3 bg-bg border border-border rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"></div>
         </div>
 
         <!-- Browse URL -->
@@ -168,6 +167,36 @@ import Layout from '../../layouts/Layout.astro';
             <button class="dash-btn" id="viewScreenshotsBtn"><i class="fa-solid fa-images"></i> View All</button>
           </div>
           <div id="screenshotGrid" class="hidden grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2"></div>
+        </div>
+
+        <!-- Pod Logs -->
+        <div class="bg-panel border border-border rounded-xl p-4 mb-4">
+          <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-scroll text-blue"></i> Pod Logs</label>
+          <div class="flex gap-2 mb-2">
+            <input type="text" id="podNamespace" placeholder="Namespace (e.g. default)" class="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand" />
+            <input type="text" id="podName" placeholder="Pod name" class="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand" />
+            <input type="number" id="podTail" placeholder="100" min="1" max="500" value="100" class="w-20 bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand" />
+            <button class="dash-btn" id="podLogsBtn"><i class="fa-solid fa-paper-plane"></i> Fetch</button>
+          </div>
+          <div id="podLogsOutput" class="hidden mt-2 bg-bg border border-border rounded-lg p-3 text-xs font-mono max-h-96 overflow-y-auto relative">
+            <button onclick="this.parentElement.classList.add('hidden')" class="absolute top-1 right-2 text-muted hover:text-white text-sm">&times;</button>
+            <pre id="podLogsText" class="whitespace-pre-wrap"></pre>
+          </div>
+        </div>
+
+        <!-- Schedules -->
+        <div class="bg-panel border border-border rounded-xl p-4 mb-4">
+          <div class="flex items-center justify-between mb-3">
+            <label class="text-xs font-semibold text-muted uppercase tracking-wide"><i class="fa-solid fa-calendar-days text-brand"></i> Schedules</label>
+            <div class="flex gap-2">
+              <button class="dash-btn-sm" id="addScheduleBtn"><i class="fa-solid fa-plus text-xs"></i> Add</button>
+              <button class="dash-btn-sm" id="saveSchedulesBtn"><i class="fa-solid fa-floppy-disk text-xs"></i> Save</button>
+            </div>
+          </div>
+          <div id="scheduleList" class="space-y-2 text-xs mb-2">
+            <div class="text-muted">Loading schedules...</div>
+          </div>
+          <div id="scheduleMsg" class="hidden text-xs mt-1"></div>
         </div>
 
         <!-- Command Queue & History -->
@@ -352,6 +381,7 @@ import Layout from '../../layouts/Layout.astro';
         controlPanel.classList.remove('hidden');
         loadQueueStatus();
         checkPollerStatus();
+        loadSchedules();
       } catch {
         loginError.classList.remove('hidden');
       }
@@ -370,7 +400,7 @@ import Layout from '../../layouts/Layout.astro';
         if (res.ok && data.success) {
           showToast(`Queued: ${command} → ${target}`, 'green');
           // Poll for result on commands that produce output
-          if (data.id && (command === 'ssh' || command === 'mining-status' || command === 'mining-start')) {
+          if (data.id && (command === 'ssh' || command === 'mining-status' || command === 'mining-start' || command === 'pod-logs')) {
             pollCommandResult(data.id, 0, command);
           }
           loadQueueStatus();
@@ -527,25 +557,6 @@ import Layout from '../../layouts/Layout.astro';
       }
     });
 
-    // ── Poll SSH result ──
-    async function pollCommandResult(id: string, attempts = 0, command = 'ssh') {
-      if (attempts > 60) return; // give up after ~60s
-      try {
-        const res = await fetch(`${API}?action=command-status&id=${id}`);
-        const data = await res.json();
-        if (data.status === 'completed') {
-          const outputEl = document.getElementById('sshOutput')!;
-          outputEl.classList.remove('hidden');
-          document.getElementById('sshOutputText')!.textContent = `[${command}] ${data.result || 'done'}\n\n${data.output || '(no output)'}`;
-          outputEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          outputEl.textContent = `[${command}] ${data.result || 'done'}\n\n${data.output || '(no output)'}`;
-          loadQueueStatus();
-          return;
-        }
-        // Still queued or executing, poll again
-        setTimeout(() => pollCommandResult(id, attempts + 1, command), 1000);
-      } catch { /* silent */ }
-    }
 
     // ── Poller Status ──
     async function checkPollerStatus() {
@@ -574,6 +585,136 @@ import Layout from '../../layouts/Layout.astro';
         toast.classList.add('translate-y-20', 'opacity-0', 'pointer-events-none');
       }, 3000);
     }
+
+    // ── Pod Logs ──
+    document.getElementById('podLogsBtn')!.addEventListener('click', async () => {
+      const ns = (document.getElementById('podNamespace') as HTMLInputElement).value.trim();
+      const pod = (document.getElementById('podName') as HTMLInputElement).value.trim();
+      const tail = (document.getElementById('podTail') as HTMLInputElement).value.trim() || '100';
+      if (!ns || !pod) { showToast('Namespace and pod name required', 'red'); return; }
+      const data = await sendCommand('pod-logs', { namespace: ns, podName: pod, tail });
+      if (data && data.id) {
+        pollCommandResult(data.id, 0, 'pod-logs');
+      }
+    });
+
+    // ── Poll command result (SSH, pod-logs, mining-status) ──
+    async function pollCommandResult(id: string, attempts = 0, command = 'ssh') {
+      if (attempts > 60) return;
+      try {
+        const res = await fetch(`${API}?action=command-status&id=${id}`);
+        const data = await res.json();
+        if (data.status === 'completed') {
+          if (command === 'pod-logs') {
+            const outputEl = document.getElementById('podLogsOutput')!;
+            outputEl.classList.remove('hidden');
+            document.getElementById('podLogsText')!.textContent = data.output || data.result || '(no output)';
+            outputEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          } else {
+            const outputEl = document.getElementById('sshOutput')!;
+            outputEl.classList.remove('hidden');
+            document.getElementById('sshOutputText')!.textContent = `[${command}] ${data.result || 'done'}\n\n${data.output || '(no output)'}`;
+            outputEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+          loadQueueStatus();
+          return;
+        }
+        setTimeout(() => pollCommandResult(id, attempts + 1, command), 1000);
+      } catch { /* silent */ }
+    }
+
+    // ── Schedules ──
+    let schedulesData: Record<string, any> = {};
+
+    async function loadSchedules() {
+      try {
+        const res = await fetch(`${API}?action=schedules`);
+        const data = await res.json();
+        schedulesData = data.schedules || {};
+        renderSchedules();
+      } catch {
+        document.getElementById('scheduleList')!.innerHTML = '<div class="text-muted">Failed to load schedules</div>';
+      }
+    }
+
+    function renderSchedules() {
+      const list = document.getElementById('scheduleList')!;
+      const ids = Object.keys(schedulesData);
+      if (ids.length === 0) {
+        list.innerHTML = '<div class="text-muted">No schedules configured</div>';
+        return;
+      }
+      list.innerHTML = ids.map(id => {
+        const s = schedulesData[id];
+        const rules = (s.rules || []).map((r: any) =>
+          `<span class="inline-flex items-center gap-1 bg-bg border border-border rounded px-2 py-0.5 text-[0.65rem] font-mono">${r.time} → ${r.command}</span>`
+        ).join(' ');
+        return `<div class="flex items-start justify-between gap-2 bg-bg border border-border rounded-lg p-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="font-semibold text-xs">${id}</span>
+              <label class="inline-flex items-center gap-1 text-[0.65rem] cursor-pointer">
+                <input type="checkbox" class="sched-enabled accent-brand" data-id="${id}" ${s.enabled ? 'checked' : ''} />
+                <span class="${s.enabled ? 'text-green' : 'text-muted'}">${s.enabled ? 'Enabled' : 'Disabled'}</span>
+              </label>
+            </div>
+            <div class="flex flex-wrap gap-1">${rules || '<span class="text-muted text-[0.65rem]">No rules</span>'}</div>
+          </div>
+          <button class="dash-btn-sm text-red flex-shrink-0 sched-delete-btn" data-id="${id}"><i class="fa-solid fa-trash text-[0.6rem]"></i></button>
+        </div>`;
+      }).join('');
+
+      list.querySelectorAll('.sched-enabled').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          const id = (e.target as HTMLElement).dataset.id!;
+          schedulesData[id].enabled = (e.target as HTMLInputElement).checked;
+        });
+      });
+      list.querySelectorAll('.sched-delete-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = (btn as HTMLElement).dataset.id!;
+          delete schedulesData[id];
+          renderSchedules();
+        });
+      });
+    }
+
+    document.getElementById('addScheduleBtn')!.addEventListener('click', () => {
+      const id = prompt('Schedule ID (e.g. phones, node1):');
+      if (!id) return;
+      const time = prompt('Time (HH:MM, 24h):');
+      if (!time) return;
+      const command = prompt('Command (wake/sleep/mining-start/mining-stop):');
+      if (!command) return;
+      schedulesData[id] = schedulesData[id] || { enabled: true, rules: [] };
+      schedulesData[id].rules = schedulesData[id].rules || [];
+      schedulesData[id].rules.push({ time, command });
+      renderSchedules();
+    });
+
+    document.getElementById('saveSchedulesBtn')!.addEventListener('click', async () => {
+      const msgEl = document.getElementById('scheduleMsg')!;
+      try {
+        const res = await fetch(API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'save-schedules', password, schedules: schedulesData })
+        });
+        const data = await res.json();
+        msgEl.classList.remove('hidden');
+        if (res.ok && data.success) {
+          msgEl.className = 'text-xs mt-1 text-green';
+          msgEl.textContent = 'Schedules saved';
+          showToast('Schedules saved', 'green');
+        } else {
+          msgEl.className = 'text-xs mt-1 text-red';
+          msgEl.textContent = data.error || 'Save failed';
+        }
+        setTimeout(() => msgEl.classList.add('hidden'), 3000);
+      } catch {
+        showToast('Failed to save schedules', 'red');
+      }
+    });
 
     // ── Auto-refresh queue ──
     setInterval(loadQueueStatus, 5000);
