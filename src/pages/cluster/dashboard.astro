@@ -412,7 +412,7 @@ import Layout from '../../layouts/Layout.astro';
         if (res.ok && data.success) {
           showToast(`Queued: ${command} → ${target}`, 'green');
           // Poll for result on commands that produce output
-          if (data.id && (command === 'ssh' || command === 'mining-status' || command === 'pod-logs')) {
+          if (data.id && (command === 'ssh' || command === 'mining-start' || command === 'mining-stop' || command === 'mining-status' || command === 'pod-logs')) {
             pollCommandResult(data.id, 0, command);
           }
           loadQueueStatus();
@@ -458,8 +458,8 @@ import Layout from '../../layouts/Layout.astro';
     })();
 
     async function applyPoolChange(currentPool: string, newPool: string) {
-      if (/[;&|`$<>(){}[\]\\!#]/.test(newPool)) { showToast('Pool URL contains invalid characters', 'red'); return; }
-      const sedCmd = `sed -i 's#${currentPool}#${newPool}#g' /etc/xmrig/config.json`;
+      if (/[;&|`$<>(){}[\]\\]/.test(newPool)) { showToast('Pool URL contains invalid characters', 'red'); return; }
+      const sedCmd = `sed -i 's!${currentPool}!${newPool}!g' /etc/xmrig/config.json`;
       if (sedCmd.length > 200) { showToast('Pool URL too long', 'red'); return; }
       const r = await sendCommand('ssh', { sshCmd: sedCmd }, 'all');
       if (r) {

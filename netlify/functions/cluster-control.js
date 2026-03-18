@@ -225,7 +225,7 @@ exports.handler = async (event) => {
           const age = Date.now() - new Date(heartbeat.lastPoll).getTime();
           return {
             statusCode: 200, headers,
-            body: JSON.stringify({ alive: age < 30000, lastPoll: heartbeat.lastPoll, ageSeconds: Math.round(age / 1000) })
+            body: JSON.stringify({ alive: age < 120000, lastPoll: heartbeat.lastPoll, ageSeconds: Math.round(age / 1000) })
           };
         }
       } catch (e) { /* fall through */ }
@@ -506,7 +506,7 @@ exports.handler = async (event) => {
       return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
     }
 
-    const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'mining-status', 'mining-level', 'display-mode', 'browse', 'update', 'reboot', 'ssh', 'screenshot', 'brightness', 'debug', 'pod-logs'];
+    const validCommands = ['start', 'stop', 'restart', 'wake', 'sleep', 'mining-start', 'mining-stop', 'mining-status', 'mining-level', 'mining-pool', 'display-mode', 'browse', 'update', 'reboot', 'ssh', 'screenshot', 'brightness', 'debug', 'pod-logs'];
     if (!validCommands.includes(command)) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid command' }) };
     }
@@ -546,6 +546,17 @@ exports.handler = async (event) => {
     if (command === 'brightness') {
       if (!body.sshCmd || isNaN(parseInt(body.sshCmd))) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'Brightness value (0-255) required' }) };
+      }
+    }
+
+    // Validate mining-pool command
+    if (command === 'mining-pool') {
+      if (!body.poolUrl || typeof body.poolUrl !== 'string') {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'poolUrl required' }) };
+      }
+      // Allow host:port or stratum+tcp://host:port
+      if (!/^[a-zA-Z0-9._-]+:\d+$/.test(body.poolUrl) && !/^stratum\+tcp:\/\//i.test(body.poolUrl)) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'poolUrl must be host:port format' }) };
       }
     }
 
