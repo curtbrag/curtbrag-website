@@ -33,7 +33,7 @@ if [ -f "$SCRIPT_DIR/cluster-nodes.conf" ]; then
   log "Loaded $NODE_COUNT nodes from cluster-nodes.conf"
   # Count PC nodes for dynamic minersTotal
   PC_COUNT=0
-  for _pc in $PC_NODES; do PC_COUNT=$((PC_COUNT + 1)); done
+  for _pc in ${PC_NODES:-}; do PC_COUNT=$((PC_COUNT + 1)); done
 else
   log "WARN: cluster-nodes.conf not found, using hardcoded IPs"
 fi
@@ -557,7 +557,7 @@ MINING_JSON=$(jq -n \
   --argjson tacc "$TOTAL_ACC" --argjson trej "$TOTAL_REJ" \
   --arg ed "$DAILY_FMT" --arg em "$MONTHLY_FMT" \
   --argjson wk "$MINING_WORKERS" --arg pool "$POOL_NAME" --arg poolUrl "$POOL_URL" \
-  --argjson mt "$MINERS_TOTAL" \
+  --argjson mt "$((10 + ${PC_COUNT:-0}))" \
   '{enabled:$en, minersRunning:$mr, minersTotal:$mt, totalHashrate:$thr, totalHashrateRaw:$thrr, totalAccepted:$tacc, totalRejected:$trej, coin:"XMR", pool:$pool, poolUrl:$poolUrl, estimatedDaily:$ed, estimatedMonthly:$em, workers:$wk}')
 log "Mining: $MINERS_RUNNING running, total $THR_FMT"
 
