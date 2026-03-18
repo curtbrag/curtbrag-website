@@ -232,40 +232,6 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify({ alive: false, lastPoll: null }) };
     }
 
-    // Auth check (for dashboard login validation)
-    if (params.action === 'auth-check') {
-      const webPassword = await getWebPassword();
-      if (!webPassword) {
-        return { statusCode: 503, headers, body: JSON.stringify({ error: 'Server not configured' }) };
-      }
-      if (!safeCompare(params.password || '', webPassword)) {
-        return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
-      }
-      return { statusCode: 200, headers, body: JSON.stringify({ authenticated: true }) };
-    }
-
-    // Flush stale commands from the queue (dashboard action, requires auth)
-    if (params.action === 'flush-queue') {
-      const webPassword = await getWebPassword();
-      if (!webPassword) {
-        return { statusCode: 503, headers, body: JSON.stringify({ error: 'Server not configured' }) };
-      }
-      if (!safeCompare(params.password || '', webPassword)) {
-        return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
-      }
-      const queue = await getQueue();
-      if (queue.length === 0) {
-        return { statusCode: 200, headers, body: JSON.stringify({ flushed: 0, message: 'Queue already empty' }) };
-      }
-      const history = await getHistory();
-      for (const c of queue) {
-        history.push({ id: c.id, command: c.command, target: c.target, result: 'flushed: manually cleared from queue', completedAt: new Date().toISOString() });
-      }
-      await saveHistory(history);
-      await saveQueue([]);
-      return { statusCode: 200, headers, body: JSON.stringify({ flushed: queue.length, message: `Flushed ${queue.length} commands from queue` }) };
-    }
-
     // Schedule retrieval
     if (params.action === 'schedules') {
       const schedules = await getSchedules();
@@ -402,6 +368,40 @@ exports.handler = async (event) => {
       }
       await saveScreenshot(body.node, body.image, body.timestamp || new Date().toISOString());
       return { statusCode: 200, headers, body: JSON.stringify({ success: true, node: body.node }) };
+    }
+
+    // Auth check (for dashboard login validation)
+    if (body.action === 'auth-check') {
+      const webPassword = await getWebPassword();
+      if (!webPassword) {
+        return { statusCode: 503, headers, body: JSON.stringify({ error: 'Server not configured' }) };
+      }
+      if (!safeCompare(body.password || '', webPassword)) {
+        return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
+      }
+      return { statusCode: 200, headers, body: JSON.stringify({ authenticated: true }) };
+    }
+
+    // Flush stale commands from the queue (dashboard action, requires auth)
+    if (body.action === 'flush-queue') {
+      const webPassword = await getWebPassword();
+      if (!webPassword) {
+        return { statusCode: 503, headers, body: JSON.stringify({ error: 'Server not configured' }) };
+      }
+      if (!safeCompare(body.password || '', webPassword)) {
+        return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
+      }
+      const queue = await getQueue();
+      if (queue.length === 0) {
+        return { statusCode: 200, headers, body: JSON.stringify({ flushed: 0, message: 'Queue already empty' }) };
+      }
+      const history = await getHistory();
+      for (const c of queue) {
+        history.push({ id: c.id, command: c.command, target: c.target, result: 'flushed: manually cleared from queue', completedAt: new Date().toISOString() });
+      }
+      await saveHistory(history);
+      await saveQueue([]);
+      return { statusCode: 200, headers, body: JSON.stringify({ flushed: queue.length, message: `Flushed ${queue.length} commands from queue` }) };
     }
 
     // Save schedules from dashboard
