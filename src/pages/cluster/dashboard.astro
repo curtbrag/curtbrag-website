@@ -368,7 +368,7 @@ import Layout from '../../layouts/Layout.astro';
 
     async function tryAuth(pw: string) {
       try {
-        const testRes = await fetch(`${API}?action=auth-check&password=${encodeURIComponent(pw)}`);
+        const testRes = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'auth-check', password: pw }) });
         if (testRes.status === 401) {
           loginError.classList.remove('hidden');
           return;
@@ -536,7 +536,7 @@ import Layout from '../../layouts/Layout.astro';
                 <span><i class="fa-solid ${icon} text-[0.6rem]"></i> ${h.command || '?'} → ${h.target || '?'}</span>
                 <span class="text-muted">${h.result ? h.result.substring(0, 40) : 'done'}${hasOutput ? ' <i class="fa-solid fa-chevron-down text-[0.5rem]"></i>' : ''}</span>
               </div>
-              ${hasOutput ? `<pre id="${outputId}" class="hidden bg-bg border border-border rounded mt-1 p-2 text-[0.65rem] text-muted whitespace-pre-wrap max-h-64 overflow-y-auto">${h.output.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>` : ''}
+              ${hasOutput ? `<pre id="${outputId}" class="hidden bg-bg border border-border rounded mt-1 p-2 text-[0.65rem] text-muted whitespace-pre-wrap max-h-64 overflow-y-auto">${h.output.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>` : ''}
             </div>`;
           }).join('');
         } else {
@@ -548,7 +548,7 @@ import Layout from '../../layouts/Layout.astro';
     // ── Flush Queue ──
     document.getElementById('flushQueueBtn')!.addEventListener('click', async () => {
       try {
-        const res = await fetch(`${API}?action=flush-queue&password=${encodeURIComponent(password)}`);
+        const res = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'flush-queue', password }) });
         const data = await res.json();
         showToast(data.message || 'Queue flushed', 'green');
         loadQueueStatus();
@@ -597,7 +597,18 @@ import Layout from '../../layouts/Layout.astro';
 
     // ── Poll command result (SSH, pod-logs, mining-status) ──
     async function pollCommandResult(id: string, attempts = 0, command = 'ssh') {
-      if (attempts > 60) return;
+      if (attempts > 60) {
+        if (command === 'pod-logs') {
+          const outputEl = document.getElementById('podLogsOutput')!;
+          outputEl.classList.remove('hidden');
+          document.getElementById('podLogsText')!.textContent = '[Timed out: no result after 60s. Node may be offline.]';
+        } else {
+          const outputEl = document.getElementById('sshOutput')!;
+          outputEl.classList.remove('hidden');
+          document.getElementById('sshOutputText')!.textContent = '[Timed out: no result after 60s. Node may be offline.]';
+        }
+        return;
+      }
       try {
         const res = await fetch(`${API}?action=command-status&id=${id}`);
         const data = await res.json();
@@ -681,6 +692,9 @@ import Layout from '../../layouts/Layout.astro';
       if (!id) return;
       const time = prompt('Time (HH:MM, 24h):');
       if (!time) return;
+      if (!/^\d{1,2}:\d{2}$/.test(time)) { alert('Invalid time format. Use HH:MM (24-hour, e.g. 22:30).'); return; }
+      const [hh, mm] = time.split(':').map(Number);
+      if (hh > 23 || mm > 59) { alert('Invalid time: hours must be 0–23, minutes 0–59.'); return; }
       const command = prompt('Command (wake/sleep/mining-start/mining-stop):');
       if (!command) return;
       schedulesData[id] = schedulesData[id] || { enabled: true, rules: [] };
