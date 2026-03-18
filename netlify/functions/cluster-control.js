@@ -593,7 +593,7 @@ exports.handler = async (event) => {
       miningLevel: body.miningLevel != null ? parseInt(body.miningLevel) : null,
       namespace: body.namespace || null,
       podName: body.podName || null,
-      tail: body.tail || null,
+      tail: body.tail != null ? parseInt(body.tail) : null,
       queuedAt: new Date().toISOString()
     };
 
