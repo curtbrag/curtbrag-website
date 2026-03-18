@@ -289,12 +289,14 @@ exports.handler = async (event) => {
     }
 
     // Retrieve API key (authenticated by web password) — for node setup scripts
+    // Accepts password via POST body (preferred) or GET query param (legacy)
     if (params.action === 'get-api-key') {
       const webPassword = await getWebPassword();
       if (!webPassword) {
         return { statusCode: 503, headers, body: JSON.stringify({ error: 'Server not configured' }) };
       }
-      if (!safeCompare(params.password || '', webPassword)) {
+      const attemptedPassword = (body && body.password) || params.password || '';
+      if (!safeCompare(attemptedPassword, webPassword)) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
       }
       const key = await getApiKey();
