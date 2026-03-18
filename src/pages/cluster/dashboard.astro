@@ -400,7 +400,7 @@ import Layout from '../../layouts/Layout.astro';
         if (res.ok && data.success) {
           showToast(`Queued: ${command} → ${target}`, 'green');
           // Poll for result on commands that produce output
-          if (data.id && (command === 'ssh' || command === 'mining-status' || command === 'mining-start' || command === 'pod-logs')) {
+          if (data.id && (command === 'ssh' || command === 'mining-status' || command === 'pod-logs')) {
             pollCommandResult(data.id, 0, command);
           }
           loadQueueStatus();
