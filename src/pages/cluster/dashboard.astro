@@ -458,12 +458,13 @@ import Layout from '../../layouts/Layout.astro';
     })();
 
     async function applyPoolChange(currentPool: string, newPool: string) {
-      if (/[;&|`$<>(){}[\]\\]/.test(newPool)) { showToast('Pool URL contains invalid characters', 'red'); return; }
-      const sedCmd = `sed -i 's!${currentPool}!${newPool}!g' /etc/xmrig/config.json`;
+      if (/[;&|`$<>(){}[\]\\!#]/.test(newPool)) { showToast('Pool URL contains invalid characters', 'red'); return; }
+      const sedCmd = `doas sed -i 's#${currentPool}#${newPool}#g' /etc/xmrig/config.json`;
       if (sedCmd.length > 200) { showToast('Pool URL too long', 'red'); return; }
       const r = await sendCommand('ssh', { sshCmd: sedCmd }, 'all');
       if (r) {
-        await sendCommand('ssh', { sshCmd: 'systemctl restart xmrig' }, 'all');
+        await sendCommand('mining-stop', {}, 'all');
+        await sendCommand('mining-start', {}, 'all');
         document.getElementById('currentPoolDisplay')!.textContent = newPool;
       }
     }
