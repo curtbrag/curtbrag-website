@@ -459,7 +459,7 @@ import Layout from '../../layouts/Layout.astro';
 
     async function applyPoolChange(currentPool: string, newPool: string) {
       if (/[;&|`$<>(){}[\]\\!#]/.test(newPool)) { showToast('Pool URL contains invalid characters', 'red'); return; }
-      const sedCmd = `doas sed -i 's#${currentPool}#${newPool}#g' /etc/xmrig/config.json`;
+      const sedCmd = `sed -i 's#${currentPool}#${newPool}#g' /etc/xmrig/config.json`;
       if (sedCmd.length > 200) { showToast('Pool URL too long', 'red'); return; }
       const r = await sendCommand('ssh', { sshCmd: sedCmd }, 'all');
       if (r) {
