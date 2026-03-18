@@ -463,7 +463,7 @@ import Layout from '../../layouts/Layout.astro';
       if (sedCmd.length > 200) { showToast('Pool URL too long', 'red'); return; }
       const r = await sendCommand('ssh', { sshCmd: sedCmd }, 'all');
       if (r) {
-        await sendCommand('ssh', { sshCmd: 'systemctl restart xmrig' }, 'all');
+        await sendCommand('ssh', { sshCmd: 'doas systemctl restart xmrig' }, 'all');
         document.getElementById('currentPoolDisplay')!.textContent = newPool;
       }
     }
