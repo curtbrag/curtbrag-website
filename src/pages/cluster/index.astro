@@ -195,6 +195,17 @@ import Layout from '../../layouts/Layout.astro';
         <!-- Worker chips -->
         <div class="flex flex-wrap gap-2" id="miningWorkerChips"></div>
         <div class="text-muted text-xs mt-3 pt-3 border-t border-border" id="miningPoolInfo"></div>
+        <!-- Hashrate history sparkline -->
+        <div id="miningHistoryPanel" class="hidden mt-3 pt-3 border-t border-border">
+          <div class="text-xs text-muted mb-1 flex items-center justify-between">
+            <span><i class="fa-solid fa-chart-line text-yellow"></i> 24h Hashrate</span>
+            <span id="miningHistoryRange" class="font-mono text-[0.65rem]"></span>
+          </div>
+          <svg id="miningSparkline" width="100%" height="48" preserveAspectRatio="none" viewBox="0 0 400 48">
+            <path id="miningSparklinePath" fill="none" stroke="#eab308" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            <path id="miningSparklineFill" fill="rgba(234,179,8,0.1)" stroke="none" />
+          </svg>
+        </div>
       </div>
 
       <!-- ═══════════════════ BATTERY GRID ═══════════════════ -->
@@ -229,6 +240,38 @@ import Layout from '../../layouts/Layout.astro';
             </table>
           </div>
         </div>
+      </div>
+
+      <!-- ═══════════════════ SERVICES TABLE ═══════════════════ -->
+      <div class="mb-8 reveal" id="servicesSection" style="display:none">
+        <h2 class="text-sm font-semibold mb-4 flex items-center gap-2">
+          <i class="fa-solid fa-network-wired text-blue"></i> Services
+          <span class="bg-panel border border-border rounded-full px-2.5 py-0.5 text-xs font-mono text-muted" id="serviceCountBadge">0</span>
+        </h2>
+        <div class="bg-panel border border-border rounded-xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-xs text-muted uppercase tracking-wide bg-bg-elevated">
+                  <th class="px-4 py-3 border-b border-border">Name</th>
+                  <th class="px-4 py-3 border-b border-border">Namespace</th>
+                  <th class="px-4 py-3 border-b border-border">Type</th>
+                  <th class="px-4 py-3 border-b border-border">Cluster IP</th>
+                  <th class="px-4 py-3 border-b border-border">Ports</th>
+                </tr>
+              </thead>
+              <tbody id="servicesTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════ EVENTS ═══════════════════ -->
+      <div class="mb-8 reveal" id="eventsSection" style="display:none">
+        <h2 class="text-sm font-semibold mb-4 flex items-center gap-2">
+          <i class="fa-solid fa-bell text-brand"></i> Recent Events
+        </h2>
+        <div class="space-y-2" id="eventsList"></div>
       </div>
 
       <!-- ═══════════════════ ABOUT ═══════════════════ -->
@@ -481,6 +524,18 @@ import Layout from '../../layouts/Layout.astro';
         document.getElementById('podsSection')!.style.display = '';
         renderPods(data.pods);
       }
+
+      // Services
+      if (data.services && data.services.length > 0) {
+        document.getElementById('servicesSection')!.style.display = '';
+        renderServices(data.services);
+      }
+
+      // Events
+      if (data.events && data.events.length > 0) {
+        document.getElementById('eventsSection')!.style.display = '';
+        renderEvents(data.events);
+      }
     }
 
     function renderNodes(nodes: any[], metrics: any, battery: any) {
@@ -643,6 +698,83 @@ import Layout from '../../layouts/Layout.astro';
       }).join('');
     }
 
+    function renderServices(services: any[]) {
+      setText('serviceCountBadge', String(services.length));
+      const tbody = document.getElementById('servicesTableBody')!;
+      tbody.innerHTML = services.map((s: any) => {
+        const typeColor = s.type === 'LoadBalancer' ? '#22c55e' : s.type === 'NodePort' ? '#3b82f6' : '#8a8a8a';
+        return `<tr class="hover:bg-panel-hover">
+          <td class="px-4 py-2.5 border-b border-border font-medium text-sm">${s.name}</td>
+          <td class="px-4 py-2.5 border-b border-border"><span class="bg-bg-elevated px-2 py-0.5 rounded text-xs font-mono text-blue">${s.namespace}</span></td>
+          <td class="px-4 py-2.5 border-b border-border"><span class="text-xs font-semibold font-mono" style="color:${typeColor}">${s.type}</span></td>
+          <td class="px-4 py-2.5 border-b border-border text-muted font-mono text-xs">${s.clusterIP || '--'}</td>
+          <td class="px-4 py-2.5 border-b border-border font-mono text-xs">${(s.ports || []).join(', ')}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function renderEvents(events: any[]) {
+      const list = document.getElementById('eventsList')!;
+      const recent = events.slice(-8).reverse();
+      list.innerHTML = recent.map((e: any) => {
+        const isWarn = e.type === 'Warning';
+        const age = e.timestamp ? relTime(new Date(e.timestamp)) : '';
+        return `<div class="flex items-start gap-3 bg-panel border ${isWarn ? 'border-yellow/30' : 'border-border'} rounded-xl px-4 py-3">
+          <i class="fa-solid fa-${isWarn ? 'triangle-exclamation text-yellow' : 'circle-info text-blue'} text-xs mt-0.5 flex-shrink-0"></i>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2 flex-wrap mb-0.5">
+              <span class="text-xs font-semibold">${e.reason || ''}</span>
+              <span class="text-muted text-[0.65rem] font-mono">${e.object || ''}</span>
+              ${e.count > 1 ? `<span class="text-[0.6rem] bg-bg border border-border rounded px-1.5 py-0.5 text-muted">×${e.count}</span>` : ''}
+              <span class="text-muted text-[0.65rem] ml-auto">${age}</span>
+            </div>
+            <div class="text-xs text-text-secondary truncate">${e.message || ''}</div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function relTime(d: Date): string {
+      const s = Math.round((Date.now() - d.getTime()) / 1000);
+      if (s < 60) return s + 's ago';
+      if (s < 3600) return Math.round(s / 60) + 'm ago';
+      if (s < 86400) return Math.round(s / 3600) + 'h ago';
+      return Math.round(s / 86400) + 'd ago';
+    }
+
+    async function loadMiningHistory() {
+      try {
+        const res = await fetch(API_URL + '?type=mining-history');
+        if (!res.ok) return;
+        const data = await res.json();
+        const history: any[] = data.history || [];
+        if (history.length < 2) return;
+
+        const panel = document.getElementById('miningHistoryPanel')!;
+        panel.classList.remove('hidden');
+
+        const values = history.map((h: any) => h.totalHashrate as number);
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const range = max - min || 1;
+
+        const W = 400, H = 48, pad = 2;
+        const pts = values.map((v, i) => {
+          const x = pad + (i / (values.length - 1)) * (W - pad * 2);
+          const y = H - pad - ((v - min) / range) * (H - pad * 2);
+          return `${x.toFixed(1)},${y.toFixed(1)}`;
+        });
+
+        document.getElementById('miningSparklinePath')!.setAttribute('d', 'M' + pts.join('L'));
+        document.getElementById('miningSparklineFill')!.setAttribute('d', `M${pts[0]}L${pts.join('L')}L${(W - pad)},${H}L${pad},${H}Z`);
+
+        const first = new Date(history[0].timestamp);
+        const last = new Date(history[history.length - 1].timestamp);
+        document.getElementById('miningHistoryRange')!.textContent =
+          `${relTime(first)} → ${relTime(last)} (${values.length} pts)`;
+      } catch { /* silent */ }
+    }
+
     // Helpers
     function setText(id: string, val: string) {
       const el = document.getElementById(id);
@@ -669,7 +801,8 @@ import Layout from '../../layouts/Layout.astro';
     }
 
     // Init
-    refreshBtn.addEventListener('click', () => { loadStatus(); });
+    refreshBtn.addEventListener('click', () => { loadStatus(); loadMiningHistory(); });
     loadStatus();
+    loadMiningHistory();
   });
 </script>
