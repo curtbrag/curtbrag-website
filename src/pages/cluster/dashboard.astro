@@ -103,12 +103,13 @@ import Layout from '../../layouts/Layout.astro';
               <button onclick="this.parentElement.classList.add('hidden')" class="absolute top-1 right-2 text-muted hover:text-white text-sm">&times;</button>
               <pre id="miningOutputText" class="whitespace-pre-wrap"></pre>
             </div>
-            <div class="mb-3">
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-muted whitespace-nowrap">Pool URL</span>
-                <input type="text" id="poolUrlInput" placeholder="host:port (e.g. gulf.moneroocean.stream:10128)" class="flex-1 bg-bg border border-border rounded px-2 py-1 text-xs font-mono" />
+            <div class="mb-3 border border-border rounded-lg p-2">
+              <div class="text-xs text-muted mb-1.5">Pool <span class="font-mono text-yellow" id="currentPoolDisplay"></span></div>
+              <div class="flex items-center gap-2 mb-2">
+                <input type="text" id="poolUrlInput" placeholder="new pool host:port" class="flex-1 bg-bg border border-border rounded px-2 py-1 text-xs font-mono" />
                 <button class="dash-btn-sm" id="setPoolBtn"><i class="fa-solid fa-check"></i> Set</button>
               </div>
+              <button class="dash-btn w-full text-xs" id="fixPoolDirectBtn" style="border-color:rgba(239,68,68,0.4);color:#ef4444"><i class="fa-solid fa-triangle-exclamation"></i> Fix: Switch to MoneroOcean Direct</button>
             </div>
             <div>
               <div class="flex items-center justify-between mb-1">
@@ -399,8 +400,8 @@ import Layout from '../../layouts/Layout.astro';
     }
 
     // ── Send Command ──
-    async function sendCommand(command: string, extra: Record<string, any> = {}) {
-      const target = targetSelect.value;
+    async function sendCommand(command: string, extra: Record<string, any> = {}, targetOverride?: string) {
+      const target = targetOverride ?? targetSelect.value;
       try {
         const res = await fetch(API, {
           method: 'POST',
@@ -446,11 +447,38 @@ import Layout from '../../layouts/Layout.astro';
       });
     });
 
-    // ── Pool URL ──
-    document.getElementById('setPoolBtn')!.addEventListener('click', () => {
-      const poolUrl = (document.getElementById('poolUrlInput') as HTMLInputElement).value.trim();
-      if (!poolUrl) { showToast('Pool URL required', 'red'); return; }
-      sendCommand('mining-pool', { poolUrl });
+    // ── Pool URL / Fix ──
+    // Load current pool from cluster-status and display it
+    (async () => {
+      try {
+        const r = await fetch('/.netlify/functions/cluster-status');
+        const d = await r.json();
+        const pool = d?.mining?.pool;
+        if (pool) document.getElementById('currentPoolDisplay')!.textContent = pool;
+      } catch { /* silent */ }
+    })();
+
+    async function applyPoolChange(currentPool: string, newPool: string) {
+      if (/[;&|`$<>(){}[\]\\]/.test(newPool)) { showToast('Pool URL contains invalid characters', 'red'); return; }
+      const sedCmd = `sed -i 's!${currentPool}!${newPool}!g' /etc/xmrig/config.json`;
+      if (sedCmd.length > 200) { showToast('Pool URL too long', 'red'); return; }
+      const r = await sendCommand('ssh', { sshCmd: sedCmd }, 'all');
+      if (r) {
+        await sendCommand('ssh', { sshCmd: 'systemctl restart xmrig' }, 'all');
+        document.getElementById('currentPoolDisplay')!.textContent = newPool;
+      }
+    }
+
+    document.getElementById('fixPoolDirectBtn')!.addEventListener('click', async () => {
+      await applyPoolChange('192.168.1.179:10128', 'gulf.moneroocean.stream:10128');
+    });
+
+    document.getElementById('setPoolBtn')!.addEventListener('click', async () => {
+      const newPool = (document.getElementById('poolUrlInput') as HTMLInputElement).value.trim();
+      if (!newPool) { showToast('Pool URL required', 'red'); return; }
+      const currentPool = document.getElementById('currentPoolDisplay')!.textContent?.trim();
+      if (!currentPool) { showToast('Current pool unknown — refresh page', 'red'); return; }
+      await applyPoolChange(currentPool, newPool);
     });
 
     // ── Brightness ──
