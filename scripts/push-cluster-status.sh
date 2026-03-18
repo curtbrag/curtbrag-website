@@ -545,6 +545,7 @@ MONTHLY_FMT=$(printf '$%.2f' "$MONTHLY_USD" 2>/dev/null || echo '$0.00')
 
 MINING_ENABLED="false"
 [ "$MINERS_RUNNING" -gt 0 ] && MINING_ENABLED="true"
+MINERS_TOTAL=$((10 + ${PC_COUNT:-0}))
 
 # Read pool URL dynamically from node1's metrics (already collected)
 POOL_URL=$(echo "$METRICS_JSON" | jq -r '.node1.miningPool // "unknown"')
