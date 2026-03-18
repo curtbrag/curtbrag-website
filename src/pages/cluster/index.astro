@@ -201,6 +201,7 @@ import Layout from '../../layouts/Layout.astro';
         <!-- Worker chips -->
         <div class="flex flex-wrap gap-2" id="miningWorkerChips"></div>
         <div class="text-muted text-xs mt-3 pt-3 border-t border-border" id="miningPoolInfo"></div>
+        <div id="miningProxyWarning" class="hidden mt-2 text-xs font-mono px-3 py-2 rounded-lg border" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3);color:#ef4444"></div>
         <!-- Hashrate history sparkline -->
         <div id="miningHistoryPanel" class="hidden mt-3 pt-3 border-t border-border">
           <div class="text-xs text-muted mb-1 flex items-center justify-between">
@@ -682,6 +683,15 @@ import Layout from '../../layouts/Layout.astro';
       // Pool info
       if (mining.pool) {
         setText('miningPoolInfo', `Pool: ${mining.pool} | Coin: ${mining.coin || 'XMR'}`);
+        const isLocalPool = /^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|localhost|127\.)/.test(mining.pool);
+        const isZeroHashrate = !mining.totalHashrateRaw || mining.totalHashrateRaw === 0;
+        const proxyWarn = document.getElementById('miningProxyWarning')!;
+        if (isLocalPool && isZeroHashrate) {
+          proxyWarn.textContent = `⚠ Pool proxy unreachable: ${mining.pool} — xmrig is running but cannot submit shares. Set a public pool URL in the dashboard or restart your local proxy.`;
+          proxyWarn.classList.remove('hidden');
+        } else {
+          proxyWarn.classList.add('hidden');
+        }
       }
     }
 
