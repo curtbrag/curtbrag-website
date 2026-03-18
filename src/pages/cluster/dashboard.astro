@@ -592,10 +592,7 @@ import Layout from '../../layouts/Layout.astro';
       const pod = (document.getElementById('podName') as HTMLInputElement).value.trim();
       const tail = (document.getElementById('podTail') as HTMLInputElement).value.trim() || '100';
       if (!ns || !pod) { showToast('Namespace and pod name required', 'red'); return; }
-      const data = await sendCommand('pod-logs', { namespace: ns, podName: pod, tail });
-      if (data && data.id) {
-        pollCommandResult(data.id, 0, 'pod-logs');
-      }
+      await sendCommand('pod-logs', { namespace: ns, podName: pod, tail });
     });
 
     // ── Poll command result (SSH, pod-logs, mining-status) ──

@@ -357,7 +357,6 @@ import Layout from '../../layouts/Layout.astro';
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const API_URL = '/.netlify/functions/cluster-status';
-    let refreshInterval: ReturnType<typeof setInterval>;
     let countdown = 15;
     let countdownInterval: ReturnType<typeof setInterval>;
 
@@ -383,7 +382,7 @@ import Layout from '../../layouts/Layout.astro';
         statusText.textContent = 'Connection failed';
       } finally {
         refreshIcon.classList.remove('spinning');
-        countdown = 15;
+        startCountdown();
       }
     }
 
@@ -654,21 +653,23 @@ import Layout from '../../layouts/Layout.astro';
       if (el) el.style.width = Math.min(pct, 100) + '%';
     }
 
-    // Countdown
+    // Countdown — drives the refresh so they stay in sync
     function startCountdown() {
       if (countdownInterval) clearInterval(countdownInterval);
       countdown = 15;
+      refreshCountdownEl.textContent = countdown + 's';
       countdownInterval = setInterval(() => {
         countdown--;
-        if (refreshCountdownEl) refreshCountdownEl.textContent = countdown + 's';
-        if (countdown <= 0) countdown = 15;
+        refreshCountdownEl.textContent = countdown + 's';
+        if (countdown <= 0) {
+          clearInterval(countdownInterval);
+          loadStatus(); // loadStatus calls startCountdown() in finally
+        }
       }, 1000);
     }
 
     // Init
     refreshBtn.addEventListener('click', () => { loadStatus(); });
     loadStatus();
-    refreshInterval = setInterval(loadStatus, 15000);
-    startCountdown();
   });
 </script>
