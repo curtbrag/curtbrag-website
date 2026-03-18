@@ -166,7 +166,7 @@ import Layout from '../../layouts/Layout.astro';
             <button class="dash-btn cmd-btn" data-cmd="screenshot"><i class="fa-solid fa-camera"></i> Capture</button>
             <button class="dash-btn" id="viewScreenshotsBtn"><i class="fa-solid fa-images"></i> View All</button>
           </div>
-          <div id="screenshotGrid" class="hidden grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2"></div>
+          <div id="screenshotGrid" style="display:none" class="grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2"></div>
         </div>
 
         <!-- Pod Logs -->
@@ -463,7 +463,7 @@ import Layout from '../../layouts/Layout.astro';
 
     async function loadScreenshots() {
       const grid = document.getElementById('screenshotGrid')!;
-      grid.classList.remove('hidden');
+      grid.style.display = 'grid';
       grid.innerHTML = '<div class="col-span-full text-center text-muted text-xs py-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</div>';
 
       try {
@@ -524,7 +524,7 @@ import Layout from '../../layouts/Layout.astro';
 
         const historyList = document.getElementById('historyList')!;
         if (data.history && data.history.length > 0) {
-          historyList.innerHTML = data.history.reverse().map((h: any, idx: number) => {
+          historyList.innerHTML = [...data.history].reverse().map((h: any, idx: number) => {
             const icon = h.result && h.result.startsWith('expired') ? 'fa-clock text-yellow' :
                          h.result && h.result.startsWith('flushed') ? 'fa-trash text-muted' :
                          h.result && (h.result.startsWith('error') || h.result.startsWith('partial')) ? 'fa-xmark text-red' :
