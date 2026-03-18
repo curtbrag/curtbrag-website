@@ -491,6 +491,7 @@ import Layout from '../../layouts/Layout.astro';
           thumb.addEventListener('click', () => {
             const img = thumb.querySelector('img');
             if (!img) return;
+            document.querySelectorAll('.screen-modal').forEach(m => m.remove());
             const modal = document.createElement('div');
             modal.className = 'screen-modal';
             modal.innerHTML = `<img src="${img.src}" alt="${(thumb as HTMLElement).dataset.device}" />`;
@@ -697,6 +698,8 @@ import Layout from '../../layouts/Layout.astro';
       if (hh > 23 || mm > 59) { alert('Invalid time: hours must be 0–23, minutes 0–59.'); return; }
       const command = prompt('Command (wake/sleep/mining-start/mining-stop):');
       if (!command) return;
+      const validScheduleCommands = ['wake', 'sleep', 'mining-start', 'mining-stop'];
+      if (!validScheduleCommands.includes(command)) { alert(`Invalid command. Must be one of: ${validScheduleCommands.join(', ')}`); return; }
       schedulesData[id] = schedulesData[id] || { enabled: true, rules: [] };
       schedulesData[id].rules = schedulesData[id].rules || [];
       schedulesData[id].rules.push({ time, command });

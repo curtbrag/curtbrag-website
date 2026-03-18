@@ -515,8 +515,13 @@ exports.handler = async (event) => {
     }
 
     // Validate URL for browse command
-    if (command === 'browse' && !body.url) {
-      return { statusCode: 400, headers, body: JSON.stringify({ error: 'URL required for browse command' }) };
+    if (command === 'browse') {
+      if (!body.url) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'URL required for browse command' }) };
+      }
+      if (!/^https?:\/\//i.test(body.url)) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'URL must start with http:// or https://' }) };
+      }
     }
 
     // Validate display-mode command
@@ -549,6 +554,10 @@ exports.handler = async (event) => {
       }
       if (!/^[a-zA-Z0-9._-]+$/.test(body.namespace) || !/^[a-zA-Z0-9._-]+$/.test(body.podName)) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid namespace or pod name' }) };
+      }
+      const tailLines = parseInt(body.tail);
+      if (body.tail != null && (isNaN(tailLines) || tailLines < 1 || tailLines > 9999)) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'tail must be a number between 1 and 9999' }) };
       }
     }
 
