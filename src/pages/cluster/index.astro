@@ -62,10 +62,16 @@ import Layout from '../../layouts/Layout.astro';
         </div>
       </div>
 
-      <!-- Offline Banner -->
+      <!-- Demo Banner -->
       <div id="demoBanner" class="hidden items-center gap-3 bg-muted/10 border border-border rounded-xl px-4 py-3 mb-6 text-sm text-muted">
         <i class="fa-solid fa-circle-info"></i>
-        <span>The cluster is currently offline. Showing last known data.</span>
+        <span>No live data received yet — showing demo data. Run the push script on node1 to connect.</span>
+      </div>
+
+      <!-- Stale Banner -->
+      <div id="staleBanner" class="hidden items-center gap-3 border rounded-xl px-4 py-3 mb-6 text-sm">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <span id="staleBannerText"></span>
       </div>
 
       <!-- K3s Down Banner -->
@@ -411,6 +417,8 @@ import Layout from '../../layouts/Layout.astro';
     const refreshIcon = document.getElementById('refreshIcon')!;
     const refreshCountdownEl = document.getElementById('refreshCountdown')!;
     const demoBanner = document.getElementById('demoBanner')!;
+    const staleBanner = document.getElementById('staleBanner')!;
+    const staleBannerText = document.getElementById('staleBannerText')!;
     const k3sBanner = document.getElementById('k3sBanner')!;
 
     async function loadStatus() {
@@ -434,19 +442,36 @@ import Layout from '../../layouts/Layout.astro';
       const isK3sDown = data.k3sDown;
 
       // Status dot
+      staleBanner.classList.add('hidden');
+      staleBanner.classList.remove('flex');
+      demoBanner.classList.add('hidden');
+      demoBanner.classList.remove('flex');
+
       if (isDemo) {
         dot.className = 'cluster-dot demo';
-        statusText.textContent = 'Offline';
+        statusText.textContent = 'No data';
         demoBanner.classList.remove('hidden');
         demoBanner.classList.add('flex');
       } else if (data.stale) {
         dot.className = 'cluster-dot offline';
         statusText.textContent = `Stale (${data.ageMinutes}m ago)`;
-        demoBanner.classList.add('hidden');
+        const level = data.staleLevel || 'warning';
+        const msgs: Record<string, string> = {
+          warning:  `Data is ${data.ageMinutes} minutes old — cluster may be temporarily unreachable.`,
+          critical: `Data is ${data.ageMinutes} minutes old — cluster has been unreachable for a while.`,
+          dead:     `Data is ${data.ageMinutes} minutes old — cluster appears to be offline.`,
+        };
+        staleBannerText.textContent = msgs[level] || msgs.warning;
+        const colors: Record<string, string> = {
+          warning:  'bg-yellow/10 border-yellow/30 text-yellow',
+          critical: 'bg-red/10 border-red/30 text-red',
+          dead:     'bg-red/10 border-red/30 text-red',
+        };
+        staleBanner.className = `flex items-center gap-3 border rounded-xl px-4 py-3 mb-6 text-sm ${colors[level] || colors.warning}`;
+        staleBanner.classList.remove('hidden');
       } else {
         dot.className = 'cluster-dot live';
         statusText.textContent = 'Live';
-        demoBanner.classList.add('hidden');
       }
 
       // K3s down banner
