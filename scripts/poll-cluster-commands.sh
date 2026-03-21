@@ -458,7 +458,7 @@ ${_content}
           # Use sed to modify config (works on all nodes without jq)
           LEVEL_CMD="CFG=/etc/xmrig/config.json
 if [ -f \"\$CFG\" ]; then
-  doas sed -i 's/\"max-threads-hint\":[0-9]*/\"max-threads-hint\":$HINT/' \"\$CFG\"
+  doas sed -i 's/\"max-threads-hint\": *[0-9]*/\"max-threads-hint\":$HINT/' \"\$CFG\"
 fi
 doas rc-service xmrig restart 2>/dev/null || doas systemctl restart xmrig 2>/dev/null
 echo \"mining level $mining_level (${HINT}% CPU)\""
