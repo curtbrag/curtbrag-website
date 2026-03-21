@@ -18,7 +18,7 @@ if [ ! -t 0 ] && [ "${_FCS:-}" != "1" ]; then
 fi
 
 set -e
-BRANCH="main"
+BRANCH="${BRANCH:-main}"
 BASE="https://raw.githubusercontent.com/curtbrag/curtbrag-website/$BRANCH/scripts"
 DIR="/home/user"
 ENV_FILE="$DIR/.cluster-env"

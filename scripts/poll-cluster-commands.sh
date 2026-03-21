@@ -231,6 +231,7 @@ execute_command() {
   local ssh_cmd="$5"
   local display_mode="${DISPLAY_MODE:-}"
   local mining_level="${MINING_LEVEL:-}"
+  local pool_url="${POOL_URL:-}"
 
   log "Executing: $cmd on $target"
 
@@ -526,6 +527,26 @@ echo \"mining level $mining_level (${HINT}% CPU)\""
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
       ;;
+    mining-pool)
+      log "Changing mining pool to $pool_url..."
+      if [ -z "$pool_url" ]; then
+        report_result "$cmd_id" "error: no poolUrl specified" "" "$cmd" "$target"
+        return
+      fi
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
+      # Replace the "url" field value in the xmrig config and restart the miner
+      # poolUrl is validated server-side to only contain [a-zA-Z0-9._-]+:\d+ so safe in sed
+      POOL_CMD="if [ -f /etc/xmrig/config.json ]; then doas sed -i 's|\"url\": \"[^\"]*\"|\"url\": \"$pool_url\"|' /etc/xmrig/config.json && echo 'pool set to $pool_url'; else echo 'no config found'; exit 1; fi; doas systemctl restart xmrig 2>/dev/null || doas rc-service xmrig restart 2>/dev/null; echo 'miner restarted'"
+      NODES=$(resolve_target_nodes "$target" "phones")
+      if [ -n "$NODES" ]; then
+        run_on_all_tracked "$POOL_CMD" "$RESULT_DIR" "$NODES"
+      else
+        run_on_node_tracked "$(resolve_ip "$target")" "$POOL_CMD" "$RESULT_DIR" "$target"
+      fi
+      RESULT=$(collect_results "$RESULT_DIR")
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
+      ;;
     display-mode)
       log "Setting display mode to $display_mode..."
       RESULT_DIR="/tmp/cmdres-$cmd_id"
@@ -676,7 +697,7 @@ doas systemctl restart greetd 2>/dev/null || doas rc-service greetd restart 2>/d
       ;;
     update)
       log "Updating scripts from GitHub..."
-      REPO_RAW="https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts"
+      REPO_RAW="https://raw.githubusercontent.com/curtbrag/curtbrag-website/${BRANCH:-main}/scripts"
       SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
       FAIL=""
       SELF_UPDATED="false"
@@ -753,7 +774,7 @@ HEAD_SCRIPT=$(head -15 "$0" 2>/dev/null)"
       if [ -z "$ssh_cmd" ]; then
         report_result "$cmd_id" "error: no command specified" "" "$cmd" "$target"
       # Block shell metacharacters that could enable injection (matches JS-side filter)
-      elif printf '%s' "$ssh_cmd" | grep -qE '[;|&\$\`\\><\{\}\(\)!~\[\]*?]|\$\(|rm -rf /|mkfs|dd if=|:[(][)][{]|/dev/sd|shutdown|halt|poweroff|init 0|kill -9 1'; then
+      elif printf '%s' "$ssh_cmd" | grep -qE '[;|&\$\`><\{\}\(\)!~\[\]*?]|\$\(|rm -rf /|mkfs|dd if=|:[(][)][{]|/dev/sd|shutdown|halt|poweroff|init 0|kill -9 1'; then
         log "BLOCKED dangerous SSH command: $ssh_cmd"
         report_result "$cmd_id" "error: command blocked for safety" "" "$cmd" "$target"
       else
@@ -1025,6 +1046,7 @@ while true; do
     TAIL_LINES=$(echo "$RESPONSE" | jq -r '.tail // "100"')
     DISPLAY_MODE=$(echo "$RESPONSE" | jq -r '.displayMode // empty')
     MINING_LEVEL=$(echo "$RESPONSE" | jq -r '.miningLevel // empty')
+    POOL_URL=$(echo "$RESPONSE" | jq -r '.poolUrl // empty')
     log "Got command: $CMD target=$TARGET id=$CMD_ID"
     execute_command "$CMD" "$TARGET" "$URL" "$CMD_ID" "$SSH_CMD"
   fi

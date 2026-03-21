@@ -605,6 +605,7 @@ exports.handler = async (event) => {
       sshCmd: body.sshCmd || null,
       displayMode: body.displayMode || null,
       miningLevel: body.miningLevel != null ? parseInt(body.miningLevel) : null,
+      poolUrl: body.poolUrl || null,
       namespace: body.namespace || null,
       podName: body.podName || null,
       tail: body.tail != null ? parseInt(body.tail) : null,
