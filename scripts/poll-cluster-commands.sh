@@ -363,8 +363,16 @@ true'
           *) PHONE_TARGETS="${target}:$(resolve_ip "$target")" ;;
         esac
       fi
+      # Stagger phone starts by 30s to prevent simultaneous 2.3GB RandomX allocation OOM
+      MINING_STAGGER="${MINING_STAGGER:-30}"
+      _stagger_i=0
       for entry in $PHONE_TARGETS; do
         name="${entry%%:*}"; ip="${entry##*:}"
+        if [ "$_stagger_i" -gt 0 ]; then
+          log "mining-start: stagger ${MINING_STAGGER}s before ${name} (RandomX allocation)"
+          sleep "$MINING_STAGGER"
+        fi
+        _stagger_i=$((_stagger_i + 1))
         # Derive expected PHONE-NODE-XX worker name and patch config if mismatched
         _num="${name#node}"
         case "$_num" in
