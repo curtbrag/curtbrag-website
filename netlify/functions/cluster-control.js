@@ -579,8 +579,9 @@ exports.handler = async (event) => {
       if (!body.sshCmd) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'SSH command required' }) };
       }
-      // Block shell metacharacters that enable injection (includes globs, subshells, redirects)
-      if (/[;|&$`\\><\{\}\(\)!~\[\]*?]|\$\(/.test(body.sshCmd)) {
+      // Block shell metacharacters that enable injection (subshells, redirects, pipes, etc.)
+      // Backslash is allowed for sed/grep patterns; * allowed for glob-free contexts
+      if (/[;|&$`><\{\}\(\)!~\[\]?]|\$\(/.test(body.sshCmd)) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'Command contains disallowed shell characters' }) };
       }
       // Enforce max length
