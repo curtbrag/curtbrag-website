@@ -27,7 +27,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 WALLET="44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT"
-POOL="gulf.moneroocean.stream:443"
+POOL="gulf.moneroocean.stream:20128"
 TARGET_NODE=""
 HTTP_TOKEN=""
 CPU_HINT=75  # Max 75% CPU to avoid thermal throttle
