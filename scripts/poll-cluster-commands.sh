@@ -88,17 +88,18 @@ k3s_svc() {
 }
 
 # Execute a command on a node — locally if node1, SSH otherwise
-# 30s timeout prevents commands from hanging the poller forever
+# Default 30s timeout; pass optional 3rd arg to override (e.g. 300 for PC installs)
 run_on_node() {
   local ip="$1"
   local cmd="$2"
+  local _timeout="${3:-30}"
   local _stderr_tmp="/tmp/cmdstderr-$$"
   local _rc
   if is_local_ip "$ip"; then
-    timeout 30 sh -c "$cmd" 2>"$_stderr_tmp"
+    timeout "$_timeout" sh -c "$cmd" 2>"$_stderr_tmp"
     _rc=$?
   else
-    timeout 30 ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$ip" "$cmd" 2>"$_stderr_tmp"
+    timeout "$_timeout" ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$ip" "$cmd" 2>"$_stderr_tmp"
     _rc=$?
   fi
   if [ "$_rc" -ne 0 ] && [ -s "$_stderr_tmp" ]; then
@@ -394,7 +395,7 @@ true'
       for entry in $PC_TARGETS; do
         name="${entry%%:*}"; ip="${entry##*:}"
         (
-          _out=$(run_on_node "$ip" "$MINING_START_PC_CMD" 2>&1)
+          _out=$(run_on_node "$ip" "$MINING_START_PC_CMD" 300 2>&1)
           if [ $? -eq 0 ]; then
             echo "ok" > "$RESULT_DIR/$name"
           else
