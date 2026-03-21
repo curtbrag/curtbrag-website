@@ -217,7 +217,7 @@ echo "BATT_VOLT:$(cat "$BD/voltage_now" 2>/dev/null || echo 0)"
 echo "BATT_HEALTH:$(cat "$BD/health" 2>/dev/null || echo Unknown)"
 echo "DISPLAY_MODE:$(cat /home/user/display/.mode 2>/dev/null || echo unknown)"
 echo "MINING_LEVEL:$(tr "," "\n" < /etc/xmrig/config.json 2>/dev/null | grep max-threads-hint | tr -cd "0-9" || echo unknown)"
-echo "MINING_POOL:$(tr "," "\n" < /etc/xmrig/config.json 2>/dev/null | grep -m1 url | sed "s/.*\"url\":\"//;s/\".*//" || echo unknown)"'
+echo "MINING_POOL:$(tr "," "\n" < /etc/xmrig/config.json 2>/dev/null | grep -m1 url | sed "s/.*\"url\": *\"//;s/\".*//" || echo unknown)"'
 
 # Gather from all phone nodes in parallel
 for i in $(seq 1 10); do
