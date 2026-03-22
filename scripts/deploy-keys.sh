@@ -25,7 +25,7 @@ if ! command -v sshpass >/dev/null 2>&1; then
 fi
 
 # ── Phone nodes 2-9 ──────────────────────────────────────────────────────────
-PHONE_NODES="node2:192.168.1.207 node3:192.168.1.208 node4:192.168.1.209 node5:192.168.1.210 node6:192.168.1.211 node7:192.168.1.212 node8:192.168.1.213 node9:192.168.1.214"
+PHONE_NODES="node2:192.168.1.207 node3:192.168.1.208 node4:192.168.1.209 node5:192.168.1.210 node6:192.168.1.211 node7:192.168.1.212 node8:192.168.1.213 node9:192.168.1.214 node10:192.168.1.215"
 
 # Deploy key + start xmrig on each node concurrently (parallel = fast, under 30s)
 for entry in $PHONE_NODES; do
