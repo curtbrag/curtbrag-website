@@ -6,6 +6,8 @@ BASE="https://raw.githubusercontent.com/curtbrag/curtbrag-website/${DEV}/scripts
 DIR="/home/user"
 
 echo "Updating scripts from dev branch..."
+# Self-update first so subsequent runs get the latest script list
+wget -q -O "$DIR/update-from-dev.sh.new" "$BASE/update-from-dev.sh" && mv "$DIR/update-from-dev.sh.new" "$DIR/update-from-dev.sh" && chmod +x "$DIR/update-from-dev.sh" && echo "  updated update-from-dev.sh" || echo "  FAILED: update-from-dev.sh"
 for s in poll-cluster-commands.sh cluster-nodes.conf push-cluster-status.sh deploy-keys.sh setup-mining-pc.sh; do
   wget -q -O "$DIR/$s.new" "$BASE/$s" && mv "$DIR/$s.new" "$DIR/$s" && chmod +x "$DIR/$s" 2>/dev/null && echo "  updated $s" || echo "  FAILED: $s"
 done
