@@ -139,7 +139,7 @@ else
       else
         NODE_STATUS="NotReady"
       fi
-    elif ssh -p 8022 -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then
+    elif ssh -p "$(get_node_ssh_port "$NODE_IP")" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then
       NODE_STATUS="Ready"
     else
       NODE_STATUS="NotReady"
@@ -230,7 +230,7 @@ for i in $(seq 1 10); do
       RAW=$(sh -c "$METRICS_CMD" 2>/dev/null)
     else
       NODE_IP="192.168.1.$((205 + i))"
-      RAW=$(ssh -p 8022 -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+      RAW=$(ssh -p "$(get_node_ssh_port "$NODE_IP")" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
         "user@$NODE_IP" "$METRICS_CMD" 2>/dev/null)
     fi
     echo "$RAW" > "$TMP_DIR/node${i}.tmp"
@@ -375,7 +375,7 @@ for i in $(seq 1 10); do
       XMRIG=$(curl -s --connect-timeout 5 --max-time 8 "http://127.0.0.1:18080/1/summary" 2>/dev/null)
     else
       # xmrig binds to localhost, so query via SSH tunnel to the remote node
-      XMRIG=$(ssh -p 8022 -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+      XMRIG=$(ssh -p "$(get_node_ssh_port "$NODE_IP")" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
         "user@$NODE_IP" "curl -s --connect-timeout 3 --max-time 5 http://127.0.0.1:18080/1/summary 2>/dev/null" 2>/dev/null)
     fi
     if [ -n "$XMRIG" ] && echo "$XMRIG" | jq . >/dev/null 2>&1; then
@@ -386,7 +386,7 @@ for i in $(seq 1 10); do
       if [ "$i" = "1" ]; then
         pgrep xmrig >/dev/null 2>&1 && PROC_CHECK="running"
       else
-        ssh -p 8022 -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+        ssh -p "$(get_node_ssh_port "$NODE_IP")" -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
           "user@$NODE_IP" "pgrep xmrig >/dev/null 2>&1 && echo running" 2>/dev/null | grep -q running && PROC_CHECK="running"
       fi
       if [ "$PROC_CHECK" = "running" ]; then

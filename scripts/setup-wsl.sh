@@ -2,23 +2,22 @@
 # One-command WSL cluster setup — run once from WSL to make everything passwordless
 # Usage: bash setup-wsl.sh
 # Optional env vars:
-#   NODE1_PASS=... NODE_PASS=... PC_PASS=...  (skip password prompts)
-#   SKIP_KEYDIST=1                             (skip distributing node1's key to workers)
-#   DEV_BRANCH=1                               (pull from dev branch instead of main)
+#   NODE1_PASS=...   NODE_PASS=...   PC_PASS=...   DECK_PASS=...
+#   SKIP_KEYDIST=1   (skip distributing node1's key to workers)
+#   DEV_BRANCH=1     (pull scripts from dev branch instead of main)
 set -euo pipefail
 
 BOLD='\033[1m'; GREEN='\033[32m'; YELLOW='\033[33m'; RED='\033[31m'; RESET='\033[0m'
 info()    { echo -e "${GREEN}✓${RESET} $*"; }
 warn()    { echo -e "${YELLOW}!${RESET} $*"; }
-error()   { echo -e "${RED}✗${RESET} $*"; }
 section() { echo -e "\n${BOLD}=== $* ===${RESET}"; }
 
-# ── Node definitions (mirrors cluster-nodes.conf) ────────────────────────────
+# ── Node definitions ──────────────────────────────────────────────────────────
 NODE1_IP="192.168.1.206"
-NODE1_PORT=22          # node1 uses standard SSH (not Termux)
+NODE1_PORT=22
 NODE1_USER="user"
 
-# Phone worker nodes (Termux SSH on port 8022)
+# All phone/postmarketOS nodes — SSH on port 22 (NOT Termux 8022)
 PHONE_NODES="
 node2:192.168.1.207
 node3:192.168.1.208
@@ -30,21 +29,20 @@ node8:192.168.1.213
 node9:192.168.1.214
 node10:192.168.1.215
 "
-PHONE_PORT=8022
+PHONE_PORT=22
 PHONE_USER="user"
 
-# PC nodes (standard SSH on port 22)
+# PC nodes — SSH on port 22
 PC_NODES="
-nexus-prime:192.168.1.178
-vikixii:192.168.1.180
-steamdeck:100.102.66.70
+nexus-prime:192.168.1.178:neo
+vikixii:192.168.1.180:neo
+steamdeck:100.102.66.70:deck
 "
 PC_PORT=22
-PC_USER="neo"
 
-BRANCH="${DEV_BRANCH:+claude/setup-cluster-advanced-t3WV0}"
+DEV_BRANCH_NAME="claude/setup-cluster-advanced-t3WV0"
+BRANCH="${DEV_BRANCH:+$DEV_BRANCH_NAME}"
 BRANCH="${BRANCH:-main}"
-SCRIPT_BASE="https://raw.githubusercontent.com/curtbrag/curtbrag-website/$BRANCH/scripts"
 
 SSH_OPTS="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=5"
 SSH_KEY="$HOME/.ssh/id_ed25519"
@@ -62,71 +60,75 @@ if [ ! -f "$SSH_KEY" ]; then
 else
   info "Key exists: $SSH_KEY"
 fi
-PUBKEY=$(cat "${SSH_KEY}.pub")
 
-# ── Helper: test if SSH key works (passwordless) ─────────────────────────────
+# ── Helper: test if SSH key works ─────────────────────────────────────────────
 ssh_works() {
   local port="$1" user="$2" ip="$3"
   ssh -p "$port" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new \
     "$user@$ip" "echo ok" >/dev/null 2>&1
 }
 
-# ── Helper: copy SSH key (uses ssh-copy-id, prompts for password if needed) ──
+# ── Helper: copy SSH key, with optional password via sshpass ─────────────────
 copy_key() {
   local port="$1" user="$2" ip="$3" name="$4" pass="${5:-}"
   if ssh_works "$port" "$user" "$ip"; then
     info "$name ($ip:$port): already passwordless"
+    echo "$name:$ip:$port:$user"
     return 0
   fi
   echo ""
   echo "  Installing key → $name ($user@$ip:$port)"
-  if [ -n "$pass" ]; then
-    if command -v sshpass >/dev/null 2>&1; then
-      sshpass -p "$pass" ssh-copy-id -p "$port" $SSH_OPTS -i "${SSH_KEY}.pub" "$user@$ip" 2>/dev/null && {
-        info "$name: key installed"
-        return 0
-      }
-    else
-      warn "sshpass not found — ignoring $name password var, prompting manually"
-    fi
+  if [ -n "$pass" ] && command -v sshpass >/dev/null 2>&1; then
+    sshpass -p "$pass" ssh-copy-id -p "$port" $SSH_OPTS -i "${SSH_KEY}.pub" "$user@$ip" 2>/dev/null && {
+      info "$name: key installed"
+      echo "$name:$ip:$port:$user"
+      return 0
+    }
   fi
-  ssh-copy-id -p "$port" $SSH_OPTS -i "${SSH_KEY}.pub" "$user@$ip" && {
+  ssh-copy-id -p "$port" $SSH_OPTS -i "${SSH_KEY}.pub" "$user@$ip" 2>&1 && {
     info "$name: key installed"
+    echo "$name:$ip:$port:$user"
     return 0
   } || {
-    warn "$name: FAILED (offline or wrong password — skipping)"
+    warn "$name: unreachable or wrong password — skipping"
     return 1
   }
 }
 
-# ── Step 2: Install WSL key on all nodes ────────────────────────────────────
+# ── Step 2: Install WSL key on all nodes ─────────────────────────────────────
 section "Step 2/5: Copy WSL key to all nodes"
-echo "For each unreachable node you'll be prompted for the SSH password."
-echo "Press Ctrl+C to skip a node, or just Enter if password is blank."
+echo "You'll be prompted for each node's SSH password if key isn't installed yet."
 echo ""
 
-REACHABLE_NODES=()
+REACHABLE=""
 
 # node1
-if copy_key "$NODE1_PORT" "$NODE1_USER" "$NODE1_IP" "node1" "${NODE1_PASS:-}"; then
-  REACHABLE_NODES+=("node1:$NODE1_IP:$NODE1_PORT:$NODE1_USER")
+if out=$(copy_key "$NODE1_PORT" "$NODE1_USER" "$NODE1_IP" "node1" "${NODE1_PASS:-}" 2>&1); then
+  echo "$out" | grep -E "^node" && REACHABLE="$REACHABLE node1:$NODE1_IP:$NODE1_PORT:$NODE1_USER" || true
 fi
 
 # phone workers
 for entry in $PHONE_NODES; do
   [ -z "$entry" ] && continue
   name="${entry%%:*}"; ip="${entry##*:}"
-  if copy_key "$PHONE_PORT" "$PHONE_USER" "$ip" "$name" "${NODE_PASS:-}"; then
-    REACHABLE_NODES+=("$name:$ip:$PHONE_PORT:$PHONE_USER")
+  if copy_key "$PHONE_PORT" "$PHONE_USER" "$ip" "$name" "${NODE_PASS:-}" >/dev/null 2>&1; then
+    REACHABLE="$REACHABLE $name:$ip:$PHONE_PORT:$PHONE_USER"
+    info "$name ($ip): passwordless"
   fi
 done
 
-# PC nodes
+# PC nodes (each has its own user)
 for entry in $PC_NODES; do
   [ -z "$entry" ] && continue
-  name="${entry%%:*}"; ip="${entry##*:}"
-  if copy_key "$PC_PORT" "$PC_USER" "$ip" "$name" "${PC_PASS:-}"; then
-    REACHABLE_NODES+=("$name:$ip:$PC_PORT:$PC_USER")
+  name="${entry%%:*}"; rest="${entry#*:}"; ip="${rest%%:*}"; pcuser="${rest##*:}"
+  pass_var=""
+  case "$name" in
+    steamdeck) pass_var="${DECK_PASS:-}" ;;
+    *)         pass_var="${PC_PASS:-}" ;;
+  esac
+  if copy_key "$PC_PORT" "$pcuser" "$ip" "$name" "$pass_var" >/dev/null 2>&1; then
+    REACHABLE="$REACHABLE $name:$ip:$PC_PORT:$pcuser"
+    info "$name ($ip): passwordless"
   fi
 done
 
@@ -136,190 +138,144 @@ SSH_CONFIG="$HOME/.ssh/config"
 touch "$SSH_CONFIG"
 chmod 600 "$SSH_CONFIG"
 
-# Remove old curtbrag cluster block if present
+# Remove old curtbrag cluster block
 if grep -q "# curtbrag-cluster-start" "$SSH_CONFIG" 2>/dev/null; then
   sed -i '/# curtbrag-cluster-start/,/# curtbrag-cluster-end/d' "$SSH_CONFIG"
 fi
 
-cat >> "$SSH_CONFIG" << EOF
-
-# curtbrag-cluster-start — managed by setup-wsl.sh, do not edit manually
-Host node1
-  HostName $NODE1_IP
-  Port $NODE1_PORT
-  User $NODE1_USER
-  IdentityFile $SSH_KEY
-  StrictHostKeyChecking accept-new
-
-EOF
-
-for entry in $PHONE_NODES; do
-  [ -z "$entry" ] && continue
-  name="${entry%%:*}"; ip="${entry##*:}"
-  cat >> "$SSH_CONFIG" << EOF
-Host $name
-  HostName $ip
-  Port $PHONE_PORT
-  User $PHONE_USER
-  IdentityFile $SSH_KEY
-  StrictHostKeyChecking accept-new
-
-EOF
-done
-
-cat >> "$SSH_CONFIG" << EOF
-Host nexus-prime
-  HostName 192.168.1.178
-  Port $PC_PORT
-  User $PC_USER
-  IdentityFile $SSH_KEY
-  StrictHostKeyChecking accept-new
-
-Host vikixii
-  HostName 192.168.1.180
-  Port $PC_PORT
-  User $PC_USER
-  IdentityFile $SSH_KEY
-  StrictHostKeyChecking accept-new
-
-Host steamdeck
-  HostName 100.102.66.70
-  Port $PC_PORT
-  User $PC_USER
-  IdentityFile $SSH_KEY
-  StrictHostKeyChecking accept-new
-# curtbrag-cluster-end
-EOF
+{
+  echo ""
+  echo "# curtbrag-cluster-start — managed by setup-wsl.sh"
+  echo "Host node1"
+  echo "  HostName $NODE1_IP"
+  echo "  Port $NODE1_PORT"
+  echo "  User $NODE1_USER"
+  echo "  IdentityFile $SSH_KEY"
+  echo "  StrictHostKeyChecking accept-new"
+  echo ""
+  i=2
+  for entry in $PHONE_NODES; do
+    [ -z "$entry" ] && continue
+    name="${entry%%:*}"; ip="${entry##*:}"
+    echo "Host $name"
+    echo "  HostName $ip"
+    echo "  Port $PHONE_PORT"
+    echo "  User $PHONE_USER"
+    echo "  IdentityFile $SSH_KEY"
+    echo "  StrictHostKeyChecking accept-new"
+    echo ""
+  done
+  for entry in $PC_NODES; do
+    [ -z "$entry" ] && continue
+    name="${entry%%:*}"; rest="${entry#*:}"; ip="${rest%%:*}"; pcuser="${rest##*:}"
+    echo "Host $name"
+    echo "  HostName $ip"
+    echo "  Port $PC_PORT"
+    echo "  User $pcuser"
+    echo "  IdentityFile $SSH_KEY"
+    echo "  StrictHostKeyChecking accept-new"
+    echo ""
+  done
+  echo "# curtbrag-cluster-end"
+} >> "$SSH_CONFIG"
 
 info "~/.ssh/config updated"
 
-# ── Step 4: Distribute node1's key to all workers ───────────────────────────
+# ── Step 4: Distribute node1's key to all workers ────────────────────────────
 section "Step 4/5: Distribute node1→workers key"
 
 if [ "${SKIP_KEYDIST:-0}" = "1" ]; then
-  warn "SKIP_KEYDIST=1 — skipping key distribution"
+  warn "SKIP_KEYDIST=1 — skipping"
 elif ! ssh_works "$NODE1_PORT" "$NODE1_USER" "$NODE1_IP"; then
-  warn "node1 unreachable — cannot distribute node1's key to workers"
-  echo "  When node1 is back online, run: ssh node1 'sh /home/user/dist-ssh-key.sh'"
+  warn "node1 ($NODE1_IP) is offline — key distribution skipped"
+  echo "  Once node1 is back: ssh node1 'sh /home/user/setup-wsl.sh' is not needed,"
+  echo "  just run:  bash scripts/setup-wsl.sh  again from WSL"
 else
-  echo "Connecting to node1 to distribute its key to worker phones..."
-
-  # Generate node1's key if it doesn't exist
+  echo "Getting node1's public key..."
   ssh -p "$NODE1_PORT" $SSH_OPTS "$NODE1_USER@$NODE1_IP" '
-    if [ ! -f ~/.ssh/id_ed25519 ]; then
-      ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N "" -C "node1-cluster" >/dev/null 2>&1
-      echo "KEY_GENERATED"
-    else
-      echo "KEY_EXISTS"
-    fi
-  ' && true
-
+    [ ! -f ~/.ssh/id_ed25519 ] && ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N "" -C "node1-cluster" >/dev/null 2>&1
+  '
   NODE1_PUBKEY=$(ssh -p "$NODE1_PORT" $SSH_OPTS "$NODE1_USER@$NODE1_IP" 'cat ~/.ssh/id_ed25519.pub' 2>/dev/null || echo "")
 
   if [ -z "$NODE1_PUBKEY" ]; then
-    warn "Could not read node1's public key"
+    warn "Could not read node1 public key"
   else
     info "Got node1 public key"
-
-    # Install node1's key on each worker phone
-    WORKER_IPS=""
+    DIST_OK=0; DIST_FAIL=0
     for entry in $PHONE_NODES; do
       [ -z "$entry" ] && continue
       name="${entry%%:*}"; ip="${entry##*:}"
-      WORKER_IPS="$WORKER_IPS $name:$ip"
-    done
-
-    DIST_OK=0; DIST_FAIL=0
-    for entry in $WORKER_IPS; do
-      [ -z "$entry" ] && continue
-      name="${entry%%:*}"; ip="${entry##*:}"
-      # Skip node1 itself
-      [ "$ip" = "$NODE1_IP" ] && continue
-
       # Check if node1 can already SSH to this worker
-      CAN_SSH=$(ssh -p "$NODE1_PORT" $SSH_OPTS "$NODE1_USER@$NODE1_IP" \
-        "ssh -p 8022 -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new user@$ip 'echo ok' 2>/dev/null && echo yes || echo no" 2>/dev/null || echo "no")
-
-      if [ "$CAN_SSH" = "yes" ]; then
-        info "$name ($ip): node1 already has passwordless access"
-        DIST_OK=$((DIST_OK + 1))
+      CAN=$(ssh -p "$NODE1_PORT" $SSH_OPTS "$NODE1_USER@$NODE1_IP" \
+        "ssh -p 22 -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new user@$ip 'echo ok' 2>/dev/null && echo yes || echo no" 2>/dev/null || echo no)
+      if [ "$CAN" = "yes" ]; then
+        info "$name: node1 already has access"
+        DIST_OK=$((DIST_OK+1))
+      elif ssh_works "$PHONE_PORT" "$PHONE_USER" "$ip"; then
+        # Install via WSL
+        KEY_SHORT=$(echo "$NODE1_PUBKEY" | cut -d' ' -f1-2)
+        ssh -p "$PHONE_PORT" $SSH_OPTS "$PHONE_USER@$ip" \
+          "mkdir -p ~/.ssh; chmod 700 ~/.ssh; grep -qF '$KEY_SHORT' ~/.ssh/authorized_keys 2>/dev/null || echo '$NODE1_PUBKEY' >> ~/.ssh/authorized_keys; chmod 600 ~/.ssh/authorized_keys" 2>/dev/null && {
+          info "$name: node1 key installed via WSL"
+          DIST_OK=$((DIST_OK+1))
+        } || {
+          warn "$name: key install failed"
+          DIST_FAIL=$((DIST_FAIL+1))
+        }
       else
-        # Try to install via WSL (since we may have key access from WSL)
-        if ssh_works "$PHONE_PORT" "$PHONE_USER" "$ip"; then
-          ssh -p "$PHONE_PORT" $SSH_OPTS "$PHONE_USER@$ip" \
-            "mkdir -p ~/.ssh; chmod 700 ~/.ssh; \
-             grep -qF '$(echo $NODE1_PUBKEY | cut -d' ' -f1-2)' ~/.ssh/authorized_keys 2>/dev/null || \
-             echo '$NODE1_PUBKEY' >> ~/.ssh/authorized_keys; \
-             chmod 600 ~/.ssh/authorized_keys" 2>/dev/null && {
-            info "$name ($ip): node1 key installed via WSL"
-            DIST_OK=$((DIST_OK + 1))
-          } || {
-            warn "$name ($ip): failed to install key"
-            DIST_FAIL=$((DIST_FAIL + 1))
-          }
-        else
-          warn "$name ($ip): unreachable from WSL, skipping"
-          DIST_FAIL=$((DIST_FAIL + 1))
-        fi
+        warn "$name: unreachable from WSL"
+        DIST_FAIL=$((DIST_FAIL+1))
       fi
     done
-    echo "  Key distribution: $DIST_OK ok, $DIST_FAIL failed/skipped"
+    echo "  Result: $DIST_OK ok, $DIST_FAIL skipped/failed"
   fi
 fi
 
-# ── Step 5: Deploy latest scripts to node1 and restart services ──────────────
+# ── Step 5: Deploy latest scripts to node1 ───────────────────────────────────
 section "Step 5/5: Deploy scripts to node1"
 
 if ! ssh_works "$NODE1_PORT" "$NODE1_USER" "$NODE1_IP"; then
-  warn "node1 unreachable — cannot deploy scripts"
+  warn "node1 is offline — cannot deploy scripts now"
   echo ""
-  echo "  When node1 is back online, SSH in and run:"
-  echo "    ssh node1"
-  echo "    sh /home/user/update-from-dev.sh"
+  echo "  When node1 comes back online, run:"
+  echo "    bash scripts/setup-wsl.sh"
+  echo "  OR manually:"
+  echo "    ssh node1 'sh /home/user/update-from-dev.sh'"
 else
-  echo "Deploying latest scripts to node1..."
-
-  # Upload update-from-dev.sh directly to ensure it has correct branch
-  DEV_BRANCH_NAME="claude/setup-cluster-advanced-t3WV0"
+  echo "Deploying to node1..."
   ssh -p "$NODE1_PORT" $SSH_OPTS "$NODE1_USER@$NODE1_IP" "
     set -e
-    echo '[1/3] Downloading update script...'
-    wget -q -O /home/user/update-from-dev.sh.new \
+    echo '[1/3] Fetching update-from-dev.sh...'
+    wget -q -O /tmp/update-from-dev.sh \
       'https://raw.githubusercontent.com/curtbrag/curtbrag-website/${DEV_BRANCH_NAME}/scripts/update-from-dev.sh' \
-      && mv /home/user/update-from-dev.sh.new /home/user/update-from-dev.sh \
-      && chmod +x /home/user/update-from-dev.sh \
-      && echo '  update-from-dev.sh downloaded' \
-      || { echo '  WARN: wget failed, trying curl'; \
-           curl -sSL 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/${DEV_BRANCH_NAME}/scripts/update-from-dev.sh' \
-             -o /home/user/update-from-dev.sh && chmod +x /home/user/update-from-dev.sh; }
-
+      || curl -sSL 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/${DEV_BRANCH_NAME}/scripts/update-from-dev.sh' \
+           -o /tmp/update-from-dev.sh
+    cp /tmp/update-from-dev.sh /home/user/update-from-dev.sh
+    chmod +x /home/user/update-from-dev.sh
     echo '[2/3] Running update-from-dev.sh...'
     sh /home/user/update-from-dev.sh
-
     echo '[3/3] Done!'
   " && info "Scripts deployed and poller restarted on node1" \
-    || warn "Deployment had errors (check node1 logs)"
+    || warn "Deployment had errors (check node1 logs: ssh node1 'tail -20 /home/user/cluster-poll.log')"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
-section "Summary"
+section "Done"
 echo ""
-echo "Reachable nodes:"
-for n in "${REACHABLE_NODES[@]}"; do
-  name="${n%%:*}"
-  printf "  %-14s %s\n" "$name" "(passwordless)"
+echo "Reachable nodes this run:"
+for n in $REACHABLE; do
+  name="${n%%:*}"; rest="${n#*:}"; ip="${rest%%:*}"
+  printf "  %-14s %s\n" "$name" "$ip"
 done
 
 echo ""
-echo "Quick SSH access (use aliases from ~/.ssh/config):"
-echo "  ssh node1          # control plane"
-echo "  ssh node2          # worker phone"
-echo "  ssh nexus-prime    # PC"
+echo "Quick SSH:"
+echo "  ssh node1        # control plane  (user@$NODE1_IP)"
+echo "  ssh node2        # worker         (user@192.168.1.207)"
+echo "  ssh nexus-prime  # PC             (neo@192.168.1.178)"
+echo "  ssh steamdeck    # PC             (deck@100.102.66.70)"
 echo ""
-echo "To redeploy scripts to node1 at any time:"
-echo "  ssh node1 'sh /home/user/update-from-dev.sh'"
-echo ""
-echo "To re-run this setup (e.g. after adding new node):"
+echo "Re-run anytime a node comes back online or changes IP:"
 echo "  bash scripts/setup-wsl.sh"
 echo ""
 echo "Dashboard: https://www.curtbrag.com/cluster"
