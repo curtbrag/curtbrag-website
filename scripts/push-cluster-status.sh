@@ -356,6 +356,63 @@ BATTERY_DATA=$(jq -n \
   '{phones:$phones, summary:{avgLevel:$avg, charging:$chg, low:$low, critical:$crit, online:$on, total:10}}')
 log "Battery: $BATT_ONLINE reporting, avg ${BATT_AVG}%"
 
+# ── PC node metrics (CPU/memory/temp via SSH) ───────────────────────
+
+PC_METRICS_CMD='echo "CPU:$(top -bn1 2>/dev/null | head -3 | grep -i cpu | head -1)"
+echo "MEM:$(free -m 2>/dev/null | grep Mem)"
+echo "TEMP:$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0)"
+echo "DISK:$(df -m / 2>/dev/null | tail -1)"'
+
+for pc_entry in ${PC_NODES:-}; do
+  (
+    set +e
+    pc_name="${pc_entry%%:*}"
+    pc_ip="${pc_entry#*:}"
+    pc_user=$(get_pc_ssh_user "$pc_name")
+    RAW=$(ssh -p "$(get_node_ssh_port "$pc_ip")" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+      "${pc_user}@${pc_ip}" "$PC_METRICS_CMD" 2>/dev/null)
+    echo "$RAW" > "$TMP_DIR/pcmetrics_${pc_name}.tmp"
+  ) &
+done
+wait || true
+
+for pc_entry in ${PC_NODES:-}; do
+  pc_name="${pc_entry%%:*}"
+  TMPFILE="$TMP_DIR/pcmetrics_${pc_name}.tmp"
+  if [ ! -s "$TMPFILE" ]; then
+    METRICS_JSON=$(echo "$METRICS_JSON" | jq --arg n "$pc_name" '.[$n] = {cpu:{usage:0,cores:null},memory:{totalMB:0,usedMB:0,percent:0},temp:null,storage:{totalMB:0,usedMB:0,availMB:0,percent:0}}')
+    continue
+  fi
+  RAW=$(cat "$TMPFILE")
+  CPU_LINE=$(echo "$RAW" | grep "^CPU:" || echo "")
+  IDLE=$(echo "$CPU_LINE" | sed -n 's/.*[^0-9]\([0-9][0-9]*\)% *id[le]*.*/\1/p' | head -1)
+  if [ -n "$IDLE" ]; then CPU_USAGE=$((100 - IDLE)); else CPU_USAGE=0; fi
+  MEM_LINE=$(echo "$RAW" | grep "^MEM:" | sed 's/^MEM://')
+  MEM_TOTAL=$(echo "$MEM_LINE" | awk '{print $2}')
+  MEM_USED=$(echo "$MEM_LINE" | awk '{print $3}')
+  MEM_PCT=0
+  [ "${MEM_TOTAL:-0}" -gt 0 ] 2>/dev/null && MEM_PCT=$((MEM_USED * 100 / MEM_TOTAL))
+  TEMP_RAW=$(echo "$RAW" | grep "^TEMP:" | sed 's/^TEMP://' | tr -d ' ')
+  TEMP_C=0
+  [ "${TEMP_RAW:-0}" -gt 1000 ] 2>/dev/null && TEMP_C=$((TEMP_RAW / 1000))
+  DISK_LINE=$(echo "$RAW" | grep "^DISK:" | sed 's/^DISK://')
+  DISK_TOTAL=$(echo "$DISK_LINE" | awk '{print $2}')
+  DISK_USED=$(echo "$DISK_LINE" | awk '{print $3}')
+  DISK_AVAIL=$(echo "$DISK_LINE" | awk '{print $4}')
+  DISK_PCT=$(echo "$DISK_LINE" | awk '{print $5}' | tr -d '%')
+  TEMP_BLOCK="null"
+  [ "${TEMP_C:-0}" -gt 0 ] 2>/dev/null && TEMP_BLOCK=$(jq -n --argjson c "$TEMP_C" '{celsius:$c}')
+  PC_M=$(jq -n \
+    --argjson cu "${CPU_USAGE:-0}" \
+    --argjson mt "${MEM_TOTAL:-0}" --argjson mu "${MEM_USED:-0}" --argjson mp "${MEM_PCT:-0}" \
+    --argjson dt "${DISK_TOTAL:-0}" --argjson du "${DISK_USED:-0}" --argjson da "${DISK_AVAIL:-0}" --argjson dp "${DISK_PCT:-0}" \
+    --argjson temp "$TEMP_BLOCK" \
+    '{cpu:{usage:$cu,cores:null},memory:{totalMB:$mt,usedMB:$mu,percent:$mp},temp:$temp,storage:{totalMB:$dt,usedMB:$du,availMB:$da,percent:$dp}}')
+  METRICS_JSON=$(echo "$METRICS_JSON" | jq --arg n "$pc_name" --argjson m "$PC_M" '.[$n] = $m')
+  log "  $pc_name: CPU=${CPU_USAGE:-?}% MEM=${MEM_PCT:-?}% TEMP=${TEMP_C}C"
+done
+rm -f "$TMP_DIR"/pcmetrics_*.tmp
+
 # ── Mining stats (curl xmrig API on each phone) ─────────────────────
 
 log "Gathering mining stats..."

@@ -59,11 +59,15 @@ fi
 # SSH username for PC nodes (PCs use 'neo', phones use 'user')
 PC_SSH_USER="${PC_SSH_USER:-neo}"
 
-# Resolve the SSH username for a given IP: 'neo' for PC nodes, 'user' for phones
+# Resolve the SSH username for a given IP: per-node override for PCs, 'user' for phones
 get_node_ssh_user() {
   for _pc_entry in $PC_NODES; do
+    _pc_name="${_pc_entry%%:*}"
     _pc_ip="${_pc_entry##*:}"
-    [ "$_pc_ip" = "$1" ] && echo "$PC_SSH_USER" && return
+    if [ "$_pc_ip" = "$1" ]; then
+      get_pc_ssh_user "$_pc_name"
+      return
+    fi
   done
   echo "user"
 }
@@ -436,13 +440,35 @@ ${_content}
       log "Stopping miners..."
       RESULT_DIR="/tmp/cmdres-$cmd_id"
       mkdir -p "$RESULT_DIR"
-      # Mining is phone-only — use "phones" scope
-      NODES=$(resolve_target_nodes "$target" "phones")
-      if [ -n "$NODES" ]; then
-        run_on_all_tracked "doas systemctl stop xmrig 2>/dev/null || doas rc-service xmrig stop" "$RESULT_DIR" "$NODES"
-      else
-        run_on_node_tracked "$(resolve_ip "$target")" "doas systemctl stop xmrig 2>/dev/null || doas rc-service xmrig stop" "$RESULT_DIR" "$target"
-      fi
+      PHONE_STOP_CMD="doas systemctl stop xmrig 2>/dev/null || doas rc-service xmrig stop"
+      PC_STOP_CMD="sudo systemctl stop xmrig 2>/dev/null"
+      case "$target" in
+        all)
+          run_on_all_tracked "$PHONE_STOP_CMD" "$RESULT_DIR" "$PHONE_NODES"
+          for _e in $PC_NODES; do
+            _n="${_e%%:*}"; _i="${_e##*:}"
+            run_on_node_tracked "$_i" "$PC_STOP_CMD" "$RESULT_DIR" "$_n" &
+          done
+          wait
+          ;;
+        phones)
+          run_on_all_tracked "$PHONE_STOP_CMD" "$RESULT_DIR" "$PHONE_NODES"
+          ;;
+        pcs)
+          for _e in $PC_NODES; do
+            _n="${_e%%:*}"; _i="${_e##*:}"
+            run_on_node_tracked "$_i" "$PC_STOP_CMD" "$RESULT_DIR" "$_n" &
+          done
+          wait
+          ;;
+        *)
+          if is_pc_node "$target"; then
+            run_on_node_tracked "$(resolve_ip "$target")" "$PC_STOP_CMD" "$RESULT_DIR" "$target"
+          else
+            run_on_node_tracked "$(resolve_ip "$target")" "$PHONE_STOP_CMD" "$RESULT_DIR" "$target"
+          fi
+          ;;
+      esac
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
       ;;
@@ -514,13 +540,44 @@ echo \"mining level $mining_level (${HINT}% CPU)\""
           return
           ;;
       esac
-      # Mining is phone-only — use "phones" scope
-      NODES=$(resolve_target_nodes "$target" "phones")
-      if [ -n "$NODES" ]; then
-        run_on_all_tracked "$LEVEL_CMD" "$RESULT_DIR" "$NODES"
+      # Build PC version of the level command (uses sudo instead of doas)
+      if [ "$mining_level" = "0" ]; then
+        PC_LEVEL_CMD="sudo systemctl stop xmrig 2>/dev/null; echo 'mining off'"
       else
-        run_on_node_tracked "$(resolve_ip "$target")" "$LEVEL_CMD" "$RESULT_DIR" "$target"
+        PC_LEVEL_CMD="CFG=/etc/xmrig/config.json
+if [ -f \"\$CFG\" ]; then
+  sudo sed -i 's/\"max-threads-hint\":[0-9]*/\"max-threads-hint\":$HINT/' \"\$CFG\"
+fi
+sudo systemctl restart xmrig 2>/dev/null
+echo \"mining level $mining_level (${HINT}% CPU)\""
       fi
+      case "$target" in
+        all)
+          run_on_all_tracked "$LEVEL_CMD" "$RESULT_DIR" "$PHONE_NODES"
+          for _e in $PC_NODES; do
+            _n="${_e%%:*}"; _i="${_e##*:}"
+            run_on_node_tracked "$_i" "$PC_LEVEL_CMD" "$RESULT_DIR" "$_n" &
+          done
+          wait
+          ;;
+        phones)
+          run_on_all_tracked "$LEVEL_CMD" "$RESULT_DIR" "$PHONE_NODES"
+          ;;
+        pcs)
+          for _e in $PC_NODES; do
+            _n="${_e%%:*}"; _i="${_e##*:}"
+            run_on_node_tracked "$_i" "$PC_LEVEL_CMD" "$RESULT_DIR" "$_n" &
+          done
+          wait
+          ;;
+        *)
+          if is_pc_node "$target"; then
+            run_on_node_tracked "$(resolve_ip "$target")" "$PC_LEVEL_CMD" "$RESULT_DIR" "$target"
+          else
+            run_on_node_tracked "$(resolve_ip "$target")" "$LEVEL_CMD" "$RESULT_DIR" "$target"
+          fi
+          ;;
+      esac
       RESULT=$(collect_results "$RESULT_DIR")
       report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
       ;;
