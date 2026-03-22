@@ -6,7 +6,7 @@ BASE="https://raw.githubusercontent.com/curtbrag/curtbrag-website/${DEV}/scripts
 DIR="/home/user"
 
 echo "Updating scripts from dev branch..."
-for s in poll-cluster-commands.sh cluster-nodes.conf push-cluster-status.sh; do
+for s in poll-cluster-commands.sh cluster-nodes.conf push-cluster-status.sh deploy-keys.sh; do
   wget -q -O "$DIR/$s.new" "$BASE/$s" && mv "$DIR/$s.new" "$DIR/$s" && chmod +x "$DIR/$s" 2>/dev/null && echo "  updated $s" || echo "  FAILED: $s"
 done
 
