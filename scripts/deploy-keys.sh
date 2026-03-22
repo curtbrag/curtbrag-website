@@ -4,6 +4,14 @@
 # Run: sh /home/user/deploy-keys.sh
 # Password can be overridden: SSH_PASS=xxxx sh /home/user/deploy-keys.sh
 
+# Self-daemonize: the poller has a 30s timeout on local commands, so we
+# fork into the background immediately and let the parent exit cleanly.
+if [ "${_DAEMONIZED:-}" != "1" ]; then
+  _DAEMONIZED=1 nohup sh /home/user/deploy-keys.sh >> /home/user/deploy-keys.log 2>&1 &
+  echo "deploy-keys.sh started in background (PID: $!)"
+  exit 0
+fi
+
 SSH_KEY="/home/user/.ssh/id_ed25519"
 SSH_PUB="${SSH_KEY}.pub"
 SSH_PASS="${SSH_PASS:-0735}"
