@@ -34,9 +34,9 @@ PHONE_USER="user"
 
 # PC nodes — SSH on port 22
 PC_NODES="
-nexus-prime:192.168.1.178:neo
+nexus-prime:192.168.1.179:neo
+coffee-table:192.168.1.228:neo
 vikixii:192.168.1.180:neo
-steamdeck:100.102.66.70:deck
 "
 PC_PORT=22
 
@@ -272,8 +272,9 @@ echo ""
 echo "Quick SSH:"
 echo "  ssh node1        # control plane  (user@$NODE1_IP)"
 echo "  ssh node2        # worker         (user@192.168.1.207)"
-echo "  ssh nexus-prime  # PC             (neo@192.168.1.178)"
-echo "  ssh steamdeck    # PC             (deck@100.102.66.70)"
+echo "  ssh nexus-prime  # PC             (neo@192.168.1.179)"
+echo "  ssh coffee-table # PC             (neo@192.168.1.228)"
+echo "  ssh vikixii      # PC             (neo@192.168.1.180)"
 echo ""
 echo "Re-run anytime a node comes back online or changes IP:"
 echo "  bash scripts/setup-wsl.sh"
