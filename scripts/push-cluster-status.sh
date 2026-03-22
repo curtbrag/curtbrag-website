@@ -24,6 +24,8 @@ log "Starting cluster status push..."
 
 # SSH port — configurable via env, defaults to 22
 SSH_PORT="${SSH_PORT:-22}"
+# SSH username for PC nodes (Linux PCs use 'neo', phones use 'user')
+PC_SSH_USER="${PC_SSH_USER:-neo}"
 
 # Load shared node configuration
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -403,13 +405,13 @@ for pc_entry in ${PC_NODES:-}; do
     pc_name="${pc_entry%%:*}"
     pc_ip="${pc_entry#*:}"
     XMRIG=$(ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
-      "user@$pc_ip" "curl -s --connect-timeout 3 --max-time 5 http://127.0.0.1:18080/1/summary 2>/dev/null" 2>/dev/null)
+      "${PC_SSH_USER}@$pc_ip" "curl -s --connect-timeout 3 --max-time 5 http://127.0.0.1:18080/1/summary 2>/dev/null" 2>/dev/null)
     if [ -n "$XMRIG" ] && echo "$XMRIG" | jq . >/dev/null 2>&1; then
       echo "$XMRIG" > "$TMP_DIR/mining_${pc_name}.tmp"
     else
       PROC_CHECK=""
       ssh -p "$SSH_PORT" -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
-        "user@$pc_ip" "pgrep xmrig >/dev/null 2>&1 && echo running" 2>/dev/null | grep -q running && PROC_CHECK="running"
+        "${PC_SSH_USER}@$pc_ip" "pgrep xmrig >/dev/null 2>&1 && echo running" 2>/dev/null | grep -q running && PROC_CHECK="running"
       if [ "$PROC_CHECK" = "running" ]; then
         echo "PROC_RUNNING" > "$TMP_DIR/mining_${pc_name}.tmp"
       else
