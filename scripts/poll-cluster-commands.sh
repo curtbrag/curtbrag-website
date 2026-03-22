@@ -407,7 +407,7 @@ true'
           fi
           echo "$_out" > "$MINING_OUT_DIR/$name.out"
         ) &
-      done
+      fi
       for entry in $PC_NODES; do
         name="${entry%%:*}"; ip="${entry##*:}"
         (
