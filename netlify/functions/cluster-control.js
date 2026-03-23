@@ -232,6 +232,50 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify({ alive: false, lastPoll: null }) };
     }
 
+    // Bootstrap script — restarts poller + push loop on node1 without SSH
+    // Usage: wget -qO- "https://curtbrag.com/.netlify/functions/cluster-control?action=bootstrap&password=PASS" | sh
+    if (params.action === 'bootstrap') {
+      const webPassword = await getWebPassword();
+      if (webPassword) {
+        const attemptedPassword = params.password || '';
+        if (!safeCompare(attemptedPassword, webPassword)) {
+          return { statusCode: 401, headers: { ...headers, 'Content-Type': 'text/plain' }, body: 'Unauthorized\n' };
+        }
+      }
+      const DEV = 'claude/setup-cluster-advanced-t3WV0';
+      const BASE = `https://raw.githubusercontent.com/curtbrag/curtbrag-website/${DEV}/scripts`;
+      const script = [
+        '#!/bin/sh',
+        '# node1 bootstrap: update scripts, restart poller + push loop',
+        'set -e',
+        'cd /home/user || { echo "ERROR: /home/user not found"; exit 1; }',
+        'if [ -f .cluster-env ]; then . .cluster-env; fi',
+        'echo "Stopping old processes..."',
+        'pkill -f poll-cluster-commands 2>/dev/null || true',
+        'pkill -f push-cluster-status 2>/dev/null || true',
+        'sleep 1',
+        'echo "Downloading latest scripts..."',
+        `BASE="${BASE}"`,
+        'for s in poll-cluster-commands.sh cluster-nodes.conf push-cluster-status.sh deploy-keys.sh setup-mining-pc.sh update-from-dev.sh; do',
+        '  wget -qO "/home/user/$s.new" "$BASE/$s" \\',
+        '    && mv "/home/user/$s.new" "/home/user/$s" \\',
+        '    && chmod +x "/home/user/$s" 2>/dev/null \\',
+        '    && echo "  updated $s" || echo "  FAILED: $s"',
+        'done',
+        'echo "Starting poller..."',
+        'unset CLUSTER_API_KEY',
+        'if [ -f /home/user/.cluster-env ]; then . /home/user/.cluster-env; fi',
+        'nohup sh /home/user/poll-cluster-commands.sh >> /home/user/cluster-poll.log 2>&1 &',
+        'echo "Poller PID: $!"',
+        'echo "Starting push loop..."',
+        'nohup sh -c \'while true; do sh /home/user/push-cluster-status.sh >> /home/user/push-status.log 2>&1; sleep 300; done\' >> /home/user/push-status.log 2>&1 &',
+        'echo "Push loop PID: $!"',
+        'echo "Bootstrap complete!"',
+        ''
+      ].join('\n');
+      return { statusCode: 200, headers: { ...headers, 'Content-Type': 'text/plain' }, body: script };
+    }
+
     // Schedule retrieval
     if (params.action === 'schedules') {
       const schedules = await getSchedules();
