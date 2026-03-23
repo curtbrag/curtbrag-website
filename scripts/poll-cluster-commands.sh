@@ -250,6 +250,7 @@ execute_command() {
   local ssh_cmd="$5"
   local display_mode="${DISPLAY_MODE:-}"
   local mining_level="${MINING_LEVEL:-}"
+  local pool_url="${POOL_URL_Q:-}"
 
   log "Executing: $cmd on $target"
 
@@ -572,6 +573,58 @@ echo \"mining level $mining_level (${HINT}% CPU)\""
             run_on_node_tracked "$(resolve_ip "$target")" "$PC_LEVEL_CMD" "$RESULT_DIR" "$target"
           else
             run_on_node_tracked "$(resolve_ip "$target")" "$LEVEL_CMD" "$RESULT_DIR" "$target"
+          fi
+          ;;
+      esac
+      RESULT=$(collect_results "$RESULT_DIR")
+      report_result "$cmd_id" "$RESULT" "" "$cmd" "$target"
+      ;;
+    mining-pool)
+      log "Setting mining pool to $pool_url..."
+      if [ -z "$pool_url" ]; then
+        report_result "$cmd_id" "error: poolUrl not provided" "" "$cmd" "$target"
+        return
+      fi
+      RESULT_DIR="/tmp/cmdres-$cmd_id"
+      mkdir -p "$RESULT_DIR"
+      # Update the pool URL in xmrig config and restart
+      # Phones use doas + OpenRC/systemd; PCs use sudo + systemd
+      POOL_CMD="CFG=/etc/xmrig/config.json
+if [ -f \"\$CFG\" ]; then
+  doas sed -i 's|\"url\": *\"[^\"]*\"|\"url\": \"$pool_url\"|g' \"\$CFG\"
+fi
+doas rc-service xmrig restart 2>/dev/null || doas systemctl restart xmrig 2>/dev/null
+echo \"mining pool set to $pool_url\""
+      PC_POOL_CMD="CFG=/etc/xmrig/config.json
+if [ -f \"\$CFG\" ]; then
+  sudo sed -i 's|\"url\": *\"[^\"]*\"|\"url\": \"$pool_url\"|g' \"\$CFG\"
+fi
+sudo systemctl restart xmrig 2>/dev/null
+echo \"mining pool set to $pool_url\""
+      case "$target" in
+        all)
+          run_on_all_tracked "$POOL_CMD" "$RESULT_DIR" "$PHONE_NODES"
+          for _e in $PC_NODES; do
+            _n="${_e%%:*}"; _i="${_e##*:}"
+            run_on_node_tracked "$_i" "$PC_POOL_CMD" "$RESULT_DIR" "$_n" &
+          done
+          wait
+          ;;
+        phones)
+          run_on_all_tracked "$POOL_CMD" "$RESULT_DIR" "$PHONE_NODES"
+          ;;
+        pcs)
+          for _e in $PC_NODES; do
+            _n="${_e%%:*}"; _i="${_e##*:}"
+            run_on_node_tracked "$_i" "$PC_POOL_CMD" "$RESULT_DIR" "$_n" &
+          done
+          wait
+          ;;
+        *)
+          if is_pc_node "$target"; then
+            run_on_node_tracked "$(resolve_ip "$target")" "$PC_POOL_CMD" "$RESULT_DIR" "$target"
+          else
+            run_on_node_tracked "$(resolve_ip "$target")" "$POOL_CMD" "$RESULT_DIR" "$target"
           fi
           ;;
       esac
@@ -1077,6 +1130,7 @@ while true; do
     TAIL_LINES=$(echo "$RESPONSE" | jq -r '.tail // "100"')
     DISPLAY_MODE=$(echo "$RESPONSE" | jq -r '.displayMode // empty')
     MINING_LEVEL=$(echo "$RESPONSE" | jq -r '.miningLevel // empty')
+    POOL_URL_Q=$(echo "$RESPONSE" | jq -r '.poolUrl // empty')
     log "Got command: $CMD target=$TARGET id=$CMD_ID"
     execute_command "$CMD" "$TARGET" "$URL" "$CMD_ID" "$SSH_CMD"
   fi
