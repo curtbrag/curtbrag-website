@@ -15,6 +15,15 @@ done
 echo "Restarting poller..."
 pkill -f poll-cluster-commands 2>/dev/null || true
 sleep 1
-export CLUSTER_API_KEY=$(grep CLUSTER_API_KEY /home/user/.cluster-env | cut -d= -f2 | tr -d '"')
+# Source env file directly — poller also self-sources if needed
+unset CLUSTER_API_KEY
+if [ -f /home/user/.cluster-env ]; then . /home/user/.cluster-env; fi
 nohup sh /home/user/poll-cluster-commands.sh >> /home/user/cluster-poll.log 2>&1 &
-echo "Done (PID: $!)"
+echo "Poller PID: $!"
+
+# Restart push loop if not running
+if ! pgrep -f push-cluster-status >/dev/null 2>&1; then
+  echo "Restarting push loop..."
+  nohup sh -c 'while true; do sh /home/user/push-cluster-status.sh >> /home/user/push-status.log 2>&1; sleep 300; done' >> /home/user/push-status.log 2>&1 &
+  echo "Push loop PID: $!"
+fi
