@@ -6,12 +6,13 @@
 set -u
 
 # Source env file if CLUSTER_API_KEY not already set (systemd, cron, nohup contexts)
-if [ -z "${CLUSTER_API_KEY:-}" ] && [ -f /home/user/.cluster-env ]; then
-  . /home/user/.cluster-env
+_ENV_FILE="${HOME:-/home/user}/.cluster-env"
+if [ -z "${CLUSTER_API_KEY:-}" ] && [ -f "$_ENV_FILE" ]; then
+  . "$_ENV_FILE"
 fi
 
 API_URL="https://curtbrag.com/.netlify/functions/cluster-control"
-API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set. Create /home/user/.cluster-env with: CLUSTER_API_KEY=your-key}"
+API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY not set. Create $HOME/.cluster-env with: CLUSTER_API_KEY=your-key}"
 POLL_INTERVAL=5  # seconds
 # SSH port is determined per-node via get_node_ssh_port() from cluster-nodes.conf (phones=8022, PCs=22)
 # Auto-detect our IP so local-exec works even if IP changes

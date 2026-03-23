@@ -5,12 +5,14 @@
 set -u
 
 # Source env file if CLUSTER_API_KEY not already set (systemd, cron, nohup contexts)
-if [ -z "${CLUSTER_API_KEY:-}" ] && [ -f /home/user/.cluster-env ]; then
-  . /home/user/.cluster-env
+_ENV_FILE="${HOME:-/home/user}/.cluster-env"
+if [ -z "${CLUSTER_API_KEY:-}" ] && [ -f "$_ENV_FILE" ]; then
+  . "$_ENV_FILE"
 fi
 
 API_URL="https://curtbrag.com/.netlify/functions/cluster-status"
-API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set. Create /home/user/.cluster-env with: CLUSTER_API_KEY=your-key}"
+API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY not set. Create $HOME/.cluster-env with: CLUSTER_API_KEY=your-key}"
+HOME_DIR="${HOME:-/home/user}"
 TMP_DIR="/tmp/cluster-push-$$"
 
 cleanup() { rm -rf "$TMP_DIR"; }
@@ -825,7 +827,7 @@ if ! pgrep -f "poll-cluster-commands" >/dev/null 2>&1; then
       log "Poller restarted via systemd (cluster-poll.service)"
     else
       log "WARN: systemd restart failed, falling back to nohup"
-      nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> /home/user/cluster-poll.log 2>&1 &
+      nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> "$HOME_DIR/cluster-poll.log" 2>&1 &
       log "Poller restarted via nohup (PID: $!)"
     fi
   elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files cluster-poller.service >/dev/null 2>&1; then
@@ -834,11 +836,11 @@ if ! pgrep -f "poll-cluster-commands" >/dev/null 2>&1; then
     if systemctl is-active --quiet cluster-poller.service 2>/dev/null; then
       log "Poller restarted via systemd (cluster-poller.service)"
     else
-      nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> /home/user/cluster-poll.log 2>&1 &
+      nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> "$HOME_DIR/cluster-poll.log" 2>&1 &
       log "Poller restarted via nohup (PID: $!)"
     fi
   else
-    nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> /home/user/cluster-poll.log 2>&1 &
+    nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> "$HOME_DIR/cluster-poll.log" 2>&1 &
     log "Poller restarted via nohup (PID: $!)"
   fi
 else
