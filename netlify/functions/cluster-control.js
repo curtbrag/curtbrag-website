@@ -189,12 +189,12 @@ exports.handler = async (event) => {
       } catch (e) { /* best-effort */ }
 
       const queue = await getQueue();
-      // Auto-expire commands older than 10 minutes
+      // Auto-expire commands older than 24 hours
       const now = Date.now();
       const expiredIds = [];
       const liveQueue = queue.filter(c => {
         const age = now - new Date(c.queuedAt).getTime();
-        if (age > 10 * 60 * 1000) { expiredIds.push(c.id); return false; }
+        if (age > 24 * 60 * 60 * 1000) { expiredIds.push(c.id); return false; }
         return true;
       });
       // Move expired commands to history
