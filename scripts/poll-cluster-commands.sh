@@ -384,13 +384,8 @@ true'
         done
         wait
       else
-        _out=$(run_on_node "$(resolve_ip "$target")" "$MINING_START_CMD" 2>&1)
-        if [ $? -eq 0 ]; then
-          echo "ok" > "$RESULT_DIR/$target"
-        else
-          echo "fail" > "$RESULT_DIR/$target"
-        fi
-        _stagger_i=$((_stagger_i + 1))
+        name="$target"
+        ip="$(resolve_ip "$target")"
         # Derive expected PHONE-NODE-XX worker name and patch config if mismatched
         _num="${name#node}"
         case "$_num" in
