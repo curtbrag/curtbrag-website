@@ -131,7 +131,7 @@ const DEMO_DATA = {
   mining: {
     enabled: true,
     minersRunning: 3,
-    minersTotal: 10,
+    minersTotal: 14,
     totalHashrate: '~1.5 KH/s',
     totalHashrateRaw: 1500,
     coin: 'XMR',
@@ -148,12 +148,16 @@ const DEMO_DATA = {
       { name: 'node7', hashrate: '142 H/s', hashrateRaw: 142, status: 'mining', accepted: 195, rejected: 0 },
       { name: 'node8', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 },
       { name: 'node9', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 },
-      { name: 'node10', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 }
+      { name: 'node10', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 },
+      { name: 'nexus-prime', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 },
+      { name: 'coffee-table', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 },
+      { name: 'vikixii', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 },
+      { name: 'steamdeck', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 }
     ]
   },
   summary: {
     nodesReady: 7,
-    nodesTotal: 10,
+    nodesTotal: 14,
     podsRunning: 12,
     podsTotal: 12,
     podsPending: 0,
