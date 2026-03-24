@@ -14,7 +14,7 @@ function safeCompare(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-const VALID_NODE_NAMES = ['node1','node2','node3','node4','node5','node6','node7','node8','node9','node10','neo','vikixii','nexus-prime','steamdeck','pikvm-main','pikvm-2'];
+const VALID_NODE_NAMES = ['node1','node2','node3','node4','node5','node6','node7','node8','node9','node10','vikixii','nexus-prime','coffee-table','steamdeck'];
 const VALID_GROUP_TARGETS = ['all', 'phones', 'pcs'];
 const MAX_QUEUE_SIZE = 100;
 
@@ -189,12 +189,12 @@ exports.handler = async (event) => {
       } catch (e) { /* best-effort */ }
 
       const queue = await getQueue();
-      // Auto-expire commands older than 10 minutes
+      // Auto-expire commands older than 24 hours
       const now = Date.now();
       const expiredIds = [];
       const liveQueue = queue.filter(c => {
         const age = now - new Date(c.queuedAt).getTime();
-        if (age > 10 * 60 * 1000) { expiredIds.push(c.id); return false; }
+        if (age > 24 * 60 * 60 * 1000) { expiredIds.push(c.id); return false; }
         return true;
       });
       // Move expired commands to history
@@ -230,6 +230,51 @@ exports.handler = async (event) => {
         }
       } catch (e) { /* fall through */ }
       return { statusCode: 200, headers, body: JSON.stringify({ alive: false, lastPoll: null }) };
+    }
+
+    // Bootstrap script — restarts poller + push loop on node1 without SSH
+    // Usage: wget -qO- "https://curtbrag.com/.netlify/functions/cluster-control?action=bootstrap&password=PASS" | sh
+    if (params.action === 'bootstrap') {
+      const webPassword = await getWebPassword();
+      if (webPassword) {
+        const attemptedPassword = params.password || '';
+        if (!safeCompare(attemptedPassword, webPassword)) {
+          return { statusCode: 401, headers: { ...headers, 'Content-Type': 'text/plain' }, body: 'Unauthorized\n' };
+        }
+      }
+      const DEV = 'claude/setup-cluster-advanced-t3WV0';
+      const BASE = `https://raw.githubusercontent.com/curtbrag/curtbrag-website/${DEV}/scripts`;
+      const script = [
+        '#!/bin/sh',
+        '# Bootstrap: update scripts, restart poller + push loop',
+        '# Works for any user: user@node1, neo@desktop, deck@steamdeck, etc.',
+        'DIR="${HOME:-/home/user}"',
+        'mkdir -p "$DIR"',
+        'if [ -f "$DIR/.cluster-env" ]; then . "$DIR/.cluster-env"; fi',
+        'echo "Stopping old processes..."',
+        'pkill -f poll-cluster-commands 2>/dev/null || true',
+        'pkill -f push-cluster-status 2>/dev/null || true',
+        'sleep 1',
+        'echo "Downloading latest scripts..."',
+        `BASE="${BASE}"`,
+        'for s in poll-cluster-commands.sh cluster-nodes.conf push-cluster-status.sh deploy-keys.sh setup-mining-pc.sh update-from-dev.sh; do',
+        '  wget -qO "$DIR/$s.new" "$BASE/$s" \\',
+        '    && mv "$DIR/$s.new" "$DIR/$s" \\',
+        '    && chmod +x "$DIR/$s" 2>/dev/null \\',
+        '    && echo "  updated $s" || echo "  FAILED: $s"',
+        'done',
+        'echo "Starting poller..."',
+        'unset CLUSTER_API_KEY',
+        'if [ -f "$DIR/.cluster-env" ]; then . "$DIR/.cluster-env"; fi',
+        'nohup sh "$DIR/poll-cluster-commands.sh" >> "$DIR/cluster-poll.log" 2>&1 &',
+        'echo "Poller PID: $!"',
+        'echo "Starting push loop..."',
+        'nohup sh -c "while true; do sh \\"$DIR/push-cluster-status.sh\\" >> \\"$DIR/push-status.log\\" 2>&1; sleep 300; done" >> "$DIR/push-status.log" 2>&1 &',
+        'echo "Push loop PID: $!"',
+        'echo "Bootstrap complete! Check $DIR/cluster-poll.log for poller output."',
+        ''
+      ].join('\n');
+      return { statusCode: 200, headers: { ...headers, 'Content-Type': 'text/plain' }, body: script };
     }
 
     // Schedule retrieval
@@ -579,8 +624,9 @@ exports.handler = async (event) => {
       if (!body.sshCmd) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'SSH command required' }) };
       }
-      // Block shell metacharacters that enable injection (includes globs, subshells, redirects)
-      if (/[;|&$`\\><\{\}\(\)!~\[\]*?]|\$\(/.test(body.sshCmd)) {
+      // Block shell metacharacters that enable injection (subshells, redirects, pipes, etc.)
+      // Backslash is allowed for sed/grep patterns; * allowed for glob-free contexts
+      if (/[;|&$`><\{\}\(\)!~\[\]?]|\$\(/.test(body.sshCmd)) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'Command contains disallowed shell characters' }) };
       }
       // Enforce max length
@@ -604,6 +650,7 @@ exports.handler = async (event) => {
       sshCmd: body.sshCmd || null,
       displayMode: body.displayMode || null,
       miningLevel: body.miningLevel != null ? parseInt(body.miningLevel) : null,
+      poolUrl: body.poolUrl || null,
       namespace: body.namespace || null,
       podName: body.podName || null,
       tail: body.tail != null ? parseInt(body.tail) : null,

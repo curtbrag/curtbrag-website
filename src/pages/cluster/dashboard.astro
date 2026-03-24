@@ -48,7 +48,7 @@ import Layout from '../../layouts/Layout.astro';
             <optgroup label="Groups">
               <option value="all" selected>all (every node)</option>
               <option value="phones">phones (node1-10)</option>
-              <option value="pcs">pcs (neo, vikixii, nexus-prime)</option>
+              <option value="pcs">pcs (vikixii, nexus-prime, coffee-table, steamdeck)</option>
             </optgroup>
             <optgroup label="Phones">
               <option value="node1">node1</option>
@@ -63,14 +63,10 @@ import Layout from '../../layouts/Layout.astro';
               <option value="node10">node10</option>
             </optgroup>
             <optgroup label="PCs">
-              <option value="neo">neo</option>
               <option value="vikixii">vikixii</option>
               <option value="nexus-prime">nexus-prime</option>
+              <option value="coffee-table">coffee-table</option>
               <option value="steamdeck">steamdeck</option>
-            </optgroup>
-            <optgroup label="PiKVM">
-              <option value="pikvm-main">pikvm-main</option>
-              <option value="pikvm-2">pikvm-2</option>
             </optgroup>
           </select>
         </div>
@@ -109,7 +105,6 @@ import Layout from '../../layouts/Layout.astro';
                 <input type="text" id="poolUrlInput" placeholder="new pool host:port" class="flex-1 bg-bg border border-border rounded px-2 py-1 text-xs font-mono" />
                 <button class="dash-btn-sm" id="setPoolBtn"><i class="fa-solid fa-check"></i> Set</button>
               </div>
-              <button class="dash-btn w-full text-xs" id="fixPoolDirectBtn" style="border-color:rgba(239,68,68,0.4);color:#ef4444"><i class="fa-solid fa-triangle-exclamation"></i> Fix: Switch to MoneroOcean Direct</button>
             </div>
             <div>
               <div class="flex items-center justify-between mb-1">
@@ -467,10 +462,6 @@ import Layout from '../../layouts/Layout.astro';
         document.getElementById('currentPoolDisplay')!.textContent = newPool;
       }
     }
-
-    document.getElementById('fixPoolDirectBtn')!.addEventListener('click', async () => {
-      await applyPoolChange('192.168.1.179:10128', 'gulf.moneroocean.stream:10128');
-    });
 
     document.getElementById('setPoolBtn')!.addEventListener('click', async () => {
       const newPool = (document.getElementById('poolUrlInput') as HTMLInputElement).value.trim();

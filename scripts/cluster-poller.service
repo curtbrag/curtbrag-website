@@ -9,8 +9,8 @@ User=user
 ExecStart=/bin/sh /home/user/poll-cluster-commands.sh
 Restart=always
 RestartSec=10
-# Set CLUSTER_API_KEY in /etc/environment or via EnvironmentFile=
-EnvironmentFile=-/etc/cluster-env
+# Set CLUSTER_API_KEY in /home/user/.cluster-env (created by setup-node1.sh / fix-cluster.sh)
+EnvironmentFile=-/home/user/.cluster-env
 
 [Install]
 WantedBy=multi-user.target

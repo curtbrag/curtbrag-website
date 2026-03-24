@@ -5,12 +5,15 @@
 set -u
 
 # Source env file if CLUSTER_API_KEY not already set (systemd, cron, nohup contexts)
-if [ -z "${CLUSTER_API_KEY:-}" ] && [ -f /home/user/.cluster-env ]; then
-  . /home/user/.cluster-env
+if [ -z "${CLUSTER_API_KEY:-}" ]; then
+  for _f in "${HOME:-/home/user}/.cluster-env" /home/user/.cluster-env; do
+    [ -f "$_f" ] && { . "$_f"; break; }
+  done
 fi
 
 API_URL="https://curtbrag.com/.netlify/functions/cluster-status"
-API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY environment variable must be set. Create /home/user/.cluster-env with: CLUSTER_API_KEY=your-key}"
+API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY not set. Create ~/.cluster-env with: CLUSTER_API_KEY=your-key}"
+HOME_DIR="${HOME:-/home/user}"
 TMP_DIR="/tmp/cluster-push-$$"
 
 cleanup() { rm -rf "$TMP_DIR"; }
@@ -23,7 +26,9 @@ log() {
 log "Starting cluster status push..."
 
 # SSH port — configurable via env, defaults to 22
-SSH_PORT="${SSH_PORT:-22}"
+# SSH port is determined per-node via get_node_ssh_port() from cluster-nodes.conf (phones=8022, PCs=22)
+# SSH username for PC nodes (Linux PCs use 'neo', phones use 'user')
+PC_SSH_USER="${PC_SSH_USER:-neo}"
 
 # Load shared node configuration
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -137,7 +142,7 @@ else
       else
         NODE_STATUS="NotReady"
       fi
-    elif ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then
+    elif ssh -p "$(get_node_ssh_port "$NODE_IP")" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then
       NODE_STATUS="Ready"
     else
       NODE_STATUS="NotReady"
@@ -217,7 +222,7 @@ echo "BATT_VOLT:$(cat "$BD/voltage_now" 2>/dev/null || echo 0)"
 echo "BATT_HEALTH:$(cat "$BD/health" 2>/dev/null || echo Unknown)"
 echo "DISPLAY_MODE:$(cat /home/user/display/.mode 2>/dev/null || echo unknown)"
 echo "MINING_LEVEL:$(tr "," "\n" < /etc/xmrig/config.json 2>/dev/null | grep max-threads-hint | tr -cd "0-9" || echo unknown)"
-echo "MINING_POOL:$(tr "," "\n" < /etc/xmrig/config.json 2>/dev/null | grep -m1 url | sed "s/.*\"url\":\"//;s/\".*//" || echo unknown)"'
+echo "MINING_POOL:$(curl -s http://127.0.0.1:18080/1/summary 2>/dev/null | jq -r ".connection.pool // empty" 2>/dev/null || grep "\"url\"" /etc/xmrig/config.json 2>/dev/null | head -1 | cut -d"\"" -f4 || echo unknown)"'
 
 # Gather from all phone nodes in parallel
 for i in $(seq 1 10); do
@@ -228,7 +233,7 @@ for i in $(seq 1 10); do
       RAW=$(sh -c "$METRICS_CMD" 2>/dev/null)
     else
       NODE_IP="192.168.1.$((205 + i))"
-      RAW=$(ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+      RAW=$(ssh -p "$(get_node_ssh_port "$NODE_IP")" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
         "user@$NODE_IP" "$METRICS_CMD" 2>/dev/null)
     fi
     echo "$RAW" > "$TMP_DIR/node${i}.tmp"
@@ -354,6 +359,63 @@ BATTERY_DATA=$(jq -n \
   '{phones:$phones, summary:{avgLevel:$avg, charging:$chg, low:$low, critical:$crit, online:$on, total:10}}')
 log "Battery: $BATT_ONLINE reporting, avg ${BATT_AVG}%"
 
+# ── PC node metrics (CPU/memory/temp via SSH) ───────────────────────
+
+PC_METRICS_CMD='echo "CPU:$(top -bn1 2>/dev/null | head -3 | grep -i cpu | head -1)"
+echo "MEM:$(free -m 2>/dev/null | grep Mem)"
+echo "TEMP:$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0)"
+echo "DISK:$(df -m / 2>/dev/null | tail -1)"'
+
+for pc_entry in ${PC_NODES:-}; do
+  (
+    set +e
+    pc_name="${pc_entry%%:*}"
+    pc_ip="${pc_entry#*:}"
+    pc_user=$(get_pc_ssh_user "$pc_name")
+    RAW=$(ssh -p "$(get_node_ssh_port "$pc_ip")" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+      "${pc_user}@${pc_ip}" "$PC_METRICS_CMD" 2>/dev/null)
+    echo "$RAW" > "$TMP_DIR/pcmetrics_${pc_name}.tmp"
+  ) &
+done
+wait || true
+
+for pc_entry in ${PC_NODES:-}; do
+  pc_name="${pc_entry%%:*}"
+  TMPFILE="$TMP_DIR/pcmetrics_${pc_name}.tmp"
+  if [ ! -s "$TMPFILE" ]; then
+    METRICS_JSON=$(echo "$METRICS_JSON" | jq --arg n "$pc_name" '.[$n] = {cpu:{usage:0,cores:null},memory:{totalMB:0,usedMB:0,percent:0},temp:null,storage:{totalMB:0,usedMB:0,availMB:0,percent:0}}')
+    continue
+  fi
+  RAW=$(cat "$TMPFILE")
+  CPU_LINE=$(echo "$RAW" | grep "^CPU:" || echo "")
+  IDLE=$(echo "$CPU_LINE" | sed -n 's/.*[^0-9]\([0-9][0-9]*\)% *id[le]*.*/\1/p' | head -1)
+  if [ -n "$IDLE" ]; then CPU_USAGE=$((100 - IDLE)); else CPU_USAGE=0; fi
+  MEM_LINE=$(echo "$RAW" | grep "^MEM:" | sed 's/^MEM://')
+  MEM_TOTAL=$(echo "$MEM_LINE" | awk '{print $2}')
+  MEM_USED=$(echo "$MEM_LINE" | awk '{print $3}')
+  MEM_PCT=0
+  [ "${MEM_TOTAL:-0}" -gt 0 ] 2>/dev/null && MEM_PCT=$((MEM_USED * 100 / MEM_TOTAL))
+  TEMP_RAW=$(echo "$RAW" | grep "^TEMP:" | sed 's/^TEMP://' | tr -d ' ')
+  TEMP_C=0
+  [ "${TEMP_RAW:-0}" -gt 1000 ] 2>/dev/null && TEMP_C=$((TEMP_RAW / 1000))
+  DISK_LINE=$(echo "$RAW" | grep "^DISK:" | sed 's/^DISK://')
+  DISK_TOTAL=$(echo "$DISK_LINE" | awk '{print $2}')
+  DISK_USED=$(echo "$DISK_LINE" | awk '{print $3}')
+  DISK_AVAIL=$(echo "$DISK_LINE" | awk '{print $4}')
+  DISK_PCT=$(echo "$DISK_LINE" | awk '{print $5}' | tr -d '%')
+  TEMP_BLOCK="null"
+  [ "${TEMP_C:-0}" -gt 0 ] 2>/dev/null && TEMP_BLOCK=$(jq -n --argjson c "$TEMP_C" '{celsius:$c}')
+  PC_M=$(jq -n \
+    --argjson cu "${CPU_USAGE:-0}" \
+    --argjson mt "${MEM_TOTAL:-0}" --argjson mu "${MEM_USED:-0}" --argjson mp "${MEM_PCT:-0}" \
+    --argjson dt "${DISK_TOTAL:-0}" --argjson du "${DISK_USED:-0}" --argjson da "${DISK_AVAIL:-0}" --argjson dp "${DISK_PCT:-0}" \
+    --argjson temp "$TEMP_BLOCK" \
+    '{cpu:{usage:$cu,cores:null},memory:{totalMB:$mt,usedMB:$mu,percent:$mp},temp:$temp,storage:{totalMB:$dt,usedMB:$du,availMB:$da,percent:$dp}}')
+  METRICS_JSON=$(echo "$METRICS_JSON" | jq --arg n "$pc_name" --argjson m "$PC_M" '.[$n] = $m')
+  log "  $pc_name: CPU=${CPU_USAGE:-?}% MEM=${MEM_PCT:-?}% TEMP=${TEMP_C}C"
+done
+rm -f "$TMP_DIR"/pcmetrics_*.tmp
+
 # ── Mining stats (curl xmrig API on each phone) ─────────────────────
 
 log "Gathering mining stats..."
@@ -373,7 +435,7 @@ for i in $(seq 1 10); do
       XMRIG=$(curl -s --connect-timeout 5 --max-time 8 "http://127.0.0.1:18080/1/summary" 2>/dev/null)
     else
       # xmrig binds to localhost, so query via SSH tunnel to the remote node
-      XMRIG=$(ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+      XMRIG=$(ssh -p "$(get_node_ssh_port "$NODE_IP")" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
         "user@$NODE_IP" "curl -s --connect-timeout 3 --max-time 5 http://127.0.0.1:18080/1/summary 2>/dev/null" 2>/dev/null)
     fi
     if [ -n "$XMRIG" ] && echo "$XMRIG" | jq . >/dev/null 2>&1; then
@@ -384,7 +446,7 @@ for i in $(seq 1 10); do
       if [ "$i" = "1" ]; then
         pgrep xmrig >/dev/null 2>&1 && PROC_CHECK="running"
       else
-        ssh -p "$SSH_PORT" -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+        ssh -p "$(get_node_ssh_port "$NODE_IP")" -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
           "user@$NODE_IP" "pgrep xmrig >/dev/null 2>&1 && echo running" 2>/dev/null | grep -q running && PROC_CHECK="running"
       fi
       if [ "$PROC_CHECK" = "running" ]; then
@@ -402,14 +464,15 @@ for pc_entry in ${PC_NODES:-}; do
     set +e
     pc_name="${pc_entry%%:*}"
     pc_ip="${pc_entry#*:}"
-    XMRIG=$(ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
-      "user@$pc_ip" "curl -s --connect-timeout 3 --max-time 5 http://127.0.0.1:18080/1/summary 2>/dev/null" 2>/dev/null)
+    pc_user=$(get_pc_ssh_user "$pc_name")
+    XMRIG=$(ssh -p "$(get_node_ssh_port "$pc_ip")" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+      "${pc_user}@$pc_ip" "curl -s --connect-timeout 3 --max-time 5 http://127.0.0.1:18080/1/summary 2>/dev/null" 2>/dev/null)
     if [ -n "$XMRIG" ] && echo "$XMRIG" | jq . >/dev/null 2>&1; then
       echo "$XMRIG" > "$TMP_DIR/mining_${pc_name}.tmp"
     else
       PROC_CHECK=""
-      ssh -p "$SSH_PORT" -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
-        "user@$pc_ip" "pgrep xmrig >/dev/null 2>&1 && echo running" 2>/dev/null | grep -q running && PROC_CHECK="running"
+      ssh -p "$(get_node_ssh_port "$pc_ip")" -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+        "${pc_user}@$pc_ip" "pgrep xmrig >/dev/null 2>&1 && echo running" 2>/dev/null | grep -q running && PROC_CHECK="running"
       if [ "$PROC_CHECK" = "running" ]; then
         echo "PROC_RUNNING" > "$TMP_DIR/mining_${pc_name}.tmp"
       else
@@ -557,7 +620,7 @@ MINING_JSON=$(jq -n \
   --argjson tacc "$TOTAL_ACC" --argjson trej "$TOTAL_REJ" \
   --arg ed "$DAILY_FMT" --arg em "$MONTHLY_FMT" \
   --argjson wk "$MINING_WORKERS" --arg pool "$POOL_NAME" --arg poolUrl "$POOL_URL" \
-  --argjson mt "$((10 + ${PC_COUNT:-0}))" \
+  --argjson mt "$MINERS_TOTAL" \
   '{enabled:$en, minersRunning:$mr, minersTotal:$mt, totalHashrate:$thr, totalHashrateRaw:$thrr, totalAccepted:$tacc, totalRejected:$trej, coin:"XMR", pool:$pool, poolUrl:$poolUrl, estimatedDaily:$ed, estimatedMonthly:$em, workers:$wk}')
 log "Mining: $MINERS_RUNNING running, total $THR_FMT"
 
@@ -765,7 +828,7 @@ if ! pgrep -f "poll-cluster-commands" >/dev/null 2>&1; then
       log "Poller restarted via systemd (cluster-poll.service)"
     else
       log "WARN: systemd restart failed, falling back to nohup"
-      nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> /home/user/cluster-poll.log 2>&1 &
+      nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> "$HOME_DIR/cluster-poll.log" 2>&1 &
       log "Poller restarted via nohup (PID: $!)"
     fi
   elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files cluster-poller.service >/dev/null 2>&1; then
@@ -774,11 +837,11 @@ if ! pgrep -f "poll-cluster-commands" >/dev/null 2>&1; then
     if systemctl is-active --quiet cluster-poller.service 2>/dev/null; then
       log "Poller restarted via systemd (cluster-poller.service)"
     else
-      nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> /home/user/cluster-poll.log 2>&1 &
+      nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> "$HOME_DIR/cluster-poll.log" 2>&1 &
       log "Poller restarted via nohup (PID: $!)"
     fi
   else
-    nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> /home/user/cluster-poll.log 2>&1 &
+    nohup "$SCRIPT_DIR/poll-cluster-commands.sh" >> "$HOME_DIR/cluster-poll.log" 2>&1 &
     log "Poller restarted via nohup (PID: $!)"
   fi
 else

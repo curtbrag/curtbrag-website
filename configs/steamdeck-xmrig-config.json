@@ -1,0 +1,28 @@
+{
+  "autosave": true,
+  "cpu": {
+    "enabled": true,
+    "huge-pages": false,
+    "max-threads-hint": 75
+  },
+  "opencl": false,
+  "cuda": false,
+  "donate-level": 1,
+  "pools": [
+    {
+      "url": "gulf.moneroocean.stream:20128",
+      "user": "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT",
+      "pass": "steamdeck",
+      "keepalive": true,
+      "tls": true
+    }
+  ],
+  "http": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 18080,
+    "restricted": true
+  },
+  "log-file": null,
+  "print-time": 60
+}
