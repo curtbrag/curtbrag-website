@@ -151,7 +151,7 @@ const DEMO_DATA = {
       { name: 'node10', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 },
       { name: 'nexus-prime', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 },
       { name: 'coffee-table', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 },
-      { name: 'vikixii', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 },
+      { name: 'viki', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 },
       { name: 'steamdeck', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 }
     ]
   },
@@ -360,7 +360,9 @@ exports.handler = async function(event, context) {
           node1:'192.168.1.206', node2:'192.168.1.207', node3:'192.168.1.208',
           node4:'192.168.1.209', node5:'192.168.1.210', node6:'192.168.1.211',
           node7:'192.168.1.212', node8:'192.168.1.213', node9:'192.168.1.214',
-          node10:'192.168.1.215'
+          node10:'192.168.1.215',
+          'nexus-prime':'192.168.1.179', 'viki':'192.168.1.217',
+          'skynet':'192.168.1.218', 'steamdeck':'192.168.1.171'
         };
 
         const synthNodes = [];
