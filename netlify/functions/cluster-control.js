@@ -14,7 +14,7 @@ function safeCompare(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-const VALID_NODE_NAMES = ['node1','node2','node3','node4','node5','node6','node7','node8','node9','node10','vikixii','nexus-prime','coffee-table','steamdeck'];
+const VALID_NODE_NAMES = ['node1','node2','node3','node4','node5','node6','node7','node8','node9','node10','viki','nexus-prime','steamdeck','skynet'];
 const VALID_GROUP_TARGETS = ['all', 'phones', 'pcs'];
 const MAX_QUEUE_SIZE = 100;
 
