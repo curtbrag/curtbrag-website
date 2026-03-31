@@ -28,6 +28,16 @@
   to = "/cluster/eyecandy.html"
   status = 200
 
+[[redirects]]
+  from = "/api/agent/*"
+  to = "/.netlify/functions/agent-api/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/api/cluster/*"
+  to = "/.netlify/functions/cluster-api/:splat"
+  status = 200
+
 # Legacy .html → clean Astro URL redirects
 [[redirects]]
   from = "/zelle.html"
