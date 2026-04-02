@@ -56,11 +56,13 @@ import Layout from '../../layouts/Layout.astro';
 </div>
 </div>
 
-<div style="display:flex;gap:12px;margin-bottom:24px;border-bottom:1px solid var(--color-border);padding-bottom:12px">
+<div style="display:flex;gap:12px;margin-bottom:24px;border-bottom:1px solid var(--color-border);padding-bottom:12px;flex-wrap:wrap">
 <button data-tab="fleet" class="tab-btn" style="background:var(--color-brand);color:white;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:600">Fleet</button>
 <button data-tab="devices" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Devices</button>
 <button data-tab="config" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Config</button>
+<button data-tab="analytics" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Analytics</button>
 <button data-tab="commands" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Commands</button>
+<button data-tab="events" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Events</button>
 <button data-tab="alerts" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Alerts</button>
 </div>
 
@@ -89,9 +91,24 @@ import Layout from '../../layouts/Layout.astro';
 </div>
 
 <div id="tab-config" class="tab-content" style="display:none">
-<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px">
 <h3>Config Profiles</h3>
-<div id="profiles" style="margin-top:16px"></div>
+<div id="profiles" style="margin-top:16px;display:grid;gap:12px"></div>
+</div>
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
+<h3>Device Groups</h3>
+<div id="groups" style="margin-top:16px;font-size:12px"></div>
+</div>
+</div>
+
+<div id="tab-analytics" class="tab-content" style="display:none">
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px">
+<h3>Fleet Analytics</h3>
+<div id="fleetAnalytics" style="margin-top:16px;font-size:13px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px"></div>
+</div>
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
+<h3>Thermal Report</h3>
+<div id="thermalReport" style="margin-top:16px;font-size:12px"></div>
 </div>
 </div>
 
@@ -106,6 +123,19 @@ import Layout from '../../layouts/Layout.astro';
 </div>
 </div>
 
+<div id="tab-events" class="tab-content" style="display:none">
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
+<h3>Event Log</h3>
+<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+<button onclick="filterEvents('all')" class="event-filter" style="background:var(--color-brand);color:white;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:11px">All</button>
+<button onclick="filterEvents('rogue')" class="event-filter" style="background:transparent;border:1px solid var(--color-border);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:11px">Rogue</button>
+<button onclick="filterEvents('thermal')" class="event-filter" style="background:transparent;border:1px solid var(--color-border);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:11px">Thermal</button>
+<button onclick="filterEvents('restart')" class="event-filter" style="background:transparent;border:1px solid var(--color-border);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:11px">Restart</button>
+</div>
+<div id="eventList" style="margin-top:12px;font-size:12px">Loading events...</div>
+</div>
+</div>
+
 <div id="tab-alerts" class="tab-content" style="display:none">
 <div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
 <h3>Active Alerts</h3>
@@ -117,10 +147,10 @@ import Layout from '../../layouts/Layout.astro';
 
 <div id="detail" style="position:fixed;right:-400px;top:0;width:400px;height:100vh;background:var(--color-panel);border-left:1px solid var(--color-border);overflow-y:auto;transition:right 0.3s;z-index:1000;padding:20px">
 <button id="closeDetail" style="position:absolute;top:16px;right:16px;background:transparent;border:none;color:var(--color-muted);font-size:20px;cursor:pointer">&times;</button>
-<div id="detailContent"></div>
+<div id="detailContent" style="max-height:calc(100vh-80px);overflow-y:auto"></div>
 </div>
 
-<div id="toast" style="position:fixed;bottom:24px;right:24px;background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;max-width:300px;display:none;z-index:2000"></div>
+<div id="toast" style="position:fixed;bottom:24px;right:24px;background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;max-width:300px;display:none;z-index:2000;font-size:13px"></div>
 
 </div>
 </section>
@@ -136,12 +166,16 @@ import Layout from '../../layouts/Layout.astro';
 <script>
 const API = '/.netlify/functions/cluster-api';
 let password = sessionStorage.getItem('cp_password');
+let currentEventFilter = 'all';
 
 const state = {
   devices: [],
   summary: null,
   alerts: [],
+  events: [],
   commands: { queue: [], history: [] },
+  analytics: null,
+  thermalReport: null,
 };
 
 function toast(msg, type = 'ok') {
@@ -152,8 +186,8 @@ function toast(msg, type = 'ok') {
   setTimeout(() => el.style.display = 'none', 3000);
 }
 
-async function callApi(action, method = 'GET', body = null) {
-  const url = `${API}?action=${action}`;
+async function callApi(action, method = 'GET', body = null, queryParams = '') {
+  const url = `${API}?action=${action}${queryParams ? '&' + queryParams : ''}`;
   const opts = {
     method,
     headers: { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' },
@@ -196,16 +230,36 @@ function logout() {
 
 async function fetchAll() {
   try {
-    const [s, d, a, c] = await Promise.all([callApi('summary'), callApi('devices'), callApi('alerts'), callApi('commands')]);
+    const [s, d, a, c, e] = await Promise.all([
+      callApi('summary'),
+      callApi('devices'),
+      callApi('alerts'),
+      callApi('commands'),
+      callApi('events'),
+    ]);
     state.summary = s.summary;
     state.devices = d.devices || [];
     state.alerts = a.alerts || [];
     state.commands = { queue: c.queue || [], history: c.history || [] };
+    state.events = e.events || [];
+
+    try {
+      const analytics = await callApi('fleet-analytics');
+      state.analytics = analytics;
+    } catch {}
+
+    try {
+      const thermal = await callApi('thermal-report');
+      state.thermalReport = thermal;
+    } catch {}
+
     renderSummary();
     renderFleet();
     renderDevicesTable();
     renderCommands();
     renderAlerts();
+    renderAnalytics();
+    renderThermalReport();
   } catch (e) { toast(`Fetch failed: ${e.message}`, 'error'); }
 }
 
@@ -232,8 +286,8 @@ function renderDevicesTable() {
 function renderCommands() {
   const queue = document.getElementById('cmdQueue');
   const hist = document.getElementById('cmdHistory');
-  queue.innerHTML = state.commands.queue.length ? state.commands.queue.map(c => `<div style="padding:8px;background:var(--color-bg);border-radius:4px;margin:4px 0">${c.type} → ${c.target}</div>`).join('') : 'No pending commands';
-  hist.innerHTML = state.commands.history.length ? state.commands.history.slice(0, 10).map(c => `<div style="padding:8px;background:var(--color-bg);border-radius:4px;margin:4px 0">${c.type} → ${c.target} (${c.status})</div>`).join('') : 'No history';
+  queue.innerHTML = state.commands.queue.length ? state.commands.queue.map(c => `<div style="padding:8px;background:var(--color-bg);border-radius:4px;margin:4px 0;border-left:3px solid var(--color-yellow)">${c.type} → ${c.target}</div>`).join('') : 'No pending commands';
+  hist.innerHTML = state.commands.history.length ? state.commands.history.slice(0, 10).map(c => `<div style="padding:8px;background:var(--color-bg);border-radius:4px;margin:4px 0;border-left:3px solid ${c.status === 'succeeded' ? 'var(--color-green)' : 'var(--color-red)'}">${c.type} → ${c.target} (${c.status})</div>`).join('') : 'No history';
 }
 
 function renderAlerts() {
@@ -241,13 +295,145 @@ function renderAlerts() {
   el.innerHTML = state.alerts.length ? state.alerts.slice(0, 20).map(a => `<div style="padding:8px;background:var(--color-bg);border-radius:4px;margin:4px 0;border-left:3px solid ${a.severity === 'critical' ? 'var(--color-red)' : 'var(--color-yellow)'}">${a.message}</div>`).join('') : 'No active alerts';
 }
 
+function renderAnalytics() {
+  if (!state.analytics) return;
+  const el = document.getElementById('fleetAnalytics');
+  el.innerHTML = `
+    <div style="background:var(--color-bg);border-radius:6px;padding:12px">
+      <div style="font-size:11px;color:var(--color-muted)">Total Devices</div>
+      <div style="font-size:18px;font-weight:bold">${state.analytics.devices_total}</div>
+    </div>
+    <div style="background:var(--color-bg);border-radius:6px;padding:12px">
+      <div style="font-size:11px;color:var(--color-muted)">Mining</div>
+      <div style="font-size:18px;font-weight:bold;color:var(--color-green)">${state.analytics.devices_mining}</div>
+    </div>
+    <div style="background:var(--color-bg);border-radius:6px;padding:12px">
+      <div style="font-size:11px;color:var(--color-muted)">Avg Hashrate</div>
+      <div style="font-size:18px;font-weight:bold">${state.analytics.avg_hashrate} H/s</div>
+    </div>
+    <div style="background:var(--color-bg);border-radius:6px;padding:12px">
+      <div style="font-size:11px;color:var(--color-muted)">Peak Temp</div>
+      <div style="font-size:18px;font-weight:bold;color:${state.analytics.peak_temp > 75 ? 'var(--color-red)' : 'var(--color-green)'}">${state.analytics.peak_temp}°C</div>
+    </div>
+    <div style="background:var(--color-bg);border-radius:6px;padding:12px">
+      <div style="font-size:11px;color:var(--color-muted)">Total Accepted</div>
+      <div style="font-size:18px;font-weight:bold">${state.analytics.total_accepted}</div>
+    </div>
+  `;
+}
+
+function renderThermalReport() {
+  if (!state.thermalReport) return;
+  const el = document.getElementById('thermalReport');
+  el.innerHTML = state.thermalReport.nodes.map(n => `<div style="padding:8px;background:var(--color-bg);border-radius:4px;margin:4px 0;border-left:3px solid ${n.current_temp > n.max_allowed ? 'var(--color-red)' : 'var(--color-green)'}">${n.hostname}: ${n.current_temp}°C / ${n.max_allowed}°C (${n.status})</div>`).join('');
+}
+
+function filterEvents(filter) {
+  currentEventFilter = filter;
+  document.querySelectorAll('.event-filter').forEach(b => b.style.background = 'transparent');
+  document.querySelectorAll('.event-filter').forEach(b => b.style.borderColor = 'var(--color-border)');
+  event.target.style.background = 'var(--color-brand)';
+  event.target.style.color = 'white';
+  event.target.style.borderColor = 'var(--color-brand)';
+  renderEvents();
+}
+
+function renderEvents() {
+  const el = document.getElementById('eventList');
+  let filtered = state.events;
+  if (currentEventFilter !== 'all') {
+    if (currentEventFilter === 'rogue') filtered = state.events.filter(e => e.type?.includes('rogue'));
+    if (currentEventFilter === 'thermal') filtered = state.events.filter(e => e.type?.includes('temp') || e.type?.includes('thermal'));
+    if (currentEventFilter === 'restart') filtered = state.events.filter(e => e.type?.includes('restart'));
+  }
+  el.innerHTML = filtered.slice(-50).reverse().map(e => `<div style="padding:8px;background:var(--color-bg);border-radius:4px;margin:4px 0;border-left:3px solid ${e.severity === 'critical' ? 'var(--color-red)' : 'var(--color-yellow)'}"><strong>${e.message}</strong><br/><span style="font-size:10px;color:var(--color-muted)">${timeAgo(e.created_at)}</span></div>`).join('');
+}
+
 async function showDetail(deviceId) {
   try {
     const d = state.devices.find(x => x.id === deviceId);
     const detail = document.getElementById('detail');
     const content = document.getElementById('detailContent');
-    content.innerHTML = `<h2 style="margin-bottom:16px">${d.hostname}</h2><div style="font-size:12px;color:var(--color-muted);margin-bottom:16px"><div>ID: <code>${deviceId.slice(0, 16)}...</code></div><div>Class: ${d.device_class}</div><div>Status: ${d.online ? 'ONLINE' : 'OFFLINE'}</div></div><h3 style="margin-top:16px;margin-bottom:8px">Hardware</h3><div style="font-size:12px;color:var(--color-muted)"><div>CPU: ${d.hardware?.cpu || 'N/A'}</div><div>Cores: ${d.hardware?.cores || 'N/A'}</div><div>RAM: ${d.hardware?.ram_mb || 'N/A'} MB</div><div>Arch: ${d.hardware?.arch || 'N/A'}</div></div><h3 style="margin-top:16px;margin-bottom:8px">Miner</h3><div style="font-size:12px;color:var(--color-muted)"><div>Running: ${d.observed?.xmrig_running ? 'YES' : 'NO'}</div><div>Hash: ${d.observed?.hashrate_60s || 0} H/s</div><div>Accepted: ${d.observed?.accepted_shares || 0}</div><div>PID: ${d.observed?.custom_pid || 'N/A'}</div></div><div style="display:flex;gap:8px;margin-top:24px;flex-wrap:wrap"><button onclick="queueCmd('${deviceId}', 'mining-start')" style="background:var(--color-green);color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Start</button><button onclick="queueCmd('${deviceId}', 'mining-stop')" style="background:var(--color-red);color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Stop</button><button onclick="queueCmd('${deviceId}', 'kill-rogue')" style="background:var(--color-red);color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Kill</button><button onclick="queueCmd('${deviceId}', 'reconcile')" style="background:var(--color-brand);color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Reconcile</button></div>`;
+    const miningLevel = d.desired?.mining_level || 0;
+    const maxTemp = d.desired?.max_temp_celsius || 80;
+    const pauseBatt = d.desired?.pause_on_battery || false;
+
+    content.innerHTML = `
+      <h2 style="margin-bottom:16px">${d.hostname}</h2>
+      <div style="font-size:12px;color:var(--color-muted);margin-bottom:16px">
+        <div>ID: <code style="font-size:10px">${deviceId.slice(0, 16)}...</code></div>
+        <div>Class: ${d.device_class}</div>
+        <div>Status: ${d.online ? 'ONLINE' : 'OFFLINE'}</div>
+      </div>
+
+      <h3 style="margin-top:16px;margin-bottom:8px">Hardware</h3>
+      <div style="font-size:12px;color:var(--color-muted)">
+        <div>CPU: ${d.hardware?.cpu || 'N/A'}</div>
+        <div>Cores: ${d.hardware?.cores || 'N/A'}</div>
+        <div>RAM: ${d.hardware?.ram_mb || 'N/A'} MB</div>
+      </div>
+
+      <h3 style="margin-top:16px;margin-bottom:8px">Miner State</h3>
+      <div style="font-size:12px;color:var(--color-muted)">
+        <div>Running: ${d.observed?.xmrig_running ? 'YES' : 'NO'}</div>
+        <div>Hash (60s): ${d.observed?.hashrate_60s || 0} H/s</div>
+        <div>Accepted: ${d.observed?.accepted_shares || 0}</div>
+        <div>PID: ${d.observed?.custom_pid || 'N/A'}</div>
+        <div>Temp: ${d.observed?.temp_current || 0}°C</div>
+      </div>
+
+      <h3 style="margin-top:16px;margin-bottom:8px">Mining Level (0=off, 4=max)</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="range" min="0" max="4" value="${miningLevel}" id="levelSlider" style="flex:1" onchange="saveMiningLevel('${deviceId}', this.value)"/>
+        <span id="levelValue" style="font-weight:bold;min-width:20px">${miningLevel}</span>
+      </div>
+
+      <h3 style="margin-top:16px;margin-bottom:8px">Thermal Policy</h3>
+      <div style="font-size:12px;margin-bottom:12px">
+        <label>Max Temp (°C): <input type="number" value="${maxTemp}" min="50" max="100" style="width:60px;padding:4px" onchange="saveMaxTemp('${deviceId}', this.value)"/></label>
+      </div>
+      <div style="font-size:12px">
+        <label><input type="checkbox" ${pauseBatt ? 'checked' : ''} onchange="savePauseBattery('${deviceId}', this.checked)"/> Pause on Battery</label>
+      </div>
+
+      <h3 style="margin-top:16px;margin-bottom:8px">Pool & Config</h3>
+      <div style="font-size:12px;color:var(--color-muted)">
+        <div>Pool: ${d.desired?.pool_url || 'gulf.moneroocean.stream'}</div>
+        <div>Port: ${d.desired?.pool_port || 10128}</div>
+        <div>Threads: ${d.desired?.thread_count || 'auto'}</div>
+        <div>RandomX: ${d.desired?.randomx_mode || 'light'}</div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:24px;flex-wrap:wrap">
+        <button onclick="queueCmd('${deviceId}', 'mining-start')" style="background:var(--color-green);color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Start</button>
+        <button onclick="queueCmd('${deviceId}', 'mining-stop')" style="background:var(--color-red);color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Stop</button>
+        <button onclick="queueCmd('${deviceId}', 'kill-rogue')" style="background:var(--color-red);color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Kill Rogue</button>
+        <button onclick="queueCmd('${deviceId}', 'reconcile')" style="background:var(--color-brand);color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Reconcile</button>
+      </div>
+    `;
     detail.style.right = '0';
+  } catch (e) { toast(`Error: ${e.message}`, 'error'); }
+}
+
+async function saveMiningLevel(deviceId, level) {
+  try {
+    await callApi('set-mining-level', 'POST', { device_id: deviceId, level: parseInt(level) });
+    document.getElementById('levelValue').textContent = level;
+    toast('Mining level updated');
+  } catch (e) { toast(`Error: ${e.message}`, 'error'); }
+}
+
+async function saveMaxTemp(deviceId, temp) {
+  try {
+    await callApi('set-thermal-policy', 'POST', { device_id: deviceId, max_temp: parseInt(temp) });
+    toast('Max temp updated');
+  } catch (e) { toast(`Error: ${e.message}`, 'error'); }
+}
+
+async function savePauseBattery(deviceId, checked) {
+  try {
+    await callApi('set-thermal-policy', 'POST', { device_id: deviceId, pause_on_battery: checked });
+    toast('Battery policy updated');
   } catch (e) { toast(`Error: ${e.message}`, 'error'); }
 }
 
