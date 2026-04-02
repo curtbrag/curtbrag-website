@@ -236,13 +236,49 @@ async function checkDrift(deviceId, desired, observed) {
     );
   }
 
-  if (observed.temp_peak && Number(observed.temp_peak) > 75) {
+  // Thermal policy violations
+  const tempC = Number(observed.temp_peak || observed.temp_current || 0);
+  const maxTempC = Number(desired.max_temp_celsius || 80);
+  if (tempC > maxTempC) {
+    promises.push(
+      addEvent(deviceId, {
+        severity: "critical",
+        type: "thermal_policy_violation",
+        message: `Temp ${tempC}°C exceeds limit ${maxTempC}°C on ${deviceId}`,
+        data: { current: tempC, max: maxTempC, policy_action: "pause_mining" },
+      })
+    );
+  } else if (tempC > maxTempC * 0.9) {
     promises.push(
       addEvent(deviceId, {
         severity: "warning",
         type: "high_temperature",
-        message: `High temp on ${deviceId}: ${observed.temp_peak}°C`,
-        data: { temp: observed.temp_peak },
+        message: `High temp on ${deviceId}: ${tempC}°C (limit ${maxTempC}°C)`,
+        data: { current: tempC, max: maxTempC },
+      })
+    );
+  }
+
+  // Battery policy violations
+  if (desired.pause_on_battery && observed.battery_on_battery) {
+    promises.push(
+      addEvent(deviceId, {
+        severity: "warning",
+        type: "battery_policy_violation",
+        message: `Device on battery but mining enabled on ${deviceId}`,
+        data: { battery_percent: observed.battery_percent },
+      })
+    );
+  }
+
+  // Restart failures
+  if (observed.restart_count && observed.restart_count > desired.restart_threshold) {
+    promises.push(
+      addEvent(deviceId, {
+        severity: "critical",
+        type: "restart_threshold_exceeded",
+        message: `${observed.restart_count} restarts exceed threshold ${desired.restart_threshold} on ${deviceId}`,
+        data: { restarts: observed.restart_count, threshold: desired.restart_threshold },
       })
     );
   }
@@ -296,13 +332,47 @@ function defaultDesiredState(deviceClass, deviceId) {
   const isPhone =
     deviceClass === "phone" || (deviceId && /^node\d+$/.test(deviceId));
   return {
+    // Miner control
     miner_enabled: isPhone,
+    mining_level: isPhone ? 3 : 2, // 0=off, 1=low, 2=medium, 3=high, 4=max
+
+    // Mining configuration
+    pool_url: "gulf.moneroocean.stream",
+    pool_port: 10128,
+    pool_user: "YOUR_WALLET",
+    pool_pass: "x",
+    pool_tls: false,
+
+    // Thread/resource config
+    thread_count: isPhone ? 2 : 4,
+    force_threads: false,
+    huge_pages: isPhone ? false : true,
+    randomx_mode: "light", // light | full
+    affinity: "", // CPU affinity string, empty = auto
+
+    // Thermal/battery policies
+    max_temp_celsius: 80,
+    pause_on_battery: isPhone,
+    pause_on_high_temp: true,
+    temp_check_interval: 10, // seconds
+
+    // Logging
+    log_path: "/tmp/xmrig.log",
+    print_interval: 60, // seconds
+
+    // Restart policy
+    restart_threshold: 5, // restarts before cooldown
+    restart_cooldown: 300, // seconds
+
+    // Security
     approved_binary_path: "/home/user/xmrig-custom",
     approved_binary_hash: null,
     approved_config_version: "1",
     blocked_paths: ["/usr/local/bin/xmrig", "/usr/bin/xmrig"],
     blocked_cron_patterns: ["xmrig", "start-xmrig"],
     allowed_cron_entries: [],
+
+    // Operational
     telemetry_interval: 60,
     remediation_mode: isPhone ? "aggressive" : "passive",
     reboot_policy: "never",
@@ -311,6 +381,76 @@ function defaultDesiredState(deviceClass, deviceId) {
     config_version: "1",
     updated_at: Date.now(),
   };
+}
+
+// ─── xmrig config generation ────────────────────────────────────────────────
+
+function generateXmrigConfig(desired, device) {
+  if (!desired) return null;
+
+  const config = {
+    api: { id: null, worker_id: null },
+    http: { enabled: false, host: "127.0.0.1", port: 0, access_token: null, restricted: true },
+    autosave: true,
+    background: true,
+    colors: true,
+    title: true,
+    randomx: { init: -1, mode: desired.randomx_mode || "light", 1gb_pages: desired.huge_pages },
+    cpu: { enabled: true, huge_pages: desired.huge_pages, hw_aes: true, priority: null },
+    donate_level: 1,
+    donate_over_proxy: 1,
+    log_file: desired.log_path || "/tmp/xmrig.log",
+    print_time_interval: desired.print_interval || 60,
+    health_print_interval: 60,
+    retries: 5,
+    retry_pause: 5,
+    syslog: false,
+    user_agent: null,
+    verbose: 0,
+    watch: true,
+    pools: [
+      {
+        algo: "rx/0",
+        coin: "monero",
+        url: `${desired.pool_tls ? "tls://" : ""}${desired.pool_url}:${desired.pool_port || 10128}`,
+        user: desired.pool_user || "YOUR_WALLET",
+        pass: desired.pool_pass || "x",
+        rig_id: null,
+        nicehash: false,
+        keepalive: false,
+        enabled: true,
+        tls: desired.pool_tls || false,
+        tls_fingerprint: null,
+        daemon: false,
+        socks5: null,
+        self_select: null,
+        submit_to_origin: false,
+      }
+    ],
+  };
+
+  // Add thread config if specified
+  if (desired.thread_count || desired.affinity) {
+    config.cpu.threads = [];
+    const threads = parseInt(desired.thread_count) || 2;
+    for (let i = 0; i < threads; i++) {
+      config.cpu.threads.push({
+        cv: 2,
+        affinity: desired.affinity ? `${i % parseInt(desired.affinity.split(',').length)}` : null,
+        asm: "auto",
+        argon2_impl: null,
+        astrobwt_impl: null,
+        cn_0: null,
+        cn_1: null,
+        cn_2: null,
+        cn_msr: null,
+        cn_sse41: null,
+        cn_zen: null,
+      });
+    }
+  }
+
+  return config;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -571,6 +711,75 @@ exports.handler = async (event, context) => {
         type: body.type || "generic",
         message: String(body.message || "").slice(0, 500),
         data: body.data || {},
+      });
+
+      return json(200, hdrs, { ok: true });
+    }
+
+    // ── CONFIG/RENDER-XMRIG ───────────────────────────────────────────────────
+    if (action === "config" && segments[1] === "render-xmrig" && event.httpMethod === "GET") {
+      if (!(await validateAgent(event.headers, deviceId)))
+        return json(401, hdrs, { error: "unauthorized" });
+
+      const device = await getDevice(deviceId);
+      if (!device) return json(404, hdrs, { error: "device not found" });
+
+      const desired =
+        (await getDesiredState(deviceId)) ||
+        defaultDesiredState(device.device_class, device.hostname);
+
+      const xmrigConfig = generateXmrigConfig(desired, device);
+      return json(200, hdrs, {
+        config: xmrigConfig,
+        version: desired.config_version || "1",
+        generated_at: Date.now(),
+      });
+    }
+
+    // ── TELEMETRY (detailed metrics) ──────────────────────────────────────────
+    if (action === "telemetry" && event.httpMethod === "POST") {
+      if (!(await validateAgent(event.headers, deviceId)))
+        return json(401, hdrs, { error: "unauthorized" });
+
+      const device = await getDevice(deviceId);
+      if (!device) return json(404, hdrs, { error: "device not found" });
+
+      const body = JSON.parse(event.body || "{}");
+      const metricsStore = getStore("cp-metrics");
+
+      // Store detailed telemetry history per device (last 1000 samples)
+      try {
+        const history = (await metricsStore.get(deviceId, { type: "json" })) || [];
+        const sample = {
+          timestamp: Date.now(),
+          hashrate_10s: body.hashrate_10s || 0,
+          hashrate_60s: body.hashrate_60s || 0,
+          hashrate_15m: body.hashrate_15m || 0,
+          accepted_shares: body.accepted_shares || 0,
+          rejected_shares: body.rejected_shares || 0,
+          invalid_shares: body.invalid_shares || 0,
+          temp_current: body.temp_current || 0,
+          temp_peak: body.temp_peak || 0,
+          load_average: body.load_average || [0, 0, 0],
+          memory_used_mb: body.memory_used_mb || 0,
+          memory_total_mb: body.memory_total_mb || 0,
+          battery_percent: body.battery_percent,
+          cpu_affinity: body.cpu_affinity || [],
+          huge_pages_enabled: body.huge_pages_enabled || false,
+          randomx_mode: body.randomx_mode || "",
+          thread_count: body.thread_count || 0,
+        };
+        await metricsStore.setJSON(deviceId, [...history, sample].slice(-1000));
+      } catch (e) {
+        console.warn("telemetry storage error:", e.message);
+      }
+
+      // Update device with latest metrics
+      await saveDevice(deviceId, {
+        ...device,
+        last_hashrate: body.hashrate_60s || 0,
+        last_temp: body.temp_current || 0,
+        last_telemetry: Date.now(),
       });
 
       return json(200, hdrs, { ok: true });
