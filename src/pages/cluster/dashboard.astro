@@ -2,782 +2,287 @@
 import Layout from '../../layouts/Layout.astro';
 ---
 
-<Layout title="Cluster Control Panel - Curtis Bragdon" description="Authenticated control panel for managing the phone cluster.">
+<Layout title="Cluster Control — Curtis Bragdon" description="Cluster control plane.">
+<section class="py-8">
+<div class="max-w-7xl mx-auto px-4">
+<div id="loginGate" class="max-w-sm mx-auto mt-20">
+<div class="text-center mb-6">
+<div class="text-4xl mb-3"><i class="fa-solid fa-lock" style="color:var(--color-brand)"></i></div>
+<h1 class="text-2xl font-bold mb-2">Cluster Control Plane</h1>
+<p class="text-sm" style="color:var(--color-muted)">Enter password</p>
+</div>
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:12px;padding:24px">
+<div style="display:flex;gap:8px">
+<input type="password" id="pwInput" placeholder="Password" style="flex:1;background:var(--color-bg);border:1px solid var(--color-border);border-radius:8px;padding:10px;font-family:monospace;font-size:14px;color:var(--color-text)"/>
+<button id="loginBtn" style="background:var(--color-brand);color:white;border:none;border-radius:8px;padding:10px 16px;cursor:pointer;font-weight:600"><i class="fa-solid fa-right-to-bracket"></i></button>
+</div>
+<div id="loginErr" style="display:none;color:var(--color-red);font-size:12px;margin-top:8px"><i class="fa-solid fa-circle-exclamation"></i> Invalid password</div>
+</div>
+</div>
 
-  <section class="py-8 md:py-12">
-    <div class="max-w-5xl mx-auto px-4 sm:px-6">
+<div id="panel" style="display:none">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+<h1 style="font-size:24px;font-weight:bold"><i class="fa-solid fa-sliders" style="color:var(--color-brand);margin-right:8px"></i>Control Plane</h1>
+<div style="display:flex;gap:8px">
+<a href="/cluster" style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:8px 12px;text-decoration:none;color:var(--color-text);font-size:12px;cursor:pointer"><i class="fa-solid fa-arrow-left"></i> Dashboard</a>
+<button id="logoutBtn" style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:8px 12px;color:var(--color-red);cursor:pointer;font-size:12px"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
+</div>
+</div>
 
-      <!-- ═══════════════════ LOGIN GATE ═══════════════════ -->
-      <div id="loginGate" class="max-w-sm mx-auto mt-20">
-        <div class="text-center mb-6">
-          <div class="text-4xl mb-3"><i class="fa-solid fa-lock text-brand"></i></div>
-          <h1 class="text-2xl font-bold mb-2">Cluster Control</h1>
-          <p class="text-muted text-sm">Enter password to access the control panel.</p>
-        </div>
-        <div class="bg-panel border border-border rounded-xl p-6">
-          <div class="flex gap-2">
-            <input type="password" id="passwordInput" placeholder="Password" class="flex-1 bg-bg border border-border rounded-lg px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-brand" />
-            <button id="loginBtn" class="bg-brand hover:bg-brand/90 text-white font-semibold rounded-lg px-5 py-2.5 text-sm transition">
-              <i class="fa-solid fa-right-to-bracket"></i>
-            </button>
-          </div>
-          <div id="loginError" class="hidden text-red text-xs mt-2"><i class="fa-solid fa-circle-exclamation"></i> Invalid password</div>
-        </div>
-      </div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:24px">
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
+<div style="font-size:12px;color:var(--color-muted);margin-bottom:4px">Total Nodes</div>
+<div style="font-size:24px;font-weight:bold" id="stat-total">--</div>
+</div>
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
+<div style="font-size:12px;color:var(--color-muted);margin-bottom:4px">Online</div>
+<div style="font-size:24px;font-weight:bold;color:var(--color-green)" id="stat-online">--</div>
+</div>
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
+<div style="font-size:12px;color:var(--color-muted);margin-bottom:4px">Mining</div>
+<div style="font-size:24px;font-weight:bold;color:var(--color-yellow)" id="stat-mining">--</div>
+</div>
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
+<div style="font-size:12px;color:var(--color-muted);margin-bottom:4px">Rogue Detected</div>
+<div style="font-size:24px;font-weight:bold;color:var(--color-red)" id="stat-rogue">0</div>
+</div>
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
+<div style="font-size:12px;color:var(--color-muted);margin-bottom:4px">Hashrate</div>
+<div style="font-size:20px;font-weight:bold" id="stat-hash">-- H/s</div>
+</div>
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
+<div style="font-size:12px;color:var(--color-muted);margin-bottom:4px">Alerts</div>
+<div style="font-size:24px;font-weight:bold;color:var(--color-red)" id="stat-alerts">0</div>
+</div>
+</div>
 
-      <!-- ═══════════════════ CONTROL PANEL (hidden until auth) ═══════════════════ -->
-      <div id="controlPanel" class="hidden">
+<div style="display:flex;gap:12px;margin-bottom:24px;border-bottom:1px solid var(--color-border);padding-bottom:12px">
+<button data-tab="fleet" class="tab-btn" style="background:var(--color-brand);color:white;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:600">Fleet</button>
+<button data-tab="devices" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Devices</button>
+<button data-tab="config" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Config</button>
+<button data-tab="commands" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Commands</button>
+<button data-tab="alerts" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Alerts</button>
+</div>
 
-        <!-- Header -->
-        <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
-          <div class="flex items-center gap-3">
-            <i class="fa-solid fa-sliders text-brand text-xl"></i>
-            <h1 class="text-xl font-bold">Cluster Control</h1>
-            <span class="dash-pill" id="pollerStatus"><i class="fa-solid fa-circle text-[0.5rem]"></i> Poller: --</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <a href="/cluster" class="dash-btn-sm"><i class="fa-solid fa-arrow-left text-xs"></i> Dashboard</a>
-            <button id="logoutBtn" class="dash-btn-sm text-red"><i class="fa-solid fa-right-from-bracket text-xs"></i> Logout</button>
-          </div>
-        </div>
+<div id="tab-fleet" class="tab-content">
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px" id="deviceGrid"></div>
+</div>
 
-        <!-- Target Selector -->
-        <div class="bg-panel border border-border rounded-xl p-4 mb-4">
-          <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-2 block">Target</label>
-          <select id="targetSelect" class="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-brand">
-            <optgroup label="Groups">
-              <option value="all" selected>all (every node)</option>
-              <option value="phones">phones (node1-10)</option>
-              <option value="pcs">pcs (nexus-prime, viki, skynet, steamdeck)</option>
-            </optgroup>
-            <optgroup label="Phones">
-              <option value="node1">node1</option>
-              <option value="node2">node2</option>
-              <option value="node3">node3</option>
-              <option value="node4">node4</option>
-              <option value="node5">node5</option>
-              <option value="node6">node6</option>
-              <option value="node7">node7</option>
-              <option value="node8">node8</option>
-              <option value="node9">node9</option>
-              <option value="node10">node10</option>
-            </optgroup>
-            <optgroup label="PCs">
-              <option value="nexus-prime">nexus-prime</option>
-              <option value="viki">viki</option>
-              <option value="skynet">skynet</option>
-              <option value="steamdeck">steamdeck</option>
-            </optgroup>
-          </select>
-        </div>
+<div id="tab-devices" class="tab-content" style="display:none">
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;overflow:auto">
+<table style="width:100%;border-collapse:collapse;font-size:13px">
+<thead style="background:var(--color-surface)">
+<tr style="border-bottom:1px solid var(--color-border)">
+<th style="padding:12px;text-align:left">Status</th>
+<th style="padding:12px;text-align:left">Hostname</th>
+<th style="padding:12px;text-align:left">Class</th>
+<th style="padding:12px;text-align:left">IP</th>
+<th style="padding:12px;text-align:left">Miner</th>
+<th style="padding:12px;text-align:left">HR</th>
+<th style="padding:12px;text-align:left">Temp</th>
+<th style="padding:12px;text-align:left">Last Seen</th>
+</tr>
+</thead>
+<tbody id="devicesTable"></tbody>
+</table>
+</div>
+</div>
 
-        <!-- Quick Actions -->
-        <div class="bg-panel border border-border rounded-xl p-4 mb-4">
-          <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block">Quick Actions</label>
-          <div class="flex flex-wrap gap-2">
-            <button class="dash-btn cmd-btn" data-cmd="wake"><i class="fa-solid fa-sun text-yellow"></i> Wake</button>
-            <button class="dash-btn cmd-btn" data-cmd="sleep"><i class="fa-solid fa-moon text-blue"></i> Sleep</button>
-            <button class="dash-btn cmd-btn" data-cmd="start"><i class="fa-solid fa-play text-green"></i> Start</button>
-            <button class="dash-btn cmd-btn" data-cmd="stop"><i class="fa-solid fa-stop text-red"></i> Stop</button>
-            <button class="dash-btn cmd-btn" data-cmd="restart"><i class="fa-solid fa-arrows-rotate text-brand"></i> Restart</button>
-            <button class="dash-btn cmd-btn" data-cmd="reboot"><i class="fa-solid fa-power-off text-red"></i> Reboot</button>
-            <button class="dash-btn cmd-btn" data-cmd="update"><i class="fa-solid fa-download text-blue"></i> Update</button>
-            <button class="dash-btn cmd-btn" data-cmd="debug"><i class="fa-solid fa-bug text-purple-400"></i> Debug</button>
-          </div>
-        </div>
+<div id="tab-config" class="tab-content" style="display:none">
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
+<h3>Config Profiles</h3>
+<div id="profiles" style="margin-top:16px"></div>
+</div>
+</div>
 
-        <!-- Mining Controls -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div class="bg-panel border border-border rounded-xl p-4">
-            <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-coins text-yellow"></i> Mining</label>
-            <div class="flex gap-2 mb-3">
-              <button class="dash-btn flex-1 cmd-btn" data-cmd="mining-start"><i class="fa-solid fa-play text-green"></i> Start</button>
-              <button class="dash-btn flex-1 cmd-btn" data-cmd="mining-stop"><i class="fa-solid fa-stop text-red"></i> Stop</button>
-              <button class="dash-btn flex-1 cmd-btn" data-cmd="mining-status"><i class="fa-solid fa-magnifying-glass text-cyan"></i> Status</button>
-            </div>
-            <div id="miningOutput" class="hidden mt-2 bg-bg border border-border rounded p-2 text-xs font-mono whitespace-pre-wrap max-h-32 overflow-y-auto relative">
-              <button onclick="this.parentElement.classList.add('hidden')" class="absolute top-1 right-2 text-muted hover:text-white text-sm">&times;</button>
-              <pre id="miningOutputText" class="whitespace-pre-wrap"></pre>
-            </div>
-            <div class="mb-3 border border-border rounded-lg p-2">
-              <div class="text-xs text-muted mb-1.5">Pool <span class="font-mono text-yellow" id="currentPoolDisplay"></span></div>
-              <div class="flex items-center gap-2 mb-2">
-                <input type="text" id="poolUrlInput" placeholder="new pool host:port" class="flex-1 bg-bg border border-border rounded px-2 py-1 text-xs font-mono" />
-                <button class="dash-btn-sm" id="setPoolBtn"><i class="fa-solid fa-check"></i> Set</button>
-              </div>
-            </div>
-            <div>
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-xs text-muted">Mining Level</span>
-                <span class="text-xs font-mono font-bold" id="miningLevelVal">2</span>
-              </div>
-              <div class="flex items-center gap-2">
-                <input type="range" id="miningLevelSlider" min="0" max="4" value="2" class="flex-1 accent-yellow" />
-                <button class="dash-btn-sm cmd-btn" data-cmd="mining-level" id="setMiningLevelBtn"><i class="fa-solid fa-check"></i> Set</button>
-              </div>
-            </div>
-          </div>
+<div id="tab-commands" class="tab-content" style="display:none">
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px">
+<h3>Command Queue</h3>
+<div id="cmdQueue" style="margin-top:12px;font-size:12px">No pending commands</div>
+</div>
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
+<h3>Recent History</h3>
+<div id="cmdHistory" style="margin-top:12px;font-size:12px">No history</div>
+</div>
+</div>
 
-          <!-- Brightness -->
-          <div class="bg-panel border border-border rounded-xl p-4">
-            <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-sun text-yellow"></i> Brightness</label>
-            <div class="flex items-center justify-between mb-1">
-              <span class="text-xs text-muted">Level</span>
-              <span class="text-xs font-mono font-bold" id="brightnessVal">128</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <input type="range" id="brightnessSlider" min="0" max="255" value="128" class="flex-1 accent-yellow" />
-              <button class="dash-btn-sm" id="setBrightnessBtn"><i class="fa-solid fa-check"></i> Set</button>
-            </div>
-          </div>
-        </div>
+<div id="tab-alerts" class="tab-content" style="display:none">
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
+<h3>Active Alerts</h3>
+<div id="alertsList" style="margin-top:12px;font-size:12px">No active alerts</div>
+</div>
+</div>
 
-        <!-- Display Mode -->
-        <div class="bg-panel border border-border rounded-xl p-4 mb-4">
-          <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-display text-blue"></i> Display Mode</label>
-          <div class="flex flex-wrap gap-2">
-            <button class="dash-btn display-btn" data-mode="matrix"><i class="fa-solid fa-terminal text-green"></i> Matrix</button>
-            <button class="dash-btn display-btn" data-mode="stats"><i class="fa-solid fa-chart-bar text-blue"></i> Stats</button>
-            <button class="dash-btn display-btn" data-mode="bonsai"><i class="fa-solid fa-tree text-green"></i> Bonsai</button>
-            <button class="dash-btn display-btn" data-mode="cycle"><i class="fa-solid fa-arrows-spin text-brand"></i> Cycle</button>
-            <button class="dash-btn display-btn" data-mode="off"><i class="fa-solid fa-power-off text-muted"></i> Off</button>
-          </div>
-        </div>
+</div>
 
-        <!-- SSH Command -->
-        <div class="bg-panel border border-border rounded-xl p-4 mb-4">
-          <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-terminal text-green"></i> SSH Command</label>
-          <div class="flex gap-2">
-            <input type="text" id="sshInput" placeholder="e.g. uptime, free -h, df -h" class="flex-1 bg-bg border border-border rounded-lg px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-brand" />
-            <button class="dash-btn" id="sshBtn"><i class="fa-solid fa-paper-plane"></i> Send</button>
-          </div>
-          <div id="sshOutput" class="hidden mt-3 bg-bg border border-border rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto relative">
-            <button onclick="this.parentElement.classList.add('hidden')" class="absolute top-1 right-2 text-muted hover:text-white text-sm">&times;</button>
-            <pre id="sshOutputText" class="whitespace-pre-wrap"></pre>
-          </div>
-        </div>
+<div id="detail" style="position:fixed;right:-400px;top:0;width:400px;height:100vh;background:var(--color-panel);border-left:1px solid var(--color-border);overflow-y:auto;transition:right 0.3s;z-index:1000;padding:20px">
+<button id="closeDetail" style="position:absolute;top:16px;right:16px;background:transparent;border:none;color:var(--color-muted);font-size:20px;cursor:pointer">&times;</button>
+<div id="detailContent"></div>
+</div>
 
-        <!-- Browse URL -->
-        <div class="bg-panel border border-border rounded-xl p-4 mb-4">
-          <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-globe text-blue"></i> Browse URL</label>
-          <div class="flex gap-2">
-            <input type="url" id="browseInput" placeholder="https://example.com" class="flex-1 bg-bg border border-border rounded-lg px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-brand" />
-            <button class="dash-btn" id="browseBtn"><i class="fa-solid fa-paper-plane"></i> Open</button>
-          </div>
-        </div>
+<div id="toast" style="position:fixed;bottom:24px;right:24px;background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;max-width:300px;display:none;z-index:2000"></div>
 
-        <!-- Screenshots -->
-        <div class="bg-panel border border-border rounded-xl p-4 mb-4">
-          <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-camera text-brand"></i> Screenshots</label>
-          <div class="flex gap-2 mb-3">
-            <button class="dash-btn cmd-btn" data-cmd="screenshot"><i class="fa-solid fa-camera"></i> Capture</button>
-            <button class="dash-btn" id="viewScreenshotsBtn"><i class="fa-solid fa-images"></i> View All</button>
-          </div>
-          <div id="screenshotGrid" style="display:none" class="grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2"></div>
-        </div>
-
-        <!-- Pod Logs -->
-        <div class="bg-panel border border-border rounded-xl p-4 mb-4">
-          <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-scroll text-blue"></i> Pod Logs</label>
-          <div class="flex gap-2 mb-2">
-            <input type="text" id="podNamespace" placeholder="Namespace (e.g. default)" class="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand" />
-            <input type="text" id="podName" placeholder="Pod name" class="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand" />
-            <input type="number" id="podTail" placeholder="100" min="1" max="500" value="100" class="w-20 bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand" />
-            <button class="dash-btn" id="podLogsBtn"><i class="fa-solid fa-paper-plane"></i> Fetch</button>
-          </div>
-          <div id="podLogsOutput" class="hidden mt-2 bg-bg border border-border rounded-lg p-3 text-xs font-mono max-h-96 overflow-y-auto relative">
-            <button onclick="this.parentElement.classList.add('hidden')" class="absolute top-1 right-2 text-muted hover:text-white text-sm">&times;</button>
-            <pre id="podLogsText" class="whitespace-pre-wrap"></pre>
-          </div>
-        </div>
-
-        <!-- Schedules -->
-        <div class="bg-panel border border-border rounded-xl p-4 mb-4">
-          <div class="flex items-center justify-between mb-3">
-            <label class="text-xs font-semibold text-muted uppercase tracking-wide"><i class="fa-solid fa-calendar-days text-brand"></i> Schedules</label>
-            <div class="flex gap-2">
-              <button class="dash-btn-sm" id="addScheduleBtn"><i class="fa-solid fa-plus text-xs"></i> Add</button>
-              <button class="dash-btn-sm" id="saveSchedulesBtn"><i class="fa-solid fa-floppy-disk text-xs"></i> Save</button>
-            </div>
-          </div>
-          <div id="scheduleList" class="space-y-2 text-xs mb-2">
-            <div class="text-muted">Loading schedules...</div>
-          </div>
-          <div id="scheduleMsg" class="hidden text-xs mt-1"></div>
-        </div>
-
-        <!-- Command Queue & History -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <!-- Queue -->
-          <div class="bg-panel border border-border rounded-xl p-4">
-            <div class="flex items-center justify-between mb-3">
-              <label class="text-xs font-semibold text-muted uppercase tracking-wide"><i class="fa-solid fa-list-check text-brand"></i> Command Queue</label>
-              <button class="dash-btn-sm text-red" id="flushQueueBtn"><i class="fa-solid fa-trash text-xs"></i> Flush</button>
-            </div>
-            <div id="queueList" class="space-y-1 text-xs font-mono max-h-48 overflow-y-auto">
-              <div class="text-muted">No pending commands</div>
-            </div>
-          </div>
-
-          <!-- History -->
-          <div class="bg-panel border border-border rounded-xl p-4">
-            <label class="text-xs font-semibold text-muted uppercase tracking-wide mb-3 block"><i class="fa-solid fa-clock-rotate-left text-muted"></i> Recent History</label>
-            <div id="historyList" class="space-y-1 text-xs font-mono max-h-96 overflow-y-auto">
-              <div class="text-muted">No history yet</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Toast -->
-        <div id="toast" class="fixed bottom-6 right-6 bg-panel border border-border rounded-xl px-5 py-3 text-sm shadow-2xl transition-all duration-300 translate-y-20 opacity-0 pointer-events-none z-50">
-          <span id="toastMsg"></span>
-        </div>
-
-      </div><!-- /controlPanel -->
-    </div>
-  </section>
-
+</div>
+</section>
 </Layout>
 
 <style>
-  .dash-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    padding: 0.5rem 0.875rem;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    transition: all 0.15s;
-    cursor: pointer;
-    color: var(--color-text);
-  }
-  .dash-btn:hover { border-color: var(--color-brand); background: var(--color-panel); }
-  .dash-btn:active { transform: scale(0.97); }
-  .dash-btn:disabled { opacity: 0.4; pointer-events: none; }
-
-  .dash-btn-sm {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: 0.375rem;
-    padding: 0.375rem 0.625rem;
-    font-size: 0.75rem;
-    font-weight: 500;
-    transition: all 0.15s;
-    cursor: pointer;
-    color: var(--color-text);
-  }
-  .dash-btn-sm:hover { border-color: var(--color-brand); }
-
-  .dash-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: 9999px;
-    padding: 0.25rem 0.75rem;
-    font-size: 0.7rem;
-    font-weight: 500;
-    color: var(--color-muted);
-  }
-
-  select {
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-    background-position: right 0.75rem center;
-    background-repeat: no-repeat;
-    background-size: 1.25rem;
-    color: var(--color-text);
-  }
-
-  input[type="range"] {
-    height: 6px;
-    border-radius: 3px;
-    background: var(--color-border);
-  }
-
-  .screenshot-thumb {
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    overflow: hidden;
-    background: var(--color-bg);
-    cursor: pointer;
-    transition: border-color 0.15s;
-  }
-  .screenshot-thumb:hover { border-color: var(--color-brand); }
-  .screenshot-thumb img {
-    width: 100%;
-    height: auto;
-    display: block;
-  }
-
-  /* Screenshot modal */
-  .screen-modal {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-    background: rgba(0,0,0,0.85);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-  }
-  .screen-modal img {
-    max-width: 90vw;
-    max-height: 90vh;
-    border-radius: 0.5rem;
-    border: 1px solid var(--color-border);
-  }
+.tab-btn.active {
+  background: var(--color-brand) !important;
+  color: white !important;
+}
 </style>
 
 <script>
-  document.addEventListener('DOMContentLoaded', () => {
-    const API = '/.netlify/functions/cluster-control';
-    let password = sessionStorage.getItem('cluster-pw') || '';
+const API = '/.netlify/functions/cluster-api';
+let password = sessionStorage.getItem('cp_password');
 
-    // DOM refs
-    const loginGate = document.getElementById('loginGate')!;
-    const controlPanel = document.getElementById('controlPanel')!;
-    const passwordInput = document.getElementById('passwordInput') as HTMLInputElement;
-    const loginBtn = document.getElementById('loginBtn')!;
-    const loginError = document.getElementById('loginError')!;
-    const logoutBtn = document.getElementById('logoutBtn')!;
-    const targetSelect = document.getElementById('targetSelect') as HTMLSelectElement;
-    const miningLevelSlider = document.getElementById('miningLevelSlider') as HTMLInputElement;
-    const miningLevelVal = document.getElementById('miningLevelVal')!;
-    const brightnessSlider = document.getElementById('brightnessSlider') as HTMLInputElement;
-    const brightnessVal = document.getElementById('brightnessVal')!;
-    const sshInput = document.getElementById('sshInput') as HTMLInputElement;
-    const browseInput = document.getElementById('browseInput') as HTMLInputElement;
-    const toast = document.getElementById('toast')!;
-    const toastMsg = document.getElementById('toastMsg')!;
+const state = {
+  devices: [],
+  summary: null,
+  alerts: [],
+  commands: { queue: [], history: [] },
+};
 
-    // ── Auth ──
-    if (password) {
-      tryAuth(password);
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  el.style.borderColor = type === 'error' ? 'var(--color-red)' : 'var(--color-green)';
+  setTimeout(() => el.style.display = 'none', 3000);
+}
+
+async function callApi(action, method = 'GET', body = null) {
+  const url = `${API}?action=${action}`;
+  const opts = {
+    method,
+    headers: { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' },
+  };
+  if (body) opts.body = JSON.stringify(body);
+
+  const r = await fetch(url, opts);
+  if (r.status === 401) { logout(); throw new Error('Unauthorized'); }
+  if (!r.ok) throw new Error(`API error: ${r.status}`);
+  return r.json();
+}
+
+async function login() {
+  const pw = document.getElementById('pwInput').value;
+  if (!pw) return;
+
+  try {
+    const r = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'auth-check', password: pw }),
+    });
+    if (r.ok) {
+      password = pw;
+      sessionStorage.setItem('cp_password', pw);
+      document.getElementById('loginGate').style.display = 'none';
+      document.getElementById('panel').style.display = 'block';
+      fetchAll();
+      setInterval(fetchAll, 15000);
+    } else {
+      document.getElementById('loginErr').style.display = 'block';
     }
+  } catch (e) { toast(`Login failed: ${e.message}`, 'error'); }
+}
 
-    loginBtn.addEventListener('click', () => tryAuth(passwordInput.value));
-    passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryAuth(passwordInput.value); });
+function logout() {
+  sessionStorage.removeItem('cp_password');
+  window.location.href = '/cluster';
+}
 
-    logoutBtn.addEventListener('click', () => {
-      password = '';
-      sessionStorage.removeItem('cluster-pw');
-      loginGate.classList.remove('hidden');
-      controlPanel.classList.add('hidden');
-    });
+async function fetchAll() {
+  try {
+    const [s, d, a, c] = await Promise.all([callApi('summary'), callApi('devices'), callApi('alerts'), callApi('commands')]);
+    state.summary = s.summary;
+    state.devices = d.devices || [];
+    state.alerts = a.alerts || [];
+    state.commands = { queue: c.queue || [], history: c.history || [] };
+    renderSummary();
+    renderFleet();
+    renderDevicesTable();
+    renderCommands();
+    renderAlerts();
+  } catch (e) { toast(`Fetch failed: ${e.message}`, 'error'); }
+}
 
-    async function tryAuth(pw: string) {
-      try {
-        const testRes = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'auth-check', password: pw }) });
-        if (testRes.status === 401) {
-          loginError.classList.remove('hidden');
-          return;
-        }
-        if (!testRes.ok) throw new Error();
-        password = pw;
-        sessionStorage.setItem('cluster-pw', pw);
-        loginError.classList.add('hidden');
-        loginGate.classList.add('hidden');
-        controlPanel.classList.remove('hidden');
-        loadQueueStatus();
-        checkPollerStatus();
-        loadSchedules();
-      } catch {
-        loginError.classList.remove('hidden');
-      }
-    }
+function renderSummary() {
+  if (!state.summary) return;
+  document.getElementById('stat-total').textContent = state.summary.total || 0;
+  document.getElementById('stat-online').textContent = state.summary.online || 0;
+  document.getElementById('stat-mining').textContent = state.summary.mining || 0;
+  document.getElementById('stat-rogue').textContent = state.summary.rogue_detected || 0;
+  document.getElementById('stat-hash').textContent = (state.summary.total_hashrate || 0) + ' H/s';
+  document.getElementById('stat-alerts').textContent = state.summary.active_alerts || 0;
+}
 
-    // ── Send Command ──
-    async function sendCommand(command: string, extra: Record<string, any> = {}, targetOverride?: string) {
-      const target = targetOverride ?? targetSelect.value;
-      try {
-        const res = await fetch(API, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command, target, password, ...extra })
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          showToast(`Queued: ${command} → ${target}`, 'green');
-          // Poll for result on commands that produce output
-          if (data.id && (command === 'ssh' || command === 'mining-start' || command === 'mining-stop' || command === 'mining-status' || command === 'pod-logs')) {
-            pollCommandResult(data.id, 0, command);
-          }
-          loadQueueStatus();
-          return data;
-        } else {
-          showToast(`Error: ${data.error || 'Failed'}`, 'red');
-          return null;
-        }
-      } catch {
-        showToast('Network error', 'red');
-        return null;
-      }
-    }
+function renderFleet() {
+  const grid = document.getElementById('deviceGrid');
+  grid.innerHTML = state.devices.map(d => `<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;cursor:pointer" onclick="showDetail('${d.id}')"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px"><div><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${d.online ? (d.observed?.xmrig_running ? 'var(--color-green)' : 'var(--color-yellow)') : 'var(--color-red)'}"></span><strong style="margin-left:8px">${d.hostname}</strong></div></div><div style="font-size:12px;color:var(--color-muted);margin-bottom:8px">${d.current_ip || 'N/A'}</div><div style="font-size:13px;margin-bottom:4px">Miner: <strong>${d.observed?.xmrig_running ? 'RUNNING' : 'stopped'}</strong></div><div style="font-size:13px;margin-bottom:4px">Hash: <strong>${d.observed?.hashrate_60s || '0'} H/s</strong></div><div style="font-size:13px;color:var(--color-muted)">Last: <strong>${timeAgo(d.last_seen_at)}</strong></div></div>`).join('');
+}
 
-    // ── Quick Action Buttons ──
-    document.querySelectorAll('.cmd-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const cmd = (btn as HTMLElement).dataset.cmd!;
-        if (cmd === 'mining-level') {
-          sendCommand(cmd, { miningLevel: parseInt(miningLevelSlider.value) });
-        } else {
-          sendCommand(cmd);
-        }
-      });
-    });
+function renderDevicesTable() {
+  const tbody = document.getElementById('devicesTable');
+  tbody.innerHTML = state.devices.map(d => `<tr style="border-bottom:1px solid var(--color-border);cursor:pointer" onclick="showDetail('${d.id}')"><td style="padding:12px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${d.online ? 'var(--color-green)' : 'var(--color-red)'}"></span></td><td style="padding:12px">${d.hostname}</td><td style="padding:12px">${d.device_class}</td><td style="padding:12px;font-family:monospace">${d.current_ip || 'N/A'}</td><td style="padding:12px">${d.observed?.xmrig_running ? '✓' : '✗'}</td><td style="padding:12px">${d.observed?.hashrate_60s || 0}</td><td style="padding:12px">${d.observed?.temp_peak || 0}°</td><td style="padding:12px">${timeAgo(d.last_seen_at)}</td></tr>`).join('');
+}
 
-    // ── Display Mode Buttons ──
-    document.querySelectorAll('.display-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const mode = (btn as HTMLElement).dataset.mode!;
-        sendCommand('display-mode', { displayMode: mode });
-      });
-    });
+function renderCommands() {
+  const queue = document.getElementById('cmdQueue');
+  const hist = document.getElementById('cmdHistory');
+  queue.innerHTML = state.commands.queue.length ? state.commands.queue.map(c => `<div style="padding:8px;background:var(--color-bg);border-radius:4px;margin:4px 0">${c.type} → ${c.target}</div>`).join('') : 'No pending commands';
+  hist.innerHTML = state.commands.history.length ? state.commands.history.slice(0, 10).map(c => `<div style="padding:8px;background:var(--color-bg);border-radius:4px;margin:4px 0">${c.type} → ${c.target} (${c.status})</div>`).join('') : 'No history';
+}
 
-    // ── Pool URL / Fix ──
-    (async () => {
-      try {
-        const r = await fetch('/.netlify/functions/cluster-status');
-        const d = await r.json();
-        const pool = d?.mining?.pool;
-        if (pool) document.getElementById('currentPoolDisplay')!.textContent = pool;
-      } catch { /* silent */ }
-    })();
+function renderAlerts() {
+  const el = document.getElementById('alertsList');
+  el.innerHTML = state.alerts.length ? state.alerts.slice(0, 20).map(a => `<div style="padding:8px;background:var(--color-bg);border-radius:4px;margin:4px 0;border-left:3px solid ${a.severity === 'critical' ? 'var(--color-red)' : 'var(--color-yellow)'}">${a.message}</div>`).join('') : 'No active alerts';
+}
 
-    async function applyPoolChange(currentPool: string, newPool: string) {
-      if (/[;&|`$<>(){}[\]\\!#]/.test(newPool)) { showToast('Pool URL contains invalid characters', 'red'); return; }
-      const sedCmd = `sed -i 's#${currentPool}#${newPool}#g' /etc/xmrig/config.json`;
-      if (sedCmd.length > 200) { showToast('Pool URL too long', 'red'); return; }
-      const r = await sendCommand('ssh', { sshCmd: sedCmd }, 'all');
-      if (r) {
-        await sendCommand('ssh', { sshCmd: 'doas systemctl restart xmrig' }, 'all');
-        document.getElementById('currentPoolDisplay')!.textContent = newPool;
-      }
-    }
+async function showDetail(deviceId) {
+  try {
+    const d = state.devices.find(x => x.id === deviceId);
+    const detail = document.getElementById('detail');
+    const content = document.getElementById('detailContent');
+    content.innerHTML = `<h2 style="margin-bottom:16px">${d.hostname}</h2><div style="font-size:12px;color:var(--color-muted);margin-bottom:16px"><div>ID: <code>${deviceId.slice(0, 16)}...</code></div><div>Class: ${d.device_class}</div><div>Status: ${d.online ? 'ONLINE' : 'OFFLINE'}</div></div><h3 style="margin-top:16px;margin-bottom:8px">Hardware</h3><div style="font-size:12px;color:var(--color-muted)"><div>CPU: ${d.hardware?.cpu || 'N/A'}</div><div>Cores: ${d.hardware?.cores || 'N/A'}</div><div>RAM: ${d.hardware?.ram_mb || 'N/A'} MB</div><div>Arch: ${d.hardware?.arch || 'N/A'}</div></div><h3 style="margin-top:16px;margin-bottom:8px">Miner</h3><div style="font-size:12px;color:var(--color-muted)"><div>Running: ${d.observed?.xmrig_running ? 'YES' : 'NO'}</div><div>Hash: ${d.observed?.hashrate_60s || 0} H/s</div><div>Accepted: ${d.observed?.accepted_shares || 0}</div><div>PID: ${d.observed?.custom_pid || 'N/A'}</div></div><div style="display:flex;gap:8px;margin-top:24px;flex-wrap:wrap"><button onclick="queueCmd('${deviceId}', 'mining-start')" style="background:var(--color-green);color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Start</button><button onclick="queueCmd('${deviceId}', 'mining-stop')" style="background:var(--color-red);color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Stop</button><button onclick="queueCmd('${deviceId}', 'kill-rogue')" style="background:var(--color-red);color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Kill</button><button onclick="queueCmd('${deviceId}', 'reconcile')" style="background:var(--color-brand);color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Reconcile</button></div>`;
+    detail.style.right = '0';
+  } catch (e) { toast(`Error: ${e.message}`, 'error'); }
+}
 
-    document.getElementById('setPoolBtn')!.addEventListener('click', async () => {
-      const newPool = (document.getElementById('poolUrlInput') as HTMLInputElement).value.trim();
-      if (!newPool) { showToast('Pool URL required', 'red'); return; }
-      const currentPool = document.getElementById('currentPoolDisplay')!.textContent?.trim();
-      if (!currentPool) { showToast('Current pool unknown — refresh page', 'red'); return; }
-      await applyPoolChange(currentPool, newPool);
-    });
+async function queueCmd(deviceId, type) {
+  try {
+    await callApi('queue-command', 'POST', { target: deviceId, type });
+    toast(`Queued: ${type}`);
+    setTimeout(fetchAll, 1000);
+  } catch (e) { toast(`Queue failed: ${e.message}`, 'error'); }
+}
 
-    // ── Brightness ──
-    document.getElementById('setBrightnessBtn')!.addEventListener('click', () => {
-      sendCommand('brightness', { sshCmd: brightnessSlider.value });
-    });
+function timeAgo(ts) {
+  if (!ts) return 'never';
+  const secs = Math.floor((Date.now() - ts) / 1000);
+  if (secs < 60) return secs + 's';
+  if (secs < 3600) return Math.floor(secs / 60) + 'm';
+  if (secs < 86400) return Math.floor(secs / 3600) + 'h';
+  return Math.floor(secs / 86400) + 'd';
+}
 
-    // ── SSH ──
-    document.getElementById('sshBtn')!.addEventListener('click', () => {
-      const cmd = sshInput.value.trim();
-      if (!cmd) return;
-      sendCommand('ssh', { sshCmd: cmd });
-      sshInput.value = '';
-    });
-    sshInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') document.getElementById('sshBtn')!.click();
-    });
+document.getElementById('loginBtn').onclick = login;
+document.getElementById('logoutBtn').onclick = logout;
+document.getElementById('closeDetail').onclick = () => document.getElementById('detail').style.right = '-400px';
+document.querySelectorAll('.tab-btn').forEach(btn => btn.onclick = () => {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+  btn.classList.add('active');
+  document.getElementById(`tab-${btn.dataset.tab}`).style.display = 'block';
+});
+document.getElementById('pwInput').onkeypress = (e) => e.key === 'Enter' && login();
 
-    // ── Browse ──
-    document.getElementById('browseBtn')!.addEventListener('click', () => {
-      const url = browseInput.value.trim();
-      if (!url) return;
-      sendCommand('browse', { url });
-    });
-
-    // ── Screenshots ──
-    document.getElementById('viewScreenshotsBtn')!.addEventListener('click', loadScreenshots);
-
-    async function loadScreenshots() {
-      const grid = document.getElementById('screenshotGrid')!;
-      grid.style.display = 'grid';
-      grid.innerHTML = '<div class="col-span-full text-center text-muted text-xs py-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</div>';
-
-      try {
-        const res = await fetch(`${API}?action=screenshots`);
-        const data = await res.json();
-        if (!data.screens || data.screens.length === 0) {
-          grid.innerHTML = '<div class="col-span-full text-center text-muted text-xs py-4">No screenshots available</div>';
-          return;
-        }
-        grid.innerHTML = data.screens.map((s: any) => {
-          if (!s.image) {
-            return `<div class="screenshot-thumb p-3 text-center">
-              <div class="text-xs font-semibold mb-1">${s.device}</div>
-              <div class="text-muted text-[0.65rem]">${s.status || 'N/A'}</div>
-            </div>`;
-          }
-          return `<div class="screenshot-thumb" data-device="${s.device}">
-            <img src="${s.image}" alt="${s.device}" loading="lazy" />
-            <div class="px-2 py-1 text-[0.65rem] font-semibold text-center">${s.device}</div>
-          </div>`;
-        }).join('');
-
-        // Click to enlarge
-        grid.querySelectorAll('.screenshot-thumb[data-device]').forEach(thumb => {
-          thumb.addEventListener('click', () => {
-            const img = thumb.querySelector('img');
-            if (!img) return;
-            document.querySelectorAll('.screen-modal').forEach(m => m.remove());
-            const modal = document.createElement('div');
-            modal.className = 'screen-modal';
-            modal.innerHTML = `<img src="${img.src}" alt="${(thumb as HTMLElement).dataset.device}" />`;
-            modal.addEventListener('click', () => modal.remove());
-            document.body.appendChild(modal);
-          });
-        });
-      } catch {
-        grid.innerHTML = '<div class="col-span-full text-center text-red text-xs py-4">Failed to load screenshots</div>';
-      }
-    }
-
-    // ── Queue & History ──
-    async function loadQueueStatus() {
-      try {
-        const res = await fetch(API);
-        const data = await res.json();
-
-        const queueList = document.getElementById('queueList')!;
-        if (data.queue && data.queue.length > 0) {
-          queueList.innerHTML = data.queue.map((c: any) => {
-            const age = Math.round((Date.now() - new Date(c.queuedAt).getTime()) / 1000);
-            return `<div class="flex items-center justify-between bg-bg border border-border rounded px-2 py-1.5">
-              <span><i class="fa-solid fa-clock text-yellow text-[0.6rem]"></i> ${c.command} → ${c.target}</span>
-              <span class="text-muted">${age}s ago</span>
-            </div>`;
-          }).join('');
-        } else {
-          queueList.innerHTML = '<div class="text-muted">No pending commands</div>';
-        }
-
-        const historyList = document.getElementById('historyList')!;
-        if (data.history && data.history.length > 0) {
-          historyList.innerHTML = [...data.history].reverse().map((h: any, idx: number) => {
-            const icon = h.result && h.result.startsWith('expired') ? 'fa-clock text-yellow' :
-                         h.result && h.result.startsWith('flushed') ? 'fa-trash text-muted' :
-                         h.result && (h.result.startsWith('error') || h.result.startsWith('partial')) ? 'fa-xmark text-red' :
-                         'fa-check text-green';
-            const hasOutput = h.output && h.output.length > 0;
-            const outputId = `hist-output-${idx}`;
-            return `<div>
-              <div class="flex items-center justify-between bg-bg border border-border rounded px-2 py-1.5${hasOutput ? ' cursor-pointer hover:bg-panel' : ''}" ${hasOutput ? `onclick="document.getElementById('${outputId}').classList.toggle('hidden')"` : ''}>
-                <span><i class="fa-solid ${icon} text-[0.6rem]"></i> ${h.command || '?'} → ${h.target || '?'}</span>
-                <span class="text-muted">${h.result ? h.result.substring(0, 40) : 'done'}${hasOutput ? ' <i class="fa-solid fa-chevron-down text-[0.5rem]"></i>' : ''}</span>
-              </div>
-              ${hasOutput ? `<pre id="${outputId}" class="hidden bg-bg border border-border rounded mt-1 p-2 text-[0.65rem] text-muted whitespace-pre-wrap max-h-64 overflow-y-auto">${h.output.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>` : ''}
-            </div>`;
-          }).join('');
-        } else {
-          historyList.innerHTML = '<div class="text-muted">No history yet</div>';
-        }
-      } catch { /* silent */ }
-    }
-
-    // ── Flush Queue ──
-    document.getElementById('flushQueueBtn')!.addEventListener('click', async () => {
-      try {
-        const res = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'flush-queue', password }) });
-        const data = await res.json();
-        showToast(data.message || 'Queue flushed', 'green');
-        loadQueueStatus();
-      } catch {
-        showToast('Failed to flush queue', 'red');
-      }
-    });
-
-
-    // ── Poller Status ──
-    async function checkPollerStatus() {
-      try {
-        const res = await fetch(`${API}?action=poller-status`);
-        const data = await res.json();
-        const el = document.getElementById('pollerStatus')!;
-        if (data.alive) {
-          el.innerHTML = '<i class="fa-solid fa-circle text-green text-[0.5rem]"></i> Poller: Online';
-        } else {
-          el.innerHTML = '<i class="fa-solid fa-circle text-red text-[0.5rem]"></i> Poller: Offline';
-        }
-      } catch { /* silent */ }
-    }
-
-    // ── Slider displays ──
-    miningLevelSlider.addEventListener('input', () => { miningLevelVal.textContent = miningLevelSlider.value; });
-    brightnessSlider.addEventListener('input', () => { brightnessVal.textContent = brightnessSlider.value; });
-
-    // ── Toast ──
-    function showToast(msg: string, color: string) {
-      toastMsg.textContent = msg;
-      toast.style.borderColor = color === 'green' ? 'var(--color-green)' : color === 'red' ? 'var(--color-red)' : 'var(--color-border)';
-      toast.classList.remove('translate-y-20', 'opacity-0', 'pointer-events-none');
-      setTimeout(() => {
-        toast.classList.add('translate-y-20', 'opacity-0', 'pointer-events-none');
-      }, 3000);
-    }
-
-    // ── Pod Logs ──
-    document.getElementById('podLogsBtn')!.addEventListener('click', async () => {
-      const ns = (document.getElementById('podNamespace') as HTMLInputElement).value.trim();
-      const pod = (document.getElementById('podName') as HTMLInputElement).value.trim();
-      const tail = (document.getElementById('podTail') as HTMLInputElement).value.trim() || '100';
-      if (!ns || !pod) { showToast('Namespace and pod name required', 'red'); return; }
-      await sendCommand('pod-logs', { namespace: ns, podName: pod, tail });
-    });
-
-    // ── Poll command result (SSH, pod-logs, mining-status) ──
-    async function pollCommandResult(id: string, attempts = 0, command = 'ssh') {
-      if (attempts > 60) {
-        const msg = '[Timed out: no result after 60s. Node may be offline.]';
-        if (command === 'pod-logs') {
-          const outputEl = document.getElementById('podLogsOutput')!;
-          outputEl.classList.remove('hidden');
-          document.getElementById('podLogsText')!.textContent = msg;
-        } else if (command === 'mining-start' || command === 'mining-stop' || command === 'mining-status') {
-          const outputEl = document.getElementById('miningOutput')!;
-          outputEl.classList.remove('hidden');
-          document.getElementById('miningOutputText')!.textContent = msg;
-        } else {
-          const outputEl = document.getElementById('sshOutput')!;
-          outputEl.classList.remove('hidden');
-          document.getElementById('sshOutputText')!.textContent = msg;
-        }
-        return;
-      }
-      try {
-        const res = await fetch(`${API}?action=command-status&id=${id}`);
-        const data = await res.json();
-        if (data.status === 'completed') {
-          if (command === 'pod-logs') {
-            const outputEl = document.getElementById('podLogsOutput')!;
-            outputEl.classList.remove('hidden');
-            document.getElementById('podLogsText')!.textContent = data.output || data.result || '(no output)';
-            outputEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          } else if (command === 'mining-start' || command === 'mining-stop' || command === 'mining-status') {
-            const outputEl = document.getElementById('miningOutput')!;
-            outputEl.classList.remove('hidden');
-            document.getElementById('miningOutputText')!.textContent = `[${command}] ${data.result || 'done'}\n\n${data.output || ''}`.trim();
-            outputEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          } else {
-            const outputEl = document.getElementById('sshOutput')!;
-            outputEl.classList.remove('hidden');
-            document.getElementById('sshOutputText')!.textContent = `[${command}] ${data.result || 'done'}\n\n${data.output || '(no output)'}`;
-            outputEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          }
-          loadQueueStatus();
-          return;
-        }
-        setTimeout(() => pollCommandResult(id, attempts + 1, command), 1000);
-      } catch { /* silent */ }
-    }
-
-    // ── Schedules ──
-    let schedulesData: Record<string, any> = {};
-
-    async function loadSchedules() {
-      try {
-        const res = await fetch(`${API}?action=schedules`);
-        const data = await res.json();
-        schedulesData = data.schedules || {};
-        renderSchedules();
-      } catch {
-        document.getElementById('scheduleList')!.innerHTML = '<div class="text-muted">Failed to load schedules</div>';
-      }
-    }
-
-    function renderSchedules() {
-      const list = document.getElementById('scheduleList')!;
-      const ids = Object.keys(schedulesData);
-      if (ids.length === 0) {
-        list.innerHTML = '<div class="text-muted">No schedules configured</div>';
-        return;
-      }
-      list.innerHTML = ids.map(id => {
-        const s = schedulesData[id];
-        const rules = (s.rules || []).map((r: any) =>
-          `<span class="inline-flex items-center gap-1 bg-bg border border-border rounded px-2 py-0.5 text-[0.65rem] font-mono">${r.time} → ${r.command}</span>`
-        ).join(' ');
-        return `<div class="flex items-start justify-between gap-2 bg-bg border border-border rounded-lg p-3">
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 mb-1">
-              <span class="font-semibold text-xs">${id}</span>
-              <label class="inline-flex items-center gap-1 text-[0.65rem] cursor-pointer">
-                <input type="checkbox" class="sched-enabled accent-brand" data-id="${id}" ${s.enabled ? 'checked' : ''} />
-                <span class="${s.enabled ? 'text-green' : 'text-muted'}">${s.enabled ? 'Enabled' : 'Disabled'}</span>
-              </label>
-            </div>
-            <div class="flex flex-wrap gap-1">${rules || '<span class="text-muted text-[0.65rem]">No rules</span>'}</div>
-          </div>
-          <button class="dash-btn-sm text-red flex-shrink-0 sched-delete-btn" data-id="${id}"><i class="fa-solid fa-trash text-[0.6rem]"></i></button>
-        </div>`;
-      }).join('');
-
-      list.querySelectorAll('.sched-enabled').forEach(cb => {
-        cb.addEventListener('change', (e) => {
-          const id = (e.target as HTMLElement).dataset.id!;
-          schedulesData[id].enabled = (e.target as HTMLInputElement).checked;
-        });
-      });
-      list.querySelectorAll('.sched-delete-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const id = (btn as HTMLElement).dataset.id!;
-          delete schedulesData[id];
-          renderSchedules();
-        });
-      });
-    }
-
-    document.getElementById('addScheduleBtn')!.addEventListener('click', () => {
-      const id = prompt('Schedule ID (e.g. phones, node1):');
-      if (!id) return;
-      const time = prompt('Time (HH:MM, 24h):');
-      if (!time) return;
-      if (!/^\d{1,2}:\d{2}$/.test(time)) { alert('Invalid time format. Use HH:MM (24-hour, e.g. 22:30).'); return; }
-      const [hh, mm] = time.split(':').map(Number);
-      if (hh > 23 || mm > 59) { alert('Invalid time: hours must be 0–23, minutes 0–59.'); return; }
-      const command = prompt('Command (wake/sleep/mining-start/mining-stop):');
-      if (!command) return;
-      const validScheduleCommands = ['wake', 'sleep', 'mining-start', 'mining-stop'];
-      if (!validScheduleCommands.includes(command)) { alert(`Invalid command. Must be one of: ${validScheduleCommands.join(', ')}`); return; }
-      schedulesData[id] = schedulesData[id] || { enabled: true, rules: [] };
-      schedulesData[id].rules = schedulesData[id].rules || [];
-      schedulesData[id].rules.push({ time, command });
-      renderSchedules();
-    });
-
-    document.getElementById('saveSchedulesBtn')!.addEventListener('click', async () => {
-      const msgEl = document.getElementById('scheduleMsg')!;
-      try {
-        const res = await fetch(API, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'save-schedules', password, schedules: schedulesData })
-        });
-        const data = await res.json();
-        msgEl.classList.remove('hidden');
-        if (res.ok && data.success) {
-          msgEl.className = 'text-xs mt-1 text-green';
-          msgEl.textContent = 'Schedules saved';
-          showToast('Schedules saved', 'green');
-        } else {
-          msgEl.className = 'text-xs mt-1 text-red';
-          msgEl.textContent = data.error || 'Save failed';
-        }
-        setTimeout(() => msgEl.classList.add('hidden'), 3000);
-      } catch {
-        showToast('Failed to save schedules', 'red');
-      }
-    });
-
-    // ── Auto-refresh queue ──
-    setInterval(loadQueueStatus, 5000);
-    setInterval(checkPollerStatus, 15000);
-  });
+if (password) {
+  document.getElementById('loginGate').style.display = 'none';
+  document.getElementById('panel').style.display = 'block';
+  fetchAll();
+  setInterval(fetchAll, 15000);
+}
 </script>
