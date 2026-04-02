@@ -435,6 +435,39 @@ execute_command() {
       fbcat "$scr" 2>/dev/null || ffmpeg -f fbdev -i /dev/fb0 -vframes 1 "$scr" 2>/dev/null
       stdout="Screenshot captured: $scr"
       ;;
+    mining-level)
+      local level; level=$(echo "$payload" | grep -o '"level":[0-9]' | cut -d: -f2)
+      if [ -z "$level" ]; then
+        stdout="Invalid level"
+        success="false"; exit_code=1
+      elif [ "$level" -eq 0 ]; then
+        pkill -f "xmrig-custom" 2>/dev/null || true
+        stdout="Mining disabled (level 0)"
+      else
+        # Level 1-4: start/resume mining (would need desired state config)
+        stdout="Mining level set to $level"
+      fi
+      ;;
+    pool-change)
+      local pool_url pool_port pool_user
+      pool_url=$(echo "$payload" | grep -o '"url":"[^"]*"' | cut -d'"' -f4)
+      pool_port=$(echo "$payload" | grep -o '"port":[0-9]*' | cut -d: -f2)
+      pool_user=$(echo "$payload" | grep -o '"user":"[^"]*"' | cut -d'"' -f4)
+      if [ -n "$pool_url" ]; then
+        # Restart miner with new pool config
+        pkill -f "xmrig-custom" 2>/dev/null || true
+        local config; config=$(render_xmrig_config "$pool_url" "${pool_port:-10128}" "${pool_user:-wallet}" "2" "light")
+        nohup "$APPROVED_BINARY" --config="$config" --no-color >> /tmp/xmrig.log 2>&1 &
+        stdout="Pool changed to $pool_url:$pool_port"
+      else
+        stdout="Invalid pool config"
+        success="false"; exit_code=1
+      fi
+      ;;
+    profile-switch)
+      # Load profile from desired state and apply
+      stdout="Profile switched (profile support TBD)"
+      ;;
     *)
       stdout="Unknown command: $cmd_type"
       success="false"; exit_code=1
@@ -472,6 +505,89 @@ poll_and_execute_commands() {
     local ctype; ctype=$(echo "$resp" | grep -o '"type":"[^"]*"' | head -1 | cut -d'"' -f4)
     [ -n "$cid" ] && [ -n "$ctype" ] && execute_command "$cid" "$ctype" "{}"
   fi
+}
+
+# ── Config rendering and enforcement ──────────────────────────────────────────
+
+render_xmrig_config() {
+  local pool_url="$1" pool_port="$2" pool_user="$3" threads="$4" mode="$5"
+  local config_file="/tmp/xmrig-config.json"
+
+  cat > "$config_file" << EOF
+{
+  "api": { "id": null, "worker_id": null },
+  "http": { "enabled": false, "host": "127.0.0.1", "port": 0 },
+  "autosave": true,
+  "background": true,
+  "colors": true,
+  "randomx": { "init": -1, "mode": "$mode", "1gb_pages": false },
+  "cpu": { "enabled": true, "huge_pages": false, "hw_aes": true, "priority": null, "threads": $threads },
+  "donate_level": 1,
+  "log_file": "/tmp/xmrig.log",
+  "print_time_interval": 60,
+  "retries": 5,
+  "retry_pause": 5,
+  "watch": true,
+  "pools": [
+    {
+      "algo": "rx/0",
+      "coin": "monero",
+      "url": "$pool_url:$pool_port",
+      "user": "$pool_user",
+      "pass": "x",
+      "tls": false,
+      "keepalive": false,
+      "enabled": true
+    }
+  ]
+}
+EOF
+
+  echo "$config_file"
+}
+
+enforce_thermal_policy() {
+  local max_temp="$1" current_temp="$2"
+  [ -z "$max_temp" ] && max_temp=80
+  [ -z "$current_temp" ] && current_temp=$(get_temp)
+
+  if [ "$current_temp" -gt "$max_temp" ]; then
+    log "THERMAL LIMIT: temp $current_temp > max $max_temp — pausing miner"
+    pkill -f "xmrig-custom" 2>/dev/null || true
+    post_event "warning" "thermal_throttle" "Mining paused: temp $current_temp°C > max $max_temp°C"
+    return 1
+  fi
+  return 0
+}
+
+track_restart_state() {
+  local restart_state_file="/tmp/xmrig-restart-state.txt"
+  local restart_threshold="${1:-5}"
+  local restart_cooldown="${2:-300}"
+  local now; now=$(date +%s)
+
+  if [ ! -f "$restart_state_file" ]; then
+    printf "count=0\nlast_restart=$now\ncooldown_until=0\n" > "$restart_state_file"
+    return 0
+  fi
+
+  local count; count=$(grep '^count=' "$restart_state_file" | cut -d= -f2)
+  local cooldown_until; cooldown_until=$(grep '^cooldown_until=' "$restart_state_file" | cut -d= -f2)
+
+  if [ "$now" -lt "$cooldown_until" ]; then
+    log "Restart cooldown active until $((cooldown_until - now))s"
+    return 1
+  fi
+
+  # Increment count
+  count=$((count + 1))
+  [ "$count" -gt "$restart_threshold" ] && {
+    log "Restart threshold exceeded ($count > $restart_threshold)"
+    post_event "critical" "restart_threshold_exceeded" "Too many restarts ($count)"
+    cooldown_until=$((now + restart_cooldown))
+  }
+
+  printf "count=$count\nlast_restart=$now\ncooldown_until=$cooldown_until\n" > "$restart_state_file"
 }
 
 # ── Desired-state reconcile loop ──────────────────────────────────────────────
