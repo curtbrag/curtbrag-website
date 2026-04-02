@@ -669,6 +669,22 @@ exports.handler = async (event, context) => {
       }
     }
 
+    // Device groups list
+    if (action === "groups") {
+      try {
+        const groupStore = getStore("cp-groups");
+        const list = await groupStore.list();
+        const groups = [];
+        for (const entry of list.blobs) {
+          const g = await groupStore.get(entry.key, { type: "json" });
+          if (g) groups.push(g);
+        }
+        return json(200, hdrs, { groups });
+      } catch {
+        return json(200, hdrs, { groups: [] });
+      }
+    }
+
     return json(404, hdrs, { error: "unknown action" });
   }
 
@@ -958,22 +974,6 @@ exports.handler = async (event, context) => {
       };
       await groupStore.setJSON(group_id, group);
       return json(200, hdrs, { ok: true });
-    }
-
-    // Get all groups
-    if (action === "groups" && event.httpMethod === "GET") {
-      try {
-        const groupStore = getStore("cp-groups");
-        const list = await groupStore.list();
-        const groups = [];
-        for (const entry of list.blobs) {
-          const g = await groupStore.get(entry.key, { type: "json" });
-          if (g) groups.push(g);
-        }
-        return json(200, hdrs, { groups });
-      } catch {
-        return json(200, hdrs, { groups: [] });
-      }
     }
 
     // Set restart policy for device

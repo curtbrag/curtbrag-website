@@ -205,10 +205,10 @@ async function login() {
   if (!pw) return;
 
   try {
-    const r = await fetch(API, {
+    const r = await fetch(`${API}?action=auth-check`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'auth-check', password: pw }),
+      body: JSON.stringify({ password: pw }),
     });
     if (r.ok) {
       password = pw;
