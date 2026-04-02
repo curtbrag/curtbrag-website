@@ -584,6 +584,91 @@ exports.handler = async (event, context) => {
       return json(200, hdrs, { desired: des });
     }
 
+    // Device performance metrics
+    if (action === "device-metrics") {
+      const id = params.id;
+      if (!id) return json(400, hdrs, { error: "device_id required" });
+      try {
+        const metricsStore = getStore("cp-metrics");
+        const history = (await metricsStore.get(id, { type: "json" })) || [];
+        const device = await getDevice(id);
+        return json(200, hdrs, {
+          device_id: id,
+          device_hostname: device?.hostname || "unknown",
+          samples: history.slice(-100),
+          sample_count: history.length,
+        });
+      } catch (e) {
+        return json(500, hdrs, { error: e.message });
+      }
+    }
+
+    // Fleet-wide analytics
+    if (action === "fleet-analytics") {
+      try {
+        const devices = await getAllDevices();
+        const metricsStore = getStore("cp-metrics");
+        const analytics = {
+          devices_total: devices.length,
+          devices_mining: 0,
+          avg_hashrate: 0,
+          peak_temp: 0,
+          total_accepted: 0,
+          device_samples: {},
+        };
+
+        for (const d of devices) {
+          const history = (await metricsStore.get(d.id, { type: "json" })) || [];
+          if (history.length > 0) {
+            const latest = history[history.length - 1];
+            if (latest.hashrate_60s > 0) analytics.devices_mining++;
+            analytics.avg_hashrate += latest.hashrate_60s || 0;
+            analytics.peak_temp = Math.max(analytics.peak_temp, latest.temp_peak || 0);
+            analytics.total_accepted += latest.accepted_shares || 0;
+            analytics.device_samples[d.id] = history.length;
+          }
+        }
+
+        analytics.avg_hashrate = (analytics.avg_hashrate / Math.max(analytics.devices_mining, 1)).toFixed(2);
+        return json(200, hdrs, analytics);
+      } catch (e) {
+        return json(500, hdrs, { error: e.message });
+      }
+    }
+
+    // Thermal status report
+    if (action === "thermal-report") {
+      try {
+        const devices = await getAllDevices();
+        const metricsStore = getStore("cp-metrics");
+        const report = {
+          timestamp: Date.now(),
+          nodes: [],
+        };
+
+        for (const d of devices) {
+          const obs = (await getObservedState(d.id)) || {};
+          const des = (await getDesiredState(d.id)) || {};
+          const history = (await metricsStore.get(d.id, { type: "json" })) || [];
+          const latest = history[history.length - 1] || {};
+
+          report.nodes.push({
+            device_id: d.id,
+            hostname: d.hostname,
+            current_temp: latest.temp_current || 0,
+            peak_temp: latest.temp_peak || 0,
+            max_allowed: des.max_temp_celsius || 80,
+            status: obs.xmrig_running ? "mining" : "idle",
+            policy_enforced: des.pause_on_high_temp,
+          });
+        }
+
+        return json(200, hdrs, report);
+      } catch (e) {
+        return json(500, hdrs, { error: e.message });
+      }
+    }
+
     return json(404, hdrs, { error: "unknown action" });
   }
 
@@ -854,6 +939,126 @@ exports.handler = async (event, context) => {
         await getStore("cp-observed").delete(device_id);
         await getStore("cp-events").delete(device_id);
       } catch {}
+      return json(200, hdrs, { ok: true });
+    }
+
+    // Device grouping: create/update group
+    if (postAction === "save-group") {
+      const { group_id, group_name, device_ids, description } = body;
+      if (!group_id || !group_name)
+        return json(400, hdrs, { error: "group_id and group_name required" });
+      const groupStore = getStore("cp-groups");
+      const group = {
+        id: group_id,
+        name: group_name,
+        description: description || "",
+        device_ids: device_ids || [],
+        created_at: Date.now(),
+        updated_at: Date.now(),
+      };
+      await groupStore.setJSON(group_id, group);
+      return json(200, hdrs, { ok: true });
+    }
+
+    // Get all groups
+    if (action === "groups" && event.httpMethod === "GET") {
+      try {
+        const groupStore = getStore("cp-groups");
+        const list = await groupStore.list();
+        const groups = [];
+        for (const entry of list.blobs) {
+          const g = await groupStore.get(entry.key, { type: "json" });
+          if (g) groups.push(g);
+        }
+        return json(200, hdrs, { groups });
+      } catch {
+        return json(200, hdrs, { groups: [] });
+      }
+    }
+
+    // Set restart policy for device
+    if (postAction === "set-restart-policy") {
+      const { device_id, threshold, cooldown } = body;
+      if (!device_id || threshold === undefined || cooldown === undefined)
+        return json(400, hdrs, { error: "device_id, threshold, cooldown required" });
+      const des = (await getDesiredState(device_id)) || {};
+      await saveDesiredState(device_id, {
+        ...des,
+        restart_threshold: threshold,
+        restart_cooldown: cooldown,
+      });
+      return json(200, hdrs, { ok: true });
+    }
+
+    // Set thermal policy for device
+    if (postAction === "set-thermal-policy") {
+      const { device_id, max_temp, pause_on_battery, pause_on_high_temp } = body;
+      if (!device_id)
+        return json(400, hdrs, { error: "device_id required" });
+      const des = (await getDesiredState(device_id)) || {};
+      await saveDesiredState(device_id, {
+        ...des,
+        max_temp_celsius: max_temp !== undefined ? max_temp : des.max_temp_celsius,
+        pause_on_battery: pause_on_battery !== undefined ? pause_on_battery : des.pause_on_battery,
+        pause_on_high_temp: pause_on_high_temp !== undefined ? pause_on_high_temp : des.pause_on_high_temp,
+      });
+      return json(200, hdrs, { ok: true });
+    }
+
+    // Set mining level for device
+    if (postAction === "set-mining-level") {
+      const { device_id, level } = body;
+      if (!device_id || level === undefined)
+        return json(400, hdrs, { error: "device_id and level (0-4) required" });
+      if (level < 0 || level > 4)
+        return json(400, hdrs, { error: "level must be 0-4" });
+      const des = (await getDesiredState(device_id)) || {};
+      await saveDesiredState(device_id, {
+        ...des,
+        mining_level: level,
+        miner_enabled: level > 0,
+      });
+      return json(200, hdrs, { ok: true });
+    }
+
+    // Track binary deployment
+    if (postAction === "deploy-binary") {
+      const { binary_id, target, device_ids } = body;
+      if (!binary_id)
+        return json(400, hdrs, { error: "binary_id required" });
+      const deployStore = getStore("cp-deployments");
+      const deployment = {
+        id: genId(),
+        binary_id,
+        target,
+        device_ids: device_ids || [],
+        status: "in_progress",
+        created_at: Date.now(),
+        completed_at: null,
+        results: {},
+      };
+      const deployments = (await deployStore.get("deployments", { type: "json" })) || [];
+      deployments.push(deployment);
+      await deployStore.setJSON("deployments", deployments.slice(-100));
+      return json(200, hdrs, { ok: true, deployment_id: deployment.id });
+    }
+
+    // Track profile rollout
+    if (postAction === "track-rollout") {
+      const { rollout_id, profile_id, target_devices, status } = body;
+      if (!rollout_id || !profile_id)
+        return json(400, hdrs, { error: "rollout_id and profile_id required" });
+      const rolloutStore = getStore("cp-rollouts");
+      const rollout = {
+        id: rollout_id,
+        profile_id,
+        target_devices: target_devices || [],
+        status: status || "in_progress",
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        results: {},
+      };
+      await rolloutStore.setJSON(rollout_id, rollout);
       return json(200, hdrs, { ok: true });
     }
 
