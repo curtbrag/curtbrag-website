@@ -92,12 +92,23 @@ import Layout from '../../layouts/Layout.astro';
 
 <div id="tab-config" class="tab-content" style="display:none">
 <div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+<h3 style="margin:0">Fleet Controls</h3>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<button onclick="fleetMining(true,'phones')" style="background:var(--color-green);color:white;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:12px">Enable All Phones</button>
+<button onclick="fleetMining(false,'phones')" style="background:var(--color-red);color:white;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:12px">Disable All Phones</button>
+<button onclick="fleetMining(true,'all')" style="background:var(--color-brand);color:white;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:12px">Enable All Devices</button>
+<button onclick="fleetMining(false,'all')" style="background:#555;color:white;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:12px">Disable All Devices</button>
+</div>
+</div>
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px">
 <h3>Config Profiles</h3>
-<div id="profiles" style="margin-top:16px;display:grid;gap:12px"></div>
+<div id="profiles" style="margin-top:16px;display:grid;gap:12px">Loading profiles...</div>
 </div>
 <div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
 <h3>Device Groups</h3>
-<div id="groups" style="margin-top:16px;font-size:12px"></div>
+<div id="groups" style="margin-top:16px;font-size:12px">Loading groups...</div>
 </div>
 </div>
 
@@ -138,7 +149,10 @@ import Layout from '../../layouts/Layout.astro';
 
 <div id="tab-alerts" class="tab-content" style="display:none">
 <div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
-<h3>Active Alerts</h3>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+<h3 style="margin:0">Active Alerts</h3>
+<button onclick="ackAllAlerts()" style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:11px;color:var(--color-muted)">Ack All</button>
+</div>
 <div id="alertsList" style="margin-top:12px;font-size:12px">No active alerts</div>
 </div>
 </div>
@@ -176,6 +190,8 @@ const state = {
   commands: { queue: [], history: [] },
   analytics: null,
   thermalReport: null,
+  profiles: {},
+  groups: [],
 };
 
 function toast(msg, type = 'ok') {
@@ -253,6 +269,16 @@ async function fetchAll() {
       state.thermalReport = thermal;
     } catch {}
 
+    try {
+      const prof = await callApi('profiles');
+      state.profiles = prof.profiles || {};
+    } catch {}
+
+    try {
+      const grp = await callApi('groups');
+      state.groups = grp.groups || [];
+    } catch {}
+
     renderSummary();
     renderFleet();
     renderDevicesTable();
@@ -260,6 +286,9 @@ async function fetchAll() {
     renderAlerts();
     renderAnalytics();
     renderThermalReport();
+    renderProfiles();
+    renderGroups();
+    renderEvents();
   } catch (e) { toast(`Fetch failed: ${e.message}`, 'error'); }
 }
 
@@ -326,6 +355,79 @@ function renderThermalReport() {
   if (!state.thermalReport) return;
   const el = document.getElementById('thermalReport');
   el.innerHTML = state.thermalReport.nodes.map(n => `<div style="padding:8px;background:var(--color-bg);border-radius:4px;margin:4px 0;border-left:3px solid ${n.current_temp > n.max_allowed ? 'var(--color-red)' : 'var(--color-green)'}">${n.hostname}: ${n.current_temp}°C / ${n.max_allowed}°C (${n.status})</div>`).join('');
+}
+
+function renderProfiles() {
+  const el = document.getElementById('profiles');
+  const entries = Object.values(state.profiles);
+  if (!entries.length) { el.innerHTML = 'No profiles'; return; }
+  el.innerHTML = entries.map(p => `
+    <div style="background:var(--color-bg);border-radius:6px;padding:12px;display:flex;justify-content:space-between;align-items:start">
+      <div>
+        <div style="font-weight:600;margin-bottom:2px">${p.name || p.id}</div>
+        <div style="font-size:11px;color:var(--color-muted)">${p.description || ''}</div>
+        <div style="font-size:11px;color:var(--color-muted);margin-top:4px">Class: ${p.device_class || 'any'} · Temp: ${p.max_temp || '--'}°C · Threads: ${p.thread_count || 'auto'}</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button onclick="rolloutProfile('${p.id}','phones')" style="background:var(--color-brand);color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:11px">→ Phones</button>
+        <button onclick="rolloutProfile('${p.id}','all')" style="background:#555;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:11px">→ All</button>
+      </div>
+    </div>`).join('');
+}
+
+function renderGroups() {
+  const el = document.getElementById('groups');
+  if (!state.groups.length) { el.innerHTML = '<span style="color:var(--color-muted)">No groups defined</span>'; return; }
+  el.innerHTML = state.groups.map(g => `
+    <div style="background:var(--color-bg);border-radius:6px;padding:10px;margin-bottom:8px">
+      <div style="font-weight:600">${g.name}</div>
+      <div style="font-size:11px;color:var(--color-muted)">${g.description || ''}</div>
+      <div style="font-size:11px;margin-top:4px">${(g.device_ids || []).length} devices</div>
+    </div>`).join('');
+}
+
+async function fleetMining(enable, target) {
+  try {
+    const action = enable ? 'fleet-enable-mining' : 'fleet-disable-mining';
+    const res = await callApi(action, 'POST', { target });
+    toast(`${enable ? 'Enabled' : 'Disabled'} mining on ${res.affected} devices`);
+    setTimeout(fetchAll, 1000);
+  } catch (e) { toast(`Fleet control failed: ${e.message}`, 'error'); }
+}
+
+async function rolloutProfile(profileId, target) {
+  try {
+    await callApi('rollout-profile', 'POST', { profile_id: profileId, target });
+    toast(`Profile ${profileId} rolled out to ${target}`);
+    setTimeout(fetchAll, 1000);
+  } catch (e) { toast(`Rollout failed: ${e.message}`, 'error'); }
+}
+
+async function quarantineDevice(deviceId, quarantine) {
+  try {
+    const action = quarantine ? 'quarantine' : 'unquarantine';
+    await callApi(action, 'POST', { device_id: deviceId });
+    toast(quarantine ? 'Device quarantined' : 'Device unquarantined');
+    setTimeout(fetchAll, 1000);
+  } catch (e) { toast(`Error: ${e.message}`, 'error'); }
+}
+
+async function deleteDevice(deviceId) {
+  if (!confirm('Delete this device from the registry?')) return;
+  try {
+    await callApi('delete-device', 'POST', { device_id: deviceId });
+    document.getElementById('detail').style.right = '-400px';
+    toast('Device deleted');
+    setTimeout(fetchAll, 1000);
+  } catch (e) { toast(`Error: ${e.message}`, 'error'); }
+}
+
+async function ackAllAlerts() {
+  try {
+    await callApi('ack-all-alerts', 'POST', {});
+    toast('All alerts acknowledged');
+    setTimeout(fetchAll, 1000);
+  } catch (e) { toast(`Error: ${e.message}`, 'error'); }
 }
 
 function filterEvents(filter) {
@@ -409,6 +511,12 @@ async function showDetail(deviceId) {
         <button onclick="queueCmd('${deviceId}', 'mining-stop')" style="background:var(--color-red);color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Stop</button>
         <button onclick="queueCmd('${deviceId}', 'kill-rogue')" style="background:var(--color-red);color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Kill Rogue</button>
         <button onclick="queueCmd('${deviceId}', 'reconcile')" style="background:var(--color-brand);color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Reconcile</button>
+        <button onclick="queueCmd('${deviceId}', 'run-diagnostic')" style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Diagnostic</button>
+        <button onclick="queueCmd('${deviceId}', 'reboot')" style="background:#8b5cf6;color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Reboot</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button onclick="quarantineDevice('${deviceId}', ${!d.quarantined})" style="background:${d.quarantined ? 'var(--color-green)' : 'var(--color-yellow)'};color:${d.quarantined ? 'white' : 'black'};border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">${d.quarantined ? 'Unquarantine' : 'Quarantine'}</button>
+        <button onclick="deleteDevice('${deviceId}')" style="background:transparent;border:1px solid var(--color-red);color:var(--color-red);border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Delete</button>
       </div>
     `;
     detail.style.right = '0';
