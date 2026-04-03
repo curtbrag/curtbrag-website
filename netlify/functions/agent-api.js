@@ -391,7 +391,7 @@ function generateXmrigConfig(desired, device) {
     background: true,
     colors: true,
     title: true,
-    randomx: { init: -1, mode: desired.randomx_mode || "light", 1gb_pages: desired.huge_pages },
+    randomx: { init: -1, mode: desired.randomx_mode || "light", "1gb-pages": desired.huge_pages },
     cpu: { enabled: true, huge_pages: desired.huge_pages, hw_aes: true, priority: null },
     donate_level: 1,
     donate_over_proxy: 1,
@@ -628,6 +628,26 @@ exports.handler = async (event, context) => {
       return json(200, hdrs, { ok: true });
     }
 
+    // ── CONFIG/RENDER-XMRIG (must be before generic /config check) ───────────
+    if (action === "config" && segments[1] === "render-xmrig" && event.httpMethod === "GET") {
+      if (!(await validateAgent(event.headers, deviceId)))
+        return json(401, hdrs, { error: "unauthorized" });
+
+      const device = await getDevice(deviceId);
+      if (!device) return json(404, hdrs, { error: "device not found" });
+
+      const desired =
+        (await getDesiredState(deviceId)) ||
+        defaultDesiredState(device.device_class, device.hostname);
+
+      const xmrigConfig = generateXmrigConfig(desired, device);
+      return json(200, hdrs, {
+        config: xmrigConfig,
+        version: desired.config_version || "1",
+        generated_at: Date.now(),
+      });
+    }
+
     // ── CONFIG ────────────────────────────────────────────────────────────────
     if (action === "config" && event.httpMethod === "GET") {
       if (!(await validateAgent(event.headers, deviceId)))
@@ -712,26 +732,6 @@ exports.handler = async (event, context) => {
       });
 
       return json(200, hdrs, { ok: true });
-    }
-
-    // ── CONFIG/RENDER-XMRIG ───────────────────────────────────────────────────
-    if (action === "config" && segments[1] === "render-xmrig" && event.httpMethod === "GET") {
-      if (!(await validateAgent(event.headers, deviceId)))
-        return json(401, hdrs, { error: "unauthorized" });
-
-      const device = await getDevice(deviceId);
-      if (!device) return json(404, hdrs, { error: "device not found" });
-
-      const desired =
-        (await getDesiredState(deviceId)) ||
-        defaultDesiredState(device.device_class, device.hostname);
-
-      const xmrigConfig = generateXmrigConfig(desired, device);
-      return json(200, hdrs, {
-        config: xmrigConfig,
-        version: desired.config_version || "1",
-        generated_at: Date.now(),
-      });
     }
 
     // ── TELEMETRY (detailed metrics) ──────────────────────────────────────────
