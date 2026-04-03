@@ -1029,6 +1029,64 @@ exports.handler = async (event, context) => {
       return json(200, hdrs, { ok: true });
     }
 
+    // Set approved binary hash (fleet-wide or per device)
+    if (postAction === "set-binary-hash") {
+      const { hash, target } = body; // target: "all" | "phones" | "pcs" | device_id
+      if (!hash || !/^[a-f0-9]{64}$/i.test(hash))
+        return json(400, hdrs, { error: "hash must be a 64-char hex SHA-256" });
+      const devices = await getAllDevices();
+      const affected = [];
+      for (const d of devices) {
+        let match = false;
+        if (!target || target === "all") match = true;
+        else if (target === "phones" && d.device_class === "phone") match = true;
+        else if (target === "pcs" && d.device_class !== "phone") match = true;
+        else if (d.id === target || d.hostname === target) match = true;
+        if (match) {
+          const des = (await getDesiredState(d.id)) || {};
+          await saveDesiredState(d.id, { ...des, approved_binary_hash: hash.toLowerCase() });
+          affected.push(d.id);
+        }
+      }
+      return json(200, hdrs, { ok: true, affected: affected.length });
+    }
+
+    // Clear approved binary hash (removes enforcement)
+    if (postAction === "clear-binary-hash") {
+      const { target } = body;
+      const devices = await getAllDevices();
+      const affected = [];
+      for (const d of devices) {
+        let match = !target || target === "all"
+          || (target === "phones" && d.device_class === "phone")
+          || (target === "pcs" && d.device_class !== "phone")
+          || d.id === target || d.hostname === target;
+        if (match) {
+          const des = (await getDesiredState(d.id)) || {};
+          delete des.approved_binary_hash;
+          await saveDesiredState(d.id, des);
+          affected.push(d.id);
+        }
+      }
+      return json(200, hdrs, { ok: true, affected: affected.length });
+    }
+
+    // Set pool config for a device
+    if (postAction === "set-pool-config") {
+      const { device_id, pool_url, pool_port, thread_count, randomx_mode } = body;
+      if (!device_id || !pool_url || !pool_port)
+        return json(400, hdrs, { error: "device_id, pool_url, pool_port required" });
+      const des = (await getDesiredState(device_id)) || {};
+      await saveDesiredState(device_id, {
+        ...des,
+        pool_url,
+        pool_port: parseInt(pool_port),
+        ...(thread_count !== undefined && { thread_count: parseInt(thread_count) }),
+        ...(randomx_mode && { randomx_mode }),
+      });
+      return json(200, hdrs, { ok: true });
+    }
+
     // Set thermal policy for device
     if (postAction === "set-thermal-policy") {
       const { device_id, max_temp, pause_on_battery, pause_on_high_temp } = body;

@@ -106,6 +106,26 @@ import Layout from '../../layouts/Layout.astro';
 <h3>Config Profiles</h3>
 <div id="profiles" style="margin-top:16px;display:grid;gap:12px">Loading profiles...</div>
 </div>
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+<h3 style="margin:0">Binary Hash Lock</h3>
+<span style="font-size:11px;color:var(--color-muted)">SHA-256 enforcement — blocks miner if binary changes</span>
+</div>
+<div style="font-size:12px;color:var(--color-muted);margin-bottom:10px">
+Observed hashes from online devices:
+<div id="hashReport" style="margin-top:6px;font-size:11px;font-family:monospace">--</div>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+<input id="hashInput" type="text" placeholder="Paste SHA-256 hash (64 hex chars)" style="flex:1;min-width:300px;background:var(--color-bg);border:1px solid var(--color-border);border-radius:6px;padding:8px;font-family:monospace;font-size:11px;color:var(--color-text)"/>
+<select id="hashTarget" style="background:var(--color-bg);border:1px solid var(--color-border);border-radius:6px;padding:8px;font-size:12px;color:var(--color-text)">
+<option value="all">All Devices</option>
+<option value="phones">Phones Only</option>
+<option value="pcs">PCs Only</option>
+</select>
+<button onclick="lockBinaryHash()" style="background:var(--color-brand);color:white;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:12px">Lock Hash</button>
+<button onclick="clearBinaryHash()" style="background:transparent;border:1px solid var(--color-border);border-radius:6px;padding:8px 10px;cursor:pointer;font-size:11px;color:var(--color-muted)">Clear</button>
+</div>
+</div>
 <div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
 <h3 style="margin:0">Device Groups</h3>
@@ -320,6 +340,7 @@ async function fetchAll() {
     renderProfiles();
     renderGroups();
     renderEvents();
+    renderHashReport();
   } catch (e) { toast(`Fetch failed: ${e.message}`, 'error'); }
 }
 
@@ -431,20 +452,57 @@ function renderGroups() {
     el.innerHTML = '<span style="color:var(--color-muted)">No groups — click "Seed Default Groups" to create canary/batch/fleet groups.</span>';
     return;
   }
-  el.innerHTML = state.groups.map(g => `
-    <div style="background:var(--color-bg);border-radius:6px;padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:start">
-      <div>
-        <div style="font-weight:600">${g.name}</div>
-        <div style="font-size:11px;color:var(--color-muted)">${g.description || ''}</div>
-        <div style="font-size:11px;margin-top:4px;color:var(--color-muted)">${(g.device_ids || []).length} device${(g.device_ids || []).length !== 1 ? 's' : ''}</div>
+  el.innerHTML = state.groups.map(g => {
+    const memberIds = g.device_ids || [];
+    const deviceCheckboxes = state.devices.map(d =>
+      `<label style="display:flex;gap:6px;align-items:center;padding:3px 0;font-size:11px;cursor:pointer">
+        <input type="checkbox" ${memberIds.includes(d.id) ? 'checked' : ''} data-device="${d.id}" class="grp-dev-cb-${g.id}"/>
+        ${d.hostname} <span style="color:var(--color-muted)">(${d.device_class})</span>
+      </label>`).join('');
+    return `
+    <div style="background:var(--color-bg);border-radius:6px;padding:10px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <div>
+          <div style="font-weight:600">${g.name}</div>
+          <div style="font-size:11px;color:var(--color-muted)">${g.description || ''}</div>
+          <div style="font-size:11px;margin-top:2px;color:var(--color-muted)">${memberIds.length} device${memberIds.length !== 1 ? 's' : ''}</div>
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">
+          <select id="grp-profile-${g.id}" style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:4px;padding:3px 6px;font-size:10px;color:var(--color-text)">
+            ${Object.values(state.profiles).map(p => `<option value="${p.id}">${p.name || p.id}</option>`).join('')}
+          </select>
+          <button onclick="rolloutToGroup('${g.id}')" style="background:var(--color-brand);color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:10px">Rollout</button>
+          <button onclick="toggleGroupMembers('${g.id}')" style="background:transparent;border:1px solid var(--color-border);border-radius:4px;padding:4px 8px;cursor:pointer;font-size:10px;color:var(--color-muted)">Members ▾</button>
+        </div>
       </div>
-      <div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">
-        <select id="grp-profile-${g.id}" style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:4px;padding:3px 6px;font-size:10px;color:var(--color-text)">
-          ${Object.values(state.profiles).map(p => `<option value="${p.id}">${p.name || p.id}</option>`).join('')}
-        </select>
-        <button onclick="rolloutToGroup('${g.id}')" style="background:var(--color-brand);color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:10px">Rollout</button>
+      <div id="grp-members-${g.id}" style="display:none;margin-top:10px;border-top:1px solid var(--color-border);padding-top:8px">
+        <div style="margin-bottom:6px;font-size:11px;color:var(--color-muted)">Select devices to include in this group:</div>
+        ${state.devices.length ? deviceCheckboxes : '<span style="font-size:11px;color:var(--color-muted)">No devices registered yet</span>'}
+        ${state.devices.length ? `<button onclick="saveGroupMembers('${g.id}','${g.name}')" style="margin-top:8px;background:var(--color-brand);color:white;border:none;border-radius:4px;padding:5px 12px;cursor:pointer;font-size:11px">Save Members</button>` : ''}
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+}
+
+function toggleGroupMembers(groupId) {
+  const el = document.getElementById(`grp-members-${groupId}`);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function saveGroupMembers(groupId, groupName) {
+  const cbs = document.querySelectorAll(`.grp-dev-cb-${groupId}`);
+  const device_ids = Array.from(cbs).filter(cb => cb.checked).map(cb => cb.dataset.device);
+  const grp = state.groups.find(g => g.id === groupId) || {};
+  try {
+    await callApi('save-group', 'POST', {
+      group_id: groupId,
+      group_name: groupName,
+      description: grp.description || '',
+      device_ids,
+    });
+    toast(`Group "${groupName}" saved with ${device_ids.length} device(s)`);
+    setTimeout(fetchAll, 800);
+  } catch (e) { toast(`Save failed: ${e.message}`, 'error'); }
 }
 
 async function fleetMining(enable, target) {
@@ -546,6 +604,7 @@ async function showDetail(deviceId) {
         <div>Preflight: <strong style="color:${d.observed?.preflight_status === 'ok' ? 'var(--color-green)' : d.observed?.preflight_status?.startsWith('blocked') ? 'var(--color-red)' : 'var(--color-muted)'}">${d.observed?.preflight_status || 'unknown'}</strong>${d.observed?.preflight_status?.startsWith('blocked') ? ` — ${d.observed?.preflight_reason || ''}` : ''}</div>
         <div>Workload: ${d.observed?.workload_type || 'mining'}</div>
         <div>Agent: v${d.observed?.agent_version || d.agent_version || '?'}</div>
+        ${d.observed?.binary_hash ? `<div style="margin-top:4px">Binary hash: <code style="font-size:9px;color:${d.desired?.approved_binary_hash && d.observed.binary_hash !== d.desired.approved_binary_hash ? 'var(--color-red)' : 'var(--color-muted)'}">${d.observed.binary_hash.slice(0,20)}…</code> ${d.desired?.approved_binary_hash ? (d.observed.binary_hash === d.desired.approved_binary_hash ? '<span style="color:var(--color-green);font-size:10px">✓ matches</span>' : '<span style="color:var(--color-red);font-size:10px">✗ mismatch</span>') : '<span style="color:var(--color-muted);font-size:10px">(unlocked)</span>'}</div>` : ''}
       </div>
 
       <h3 style="margin-top:16px;margin-bottom:8px">Mining Level (0=off, 4=max)</h3>
@@ -563,11 +622,28 @@ async function showDetail(deviceId) {
       </div>
 
       <h3 style="margin-top:16px;margin-bottom:8px">Pool & Config</h3>
-      <div style="font-size:12px;color:var(--color-muted)">
-        <div>Pool: ${d.desired?.pool_url || 'gulf.moneroocean.stream'}</div>
-        <div>Port: ${d.desired?.pool_port || 10128}</div>
-        <div>Threads: ${d.desired?.thread_count || 'auto'}</div>
-        <div>RandomX: ${d.desired?.randomx_mode || 'light'}</div>
+      <div style="font-size:12px;display:grid;gap:6px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <label style="color:var(--color-muted);min-width:60px">Pool URL</label>
+          <input id="cfg-pool-url" type="text" value="${d.desired?.pool_url || '192.168.1.179'}" style="flex:1;background:var(--color-bg);border:1px solid var(--color-border);border-radius:4px;padding:4px 8px;font-size:11px;color:var(--color-text)"/>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <label style="color:var(--color-muted);min-width:60px">Port</label>
+          <input id="cfg-pool-port" type="number" value="${d.desired?.pool_port || 10128}" style="width:80px;background:var(--color-bg);border:1px solid var(--color-border);border-radius:4px;padding:4px 8px;font-size:11px;color:var(--color-text)"/>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <label style="color:var(--color-muted);min-width:60px">Threads</label>
+          <input id="cfg-threads" type="number" min="1" max="16" value="${d.desired?.thread_count || 6}" style="width:60px;background:var(--color-bg);border:1px solid var(--color-border);border-radius:4px;padding:4px 8px;font-size:11px;color:var(--color-text)"/>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <label style="color:var(--color-muted);min-width:60px">RandomX</label>
+          <select id="cfg-randomx" style="background:var(--color-bg);border:1px solid var(--color-border);border-radius:4px;padding:4px 8px;font-size:11px;color:var(--color-text)">
+            <option ${(d.desired?.randomx_mode || 'light') === 'light' ? 'selected' : ''}>light</option>
+            <option ${d.desired?.randomx_mode === 'fast' ? 'selected' : ''}>fast</option>
+            <option ${d.desired?.randomx_mode === 'auto' ? 'selected' : ''}>auto</option>
+          </select>
+        </div>
+        <button onclick="savePoolConfig('${deviceId}')" style="margin-top:4px;background:var(--color-brand);color:white;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:11px;align-self:start">Save Pool Config</button>
       </div>
 
       <div style="display:flex;gap:8px;margin-top:24px;flex-wrap:wrap">
@@ -613,6 +689,19 @@ async function savePauseBattery(deviceId, checked) {
   } catch (e) { toast(`Error: ${e.message}`, 'error'); }
 }
 
+async function savePoolConfig(deviceId) {
+  const pool_url = document.getElementById('cfg-pool-url')?.value?.trim();
+  const pool_port = parseInt(document.getElementById('cfg-pool-port')?.value);
+  const thread_count = parseInt(document.getElementById('cfg-threads')?.value);
+  const randomx_mode = document.getElementById('cfg-randomx')?.value;
+  if (!pool_url || !pool_port) { toast('Pool URL and port required', 'error'); return; }
+  try {
+    await callApi('set-pool-config', 'POST', { device_id: deviceId, pool_url, pool_port, thread_count, randomx_mode });
+    toast('Pool config saved');
+    setTimeout(fetchAll, 800);
+  } catch (e) { toast(`Save failed: ${e.message}`, 'error'); }
+}
+
 async function queueCmd(deviceId, type) {
   try {
     await callApi('queue-command', 'POST', { target: deviceId, type });
@@ -638,6 +727,46 @@ async function flushQueue() {
     toast('Queue flushed');
     setTimeout(fetchAll, 1000);
   } catch (e) { toast(`Flush failed: ${e.message}`, 'error'); }
+}
+
+async function lockBinaryHash() {
+  const hash = document.getElementById('hashInput').value.trim();
+  const target = document.getElementById('hashTarget').value;
+  if (!/^[a-f0-9]{64}$/i.test(hash)) { toast('Hash must be 64 hex chars', 'error'); return; }
+  try {
+    const r = await callApi('set-binary-hash', 'POST', { hash, target });
+    toast(`Hash locked on ${r.affected} device(s)`);
+    document.getElementById('hashInput').value = '';
+    setTimeout(fetchAll, 800);
+  } catch (e) { toast(`Lock failed: ${e.message}`, 'error'); }
+}
+
+async function clearBinaryHash() {
+  const target = document.getElementById('hashTarget').value;
+  if (!confirm(`Clear binary hash enforcement for target: ${target}?`)) return;
+  try {
+    const r = await callApi('clear-binary-hash', 'POST', { target });
+    toast(`Hash cleared on ${r.affected} device(s)`);
+  } catch (e) { toast(`Clear failed: ${e.message}`, 'error'); }
+}
+
+function renderHashReport() {
+  const el = document.getElementById('hashReport');
+  if (!el) return;
+  const hashes = {};
+  for (const d of state.devices) {
+    const h = d.observed?.binary_hash;
+    if (h) hashes[h] = (hashes[h] || []);
+    if (h) hashes[h].push(d.hostname);
+  }
+  const entries = Object.entries(hashes);
+  if (!entries.length) { el.textContent = 'No observed hashes yet'; return; }
+  el.innerHTML = entries.map(([h, hosts]) =>
+    `<div style="margin:2px 0;display:flex;gap:8px;align-items:center">
+      <span title="${h}" style="cursor:pointer" onclick="document.getElementById('hashInput').value='${h}'">${h.slice(0,16)}… (${hosts.join(', ')})</span>
+      <button onclick="document.getElementById('hashInput').value='${h}'" style="background:transparent;border:1px solid var(--color-border);border-radius:3px;padding:1px 6px;cursor:pointer;font-size:10px;color:var(--color-muted)">Use</button>
+    </div>`
+  ).join('');
 }
 
 async function rolloutToGroup(groupId) {

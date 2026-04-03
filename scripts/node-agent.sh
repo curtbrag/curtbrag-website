@@ -730,6 +730,7 @@ apply_desired_state() {
   local binary_path_raw; binary_path_raw=$(grep -o '"approved_binary_path":"[^"]*"' "$desired_file" | cut -d'"' -f4)
   local restart_threshold; restart_threshold=$(grep -o '"restart_threshold":[0-9]*' "$desired_file" | cut -d: -f2)
   local restart_cooldown; restart_cooldown=$(grep -o '"restart_cooldown":[0-9]*' "$desired_file" | cut -d: -f2)
+  local approved_hash; approved_hash=$(grep -o '"approved_binary_hash":"[^"]*"' "$desired_file" | cut -d'"' -f4)
 
   # Expand ~ / $HOME in paths
   local binary_path; binary_path=$(expand_path "${binary_path_raw:-~/xmrig-custom}")
@@ -772,6 +773,18 @@ apply_desired_state() {
         log "Mining blocked: $PREFLIGHT_REASON"
         # Report blocked status via state
         post_event "warning" "mining_blocked" "$PREFLIGHT_REASON"
+        return 0
+      fi
+    fi
+
+    # Binary hash verification (only if desired state specifies a hash)
+    if [ -n "$approved_hash" ]; then
+      local actual_hash; actual_hash=$(hash_binary "$binary_path")
+      if [ "$actual_hash" != "$approved_hash" ]; then
+        PREFLIGHT_STATUS="blocked_hash_mismatch"
+        PREFLIGHT_REASON="Binary hash mismatch: expected ${approved_hash:0:12}… got ${actual_hash:0:12}…"
+        log "Mining blocked: $PREFLIGHT_REASON"
+        post_event "critical" "hash_mismatch" "$PREFLIGHT_REASON"
         return 0
       fi
     fi
