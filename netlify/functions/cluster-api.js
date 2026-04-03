@@ -7,6 +7,25 @@
 const { getStore } = require("@netlify/blobs");
 const crypto = require("crypto");
 
+
+function openStore(name) {
+  const siteID =
+    process.env.NETLIFY_BLOBS_SITE_ID ||
+    process.env.SITE_ID ||
+    undefined;
+
+  const token =
+    process.env.NETLIFY_BLOBS_TOKEN ||
+    process.env.NETLIFY_ACCESS_TOKEN ||
+    process.env.NETLIFY_TOKEN ||
+    undefined;
+
+  if (siteID && token) {
+    return getStore(name, { siteID, token });
+  }
+
+  return getStore(name);
+}
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function safeCompare(a, b) {
@@ -43,7 +62,7 @@ async function getWebPassword() {
   if (env) return env;
   try {
     return (
-      (await getStore("cluster-config").get("web-password", {
+      (await openStore("cluster-config").get("web-password", {
         type: "text",
       })) || null
     );
@@ -57,7 +76,7 @@ async function getApiKey() {
   if (env) return env;
   try {
     return (
-      (await getStore("cluster-config").get("api-key", { type: "text" })) ||
+      (await openStore("cluster-config").get("api-key", { type: "text" })) ||
       null
     );
   } catch {
@@ -78,7 +97,7 @@ async function authOperator(headers) {
 
 async function getAllDevices() {
   try {
-    const store = getStore("cp-devices");
+    const store = openStore("cp-devices");
     const list = await store.list();
     const devices = [];
     for (const entry of list.blobs) {
@@ -93,7 +112,7 @@ async function getAllDevices() {
 
 async function getDevice(deviceId) {
   try {
-    return await getStore("cp-devices").get(deviceId, { type: "json" });
+    return await openStore("cp-devices").get(deviceId, { type: "json" });
   } catch {
     return null;
   }
@@ -101,7 +120,7 @@ async function getDevice(deviceId) {
 
 async function saveDevice(deviceId, device) {
   try {
-    await getStore("cp-devices").setJSON(deviceId, device);
+    await openStore("cp-devices").setJSON(deviceId, device);
   } catch (e) {
     console.warn("saveDevice:", e.message);
   }
@@ -109,7 +128,7 @@ async function saveDevice(deviceId, device) {
 
 async function getDesiredState(deviceId) {
   try {
-    return await getStore("cp-desired").get(deviceId, { type: "json" });
+    return await openStore("cp-desired").get(deviceId, { type: "json" });
   } catch {
     return null;
   }
@@ -117,7 +136,7 @@ async function getDesiredState(deviceId) {
 
 async function saveDesiredState(deviceId, state) {
   try {
-    await getStore("cp-desired").setJSON(deviceId, {
+    await openStore("cp-desired").setJSON(deviceId, {
       ...state,
       updated_at: Date.now(),
     });
@@ -128,7 +147,7 @@ async function saveDesiredState(deviceId, state) {
 
 async function getObservedState(deviceId) {
   try {
-    return await getStore("cp-observed").get(deviceId, { type: "json" });
+    return await openStore("cp-observed").get(deviceId, { type: "json" });
   } catch {
     return null;
   }
@@ -138,7 +157,7 @@ async function getObservedState(deviceId) {
 
 async function getQueue() {
   try {
-    return (await getStore("cp-commands").get("queue", { type: "json" })) || [];
+    return (await openStore("cp-commands").get("queue", { type: "json" })) || [];
   } catch {
     return [];
   }
@@ -147,7 +166,7 @@ async function getQueue() {
 async function getCommandHistory() {
   try {
     return (
-      (await getStore("cp-commands").get("history", { type: "json" })) || []
+      (await openStore("cp-commands").get("history", { type: "json" })) || []
     );
   } catch {
     return [];
@@ -157,7 +176,7 @@ async function getCommandHistory() {
 async function enqueueCommand(cmd) {
   try {
     // Write to new cp-commands store (for new node agents)
-    const store = getStore("cp-commands");
+    const store = openStore("cp-commands");
     const queue = (await store.get("queue", { type: "json" })) || [];
     if (queue.length >= 200) queue.shift();
     queue.push(cmd);
@@ -166,7 +185,7 @@ async function enqueueCommand(cmd) {
     // Dual-write to legacy cluster-control queue so existing poll scripts
     // keep receiving commands during the transition to new agents
     try {
-      const legacyStore = getStore("cluster-control");
+      const legacyStore = openStore("cluster-control");
       const legacyQueue =
         (await legacyStore.get("queue", { type: "json" })) || [];
       if (legacyQueue.length < 100) {
@@ -195,7 +214,7 @@ async function enqueueCommand(cmd) {
 
 async function flushQueue() {
   try {
-    await getStore("cp-commands").setJSON("queue", []);
+    await openStore("cp-commands").setJSON("queue", []);
   } catch {}
 }
 
@@ -321,7 +340,7 @@ const DEFAULT_PROFILES = {
 
 async function getProfiles() {
   try {
-    const store = getStore("cp-profiles");
+    const store = openStore("cp-profiles");
     const list = await store.list();
     const profiles = { ...DEFAULT_PROFILES };
     for (const entry of list.blobs) {
@@ -337,7 +356,7 @@ async function getProfiles() {
 async function getProfile(profileId) {
   if (DEFAULT_PROFILES[profileId]) return DEFAULT_PROFILES[profileId];
   try {
-    return await getStore("cp-profiles").get(profileId, { type: "json" });
+    return await openStore("cp-profiles").get(profileId, { type: "json" });
   } catch {
     return null;
   }
@@ -345,7 +364,7 @@ async function getProfile(profileId) {
 
 async function saveProfile(profileId, profile) {
   try {
-    await getStore("cp-profiles").setJSON(profileId, profile);
+    await openStore("cp-profiles").setJSON(profileId, profile);
   } catch (e) {
     console.warn("saveProfile:", e.message);
   }
@@ -356,7 +375,7 @@ async function saveProfile(profileId, profile) {
 async function getBinaryRegistry() {
   try {
     return (
-      (await getStore("cp-binaries").get("registry", { type: "json" })) || []
+      (await openStore("cp-binaries").get("registry", { type: "json" })) || []
     );
   } catch {
     return [];
@@ -365,7 +384,7 @@ async function getBinaryRegistry() {
 
 async function saveBinaryRegistry(registry) {
   try {
-    await getStore("cp-binaries").setJSON("registry", registry);
+    await openStore("cp-binaries").setJSON("registry", registry);
   } catch {}
 }
 
@@ -374,7 +393,7 @@ async function saveBinaryRegistry(registry) {
 async function getAlerts() {
   try {
     return (
-      (await getStore("cp-alerts").get("active", { type: "json" })) || []
+      (await openStore("cp-alerts").get("active", { type: "json" })) || []
     );
   } catch {
     return [];
@@ -383,7 +402,7 @@ async function getAlerts() {
 
 async function saveAlerts(alerts) {
   try {
-    await getStore("cp-alerts").setJSON("active", alerts);
+    await openStore("cp-alerts").setJSON("active", alerts);
   } catch {}
 }
 
@@ -392,7 +411,7 @@ async function saveAlerts(alerts) {
 async function getEvents(deviceId) {
   try {
     const key = deviceId || "all";
-    return (await getStore("cp-events").get(key, { type: "json" })) || [];
+    return (await openStore("cp-events").get(key, { type: "json" })) || [];
   } catch {
     return [];
   }
@@ -611,7 +630,7 @@ exports.handler = async (event, context) => {
       const id = params.id;
       if (!id) return json(400, hdrs, { error: "device_id required" });
       try {
-        const metricsStore = getStore("cp-metrics");
+        const metricsStore = openStore("cp-metrics");
         const history = (await metricsStore.get(id, { type: "json" })) || [];
         const device = await getDevice(id);
         return json(200, hdrs, {
@@ -629,7 +648,7 @@ exports.handler = async (event, context) => {
     if (action === "fleet-analytics") {
       try {
         const devices = await getAllDevices();
-        const metricsStore = getStore("cp-metrics");
+        const metricsStore = openStore("cp-metrics");
         const analytics = {
           devices_total: devices.length,
           devices_mining: 0,
@@ -662,7 +681,7 @@ exports.handler = async (event, context) => {
     if (action === "thermal-report") {
       try {
         const devices = await getAllDevices();
-        const metricsStore = getStore("cp-metrics");
+        const metricsStore = openStore("cp-metrics");
         const report = {
           timestamp: Date.now(),
           nodes: [],
@@ -694,7 +713,7 @@ exports.handler = async (event, context) => {
     // Device groups list
     if (action === "groups") {
       try {
-        const groupStore = getStore("cp-groups");
+        const groupStore = openStore("cp-groups");
         const list = await groupStore.list();
         const groups = [];
         for (const entry of list.blobs) {
@@ -869,7 +888,7 @@ exports.handler = async (event, context) => {
       // Resolve group membership if group_id provided
       let groupDeviceIds = null;
       if (group_id) {
-        const groupStore = getStore("cp-groups");
+        const groupStore = openStore("cp-groups");
         const grp = await groupStore.get(group_id, { type: "json" }).catch(() => null);
         groupDeviceIds = grp?.device_ids || [];
       }
@@ -989,10 +1008,10 @@ exports.handler = async (event, context) => {
       const { device_id } = body;
       if (!device_id) return json(400, hdrs, { error: "device_id required" });
       try {
-        await getStore("cp-devices").delete(device_id);
-        await getStore("cp-desired").delete(device_id);
-        await getStore("cp-observed").delete(device_id);
-        await getStore("cp-events").delete(device_id);
+        await openStore("cp-devices").delete(device_id);
+        await openStore("cp-desired").delete(device_id);
+        await openStore("cp-observed").delete(device_id);
+        await openStore("cp-events").delete(device_id);
       } catch {}
       return json(200, hdrs, { ok: true });
     }
@@ -1002,7 +1021,7 @@ exports.handler = async (event, context) => {
       const { group_id, group_name, device_ids, description } = body;
       if (!group_id || !group_name)
         return json(400, hdrs, { error: "group_id and group_name required" });
-      const groupStore = getStore("cp-groups");
+      const groupStore = openStore("cp-groups");
       const group = {
         id: group_id,
         name: group_name,
@@ -1123,7 +1142,7 @@ exports.handler = async (event, context) => {
       const { binary_id, target, device_ids } = body;
       if (!binary_id)
         return json(400, hdrs, { error: "binary_id required" });
-      const deployStore = getStore("cp-deployments");
+      const deployStore = openStore("cp-deployments");
       const deployment = {
         id: genId(),
         binary_id,
@@ -1145,7 +1164,7 @@ exports.handler = async (event, context) => {
       const { rollout_id, profile_id, target_devices, status } = body;
       if (!rollout_id || !profile_id)
         return json(400, hdrs, { error: "rollout_id and profile_id required" });
-      const rolloutStore = getStore("cp-rollouts");
+      const rolloutStore = openStore("cp-rollouts");
       const rollout = {
         id: rollout_id,
         profile_id,

@@ -9,6 +9,25 @@
 const { getStore } = require("@netlify/blobs");
 const crypto = require("crypto");
 
+
+function openStore(name) {
+  const siteID =
+    process.env.NETLIFY_BLOBS_SITE_ID ||
+    process.env.SITE_ID ||
+    undefined;
+
+  const token =
+    process.env.NETLIFY_BLOBS_TOKEN ||
+    process.env.NETLIFY_ACCESS_TOKEN ||
+    process.env.NETLIFY_TOKEN ||
+    undefined;
+
+  if (siteID && token) {
+    return getStore(name, { siteID, token });
+  }
+
+  return getStore(name);
+}
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function safeCompare(a, b) {
@@ -38,13 +57,43 @@ function json(statusCode, headers, body) {
   return { statusCode, headers, body: JSON.stringify(body) };
 }
 
+
+function getActionFromEvent(event) {
+  const path = event.path || "";
+  const rawUrl = event.rawUrl || "";
+  let pathname = "";
+
+  try {
+    pathname = rawUrl ? new URL(rawUrl).pathname : "";
+  } catch {}
+
+  const candidates = [path, pathname];
+
+  for (const p of candidates) {
+    if (!p) continue;
+
+    if (p.startsWith("/.netlify/functions/agent-api/")) {
+      return p.replace("/.netlify/functions/agent-api/", "").split("/")[0] || "";
+    }
+
+    if (p.startsWith("/api/agent/")) {
+      return p.replace("/api/agent/", "").split("/")[0] || "";
+    }
+
+    if (p.startsWith("/agent-api/")) {
+      return p.replace("/agent-api/", "").split("/")[0] || "";
+    }
+  }
+
+  return "";
+}
 // ─── Credential helpers ──────────────────────────────────────────────────────
 
 async function getApiKey() {
   const env = process.env.CLUSTER_API_KEY;
   if (env) return env;
   try {
-    const store = getStore("cluster-config");
+    const store = openStore("cluster-config");
     return (await store.get("api-key", { type: "text" })) || null;
   } catch {
     return null;
@@ -55,7 +104,7 @@ async function getApiKey() {
 
 async function getDevice(deviceId) {
   try {
-    return await getStore("cp-devices").get(deviceId, { type: "json" });
+    return await openStore("cp-devices").get(deviceId, { type: "json" });
   } catch {
     return null;
   }
@@ -63,7 +112,7 @@ async function getDevice(deviceId) {
 
 async function saveDevice(deviceId, device) {
   try {
-    await getStore("cp-devices").setJSON(deviceId, device);
+    await openStore("cp-devices").setJSON(deviceId, device);
   } catch (e) {
     console.warn("saveDevice:", e.message);
   }
@@ -71,7 +120,7 @@ async function saveDevice(deviceId, device) {
 
 async function findDeviceByHostname(hostname) {
   try {
-    const store = getStore("cp-devices");
+    const store = openStore("cp-devices");
     const list = await store.list();
     for (const entry of list.blobs) {
       const d = await store.get(entry.key, { type: "json" });
@@ -85,7 +134,7 @@ async function findDeviceByHostname(hostname) {
 
 async function getDesiredState(deviceId) {
   try {
-    return await getStore("cp-desired").get(deviceId, { type: "json" });
+    return await openStore("cp-desired").get(deviceId, { type: "json" });
   } catch {
     return null;
   }
@@ -93,7 +142,7 @@ async function getDesiredState(deviceId) {
 
 async function saveObservedState(deviceId, state) {
   try {
-    await getStore("cp-observed").setJSON(deviceId, {
+    await openStore("cp-observed").setJSON(deviceId, {
       ...state,
       timestamp: Date.now(),
     });
@@ -106,7 +155,7 @@ async function saveObservedState(deviceId, state) {
 
 async function getPendingCommandsForDevice(deviceId, deviceClass, hostname) {
   try {
-    const store = getStore("cp-commands");
+    const store = openStore("cp-commands");
     const queue = (await store.get("queue", { type: "json" })) || [];
     const isPhone = deviceClass === "phone";
     const isPC = deviceClass === "pc" || deviceClass === "steamdeck";
@@ -128,7 +177,7 @@ async function getPendingCommandsForDevice(deviceId, deviceClass, hostname) {
 
 async function ackCommand(commandId, deviceId) {
   try {
-    const store = getStore("cp-commands");
+    const store = openStore("cp-commands");
     const queue = (await store.get("queue", { type: "json" })) || [];
     const updated = queue.map((cmd) =>
       cmd.id === commandId
@@ -143,7 +192,7 @@ async function ackCommand(commandId, deviceId) {
 
 async function completeCommand(commandId, result) {
   try {
-    const store = getStore("cp-commands");
+    const store = openStore("cp-commands");
     const queue = (await store.get("queue", { type: "json" })) || [];
     const history = (await store.get("history", { type: "json" })) || [];
 
@@ -167,8 +216,8 @@ async function completeCommand(commandId, result) {
 
 async function addEvent(deviceId, event) {
   try {
-    const evStore = getStore("cp-events");
-    const alertStore = getStore("cp-alerts");
+    const evStore = openStore("cp-events");
+    const alertStore = openStore("cp-alerts");
     const ts = Date.now();
     const base = {
       id: genId(),
@@ -491,10 +540,7 @@ exports.handler = async (event, context) => {
   }
 
   // Extract action from path: /.netlify/functions/agent-api/register → "register"
-  const rawPath =
-    event.path.replace(/.*\/agent-api/, "") || "";
-  const segments = rawPath.split("/").filter(Boolean);
-  const action = segments[0] || "";
+  const action = getActionFromEvent(event);
   const deviceId =
     event.headers["x-device-id"] || event.headers["X-Device-Id"] || "";
 
@@ -549,7 +595,7 @@ exports.handler = async (event, context) => {
 
         // Seed desired state
         const ds = defaultDesiredState(deviceClass, hostname);
-        await getStore("cp-desired").setJSON(newId, ds);
+        await openStore("cp-desired").setJSON(newId, ds);
 
         return json(200, hdrs, {
           device_id: newId,
@@ -673,7 +719,7 @@ exports.handler = async (event, context) => {
       let profileConfig = null;
       if (device.miner_profile) {
         try {
-          profileConfig = await getStore("cp-profiles").get(
+          profileConfig = await openStore("cp-profiles").get(
             device.miner_profile,
             { type: "json" }
           );
@@ -753,7 +799,7 @@ exports.handler = async (event, context) => {
       if (!device) return json(404, hdrs, { error: "device not found" });
 
       const body = JSON.parse(event.body || "{}");
-      const metricsStore = getStore("cp-metrics");
+      const metricsStore = openStore("cp-metrics");
 
       // Store detailed telemetry history per device (last 1000 samples)
       try {
