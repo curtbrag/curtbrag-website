@@ -861,14 +861,24 @@ exports.handler = async (event, context) => {
 
     // Rollout profile to group/all
     if (postAction === "rollout-profile") {
-      const { profile_id, target } = body;
+      const { profile_id, target, group_id } = body;
       if (!profile_id) return json(400, hdrs, { error: "profile_id required" });
       const devices = await getAllDevices();
       const affected = [];
 
+      // Resolve group membership if group_id provided
+      let groupDeviceIds = null;
+      if (group_id) {
+        const groupStore = getStore("cp-groups");
+        const grp = await groupStore.get(group_id, { type: "json" }).catch(() => null);
+        groupDeviceIds = grp?.device_ids || [];
+      }
+
       for (const d of devices) {
         let match = false;
-        if (target === "all") match = true;
+        if (groupDeviceIds !== null) {
+          match = groupDeviceIds.includes(d.id);
+        } else if (target === "all") match = true;
         else if (target === "phones" && d.device_class === "phone") match = true;
         else if (target === "pcs" && d.device_class !== "phone") match = true;
         else if (d.id === target || d.hostname === target) match = true;

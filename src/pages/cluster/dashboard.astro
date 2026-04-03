@@ -107,7 +107,10 @@ import Layout from '../../layouts/Layout.astro';
 <div id="profiles" style="margin-top:16px;display:grid;gap:12px">Loading profiles...</div>
 </div>
 <div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
-<h3>Device Groups</h3>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+<h3 style="margin:0">Device Groups</h3>
+<button onclick="seedDefaultGroups()" style="background:transparent;border:1px solid var(--color-border);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:11px;color:var(--color-muted)">+ Seed Default Groups</button>
+</div>
 <div id="groups" style="margin-top:16px;font-size:12px">Loading groups...</div>
 </div>
 </div>
@@ -424,12 +427,23 @@ function renderProfiles() {
 
 function renderGroups() {
   const el = document.getElementById('groups');
-  if (!state.groups.length) { el.innerHTML = '<span style="color:var(--color-muted)">No groups defined</span>'; return; }
+  if (!state.groups.length) {
+    el.innerHTML = '<span style="color:var(--color-muted)">No groups — click "Seed Default Groups" to create canary/batch/fleet groups.</span>';
+    return;
+  }
   el.innerHTML = state.groups.map(g => `
-    <div style="background:var(--color-bg);border-radius:6px;padding:10px;margin-bottom:8px">
-      <div style="font-weight:600">${g.name}</div>
-      <div style="font-size:11px;color:var(--color-muted)">${g.description || ''}</div>
-      <div style="font-size:11px;margin-top:4px">${(g.device_ids || []).length} devices</div>
+    <div style="background:var(--color-bg);border-radius:6px;padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:start">
+      <div>
+        <div style="font-weight:600">${g.name}</div>
+        <div style="font-size:11px;color:var(--color-muted)">${g.description || ''}</div>
+        <div style="font-size:11px;margin-top:4px;color:var(--color-muted)">${(g.device_ids || []).length} device${(g.device_ids || []).length !== 1 ? 's' : ''}</div>
+      </div>
+      <div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">
+        <select id="grp-profile-${g.id}" style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:4px;padding:3px 6px;font-size:10px;color:var(--color-text)">
+          ${Object.values(state.profiles).map(p => `<option value="${p.id}">${p.name || p.id}</option>`).join('')}
+        </select>
+        <button onclick="rolloutToGroup('${g.id}')" style="background:var(--color-brand);color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:10px">Rollout</button>
+      </div>
     </div>`).join('');
 }
 
@@ -624,6 +638,35 @@ async function flushQueue() {
     toast('Queue flushed');
     setTimeout(fetchAll, 1000);
   } catch (e) { toast(`Flush failed: ${e.message}`, 'error'); }
+}
+
+async function rolloutToGroup(groupId) {
+  const sel = document.getElementById(`grp-profile-${groupId}`);
+  const profileId = sel?.value;
+  if (!profileId) { toast('Select a profile first', 'error'); return; }
+  try {
+    await callApi('rollout-profile', 'POST', { profile_id: profileId, group_id: groupId });
+    toast(`Profile ${profileId} → group ${groupId}`);
+    setTimeout(fetchAll, 800);
+  } catch (e) { toast(`Rollout failed: ${e.message}`, 'error'); }
+}
+
+async function seedDefaultGroups() {
+  const defaults = [
+    { group_id: 'canary-phone',    group_name: 'Canary Phone',    description: 'Single phone for testing new profiles before wider rollout. Add your most trusted/durable device here.', device_ids: [] },
+    { group_id: 'phones-batch-1',  group_name: 'Phones Batch 1',  description: 'First wave of phones for staged rollout (50% of fleet).', device_ids: [] },
+    { group_id: 'phones-batch-2',  group_name: 'Phones Batch 2',  description: 'Second wave of phones for staged rollout (remaining 50%).', device_ids: [] },
+    { group_id: 'full-fleet',      group_name: 'Full Fleet',      description: 'All registered devices — use for fleet-wide operations only.', device_ids: [] },
+  ];
+  let created = 0;
+  for (const g of defaults) {
+    try {
+      await callApi('save-group', 'POST', g);
+      created++;
+    } catch (e) { /* may already exist */ }
+  }
+  toast(`Seeded ${created} default groups`);
+  setTimeout(fetchAll, 800);
 }
 
 async function loadDeviceEvents(deviceId) {

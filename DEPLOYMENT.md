@@ -5,7 +5,7 @@ Complete guide for deploying and testing the 3-layer cluster control plane.
 ## Prerequisites
 
 - **Netlify deployment**: curtbrag.com with custom functions
-- **Node devices**: node1-10 (IPs 192.168.1.206-215), or PC nodes (nexus-prime, viki, skynet, steamdeck)
+- **Node devices**: Android phones + PCs — IPs discovered via dashboard registration (proven node1: 192.168.1.191)
 - **Credentials**: Set CLUSTER_API_KEY and CLUSTER_WEB_PASSWORD in Netlify environment
 
 ## Phase 1: Netlify Environment Setup
@@ -29,9 +29,9 @@ Verify deployment at: `https://curtbrag.com/api/cluster?action=summary`
 
 ### Step 1: Create cluster config on node1
 
-SSH into node1 (192.168.1.206):
+SSH into node1 (192.168.1.191):
 ```bash
-ssh user@192.168.1.206
+ssh user@192.168.1.191
 ```
 
 Create `~/.cluster-env`:
@@ -47,20 +47,20 @@ chmod 600 ~/.cluster-env
 
 From your local machine:
 ```bash
-scp scripts/node-agent.sh user@192.168.1.206:~/node-agent.sh
-ssh user@192.168.1.206 'chmod +x ~/node-agent.sh && nohup ~/node-agent.sh > /tmp/agent.log 2>&1 &'
+scp scripts/node-agent.sh user@192.168.1.191:~/node-agent.sh
+ssh user@192.168.1.191 'chmod +x ~/node-agent.sh && nohup ~/node-agent.sh > ~/cluster/logs/agent.log 2>&1 &'
 ```
 
 ### Step 3: Verify Registration (wait 60 seconds)
 
 Check agent log:
 ```bash
-ssh user@192.168.1.206 'tail -20 /tmp/agent.log'
+ssh user@192.168.1.191 'tail -20 ~/cluster/logs/agent.log'
 ```
 
 Expected output:
 ```
-[2026-04-02 12:34:56] node-agent 1.0 starting on node1
+[2026-04-02 12:34:56] node-agent 1.1 starting on node1
 [2026-04-02 12:34:57] No identity found — registering...
 [2026-04-02 12:34:58] Registered as node1-a1b2c3d4
 [2026-04-02 12:34:58] Running as device: node1-a1b2c3d4
@@ -91,7 +91,7 @@ Expected dashboard state:
 
 1. Open device detail drawer for node1
 2. Drag "Mining Level" slider to level 3
-3. Check agent log: `tail -f /tmp/agent.log`
+3. Check agent log: `tail -f ~/cluster/logs/agent.log`
 4. Expected: Miner should start after ~5 seconds
 
 ### Test Pool Change Command
@@ -116,7 +116,7 @@ curl -X POST https://curtbrag.com/api/cluster \
 
 3. Check agent log for command execution:
 ```bash
-ssh user@192.168.1.206 'tail -f /tmp/agent.log | grep -i pool'
+ssh user@192.168.1.191 'tail -f ~/cluster/logs/agent.log | grep -i pool'
 ```
 
 ## Phase 5: Monitor Analytics
@@ -151,21 +151,27 @@ Once node1 is stable, deploy to other devices:
 
 ```bash
 #!/bin/bash
-# Deploy to all phone nodes (node2-10)
+# Deploy to all devices — IPs discovered at registration time.
+# Update NODES below with your actual device IPs before running.
 
-for node in {2..10}; do
-  ip="192.168.1.$((205+node))"
-  echo "Deploying to node$node ($ip)..."
+NODES=(
+  "192.168.1.191"   # node1 (proven)
+  # "192.168.1.xxx" # node2 — add when ready
+  # "192.168.1.xxx" # node3 — add when ready
+)
+
+for ip in "${NODES[@]}"; do
+  echo "Deploying to $ip..."
   scp scripts/node-agent.sh user@$ip:~/node-agent.sh
-  ssh user@$ip 'chmod +x ~/node-agent.sh && nohup ~/node-agent.sh > /tmp/agent.log 2>&1 &'
+  ssh user@$ip 'mkdir -p ~/cluster/logs && chmod +x ~/node-agent.sh && nohup ~/node-agent.sh > ~/cluster/logs/agent.log 2>&1 &'
   sleep 2
 done
 
-# Deploy to PC nodes
+# Deploy to PC nodes (update hostnames as needed)
 for node in "nexus-prime" "viki" "skynet" "steamdeck"; do
   echo "Deploying to $node..."
   scp scripts/node-agent.sh user@$node:~/node-agent.sh
-  ssh user@$node 'chmod +x ~/node-agent.sh && nohup ~/node-agent.sh > /tmp/agent.log 2>&1 &'
+  ssh user@$node 'mkdir -p ~/cluster/logs && chmod +x ~/node-agent.sh && nohup ~/node-agent.sh > ~/cluster/logs/agent.log 2>&1 &'
   sleep 2
 done
 ```
@@ -176,7 +182,7 @@ Wait 60 seconds, then view fleet dashboard to see all devices register.
 
 ### Agent not registering
 ```bash
-ssh user@192.168.1.206 'cat /tmp/agent.log | grep -i error'
+ssh user@192.168.1.191 'cat ~/cluster/logs/agent.log | grep -i error'
 # Check if CLUSTER_API_KEY is correct
 ```
 
@@ -195,7 +201,7 @@ curl -H "Authorization: Bearer $PASSWORD" \
 
 ### Mining not starting
 1. Check desired state is `miner_enabled: true`
-2. Check approved binary exists: `/home/user/xmrig-custom`
+2. Check approved binary exists: `~/xmrig-custom` (path is `$HOME/xmrig-custom`)
 3. Check thermal policy: temp < max_temp_celsius
 
 ## Next Steps
