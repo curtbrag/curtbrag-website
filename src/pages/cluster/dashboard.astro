@@ -125,6 +125,34 @@ import Layout from '../../layouts/Layout.astro';
 
 <div id="tab-commands" class="tab-content" style="display:none">
 <div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px">
+<h3 style="margin-bottom:12px">Dispatch Command</h3>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+  <select id="cmdTarget" style="background:var(--color-bg);border:1px solid var(--color-border);border-radius:6px;padding:8px;font-size:12px;color:var(--color-text)">
+    <option value="all">All Devices</option>
+    <option value="phones">All Phones</option>
+    <option value="pcs">All PCs</option>
+    <option value="node1">node1</option><option value="node2">node2</option><option value="node3">node3</option>
+    <option value="node4">node4</option><option value="node5">node5</option><option value="node6">node6</option>
+    <option value="node7">node7</option><option value="node8">node8</option><option value="node9">node9</option>
+    <option value="node10">node10</option><option value="nexus-prime">nexus-prime</option>
+    <option value="viki">viki</option><option value="skynet">skynet</option><option value="steamdeck">steamdeck</option>
+  </select>
+  <select id="cmdType" style="background:var(--color-bg);border:1px solid var(--color-border);border-radius:6px;padding:8px;font-size:12px;color:var(--color-text)">
+    <option value="mining-start">mining-start</option>
+    <option value="mining-stop">mining-stop</option>
+    <option value="mining-status">mining-status</option>
+    <option value="kill-rogue">kill-rogue</option>
+    <option value="reconcile">reconcile</option>
+    <option value="run-diagnostic">run-diagnostic</option>
+    <option value="fetch-logs">fetch-logs</option>
+    <option value="reboot">reboot</option>
+    <option value="restart">restart</option>
+  </select>
+  <button onclick="dispatchCommand()" style="background:var(--color-brand);color:white;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:600;font-size:12px">Dispatch</button>
+  <button onclick="flushQueue()" style="background:transparent;border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px;color:var(--color-muted)">Flush Queue</button>
+</div>
+</div>
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px">
 <h3>Command Queue</h3>
 <div id="cmdQueue" style="margin-top:12px;font-size:12px">No pending commands</div>
 </div>
@@ -315,8 +343,27 @@ function renderDevicesTable() {
 function renderCommands() {
   const queue = document.getElementById('cmdQueue');
   const hist = document.getElementById('cmdHistory');
-  queue.innerHTML = state.commands.queue.length ? state.commands.queue.map(c => `<div style="padding:8px;background:var(--color-bg);border-radius:4px;margin:4px 0;border-left:3px solid var(--color-yellow)">${c.type} → ${c.target}</div>`).join('') : 'No pending commands';
-  hist.innerHTML = state.commands.history.length ? state.commands.history.slice(0, 10).map(c => `<div style="padding:8px;background:var(--color-bg);border-radius:4px;margin:4px 0;border-left:3px solid ${c.status === 'succeeded' ? 'var(--color-green)' : 'var(--color-red)'}">${c.type} → ${c.target} (${c.status})</div>`).join('') : 'No history';
+  queue.innerHTML = state.commands.queue.length
+    ? state.commands.queue.map(c => `
+        <div style="padding:10px;background:var(--color-bg);border-radius:4px;margin:4px 0;border-left:3px solid var(--color-yellow)">
+          <div style="display:flex;justify-content:space-between">
+            <strong>${c.type}</strong>
+            <span style="color:var(--color-muted);font-size:10px">${timeAgo(c.created_at)}</span>
+          </div>
+          <div style="color:var(--color-muted);font-size:11px">→ ${c.target} · ${c.status}</div>
+        </div>`).join('')
+    : 'No pending commands';
+  hist.innerHTML = state.commands.history.length
+    ? state.commands.history.slice(0, 20).map(c => `
+        <div style="padding:10px;background:var(--color-bg);border-radius:4px;margin:4px 0;border-left:3px solid ${c.status === 'succeeded' ? 'var(--color-green)' : 'var(--color-red)'}">
+          <div style="display:flex;justify-content:space-between">
+            <strong>${c.type}</strong>
+            <span style="color:var(--color-muted);font-size:10px">${timeAgo(c.finished_at || c.created_at)}</span>
+          </div>
+          <div style="color:var(--color-muted);font-size:11px">→ ${c.target} · ${c.status}</div>
+          ${c.stdout ? `<pre style="margin:6px 0 0;font-size:10px;color:var(--color-muted);white-space:pre-wrap;max-height:80px;overflow-y:auto">${c.stdout.slice(0,400)}</pre>` : ''}
+        </div>`).join('')
+    : 'No history';
 }
 
 function renderAlerts() {
@@ -518,8 +565,12 @@ async function showDetail(deviceId) {
         <button onclick="quarantineDevice('${deviceId}', ${!d.quarantined})" style="background:${d.quarantined ? 'var(--color-green)' : 'var(--color-yellow)'};color:${d.quarantined ? 'white' : 'black'};border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">${d.quarantined ? 'Unquarantine' : 'Quarantine'}</button>
         <button onclick="deleteDevice('${deviceId}')" style="background:transparent;border:1px solid var(--color-red);color:var(--color-red);border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px">Delete</button>
       </div>
+
+      <h3 style="margin-top:20px;margin-bottom:8px">Recent Events</h3>
+      <div id="deviceEvents" style="font-size:12px;max-height:200px;overflow-y:auto">Loading...</div>
     `;
     detail.style.right = '0';
+    loadDeviceEvents(deviceId);
   } catch (e) { toast(`Error: ${e.message}`, 'error'); }
 }
 
@@ -551,6 +602,40 @@ async function queueCmd(deviceId, type) {
     toast(`Queued: ${type}`);
     setTimeout(fetchAll, 1000);
   } catch (e) { toast(`Queue failed: ${e.message}`, 'error'); }
+}
+
+async function dispatchCommand() {
+  const target = document.getElementById('cmdTarget').value;
+  const type = document.getElementById('cmdType').value;
+  try {
+    await callApi('queue-command', 'POST', { target, type });
+    toast(`Dispatched: ${type} → ${target}`);
+    setTimeout(fetchAll, 1000);
+  } catch (e) { toast(`Dispatch failed: ${e.message}`, 'error'); }
+}
+
+async function flushQueue() {
+  if (!confirm('Flush entire command queue?')) return;
+  try {
+    await callApi('flush-queue', 'POST', {});
+    toast('Queue flushed');
+    setTimeout(fetchAll, 1000);
+  } catch (e) { toast(`Flush failed: ${e.message}`, 'error'); }
+}
+
+async function loadDeviceEvents(deviceId) {
+  try {
+    const data = await callApi('device-logs', 'GET', null, `id=${deviceId}`);
+    const events = (data.events || []).slice(0, 20);
+    const el = document.getElementById('deviceEvents');
+    if (!el) return;
+    el.innerHTML = events.length
+      ? events.map(e => `<div style="padding:6px 8px;background:var(--color-bg);border-radius:3px;margin:3px 0;border-left:2px solid ${e.severity === 'critical' ? 'var(--color-red)' : e.severity === 'warning' ? 'var(--color-yellow)' : 'var(--color-border)'}">
+          <span style="font-size:10px;color:var(--color-muted)">${timeAgo(e.created_at)} · ${e.type}</span><br/>
+          <span style="font-size:11px">${e.message}</span>
+        </div>`).join('')
+      : '<span style="color:var(--color-muted);font-size:11px">No events</span>';
+  } catch {}
 }
 
 function timeAgo(ts) {
