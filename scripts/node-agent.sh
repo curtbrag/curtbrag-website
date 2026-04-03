@@ -297,6 +297,9 @@ send_heartbeat() {
   # Parse updated telemetry_interval from desired state
   local interval; interval=$(echo "$resp" | grep -o '"telemetry_interval":[0-9]*' | cut -d: -f2)
   [ -n "$interval" ] && TELEMETRY_INTERVAL="$interval"
+
+  # Persist full response so apply_desired_state() can read desired fields
+  [ -n "$resp" ] && printf '%s' "$resp" > /tmp/desired-state.json 2>/dev/null || true
 }
 
 # ── Telemetry ─────────────────────────────────────────────────────────────────
@@ -385,7 +388,13 @@ execute_command() {
   case "$cmd_type" in
     mining-start|start)
       if [ -f "$APPROVED_BINARY" ]; then
-        nohup "$APPROVED_BINARY" --config=/etc/xmrig/config.json --no-color >> /tmp/xmrig.log 2>&1 &
+        local cfg="/tmp/xmrig-config.json"
+        [ ! -f "$cfg" ] && cfg=""
+        if [ -n "$cfg" ]; then
+          nohup "$APPROVED_BINARY" --config="$cfg" --no-color >> /tmp/xmrig.log 2>&1 &
+        else
+          nohup "$APPROVED_BINARY" --no-color >> /tmp/xmrig.log 2>&1 &
+        fi
         stdout="Mining started (PID $!)"
       else
         stdout="Approved binary not found at $APPROVED_BINARY"
@@ -590,6 +599,111 @@ track_restart_state() {
   printf "count=$count\nlast_restart=$now\ncooldown_until=$cooldown_until\n" > "$restart_state_file"
 }
 
+# ── Apply desired state ───────────────────────────────────────────────────────
+apply_desired_state() {
+  local desired_file="/tmp/desired-state.json"
+  [ -f "$desired_file" ] || return 0
+
+  local miner_enabled; miner_enabled=$(grep -o '"miner_enabled":[a-z]*' "$desired_file" | cut -d: -f2)
+  local max_temp; max_temp=$(grep -o '"max_temp_celsius":[0-9]*' "$desired_file" | cut -d: -f2)
+  local pause_on_battery; pause_on_battery=$(grep -o '"pause_on_battery":[a-z]*' "$desired_file" | cut -d: -f2)
+  local pool_url; pool_url=$(grep -o '"pool_url":"[^"]*"' "$desired_file" | cut -d'"' -f4)
+  local pool_port; pool_port=$(grep -o '"pool_port":[0-9]*' "$desired_file" | cut -d: -f2)
+  local pool_user; pool_user=$(grep -o '"pool_user":"[^"]*"' "$desired_file" | cut -d'"' -f4)
+  local thread_count; thread_count=$(grep -o '"thread_count":[0-9]*' "$desired_file" | cut -d: -f2)
+  local randomx_mode; randomx_mode=$(grep -o '"randomx_mode":"[^"]*"' "$desired_file" | cut -d'"' -f4)
+  local restart_threshold; restart_threshold=$(grep -o '"restart_threshold":[0-9]*' "$desired_file" | cut -d: -f2)
+  local restart_cooldown; restart_cooldown=$(grep -o '"restart_cooldown":[0-9]*' "$desired_file" | cut -d: -f2)
+
+  # Thermal policy enforcement
+  local current_temp; current_temp=$(get_temp)
+  if ! enforce_thermal_policy "${max_temp:-80}" "$current_temp"; then
+    return 0  # Miner paused for thermal; skip start logic
+  fi
+
+  # Battery policy enforcement
+  if [ "$pause_on_battery" = "true" ]; then
+    local batt_status; batt_status=$(get_battery | awk '{print $2}')
+    if [ "$batt_status" = "Discharging" ]; then
+      pkill -f "xmrig-custom" 2>/dev/null || true
+      return 0
+    fi
+  fi
+
+  local pids; pids=$(get_xmrig_pids)
+  local custom_pid; custom_pid=$(echo "$pids" | awk '{print $1}')
+  local is_running="false"
+  [ -n "$custom_pid" ] && is_running="true"
+
+  if [ "$miner_enabled" = "true" ] && [ "$is_running" = "false" ]; then
+    # Render config if pool info is available
+    if [ -n "$pool_url" ]; then
+      render_xmrig_config \
+        "${pool_url}" "${pool_port:-10128}" "${pool_user:-wallet}" \
+        "${thread_count:-2}" "${randomx_mode:-light}" >/dev/null
+    fi
+    # Check restart throttle before starting
+    if track_restart_state "${restart_threshold:-5}" "${restart_cooldown:-300}"; then
+      local cfg="/tmp/xmrig-config.json"
+      if [ -f "$cfg" ]; then
+        nohup "$APPROVED_BINARY" --config="$cfg" --no-color >> /tmp/xmrig.log 2>&1 &
+      else
+        nohup "$APPROVED_BINARY" --no-color >> /tmp/xmrig.log 2>&1 &
+      fi
+      log "Started miner per desired state (PID $!)"
+    fi
+  elif [ "$miner_enabled" = "false" ] && [ "$is_running" = "true" ]; then
+    pkill -f "xmrig-custom" 2>/dev/null || true
+    log "Stopped miner per desired state"
+  fi
+}
+
+# ── Detailed telemetry (hashrate history) ─────────────────────────────────────
+send_detailed_telemetry() {
+  local pids; pids=$(get_xmrig_pids)
+  local custom_pid; custom_pid=$(echo "$pids" | awk '{print $1}')
+  local stats; stats=$(get_xmrig_stats)
+  local hr10; hr10=$(echo "$stats" | awk '{print $1}')
+  local accepted; accepted=$(echo "$stats" | awk '{print $4}')
+  local temp; temp=$(get_temp)
+  local mem; mem=$(get_mem)
+  local mem_used; mem_used=$(echo "$mem" | awk '{print $1}')
+  local mem_total; mem_total=$(echo "$mem" | awk '{print $2}')
+  local batt; batt=$(get_battery)
+  local batt_pct; batt_pct=$(echo "$batt" | awk '{print $1}')
+  local load; load=$(get_load)
+
+  local thread_count; thread_count=$(grep -o '"thread_count":[0-9]*' /tmp/desired-state.json 2>/dev/null | cut -d: -f2)
+  local randomx_mode; randomx_mode=$(grep -o '"randomx_mode":"[^"]*"' /tmp/desired-state.json 2>/dev/null | cut -d'"' -f4)
+
+  local body; body=$(printf '{
+    "hashrate_10s":%s,
+    "hashrate_60s":%s,
+    "hashrate_15m":%s,
+    "accepted_shares":%s,
+    "rejected_shares":0,
+    "invalid_shares":0,
+    "temp_current":%s,
+    "temp_peak":%s,
+    "load_average":[%s,0,0],
+    "memory_used_mb":%s,
+    "memory_total_mb":%s,
+    "battery_percent":%s,
+    "cpu_affinity":[],
+    "huge_pages_enabled":false,
+    "randomx_mode":"%s",
+    "thread_count":%s
+  }' "${hr10:-0}" "${hr10:-0}" "${hr10:-0}" \
+     "${accepted:-0}" \
+     "${temp:-0}" "${temp:-0}" \
+     "${load:-0}" \
+     "${mem_used:-0}" "${mem_total:-1}" \
+     "${batt_pct:-0}" \
+     "${randomx_mode:-light}" "${thread_count:-2}")
+
+  http_post "$AGENT_API/telemetry" "$body" >/dev/null
+}
+
 # ── Desired-state reconcile loop ──────────────────────────────────────────────
 reconcile_desired_state() {
   # Kill rogue processes
@@ -600,6 +714,8 @@ reconcile_desired_state() {
   check_cron_drift
   # Replace wrapper stub
   replace_wrapper_stub
+  # Apply desired state (start/stop miner, thermal enforcement)
+  apply_desired_state
 }
 
 # ── Main loop ─────────────────────────────────────────────────────────────────
@@ -634,13 +750,15 @@ main() {
     # Telemetry every TELEMETRY_INTERVAL seconds
     if [ $((NOW - LAST_TELEMETRY)) -ge "${TELEMETRY_INTERVAL:-60}" ]; then
       send_telemetry 2>/dev/null || log "Telemetry failed"
+      send_detailed_telemetry 2>/dev/null || true
+      apply_desired_state 2>/dev/null || true
       LAST_TELEMETRY=$NOW
     fi
 
     # Poll and execute commands
     poll_and_execute_commands 2>/dev/null
 
-    # Reconcile desired state every 5 minutes
+    # Full reconcile (rogue kill, cron, binary checks) every 5 minutes
     if [ $((NOW - LAST_RECONCILE)) -ge 300 ]; then
       reconcile_desired_state 2>/dev/null
       LAST_RECONCILE=$NOW

@@ -715,7 +715,14 @@ exports.handler = async (event, context) => {
       const target = body.target || "all";
       const type = body.type || body.command;
 
-      if (!VALID_TARGETS.includes(target))
+      // Accept fleet targets, plain hostnames, OR registered device IDs
+      let targetValid = VALID_TARGETS.includes(target);
+      if (!targetValid) {
+        // Check if it's a registered device ID (e.g. "node1-abc12345")
+        const targetDevice = await getDevice(target);
+        targetValid = !!targetDevice;
+      }
+      if (!targetValid)
         return json(400, hdrs, { error: "invalid target" });
       if (!VALID_COMMANDS.includes(type))
         return json(400, hdrs, { error: "invalid command" });
