@@ -328,52 +328,62 @@ function defaultDesiredState(deviceClass, deviceId) {
   const isPhone =
     deviceClass === "phone" || (deviceId && /^node\d+$/.test(deviceId));
   return {
-    // Miner control
+    // ── Workload (top-level abstraction) ────────────────────────────
+    workload_type: "mining",        // mining | idle | custom
+    workload_enabled: isPhone,      // master on/off
+    workload_profile: isPhone ? "phone-mining" : "default",
+
+    // ── Miner control ───────────────────────────────────────────────
     miner_enabled: isPhone,
     mining_level: isPhone ? 3 : 2, // 0=off, 1=low, 2=medium, 3=high, 4=max
 
-    // Mining configuration
-    pool_url: "gulf.moneroocean.stream",
+    // ── Pool (local Nexus by default) ───────────────────────────────
+    pool_url: "192.168.1.179",      // local Nexus — must be up before mining
     pool_port: 10128,
     pool_user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT",
     pool_pass: "x",
     pool_tls: false,
 
-    // Thread/resource config
-    thread_count: isPhone ? 2 : 4,
+    // ── Thread/resource config (node1-proven baseline) ──────────────
+    thread_count: isPhone ? 6 : 4, // proven ~525 H/s @ 6 threads on node1
     force_threads: false,
-    huge_pages: isPhone ? false : true,
-    randomx_mode: "light", // light | full
-    affinity: "", // CPU affinity string, empty = auto
+    huge_pages: false,              // not available in Termux
+    randomx_mode: "light",
+    affinity: "",
 
-    // Thermal/battery policies
-    max_temp_celsius: 80,
+    // ── Thermal/battery ─────────────────────────────────────────────
+    max_temp_celsius: 60,           // tightened for phones; was 80
     pause_on_battery: isPhone,
     pause_on_high_temp: true,
-    temp_check_interval: 10, // seconds
+    temp_check_interval: 10,
 
-    // Logging
-    log_path: "/tmp/xmrig.log",
-    print_interval: 60, // seconds
+    // ── Logging (Termux-compatible path) ────────────────────────────
+    log_path: "~/cluster/logs/xmrig.log",   // agent expands ~ to $HOME
+    print_interval: 60,
 
-    // Restart policy
-    restart_threshold: 5, // restarts before cooldown
-    restart_cooldown: 300, // seconds
+    // ── Preflight ───────────────────────────────────────────────────
+    preflight_required: true,       // must pass before mining-start
+    preflight_pool_check: true,     // TCP check pool_url:pool_port
+    preflight_binary_check: true,   // binary must exist + hash match
 
-    // Security
-    approved_binary_path: "/home/user/xmrig-custom",
-    approved_binary_hash: null,
+    // ── Restart policy ──────────────────────────────────────────────
+    restart_threshold: 5,
+    restart_cooldown: 300,
+
+    // ── Security ────────────────────────────────────────────────────
+    approved_binary_path: "~/xmrig-custom",  // agent expands ~ to $HOME
+    approved_binary_hash: null,              // set after first fleet deploy
     approved_config_version: "1",
     blocked_paths: ["/usr/local/bin/xmrig", "/usr/bin/xmrig"],
     blocked_cron_patterns: ["xmrig", "start-xmrig"],
     allowed_cron_entries: [],
 
-    // Operational
+    // ── Operational ─────────────────────────────────────────────────
     telemetry_interval: 60,
     remediation_mode: isPhone ? "aggressive" : "passive",
     reboot_policy: "never",
     network_preference: "any",
-    performance_profile: isPhone ? "phone-default" : "default",
+    performance_profile: isPhone ? "phone-mining" : "default",
     config_version: "1",
     updated_at: Date.now(),
   };

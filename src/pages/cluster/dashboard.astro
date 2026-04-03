@@ -524,11 +524,14 @@ async function showDetail(deviceId) {
 
       <h3 style="margin-top:16px;margin-bottom:8px">Miner State</h3>
       <div style="font-size:12px;color:var(--color-muted)">
-        <div>Running: ${d.observed?.xmrig_running ? 'YES' : 'NO'}</div>
-        <div>Hash (60s): ${d.observed?.hashrate_60s || 0} H/s</div>
+        <div>Running: <strong style="color:${d.observed?.xmrig_running ? 'var(--color-green)' : 'var(--color-muted)'}">${d.observed?.xmrig_running ? 'YES' : 'NO'}</strong></div>
+        <div>Hash (60s): ${d.observed?.hashrate_60s || d.observed?.hashrate_10s || 0} H/s</div>
         <div>Accepted: ${d.observed?.accepted_shares || 0}</div>
         <div>PID: ${d.observed?.custom_pid || 'N/A'}</div>
-        <div>Temp: ${d.observed?.temp_current || 0}°C</div>
+        <div>Temp: ${d.observed?.temp_peak || d.observed?.temp_current || 0}°C</div>
+        <div>Preflight: <strong style="color:${d.observed?.preflight_status === 'ok' ? 'var(--color-green)' : d.observed?.preflight_status?.startsWith('blocked') ? 'var(--color-red)' : 'var(--color-muted)'}">${d.observed?.preflight_status || 'unknown'}</strong>${d.observed?.preflight_status?.startsWith('blocked') ? ` — ${d.observed?.preflight_reason || ''}` : ''}</div>
+        <div>Workload: ${d.observed?.workload_type || 'mining'}</div>
+        <div>Agent: v${d.observed?.agent_version || d.agent_version || '?'}</div>
       </div>
 
       <h3 style="margin-top:16px;margin-bottom:8px">Mining Level (0=off, 4=max)</h3>

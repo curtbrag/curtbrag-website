@@ -202,15 +202,37 @@ async function flushQueue() {
 // ─── Profiles ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_PROFILES = {
+  "phone-mining": {
+    id: "phone-mining",
+    name: "Phone Mining (Proven)",
+    description: "6-thread profile proven on node1 @ ~525 H/s. Local Nexus pool. 60°C limit.",
+    device_class: "phone",
+    config: {
+      pools: [{ url: "192.168.1.179:10128", user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT", pass: "x", tls: false }],
+      cpu: { enabled: true, "huge-pages": false, priority: 2, threads: 6 },
+      randomx: { mode: "light" },
+      "log-file": "~/cluster/logs/xmrig.log",
+      "print-time": 60,
+    },
+    thread_count: 6,
+    max_temp: 60,
+    pause_on_battery: true,
+    pause_on_high_temp: true,
+    huge_pages: false,
+    randomx_mode: "light",
+    preflight_required: true,
+    created_at: Date.now(),
+    built_in: true,
+  },
   "phone-default": {
     id: "phone-default",
     name: "Phone Default",
-    description: "Standard mining profile for OnePlus 6T phones",
+    description: "Conservative mining profile for OnePlus 6T phones",
     device_class: "phone",
     config: {
       pools: [
         {
-          url: "gulf.moneroocean.stream:10128",
+          url: "192.168.1.179:10128",
           user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT",
           pass: "node-default",
           tls: false,
@@ -239,7 +261,7 @@ const DEFAULT_PROFILES = {
     config: {
       pools: [
         {
-          url: "gulf.moneroocean.stream:10128",
+          url: "192.168.1.179:10128",
           user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT",
           pass: "node-cool",
           tls: false,
@@ -266,7 +288,7 @@ const DEFAULT_PROFILES = {
     config: {
       pools: [
         {
-          url: "gulf.moneroocean.stream:20128",
+          url: "192.168.1.179:10128",
           user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT",
           pass: "steamdeck",
           tls: true,

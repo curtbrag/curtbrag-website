@@ -1,26 +1,31 @@
 #!/bin/sh
 # node-agent.sh — Cluster Control Plane Node Agent
-# Runs on each phone/PC. Registers with control plane, sends telemetry,
-# enforces desired state, kills rogue processes, executes queued commands.
+# Runs on each phone/PC (Linux + Termux/Android compatible).
+# Registers with control plane, sends telemetry, enforces desired state,
+# runs preflight before mining, kills rogue processes, executes commands.
 #
-# Install:
-#   scp node-agent.sh user@192.168.1.xxx:/home/user/node-agent.sh
-#   ssh user@192.168.1.xxx 'chmod +x ~/node-agent.sh && nohup ~/node-agent.sh > /tmp/agent.log 2>&1 &'
+# Install (Termux):
+#   scp node-agent.sh user@192.168.1.191:~/node-agent.sh
+#   ssh user@192.168.1.191 'chmod +x ~/node-agent.sh && nohup ~/node-agent.sh > ~/cluster/logs/agent.log 2>&1 &'
 #
-# Config (saved after first registration):
-#   ~/.cluster-agent-identity  — device_id + agent_token
+# Config:
+#   ~/.cluster-env              — CLUSTER_API_KEY + CONTROL_PLANE_URL
+#   ~/.cluster-agent-identity   — device_id + agent_token (written on first registration)
 
 set -u
 
 CONTROL_PLANE="${CONTROL_PLANE_URL:-https://curtbrag.com}"
 AGENT_API="$CONTROL_PLANE/api/agent"
 IDENTITY_FILE="${HOME}/.cluster-agent-identity"
-LOG_FILE="/tmp/agent.log"
-AGENT_VERSION="1.0"
+AGENT_VERSION="1.1"
 
-# ── Shared API key used only for initial registration ─────────────────────────
+# Ensure log directory exists
+mkdir -p "${HOME}/cluster/logs" 2>/dev/null || true
+LOG_FILE="${HOME}/cluster/logs/agent.log"
+
+# ── Shared API key (registration only) ───────────────────────────────────────
 CLUSTER_API_KEY=""
-for _f in "${HOME:-/home/user}/.cluster-env" /home/user/.cluster-env; do
+for _f in "${HOME}/.cluster-env" /home/user/.cluster-env /data/data/com.termux/files/home/.cluster-env; do
   [ -f "$_f" ] && { . "$_f"; break; }
 done
 
@@ -43,25 +48,37 @@ save_identity() {
   chmod 600 "$IDENTITY_FILE"
 }
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-get_hostname() { hostname 2>/dev/null || cat /proc/sys/kernel/hostname 2>/dev/null || echo "unknown"; }
+# ── Helpers (Android/Termux-safe) ────────────────────────────────────────────
+get_hostname() {
+  hostname 2>/dev/null \
+  || cat /proc/sys/kernel/hostname 2>/dev/null \
+  || getprop ro.product.device 2>/dev/null \
+  || echo "unknown"
+}
 
 get_primary_ip() {
-  ip route get 1.1.1.1 2>/dev/null | awk '/src/ {for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1 \
-  || hostname -I 2>/dev/null | awk '{print $1}'
+  # Try ip first (Linux), fall back to ifconfig (Termux/Android)
+  ip route get 1.1.1.1 2>/dev/null \
+    | awk '/src/ {for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1 \
+  || ifconfig 2>/dev/null \
+    | awk '/inet /{print $2}' | grep -v '127\.' | head -1 \
+  || echo "unknown"
 }
 
 get_interface_type() {
   local ip; ip=$(get_primary_ip)
-  # Check if IP is a Tailscale address
   case "$ip" in 100.*) echo "tailscale"; return ;; esac
-  # Find interface for this IP
-  local iface; iface=$(ip route get 1.1.1.1 2>/dev/null | awk '/dev/ {for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' | head -1)
+  # Try ip route first, fallback to ifconfig parse
+  local iface
+  iface=$(ip route get 1.1.1.1 2>/dev/null \
+    | awk '/dev/ {for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' | head -1)
+  [ -z "$iface" ] && iface=$(ifconfig 2>/dev/null | awk '/inet /{print iface} {iface=$1}' \
+    | grep -v lo | head -1 | tr -d ':')
   case "$iface" in
     eth*|enp*|eno*|end*|lan*) echo "ethernet" ;;
-    wlan*|wlp*|wifi*) echo "wifi" ;;
+    wlan*|wlp*|wifi*|wl*) echo "wifi" ;;
     tailscale*|ts*) echo "tailscale" ;;
-    *) echo "unknown" ;;
+    *) echo "wifi" ;;  # default for phones
   esac
 }
 
@@ -71,36 +88,45 @@ get_device_class() {
     node*) echo "phone" ;;
     steamdeck) echo "steamdeck" ;;
     nexus-prime|skynet|viki) echo "pc" ;;
-    *) echo "unknown" ;;
+    *) echo "phone" ;;  # default assumption for Termux devices
   esac
 }
 
-get_load() { cat /proc/loadavg 2>/dev/null | awk '{print $1}'; }
+get_load() { cat /proc/loadavg 2>/dev/null | awk '{print $1}' || echo "0"; }
 
 get_mem() {
-  awk '/MemTotal/{t=$2} /MemAvailable/{a=$2} END{print t-a, t}' /proc/meminfo 2>/dev/null \
-  | awk '{printf "%d %d", $1/1024, $2/1024}'
+  awk '/MemTotal/{t=$2} /MemAvailable/{a=$2} END{if(t>0) printf "%d %d", (t-a)/1024, t/1024; else print "0 0"}' \
+    /proc/meminfo 2>/dev/null || echo "0 0"
 }
 
 get_swap() {
-  awk '/SwapTotal/{t=$2} /SwapFree/{f=$2} END{print t-f, t}' /proc/meminfo 2>/dev/null \
-  | awk '{printf "%d %d", $1/1024, $2/1024}'
+  awk '/SwapTotal/{t=$2} /SwapFree/{f=$2} END{printf "%d %d", (t-f)/1024, t/1024}' \
+    /proc/meminfo 2>/dev/null || echo "0 0"
 }
 
 get_temp() {
   local max=0 t
+  # Standard Linux thermal zones
   for f in /sys/class/thermal/thermal_zone*/temp; do
     [ -f "$f" ] || continue
     t=$(cat "$f" 2>/dev/null); t=${t:-0}
-    t=$((t / 1000))
+    # Values > 1000 are millidegrees
+    [ "$t" -gt 1000 ] && t=$((t / 1000))
     [ "$t" -gt "$max" ] && max=$t
   done
+  # Termux/Android battery temperature as fallback
+  if [ "$max" -eq 0 ]; then
+    local batt_temp
+    batt_temp=$(cat /sys/class/power_supply/battery/temp 2>/dev/null || echo "0")
+    [ "$batt_temp" -gt 0 ] && max=$((batt_temp / 10))
+  fi
   echo "$max"
 }
 
 get_battery() {
   local pct="" status=""
-  for p in /sys/class/power_supply/battery /sys/class/power_supply/BAT0 /sys/class/power_supply/BAT1; do
+  for p in /sys/class/power_supply/battery /sys/class/power_supply/Battery \
+           /sys/class/power_supply/BAT0 /sys/class/power_supply/BAT1; do
     [ -d "$p" ] || continue
     pct=$(cat "$p/capacity" 2>/dev/null)
     status=$(cat "$p/status" 2>/dev/null)
@@ -110,24 +136,35 @@ get_battery() {
 }
 
 get_storage_free() {
-  df -m / 2>/dev/null | awk 'NR==2 {print $4}'
+  df -m "${HOME}" 2>/dev/null | awk 'NR==2 {print $4}' || echo "0"
 }
 
 get_uptime_secs() {
-  awk '{printf "%d", $1}' /proc/uptime 2>/dev/null
+  awk '{printf "%d", $1}' /proc/uptime 2>/dev/null || echo "0"
 }
 
 # ── Miner state ───────────────────────────────────────────────────────────────
-APPROVED_BINARY="/home/user/xmrig-custom"
+# Use $HOME so path works on both Linux (/home/user) and Termux
+APPROVED_BINARY="${HOME}/xmrig-custom"
+MINER_LOG="${HOME}/cluster/logs/xmrig.log"
+
+# expand_path: replace ~ or $HOME prefix in a path string
+expand_path() {
+  echo "$1" | sed "s|^~/|${HOME}/|; s|^\$HOME/|${HOME}/|"
+}
 
 get_xmrig_pids() {
   # Returns: custom_pid rogue_pid
+  # Android/Termux: pgrep may not support -x; use ps fallback
   local custom="" rogue=""
-  # Find all xmrig processes
-  for pid in $(pgrep -x xmrig 2>/dev/null || pgrep -f 'xmrig' 2>/dev/null); do
-    local cmdline; cmdline=$(cat "/proc/$pid/cmdline" 2>/dev/null | tr '\0' ' ')
-    local exe; exe=$(readlink -f "/proc/$pid/exe" 2>/dev/null)
-    if echo "$exe" | grep -q "xmrig-custom"; then
+  local pids
+  pids=$(pgrep -f 'xmrig' 2>/dev/null \
+    || ps -A 2>/dev/null | grep -i xmrig | grep -v grep | awk '{print $1}' \
+    || echo "")
+  for pid in $pids; do
+    local exe; exe=$(readlink -f "/proc/$pid/exe" 2>/dev/null || echo "")
+    local cmdline; cmdline=$(cat "/proc/$pid/cmdline" 2>/dev/null | tr '\0' ' ' || echo "")
+    if echo "$exe$cmdline" | grep -q "xmrig-custom"; then
       custom="$pid"
     else
       rogue="$pid"
@@ -137,20 +174,71 @@ get_xmrig_pids() {
 }
 
 get_xmrig_stats() {
-  # Try to get hashrate from log
-  local hr10="" hr60="" hr15m="" accepted="" config_ver=""
-  local logfile="/tmp/xmrig.log"
+  # Read from MINER_LOG ($HOME/cluster/logs/xmrig.log)
+  local hr10="" accepted="" last_share_age=""
+  local logfile="$MINER_LOG"
+  # Also check old /tmp path for backward compat
+  [ -f "$logfile" ] || logfile="/tmp/xmrig.log"
   if [ -f "$logfile" ]; then
     hr10=$(tail -50 "$logfile" 2>/dev/null | grep -o '[0-9.]\+ H/s' | tail -1 | awk '{print $1}')
     accepted=$(tail -100 "$logfile" 2>/dev/null | grep -o 'accepted [0-9]*' | tail -1 | awk '{print $2}')
+    # Last share timestamp line
+    local last_share_line
+    last_share_line=$(grep -i 'accepted\|share' "$logfile" 2>/dev/null | tail -1)
   fi
-  echo "${hr10:-0} ${hr60:-0} ${hr15m:-0} ${accepted:-0}"
+  echo "${hr10:-0} 0 0 ${accepted:-0}"
 }
 
 hash_binary() {
   local path="$1"
+  path=$(expand_path "$path")
   [ -f "$path" ] || { echo ""; return; }
   sha256sum "$path" 2>/dev/null | awk '{print $1}'
+}
+
+# ── Preflight checks ──────────────────────────────────────────────────────────
+# Returns 0 (pass) or 1 (fail). Sets PREFLIGHT_STATUS and PREFLIGHT_REASON.
+PREFLIGHT_STATUS="unknown"
+PREFLIGHT_REASON=""
+
+run_preflight() {
+  local pool_url="$1" pool_port="$2" binary_path="$3"
+  binary_path=$(expand_path "$binary_path")
+
+  # 1. Binary exists
+  if [ ! -f "$binary_path" ]; then
+    PREFLIGHT_STATUS="blocked_no_binary"
+    PREFLIGHT_REASON="Binary not found: $binary_path"
+    post_event "critical" "preflight_fail" "$PREFLIGHT_REASON"
+    return 1
+  fi
+
+  # 2. Control plane reachable (already proven if we got desired state)
+  # 3. Pool TCP reachable
+  local pool_ok=0
+  # Try nc (netcat) — available in Termux via 'netcat' package
+  if command -v nc >/dev/null 2>&1; then
+    nc -z -w 3 "$pool_url" "$pool_port" 2>/dev/null && pool_ok=1
+  elif command -v curl >/dev/null 2>&1; then
+    # curl TCP probe fallback
+    curl -s --connect-timeout 3 "telnet://${pool_url}:${pool_port}" >/dev/null 2>&1 && pool_ok=1
+    # curl returns non-zero for telnet but connects — check differently
+    curl -s --max-time 3 -o /dev/null "http://${pool_url}:${pool_port}" 2>/dev/null
+    [ $? -ne 7 ] && pool_ok=1  # exit 7 = couldn't connect
+  fi
+
+  if [ "$pool_ok" -eq 0 ]; then
+    PREFLIGHT_STATUS="blocked_by_pool"
+    PREFLIGHT_REASON="Pool unreachable: ${pool_url}:${pool_port}"
+    log "PREFLIGHT FAIL: $PREFLIGHT_REASON"
+    post_event "warning" "preflight_pool_unreachable" "$PREFLIGHT_REASON"
+    return 1
+  fi
+
+  PREFLIGHT_STATUS="ok"
+  PREFLIGHT_REASON="all checks passed"
+  log "Preflight OK: binary exists, pool ${pool_url}:${pool_port} reachable"
+  return 0
 }
 
 # ── Rogue process enforcement ─────────────────────────────────────────────────
@@ -364,7 +452,11 @@ send_telemetry() {
     "accepted_shares":%s,
     "binary_hash":"%s",
     "rogue_binary_detected":%s,
-    "rogue_binary_path":"%s"
+    "rogue_binary_path":"%s",
+    "preflight_status":"%s",
+    "preflight_reason":"%s",
+    "workload_type":"mining",
+    "agent_version":"%s"
   }' "$ip" "$iface_type" "$load" \
      "${mem_used:-0}" "${mem_total:-1}" \
      "${swap_used:-0}" "${swap_total:-0}" \
@@ -373,7 +465,9 @@ send_telemetry() {
      "$xmrig_running" "${custom_pid:-}" "${rogue_pid:-}" \
      "${hr10:-0}" "${accepted:-0}" \
      "${binary_hash:-}" \
-     "$rogue_binary" "${rogue_binary_path:-}")
+     "$rogue_binary" "${rogue_binary_path:-}" \
+     "${PREFLIGHT_STATUS:-unknown}" "${PREFLIGHT_REASON:-}" \
+     "$AGENT_VERSION")
 
   http_post "$AGENT_API/state" "$body" >/dev/null
 }
@@ -387,18 +481,30 @@ execute_command() {
 
   case "$cmd_type" in
     mining-start|start)
-      if [ -f "$APPROVED_BINARY" ]; then
+      local bin; bin=$(expand_path "$APPROVED_BINARY")
+      if [ ! -f "$bin" ]; then
+        stdout="Binary not found: $bin"; success="false"; exit_code=1
+      else
+        # Read pool/log from desired state for preflight
+        local ds="/tmp/desired-state.json"
+        local p_url; p_url=$(grep -o '"pool_url":"[^"]*"' "$ds" 2>/dev/null | cut -d'"' -f4)
+        local p_port; p_port=$(grep -o '"pool_port":[0-9]*' "$ds" 2>/dev/null | cut -d: -f2)
+        local p_req; p_req=$(grep -o '"preflight_required":[a-z]*' "$ds" 2>/dev/null | cut -d: -f2)
+        if [ "${p_req:-true}" = "true" ]; then
+          if ! run_preflight "${p_url:-192.168.1.179}" "${p_port:-10128}" "$bin"; then
+            stdout="BLOCKED: $PREFLIGHT_REASON"
+            success="false"; exit_code=1
+            break
+          fi
+        fi
+        mkdir -p "$(dirname "$MINER_LOG")" 2>/dev/null || true
         local cfg="/tmp/xmrig-config.json"
-        [ ! -f "$cfg" ] && cfg=""
-        if [ -n "$cfg" ]; then
-          nohup "$APPROVED_BINARY" --config="$cfg" --no-color >> /tmp/xmrig.log 2>&1 &
+        if [ -f "$cfg" ]; then
+          nohup "$bin" --config="$cfg" --no-color >> "$MINER_LOG" 2>&1 &
         else
-          nohup "$APPROVED_BINARY" --no-color >> /tmp/xmrig.log 2>&1 &
+          nohup "$bin" --no-color >> "$MINER_LOG" 2>&1 &
         fi
         stdout="Mining started (PID $!)"
-      else
-        stdout="Approved binary not found at $APPROVED_BINARY"
-        success="false"; exit_code=1
       fi
       ;;
     mining-stop|stop)
@@ -431,7 +537,9 @@ execute_command() {
       fi
       ;;
     fetch-logs)
-      stdout=$(tail -100 /tmp/xmrig.log 2>/dev/null || echo "no log")
+      local lf; lf=$(expand_path "$MINER_LOG")
+      [ -f "$lf" ] || lf="/tmp/xmrig.log"
+      stdout=$(tail -40 "$lf" 2>/dev/null || echo "no log at $lf")
       ;;
     run-diagnostic)
       stdout=$(printf 'uptime: %s\nload: %s\ntemp: %s\nmem: %s\npids: %s\nbinary_hash: %s\n' \
@@ -520,6 +628,9 @@ poll_and_execute_commands() {
 
 render_xmrig_config() {
   local pool_url="$1" pool_port="$2" pool_user="$3" threads="$4" mode="$5"
+  local log_file="${6:-}"
+  log_file=$(expand_path "${log_file:-~/cluster/logs/xmrig.log}")
+  mkdir -p "$(dirname "$log_file")" 2>/dev/null || true
   local config_file="/tmp/xmrig-config.json"
 
   cat > "$config_file" << EOF
@@ -532,7 +643,7 @@ render_xmrig_config() {
   "randomx": { "init": -1, "mode": "$mode", "1gb_pages": false },
   "cpu": { "enabled": true, "huge_pages": false, "hw_aes": true, "priority": null, "threads": $threads },
   "donate_level": 1,
-  "log_file": "/tmp/xmrig.log",
+  "log_file": "$log_file",
   "print_time_interval": 60,
   "retries": 5,
   "retry_pause": 5,
@@ -604,6 +715,8 @@ apply_desired_state() {
   local desired_file="/tmp/desired-state.json"
   [ -f "$desired_file" ] || return 0
 
+  # Parse desired fields
+  local workload_enabled; workload_enabled=$(grep -o '"workload_enabled":[a-z]*' "$desired_file" | cut -d: -f2)
   local miner_enabled; miner_enabled=$(grep -o '"miner_enabled":[a-z]*' "$desired_file" | cut -d: -f2)
   local max_temp; max_temp=$(grep -o '"max_temp_celsius":[0-9]*' "$desired_file" | cut -d: -f2)
   local pause_on_battery; pause_on_battery=$(grep -o '"pause_on_battery":[a-z]*' "$desired_file" | cut -d: -f2)
@@ -612,13 +725,29 @@ apply_desired_state() {
   local pool_user; pool_user=$(grep -o '"pool_user":"[^"]*"' "$desired_file" | cut -d'"' -f4)
   local thread_count; thread_count=$(grep -o '"thread_count":[0-9]*' "$desired_file" | cut -d: -f2)
   local randomx_mode; randomx_mode=$(grep -o '"randomx_mode":"[^"]*"' "$desired_file" | cut -d'"' -f4)
+  local log_path_raw; log_path_raw=$(grep -o '"log_path":"[^"]*"' "$desired_file" | cut -d'"' -f4)
+  local preflight_req; preflight_req=$(grep -o '"preflight_required":[a-z]*' "$desired_file" | cut -d: -f2)
+  local binary_path_raw; binary_path_raw=$(grep -o '"approved_binary_path":"[^"]*"' "$desired_file" | cut -d'"' -f4)
   local restart_threshold; restart_threshold=$(grep -o '"restart_threshold":[0-9]*' "$desired_file" | cut -d: -f2)
   local restart_cooldown; restart_cooldown=$(grep -o '"restart_cooldown":[0-9]*' "$desired_file" | cut -d: -f2)
 
+  # Expand ~ / $HOME in paths
+  local binary_path; binary_path=$(expand_path "${binary_path_raw:-~/xmrig-custom}")
+  local log_path; log_path=$(expand_path "${log_path_raw:-~/cluster/logs/xmrig.log}")
+  mkdir -p "$(dirname "$log_path")" 2>/dev/null || true
+
+  # Update APPROVED_BINARY from desired state
+  APPROVED_BINARY="$binary_path"
+  MINER_LOG="$log_path"
+
+  # workload_enabled=false overrides miner_enabled
+  local should_mine="$miner_enabled"
+  [ "$workload_enabled" = "false" ] && should_mine="false"
+
   # Thermal policy enforcement
   local current_temp; current_temp=$(get_temp)
-  if ! enforce_thermal_policy "${max_temp:-80}" "$current_temp"; then
-    return 0  # Miner paused for thermal; skip start logic
+  if ! enforce_thermal_policy "${max_temp:-60}" "$current_temp"; then
+    return 0  # paused for thermal
   fi
 
   # Battery policy enforcement
@@ -626,6 +755,7 @@ apply_desired_state() {
     local batt_status; batt_status=$(get_battery | awk '{print $2}')
     if [ "$batt_status" = "Discharging" ]; then
       pkill -f "xmrig-custom" 2>/dev/null || true
+      post_event "info" "battery_pause" "Mining paused: on battery"
       return 0
     fi
   fi
@@ -635,26 +765,37 @@ apply_desired_state() {
   local is_running="false"
   [ -n "$custom_pid" ] && is_running="true"
 
-  if [ "$miner_enabled" = "true" ] && [ "$is_running" = "false" ]; then
-    # Render config if pool info is available
-    if [ -n "$pool_url" ]; then
-      render_xmrig_config \
-        "${pool_url}" "${pool_port:-10128}" "${pool_user:-wallet}" \
-        "${thread_count:-2}" "${randomx_mode:-light}" >/dev/null
+  if [ "$should_mine" = "true" ] && [ "$is_running" = "false" ]; then
+    # Preflight gate before starting
+    if [ "${preflight_req:-true}" = "true" ]; then
+      if ! run_preflight "${pool_url:-192.168.1.179}" "${pool_port:-10128}" "$binary_path"; then
+        log "Mining blocked: $PREFLIGHT_REASON"
+        # Report blocked status via state
+        post_event "warning" "mining_blocked" "$PREFLIGHT_REASON"
+        return 0
+      fi
     fi
-    # Check restart throttle before starting
+
+    # Render xmrig config with current desired values
+    render_xmrig_config \
+      "${pool_url:-192.168.1.179}" "${pool_port:-10128}" "${pool_user:-wallet}" \
+      "${thread_count:-6}" "${randomx_mode:-light}" "$log_path" >/dev/null
+
+    # Check restart throttle
     if track_restart_state "${restart_threshold:-5}" "${restart_cooldown:-300}"; then
       local cfg="/tmp/xmrig-config.json"
       if [ -f "$cfg" ]; then
-        nohup "$APPROVED_BINARY" --config="$cfg" --no-color >> /tmp/xmrig.log 2>&1 &
+        nohup "$APPROVED_BINARY" --config="$cfg" --no-color >> "$log_path" 2>&1 &
       else
-        nohup "$APPROVED_BINARY" --no-color >> /tmp/xmrig.log 2>&1 &
+        nohup "$APPROVED_BINARY" --no-color >> "$log_path" 2>&1 &
       fi
       log "Started miner per desired state (PID $!)"
+      post_event "info" "miner_started" "Miner started by desired-state enforcement"
     fi
-  elif [ "$miner_enabled" = "false" ] && [ "$is_running" = "true" ]; then
+  elif [ "$should_mine" = "false" ] && [ "$is_running" = "true" ]; then
     pkill -f "xmrig-custom" 2>/dev/null || true
     log "Stopped miner per desired state"
+    post_event "info" "miner_stopped" "Miner stopped by desired-state enforcement"
   fi
 }
 
