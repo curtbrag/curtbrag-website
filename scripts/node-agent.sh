@@ -200,8 +200,6 @@ get_xmrig_stats() {
   # Read from MINER_LOG ($HOME/cluster/logs/xmrig.log)
   local hr10="" accepted="" last_share_age=""
   local logfile="$MINER_LOG"
-  # Also check old /tmp path for backward compat
-  [ -f "$logfile" ] || logfile="/tmp/xmrig.log"
   if [ -f "$logfile" ]; then
     hr10=$(tail -50 "$logfile" 2>/dev/null | grep -o '[0-9.]\+ H/s' | tail -1 | awk '{print $1}')
     accepted=$(tail -100 "$logfile" 2>/dev/null | grep -o 'accepted [0-9]*' | tail -1 | awk '{print $2}')
@@ -679,19 +677,19 @@ render_xmrig_config() {
 
   cat > "$config_file" << EOF
 {
-  "api": { "id": null, "worker_id": null },
+  "api": { "id": null, "worker-id": null },
   "http": { "enabled": false, "host": "127.0.0.1", "port": 0 },
-  "autosave": true,
-  "background": true,
-  "colors": true,
-  "randomx": { "init": -1, "mode": "$mode", "1gb_pages": false },
-  "cpu": { "enabled": true, "huge_pages": false, "hw_aes": true, "priority": null, "threads": $threads },
-  "donate_level": 1,
-  "log_file": "$log_file",
-  "print_time_interval": 60,
+  "autosave": false,
+  "background": false,
+  "colors": false,
+  "randomx": { "init": -1, "mode": "$mode", "1gb-pages": false },
+  "cpu": { "enabled": true, "huge-pages": false, "hw-aes": true, "priority": 2, "threads": $threads },
+  "donate-level": 1,
+  "log-file": "$log_file",
+  "print-time": 60,
   "retries": 5,
-  "retry_pause": 5,
-  "watch": true,
+  "retry-pause": 5,
+  "watch": false,
   "pools": [
     {
       "algo": "rx/0",
@@ -700,7 +698,7 @@ render_xmrig_config() {
       "user": "$pool_user",
       "pass": "x",
       "tls": false,
-      "keepalive": false,
+      "keepalive": true,
       "enabled": true
     }
   ]
