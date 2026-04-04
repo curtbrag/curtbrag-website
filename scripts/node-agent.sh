@@ -564,8 +564,39 @@ execute_command() {
           success="false"; exit_code=1
         fi
       fi
-      ;;    mining-stop|stop)
+      ;;
+    mining-stop|stop)
       stop_custom_miner; stdout="Mining stopped"
+      ;;
+    disable-mining)
+      stop_custom_miner
+      # Mark disabled in local state file so apply_desired_state respects it
+      sed -i 's/"miner_enabled":true/"miner_enabled":false/g' /tmp/desired-state.json 2>/dev/null || true
+      stdout="Mining disabled"
+      ;;
+    restart)
+      stop_custom_miner
+      sleep 2
+      apply_desired_state
+      stdout="Miner restarted"
+      ;;
+    update)
+      stdout="Update not supported via command; deploy via binary registry"
+      ;;
+    force-binary-redeploy)
+      stop_custom_miner
+      rm -f "$(expand_path "$APPROVED_BINARY")"
+      stdout="Binary removed; re-deploy via binary registry to re-enable"
+      ;;
+    quarantine|clear-quarantine)
+      # Quarantine state is managed server-side; agent just stops mining
+      if [ "$cmd_type" = "quarantine" ]; then
+        stop_custom_miner
+        stdout="Quarantined: mining stopped"
+      else
+        stdout="Quarantine cleared; desired-state will re-enable mining"
+        apply_desired_state
+      fi
       ;;
     mining-status|status)
       stdout=$(ps aux 2>/dev/null | grep -i xmrig | grep -v grep || echo "no xmrig processes")
@@ -642,9 +673,12 @@ execute_command() {
         success="false"; exit_code=1
       fi
       ;;
-    profile-switch)
-      # Load profile from desired state and apply
-      stdout="Profile switched (profile support TBD)"
+    profile-switch|switch-profile)
+      # Profile settings are applied server-side via rollout-profile endpoint
+      # which writes fields into desired state. The agent just needs to
+      # re-apply desired state immediately rather than waiting 60s.
+      apply_desired_state
+      stdout="Desired state re-applied (profile switch)"
       ;;
     *)
       stdout="Unknown command: $cmd_type"
