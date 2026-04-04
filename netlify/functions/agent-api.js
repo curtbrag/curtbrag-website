@@ -542,6 +542,18 @@ exports.handler = async (event, context) => {
 
   // Extract action from path: /.netlify/functions/agent-api/register → "register"
   const action = getActionFromEvent(event);
+  // Extract sub-path segments after the action (e.g. config/render-xmrig → ["config","render-xmrig"])
+  const _fullPath = (() => {
+    const p = event.path || "";
+    const rp = (() => { try { return new URL(event.rawUrl || "").pathname; } catch { return ""; } })();
+    for (const candidate of [p, rp]) {
+      for (const base of ["/.netlify/functions/agent-api/", "/api/agent/", "/agent-api/"]) {
+        if (candidate.startsWith(base)) return candidate.slice(base.length);
+      }
+    }
+    return "";
+  })();
+  const segments = _fullPath.split("/");
   const deviceId =
     event.headers["x-device-id"] || event.headers["X-Device-Id"] || "";
 

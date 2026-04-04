@@ -1053,7 +1053,7 @@ exports.handler = async (event, context) => {
       const { group_id, group_name, device_ids, description } = body;
       if (!group_id || !group_name)
         return json(400, hdrs, { error: "group_id and group_name required" });
-      const groupStore = getStore("cp-groups");
+      const groupStore = openStore("cp-groups");
       const existing = await groupStore.get(group_id, { type: "json" }).catch(() => null);
       const group = {
         id: group_id,

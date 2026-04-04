@@ -415,7 +415,7 @@ send_heartbeat() {
   [ -n "$interval" ] && TELEMETRY_INTERVAL="$interval"
 
   # Persist full response so apply_desired_state() can read desired fields
-  [ -n "$resp" ] && printf '%s' "$resp" > /tmp/desired-state.json 2>/dev/null || true
+  [ -n "$resp" ] && printf '%s' "$resp" > ${TMPDIR:-/tmp}/desired-state.json 2>/dev/null || true
 }
 
 # ── Telemetry ─────────────────────────────────────────────────────────────────
@@ -461,8 +461,8 @@ send_telemetry() {
     fi
   done
 
-  local restart_count; restart_count=$(grep '^count=' /tmp/xmrig-restart-state.txt 2>/dev/null | cut -d= -f2)
-  local workload_enabled_obs; workload_enabled_obs=$(grep -o '"workload_enabled":[a-z]*' /tmp/desired-state.json 2>/dev/null | cut -d: -f2)
+  local restart_count; restart_count=$(grep '^count=' ${TMPDIR:-/tmp}/xmrig-restart-state.txt 2>/dev/null | cut -d= -f2)
+  local workload_enabled_obs; workload_enabled_obs=$(grep -o '"workload_enabled":[a-z]*' ${TMPDIR:-/tmp}/desired-state.json 2>/dev/null | cut -d: -f2)
 
   local body; body=$(printf '{
     "ip":"%s",
@@ -522,7 +522,7 @@ execute_command() {
       if [ ! -f "$bin" ]; then
         stdout="Binary not found: $bin"; success="false"; exit_code=1
       else
-        local ds="/tmp/desired-state.json"
+        local ds="${TMPDIR:-/tmp}/desired-state.json"
         local p_url; p_url=$(grep -o '"pool_url":"[^"]*"' "$ds" 2>/dev/null | cut -d'"' -f4)
         local p_port; p_port=$(grep -o '"pool_port":[0-9]*' "$ds" 2>/dev/null | cut -d: -f2)
         local p_user; p_user=$(grep -o '"pool_user":"[^"]*"' "$ds" 2>/dev/null | cut -d'"' -f4)
@@ -531,37 +531,40 @@ execute_command() {
         local rx_mode; rx_mode=$(grep -o '"randomx_mode":"[^"]*"' "$ds" 2>/dev/null | cut -d'"' -f4)
         local log_path_raw; log_path_raw=$(grep -o '"log_path":"[^"]*"' "$ds" 2>/dev/null | cut -d'"' -f4)
         local log_path; log_path=$(expand_path "${log_path_raw:-~/cluster/logs/xmrig.log}")
+        local _blocked=0
 
         if [ "${p_req:-true}" = "true" ]; then
           if ! run_preflight "${p_url:-192.168.1.179}" "${p_port:-10128}" "$bin"; then
             stdout="BLOCKED: $PREFLIGHT_REASON"
-            success="false"; exit_code=1
-            break
+            success="false"; exit_code=1; _blocked=1
           fi
         fi
 
         # Hash verification for manual mining-start command
-        local p_hash; p_hash=$(grep -o '"approved_binary_hash":"[^"]*"' "$ds" 2>/dev/null | cut -d'"' -f4)
-        if [ -n "$p_hash" ]; then
-          local actual_h; actual_h=$(hash_binary "$bin")
-          if [ "$actual_h" != "$p_hash" ]; then
-            stdout="BLOCKED: binary hash mismatch (got ${actual_h:0:12}…)"
-            success="false"; exit_code=1
-            post_event "critical" "hash_mismatch" "mining-start blocked: hash mismatch"
-            break
+        if [ "$_blocked" -eq 0 ]; then
+          local p_hash; p_hash=$(grep -o '"approved_binary_hash":"[^"]*"' "$ds" 2>/dev/null | cut -d'"' -f4)
+          if [ -n "$p_hash" ]; then
+            local actual_h; actual_h=$(hash_binary "$bin")
+            if [ "$actual_h" != "$p_hash" ]; then
+              stdout="BLOCKED: binary hash mismatch (got ${actual_h:0:12}…)"
+              success="false"; exit_code=1; _blocked=1
+              post_event "critical" "hash_mismatch" "mining-start blocked: hash mismatch"
+            fi
           fi
         fi
 
-        mkdir -p "$(dirname "$log_path")" 2>/dev/null || true
-        local cfg; cfg=$(render_xmrig_config "${p_url:-192.168.1.179}" "${p_port:-10128}" "${p_user:-wallet}" "${tcount:-6}" "${rx_mode:-light}" "$log_path")
-        nohup "$bin" --config="$cfg" --no-color >> "$log_path" 2>&1 &
-        local mpid=$!
-        sleep 3
-        if kill -0 "$mpid" 2>/dev/null; then
-          stdout="Mining started (PID $mpid)"
-        else
-          stdout="Mining failed to stay alive"
-          success="false"; exit_code=1
+        if [ "$_blocked" -eq 0 ]; then
+          mkdir -p "$(dirname "$log_path")" 2>/dev/null || true
+          local cfg; cfg=$(render_xmrig_config "${p_url:-192.168.1.179}" "${p_port:-10128}" "${p_user:-wallet}" "${tcount:-6}" "${rx_mode:-light}" "$log_path")
+          nohup "$bin" --config="$cfg" --no-color >> "$log_path" 2>&1 &
+          local mpid=$!
+          sleep 3
+          if kill -0 "$mpid" 2>/dev/null; then
+            stdout="Mining started (PID $mpid)"
+          else
+            stdout="Mining failed to stay alive"
+            success="false"; exit_code=1
+          fi
         fi
       fi
       ;;
@@ -571,7 +574,7 @@ execute_command() {
     disable-mining)
       stop_custom_miner
       # Mark disabled in local state file so apply_desired_state respects it
-      sed -i 's/"miner_enabled":true/"miner_enabled":false/g' /tmp/desired-state.json 2>/dev/null || true
+      sed -i 's/"miner_enabled":true/"miner_enabled":false/g' ${TMPDIR:-/tmp}/desired-state.json 2>/dev/null || true
       stdout="Mining disabled"
       ;;
     restart)
@@ -614,7 +617,7 @@ execute_command() {
       stdout="Reconcile complete"
       ;;
     reset-restart-count)
-      rm -f /tmp/xmrig-restart-state.txt
+      rm -f ${TMPDIR:-/tmp}/xmrig-restart-state.txt
       stdout="Restart counter cleared"
       ;;
     reboot)
@@ -630,7 +633,7 @@ execute_command() {
       ;;
     fetch-logs)
       local lf; lf=$(expand_path "$MINER_LOG")
-      [ -f "$lf" ] || lf="/tmp/xmrig.log"
+      [ -f "$lf" ] || lf="${TMPDIR:-/tmp}/xmrig.log"
       stdout=$(tail -40 "$lf" 2>/dev/null || echo "no log at $lf")
       ;;
     run-diagnostic)
@@ -640,7 +643,7 @@ execute_command() {
       ;;
     screenshot)
       # Capture framebuffer if available
-      local scr="/tmp/screenshot.png"
+      local scr="${TMPDIR:-/tmp}/screenshot.png"
       fbcat "$scr" 2>/dev/null || ffmpeg -f fbdev -i /dev/fb0 -vframes 1 "$scr" 2>/dev/null
       stdout="Screenshot captured: $scr"
       ;;
@@ -666,7 +669,7 @@ execute_command() {
         # Restart miner with new pool config
         stop_custom_miner
         local config; config=$(render_xmrig_config "$pool_url" "${pool_port:-10128}" "${pool_user:-wallet}" "2" "light")
-        nohup "$APPROVED_BINARY" --config="$config" --no-color >> /tmp/xmrig.log 2>&1 &
+        nohup "$APPROVED_BINARY" --config="$config" --no-color >> "${TMPDIR:-/tmp}/xmrig.log" 2>&1 &
         stdout="Pool changed to $pool_url:$pool_port"
       else
         stdout="Invalid pool config"
@@ -806,7 +809,7 @@ enforce_thermal_policy() {
 }
 
 track_restart_state() {
-  local restart_state_file="/tmp/xmrig-restart-state.txt"
+  local restart_state_file="${TMPDIR:-/tmp}/xmrig-restart-state.txt"
   local restart_threshold="${1:-5}"
   local restart_cooldown="${2:-300}"
   local now; now=$(date +%s)
@@ -840,7 +843,7 @@ track_restart_state() {
 
 # ── Apply desired state ───────────────────────────────────────────────────────
 apply_desired_state() {
-  local desired_file="/tmp/desired-state.json"
+  local desired_file="${TMPDIR:-/tmp}/desired-state.json"
   [ -f "$desired_file" ] || return 0
 
   # Parse desired fields
@@ -957,8 +960,8 @@ send_detailed_telemetry() {
   local batt_pct; batt_pct=$(echo "$batt" | awk '{print $1}')
   local load; load=$(get_load)
 
-  local thread_count; thread_count=$(grep -o '"thread_count":[0-9]*' /tmp/desired-state.json 2>/dev/null | cut -d: -f2)
-  local randomx_mode; randomx_mode=$(grep -o '"randomx_mode":"[^"]*"' /tmp/desired-state.json 2>/dev/null | cut -d'"' -f4)
+  local thread_count; thread_count=$(grep -o '"thread_count":[0-9]*' ${TMPDIR:-/tmp}/desired-state.json 2>/dev/null | cut -d: -f2)
+  local randomx_mode; randomx_mode=$(grep -o '"randomx_mode":"[^"]*"' ${TMPDIR:-/tmp}/desired-state.json 2>/dev/null | cut -d'"' -f4)
 
   local body; body=$(printf '{
     "hashrate_10s":%s,
