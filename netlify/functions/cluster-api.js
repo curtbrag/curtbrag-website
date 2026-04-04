@@ -4,7 +4,7 @@
 //
 // All operator endpoints require Authorization: Bearer <web-password> header.
 
-const { getStore } = require("@netlify/blobs");
+const { connectLambda, getStore } = require("@netlify/blobs");
 const crypto = require("crypto");
 
 
@@ -487,6 +487,7 @@ async function buildSummary(devices, observedMap) {
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 exports.handler = async (event, context) => {
+  connectLambda(event);
   const origin = event.headers.origin || "";
   const hdrs = corsHeaders(origin);
 

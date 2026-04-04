@@ -6,7 +6,7 @@
 // per-device token returned after registration for all subsequent calls).
 // Device identity passed via X-Device-Id header.
 
-const { getStore } = require("@netlify/blobs");
+const { connectLambda, getStore } = require("@netlify/blobs");
 const crypto = require("crypto");
 
 
@@ -532,6 +532,7 @@ async function validateAgent(headers, deviceId) {
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 exports.handler = async (event, context) => {
+  connectLambda(event);
   const origin = event.headers.origin || "";
   const hdrs = corsHeaders(origin);
 
