@@ -598,7 +598,8 @@ async function showDetail(deviceId) {
         <div>PID: ${d.observed?.custom_pid || 'N/A'}</div>
         <div>Temp: ${d.observed?.temp_peak || d.observed?.temp_current || 0}°C</div>
         <div>Preflight: <strong style="color:${d.observed?.preflight_status === 'ok' ? 'var(--color-green)' : d.observed?.preflight_status?.startsWith('blocked') ? 'var(--color-red)' : 'var(--color-muted)'}">${d.observed?.preflight_status || 'unknown'}</strong>${d.observed?.preflight_status?.startsWith('blocked') ? ` — ${d.observed?.preflight_reason || ''}` : ''}</div>
-        <div>Workload: ${d.observed?.workload_type || 'mining'}</div>
+        <div>Workload: ${d.observed?.workload_type || 'mining'} / enabled: <strong style="color:${d.observed?.workload_enabled === false ? 'var(--color-red)' : 'var(--color-green)'}">${d.observed?.workload_enabled === false ? 'NO' : 'YES'}</strong></div>
+        <div>Restarts: <strong style="color:${(d.observed?.restart_count || 0) >= (d.desired?.restart_threshold || 5) ? 'var(--color-red)' : 'var(--color-muted)'}">${d.observed?.restart_count || 0}</strong> <button onclick="resetRestartCount('${deviceId}')" style="background:transparent;border:1px solid var(--color-border);border-radius:3px;padding:1px 6px;cursor:pointer;font-size:10px;color:var(--color-muted);margin-left:4px">Reset</button></div>
         <div>Agent: v${d.observed?.agent_version || d.agent_version || '?'}</div>
         ${d.observed?.binary_hash ? `<div style="margin-top:4px">Binary hash: <code style="font-size:9px;color:${d.desired?.approved_binary_hash && d.observed.binary_hash !== d.desired.approved_binary_hash ? 'var(--color-red)' : 'var(--color-muted)'}">${d.observed.binary_hash.slice(0,20)}…</code> ${d.desired?.approved_binary_hash ? (d.observed.binary_hash === d.desired.approved_binary_hash ? '<span style="color:var(--color-green);font-size:10px">✓ matches</span>' : '<span style="color:var(--color-red);font-size:10px">✗ mismatch</span>') : '<span style="color:var(--color-muted);font-size:10px">(unlocked)</span>'}</div>` : ''}
       </div>
@@ -683,6 +684,14 @@ async function savePauseBattery(deviceId, checked) {
     await callApi('set-thermal-policy', 'POST', { device_id: deviceId, pause_on_battery: checked });
     toast('Battery policy updated');
   } catch (e) { toast(`Error: ${e.message}`, 'error'); }
+}
+
+async function resetRestartCount(deviceId) {
+  try {
+    await callApi('reset-restart-count', 'POST', { device_id: deviceId });
+    toast('Restart counter reset');
+    setTimeout(fetchAll, 800);
+  } catch (e) { toast(`Reset failed: ${e.message}`, 'error'); }
 }
 
 async function savePoolConfig(deviceId) {

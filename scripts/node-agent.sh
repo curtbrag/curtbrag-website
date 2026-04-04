@@ -197,17 +197,24 @@ stop_custom_miner() {
 }
 
 get_xmrig_stats() {
-  # Read from MINER_LOG ($HOME/cluster/logs/xmrig.log)
-  local hr10="" accepted="" last_share_age=""
+  # Returns: hr10 hr60 hr15m accepted
+  # XMRig speed line format: "speed 10s/60s/15m 523.4 524.1 n/a H/s"
+  local hr10=0 hr60=0 hr15m=0 accepted=0
   local logfile="$MINER_LOG"
   if [ -f "$logfile" ]; then
-    hr10=$(tail -50 "$logfile" 2>/dev/null | grep -o '[0-9.]\+ H/s' | tail -1 | awk '{print $1}')
-    accepted=$(tail -100 "$logfile" 2>/dev/null | grep -o 'accepted [0-9]*' | tail -1 | awk '{print $2}')
-    # Last share timestamp line
-    local last_share_line
-    last_share_line=$(grep -i 'accepted\|share' "$logfile" 2>/dev/null | tail -1)
+    local speed_line
+    speed_line=$(tail -200 "$logfile" 2>/dev/null | grep -i 'speed' | tail -1)
+    if [ -n "$speed_line" ]; then
+      # Extract the three numbers before "H/s"
+      local nums; nums=$(echo "$speed_line" | grep -o '[0-9][0-9.]*' | head -3)
+      hr10=$(echo "$nums" | sed -n '1p')
+      hr60=$(echo "$nums" | sed -n '2p')
+      hr15m=$(echo "$nums" | sed -n '3p')
+    fi
+    # Count accepted shares from log
+    accepted=$(grep -c 'accepted' "$logfile" 2>/dev/null || echo 0)
   fi
-  echo "${hr10:-0} 0 0 ${accepted:-0}"
+  echo "${hr10:-0} ${hr60:-0} ${hr15m:-0} ${accepted:-0}"
 }
 
 hash_binary() {
@@ -308,10 +315,10 @@ check_cron_drift() {
 }
 
 replace_wrapper_stub() {
-  local stub="/home/user/start-xmrig.sh"
+  local stub="${HOME}/start-xmrig.sh"
   if [ -f "$stub" ]; then
-    local content; content=$(cat "$stub" 2>/dev/null)
-    if echo "$content" | grep -qv '# STUB'; then
+    # Only replace if the file does NOT already contain the stub marker
+    if ! grep -q '# STUB' "$stub" 2>/dev/null; then
       log "Replacing start-xmrig.sh with harmless stub"
       printf '#!/bin/sh\n# STUB: managed by node-agent. Do not edit.\nexit 0\n' > "$stub"
       chmod +x "$stub"
@@ -438,6 +445,7 @@ send_telemetry() {
 
   local stats; stats=$(get_xmrig_stats)
   local hr10; hr10=$(echo "$stats" | awk '{print $1}')
+  local hr60; hr60=$(echo "$stats" | awk '{print $2}')
   local accepted; accepted=$(echo "$stats" | awk '{print $4}')
 
   local binary_hash; binary_hash=$(hash_binary "$APPROVED_BINARY")
@@ -452,6 +460,9 @@ send_telemetry() {
       break
     fi
   done
+
+  local restart_count; restart_count=$(grep '^count=' /tmp/xmrig-restart-state.txt 2>/dev/null | cut -d= -f2)
+  local workload_enabled_obs; workload_enabled_obs=$(grep -o '"workload_enabled":[a-z]*' /tmp/desired-state.json 2>/dev/null | cut -d: -f2)
 
   local body; body=$(printf '{
     "ip":"%s",
@@ -470,6 +481,7 @@ send_telemetry() {
     "custom_pid":"%s",
     "rogue_pid":"%s",
     "hashrate_10s":%s,
+    "hashrate_60s":%s,
     "accepted_shares":%s,
     "binary_hash":"%s",
     "rogue_binary_detected":%s,
@@ -477,6 +489,8 @@ send_telemetry() {
     "preflight_status":"%s",
     "preflight_reason":"%s",
     "workload_type":"mining",
+    "workload_enabled":%s,
+    "restart_count":%s,
     "agent_version":"%s"
   }' "$ip" "$iface_type" "$load" \
      "${mem_used:-0}" "${mem_total:-1}" \
@@ -484,10 +498,12 @@ send_telemetry() {
      "${temp:-0}" "${batt_pct:-0}" "${batt_status:-unknown}" \
      "${disk_free:-0}" "${uptime:-0}" \
      "$xmrig_running" "${custom_pid:-}" "${rogue_pid:-}" \
-     "${hr10:-0}" "${accepted:-0}" \
+     "${hr10:-0}" "${hr60:-0}" "${accepted:-0}" \
      "${binary_hash:-}" \
      "$rogue_binary" "${rogue_binary_path:-}" \
      "${PREFLIGHT_STATUS:-unknown}" "${PREFLIGHT_REASON:-}" \
+     "${workload_enabled_obs:-true}" \
+     "${restart_count:-0}" \
      "$AGENT_VERSION")
 
   http_post "$AGENT_API/state" "$body" >/dev/null
@@ -565,6 +581,10 @@ execute_command() {
       check_cron_drift
       replace_wrapper_stub
       stdout="Reconcile complete"
+      ;;
+    reset-restart-count)
+      rm -f /tmp/xmrig-restart-state.txt
+      stdout="Restart counter cleared"
       ;;
     reboot)
       stdout="Rebooting in 5s..."
@@ -743,13 +763,16 @@ track_restart_state() {
 
   # Increment count
   count=$((count + 1))
-  [ "$count" -gt "$restart_threshold" ] && {
-    log "Restart threshold exceeded ($count > $restart_threshold)"
-    post_event "critical" "restart_threshold_exceeded" "Too many restarts ($count)"
+  if [ "$count" -gt "$restart_threshold" ]; then
+    log "Restart threshold exceeded ($count > $restart_threshold), entering cooldown"
+    post_event "critical" "restart_threshold_exceeded" "Too many restarts ($count), cooldown ${restart_cooldown}s"
     cooldown_until=$((now + restart_cooldown))
-  }
+    printf "count=%s\nlast_restart=%s\ncooldown_until=%s\n" "$count" "$now" "$cooldown_until" > "$restart_state_file"
+    return 1
+  fi
 
-  printf "count=$count\nlast_restart=$now\ncooldown_until=$cooldown_until\n" > "$restart_state_file"
+  printf "count=%s\nlast_restart=%s\ncooldown_until=%s\n" "$count" "$now" "$cooldown_until" > "$restart_state_file"
+  return 0
 }
 
 # ── Apply desired state ───────────────────────────────────────────────────────
@@ -860,6 +883,8 @@ send_detailed_telemetry() {
   local custom_pid; custom_pid=$(echo "$pids" | awk '{print $1}')
   local stats; stats=$(get_xmrig_stats)
   local hr10; hr10=$(echo "$stats" | awk '{print $1}')
+  local hr60; hr60=$(echo "$stats" | awk '{print $2}')
+  local hr15m; hr15m=$(echo "$stats" | awk '{print $3}')
   local accepted; accepted=$(echo "$stats" | awk '{print $4}')
   local temp; temp=$(get_temp)
   local mem; mem=$(get_mem)
@@ -889,7 +914,7 @@ send_detailed_telemetry() {
     "huge_pages_enabled":false,
     "randomx_mode":"%s",
     "thread_count":%s
-  }' "${hr10:-0}" "${hr10:-0}" "${hr10:-0}" \
+  }' "${hr10:-0}" "${hr60:-0}" "${hr15m:-0}" \
      "${accepted:-0}" \
      "${temp:-0}" "${temp:-0}" \
      "${load:-0}" \

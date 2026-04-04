@@ -800,7 +800,7 @@ exports.handler = async (event, context) => {
       if (!device) return json(404, hdrs, { error: "device not found" });
 
       const body = JSON.parse(event.body || "{}");
-      const metricsStore = openStore("cp-metrics");
+      const metricsStore = getStore("cp-metrics");
 
       // Store detailed telemetry history per device (last 1000 samples)
       try {
@@ -829,7 +829,19 @@ exports.handler = async (event, context) => {
         console.warn("telemetry storage error:", e.message);
       }
 
-      // Update device with latest metrics
+      // Merge hashrate into observed state so dashboard fleet cards show it
+      const obs = (await getStore("cp-observed").get(deviceId, { type: "json" }).catch(() => null)) || {};
+      await saveObservedState(deviceId, {
+        ...obs,
+        hashrate_10s: body.hashrate_10s || obs.hashrate_10s || 0,
+        hashrate_60s: body.hashrate_60s || obs.hashrate_60s || 0,
+        hashrate_15m: body.hashrate_15m || obs.hashrate_15m || 0,
+        accepted_shares: body.accepted_shares || obs.accepted_shares || 0,
+        temp_current: body.temp_current || obs.temp_current || 0,
+        temp_peak: body.temp_peak || obs.temp_peak || 0,
+      });
+
+      // Update device with latest metrics summary
       await saveDevice(deviceId, {
         ...device,
         last_hashrate: body.hashrate_60s || 0,

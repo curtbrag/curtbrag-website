@@ -752,6 +752,7 @@ exports.handler = async (event, context) => {
         "kill-rogue","reconcile","fetch-logs",
         "disable-mining","quarantine","clear-quarantine",
         "run-diagnostic","switch-profile","force-binary-redeploy",
+        "reset-restart-count",
       ];
 
       const target = body.target || "all";
@@ -1120,6 +1121,26 @@ exports.handler = async (event, context) => {
         }
       }
       return json(200, hdrs, { ok: true, affected: affected.length });
+    }
+
+    // Reset restart counter for device (queues a reconcile command)
+    if (postAction === "reset-restart-count") {
+      const { device_id } = body;
+      if (!device_id) return json(400, hdrs, { error: "device_id required" });
+      // Queue a reconcile command so the agent clears /tmp/xmrig-restart-state.txt
+      const cmd = {
+        id: genId(),
+        target: device_id,
+        type: "reset-restart-count",
+        payload: {},
+        status: "queued",
+        created_by: "operator",
+        created_at: Date.now(),
+        started_at: null,
+        finished_at: null,
+      };
+      await enqueueCommand(cmd);
+      return json(200, hdrs, { ok: true });
     }
 
     // Set pool config for a device
