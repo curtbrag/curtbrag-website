@@ -259,7 +259,7 @@ const DEFAULT_PROFILES = {
       ],
       cpu: { enabled: true, "huge-pages": false, hw_aes: null, priority: 2, "memory-pool": false },
       randomx: { mode: "light", "1gb-pages": false, rdmsr: false, wrmsr: false },
-      "log-file": "/tmp/xmrig.log",
+      "log-file": "~/cluster/logs/xmrig.log",
       "print-time": 60,
       "health-print-time": 60,
     },
@@ -288,7 +288,7 @@ const DEFAULT_PROFILES = {
       ],
       cpu: { enabled: true, "huge-pages": false, priority: 1, "memory-pool": false },
       randomx: { mode: "light" },
-      "log-file": "/tmp/xmrig.log",
+      "log-file": "~/cluster/logs/xmrig.log",
     },
     thread_count: 3,
     max_temp: 60,
@@ -315,7 +315,7 @@ const DEFAULT_PROFILES = {
       ],
       cpu: { enabled: true, "huge-pages": true, priority: 2, "max-threads-hint": 75 },
       randomx: { mode: "auto" },
-      "log-file": "/tmp/xmrig.log",
+      "log-file": "~/cluster/logs/xmrig.log",
     },
     thread_count: null,
     max_temp: 80,
@@ -883,6 +883,11 @@ exports.handler = async (event, context) => {
     if (postAction === "rollout-profile") {
       const { profile_id, target, group_id } = body;
       if (!profile_id) return json(400, hdrs, { error: "profile_id required" });
+
+      // Load the profile to get its settings
+      const profile = await getProfile(profile_id);
+      if (!profile) return json(404, hdrs, { error: "profile not found" });
+
       const devices = await getAllDevices();
       const affected = [];
 
@@ -904,7 +909,25 @@ exports.handler = async (event, context) => {
         else if (d.id === target || d.hostname === target) match = true;
 
         if (match) {
+          // Mark profile on device record
           await saveDevice(d.id, { ...d, miner_profile: profile_id });
+          // Push profile settings into desired state so agent acts on them
+          const des = (await getDesiredState(d.id)) || {};
+          const updates = { miner_profile: profile_id };
+          if (profile.thread_count != null) updates.thread_count = profile.thread_count;
+          if (profile.max_temp != null) updates.max_temp_celsius = profile.max_temp;
+          if (profile.pause_on_battery != null) updates.pause_on_battery = profile.pause_on_battery;
+          if (profile.pause_on_high_temp != null) updates.pause_on_high_temp = profile.pause_on_high_temp;
+          if (profile.randomx_mode) updates.randomx_mode = profile.randomx_mode;
+          if (profile.preflight_required != null) updates.preflight_required = profile.preflight_required;
+          // Extract pool settings from profile.config if present
+          const pool = profile.config?.pools?.[0];
+          if (pool?.url) {
+            const [poolHost, poolPort] = pool.url.split(":");
+            if (poolHost) updates.pool_url = poolHost;
+            if (poolPort) updates.pool_port = parseInt(poolPort);
+          }
+          await saveDesiredState(d.id, { ...des, ...updates });
           affected.push(d.id);
         }
       }
@@ -946,7 +969,7 @@ exports.handler = async (event, context) => {
       const entry = {
         id: genId(),
         label,
-        path: binPath || "/home/user/xmrig-custom",
+        path: binPath || "~/xmrig-custom",
         sha256,
         device_class: device_class || "phone",
         enabled: true,
@@ -981,11 +1004,18 @@ exports.handler = async (event, context) => {
     // Fleet-wide: disable all mining
     if (postAction === "fleet-disable-mining") {
       const devices = await getAllDevices();
+      const target = body.target || "all";
+      let count = 0;
       for (const d of devices) {
-        const des = (await getDesiredState(d.id)) || {};
-        await saveDesiredState(d.id, { ...des, miner_enabled: false });
+        const isPhone = d.device_class === "phone";
+        const matches = target === "all" || (target === "phones" && isPhone) || (target === "pcs" && !isPhone);
+        if (matches) {
+          const des = (await getDesiredState(d.id)) || {};
+          await saveDesiredState(d.id, { ...des, miner_enabled: false, workload_enabled: false });
+          count++;
+        }
       }
-      return json(200, hdrs, { ok: true, affected: devices.length });
+      return json(200, hdrs, { ok: true, affected: count });
     }
 
     // Fleet-wide: enable mining (phones only by default)
@@ -995,9 +1025,9 @@ exports.handler = async (event, context) => {
       let count = 0;
       for (const d of devices) {
         const isPhone = d.device_class === "phone";
-        if (target === "all" || (target === "phones" && isPhone)) {
+        if (target === "all" || (target === "phones" && isPhone) || (target === "pcs" && !isPhone)) {
           const des = (await getDesiredState(d.id)) || {};
-          await saveDesiredState(d.id, { ...des, miner_enabled: true });
+          await saveDesiredState(d.id, { ...des, miner_enabled: true, workload_enabled: true });
           count++;
         }
       }
@@ -1022,13 +1052,14 @@ exports.handler = async (event, context) => {
       const { group_id, group_name, device_ids, description } = body;
       if (!group_id || !group_name)
         return json(400, hdrs, { error: "group_id and group_name required" });
-      const groupStore = openStore("cp-groups");
+      const groupStore = getStore("cp-groups");
+      const existing = await groupStore.get(group_id, { type: "json" }).catch(() => null);
       const group = {
         id: group_id,
         name: group_name,
-        description: description || "",
-        device_ids: device_ids || [],
-        created_at: Date.now(),
+        description: description || existing?.description || "",
+        device_ids: device_ids || existing?.device_ids || [],
+        created_at: existing?.created_at || Date.now(),
         updated_at: Date.now(),
       };
       await groupStore.setJSON(group_id, group);

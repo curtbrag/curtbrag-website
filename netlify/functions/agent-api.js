@@ -270,13 +270,17 @@ async function checkDrift(deviceId, desired, observed) {
     );
   }
 
-  if (desired.miner_enabled && !observed.xmrig_running) {
+  // Only fire miner_stopped if not blocked by a known gate (preflight, thermal, battery)
+  const blockedByGate = observed.preflight_status?.startsWith("blocked")
+    || observed.preflight_status === "blocked_hash_mismatch"
+    || observed.workload_enabled === false;
+  if (desired.miner_enabled && !observed.xmrig_running && !blockedByGate) {
     promises.push(
       addEvent(deviceId, {
         severity: "warning",
         type: "miner_stopped",
         message: `Miner should be running on ${deviceId} but isn't`,
-        data: {},
+        data: { preflight_status: observed.preflight_status },
       })
     );
   }
