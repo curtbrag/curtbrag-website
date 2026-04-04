@@ -154,11 +154,6 @@ Observed hashes from online devices:
     <option value="all">All Devices</option>
     <option value="phones">All Phones</option>
     <option value="pcs">All PCs</option>
-    <option value="node1">node1</option><option value="node2">node2</option><option value="node3">node3</option>
-    <option value="node4">node4</option><option value="node5">node5</option><option value="node6">node6</option>
-    <option value="node7">node7</option><option value="node8">node8</option><option value="node9">node9</option>
-    <option value="node10">node10</option><option value="nexus-prime">nexus-prime</option>
-    <option value="viki">viki</option><option value="skynet">skynet</option><option value="steamdeck">steamdeck</option>
   </select>
   <select id="cmdType" style="background:var(--color-bg);border:1px solid var(--color-border);border-radius:6px;padding:8px;font-size:12px;color:var(--color-text)">
     <option value="mining-start">mining-start</option>
@@ -341,6 +336,7 @@ async function fetchAll() {
     renderGroups();
     renderEvents();
     renderHashReport();
+    renderCommandTargets();
   } catch (e) { toast(`Fetch failed: ${e.message}`, 'error'); }
 }
 
@@ -727,6 +723,30 @@ async function flushQueue() {
     toast('Queue flushed');
     setTimeout(fetchAll, 1000);
   } catch (e) { toast(`Flush failed: ${e.message}`, 'error'); }
+}
+
+function renderCommandTargets() {
+  const sel = document.getElementById('cmdTarget');
+  if (!sel) return;
+  // Preserve current selection
+  const current = sel.value;
+  // Remove any previously added device options (keep first 3 static options)
+  while (sel.options.length > 3) sel.remove(3);
+  // Add separator then registered devices
+  if (state.devices.length) {
+    const sep = document.createElement('option');
+    sep.disabled = true;
+    sep.textContent = '── Registered Devices ──';
+    sel.appendChild(sep);
+    for (const d of state.devices) {
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = `${d.hostname} (${d.device_class}) ${d.online ? '●' : '○'}`;
+      sel.appendChild(opt);
+    }
+  }
+  // Restore selection if still valid
+  if (current && Array.from(sel.options).some(o => o.value === current)) sel.value = current;
 }
 
 async function lockBinaryHash() {

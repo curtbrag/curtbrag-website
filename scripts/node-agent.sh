@@ -526,6 +526,18 @@ execute_command() {
           fi
         fi
 
+        # Hash verification for manual mining-start command
+        local p_hash; p_hash=$(grep -o '"approved_binary_hash":"[^"]*"' "$ds" 2>/dev/null | cut -d'"' -f4)
+        if [ -n "$p_hash" ]; then
+          local actual_h; actual_h=$(hash_binary "$bin")
+          if [ "$actual_h" != "$p_hash" ]; then
+            stdout="BLOCKED: binary hash mismatch (got ${actual_h:0:12}…)"
+            success="false"; exit_code=1
+            post_event "critical" "hash_mismatch" "mining-start blocked: hash mismatch"
+            break
+          fi
+        fi
+
         mkdir -p "$(dirname "$log_path")" 2>/dev/null || true
         local cfg; cfg=$(render_xmrig_config "${p_url:-192.168.1.179}" "${p_port:-10128}" "${p_user:-wallet}" "${tcount:-6}" "${rx_mode:-light}" "$log_path")
         nohup "$bin" --config="$cfg" --no-color >> "$log_path" 2>&1 &
