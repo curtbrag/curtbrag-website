@@ -652,8 +652,8 @@ execute_command() {
       ;;
   esac
 
-  # Report result
-  local stdout_esc; stdout_esc=$(printf '%s' "$stdout" | head -c 3000 | sed 's/"/\\"/g; s/\n/\\n/g')
+  # Report result — escape quotes and collapse newlines for valid JSON string
+  local stdout_esc; stdout_esc=$(printf '%s' "$stdout" | head -c 3000 | tr '\n' ' ' | sed 's/"/\\"/g; s/\r//g')
   local body; body=$(printf '{"command_id":"%s","success":%s,"exit_code":%s,"stdout":"%s","stderr":""}' \
     "$cmd_id" "$success" "$exit_code" "$stdout_esc")
   http_post "$AGENT_API/command-result" "$body" >/dev/null
@@ -663,26 +663,55 @@ poll_and_execute_commands() {
   local resp; resp=$(http_get "$AGENT_API/commands")
   [ -z "$resp" ] && return
 
-  # Parse command array (simple approach for POSIX sh without jq)
-  # Each command is: {"id":"...","type":"...","payload":{...},...}
-  # Extract IDs and types using grep
-  local ids; ids=$(echo "$resp" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
-  [ -z "$ids" ] && return
+  # Extract command count
+  local count; count=$(echo "$resp" | grep -o '"id":"' | wc -l | tr -d ' ')
+  [ "$count" -eq 0 ] && return
 
-  # Process each command (requires jq if available, fallback to grep)
+  # Try jq first (most reliable)
   if command -v jq >/dev/null 2>&1; then
-    echo "$resp" | jq -c '.commands[]?' 2>/dev/null | while read -r cmd; do
-      local cid; cid=$(echo "$cmd" | jq -r '.id')
-      local ctype; ctype=$(echo "$cmd" | jq -r '.type')
-      local cpayload; cpayload=$(echo "$cmd" | jq -c '.payload // {}')
-      execute_command "$cid" "$ctype" "$cpayload"
+    echo "$resp" | jq -c '.commands[]?' 2>/dev/null | while IFS= read -r cmd; do
+      local cid ctype cpayload
+      cid=$(echo "$cmd" | jq -r '.id // empty')
+      ctype=$(echo "$cmd" | jq -r '.type // empty')
+      cpayload=$(echo "$cmd" | jq -c '.payload // {}')
+      [ -n "$cid" ] && [ -n "$ctype" ] && execute_command "$cid" "$ctype" "$cpayload"
     done
-  else
-    # Minimal fallback: just get first command id+type
-    local cid; cid=$(echo "$resp" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-    local ctype; ctype=$(echo "$resp" | grep -o '"type":"[^"]*"' | head -1 | cut -d'"' -f4)
-    [ -n "$cid" ] && [ -n "$ctype" ] && execute_command "$cid" "$ctype" "{}"
+    return
   fi
+
+  # Python fallback (available on Termux by default)
+  if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
+    local py; py=$(command -v python3 2>/dev/null || command -v python)
+    echo "$resp" | "$py" -c '
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    for cmd in data.get("commands", []):
+        cid = cmd.get("id","")
+        ctype = cmd.get("type","")
+        payload = json.dumps(cmd.get("payload", {}))
+        if cid and ctype:
+            print(cid + "|" + ctype + "|" + payload)
+except: pass
+' 2>/dev/null | while IFS='|' read -r cid ctype cpayload; do
+      [ -n "$cid" ] && [ -n "$ctype" ] && execute_command "$cid" "$ctype" "${cpayload:-{}}"
+    done
+    return
+  fi
+
+  # Grep fallback: process all commands by index, payload as empty
+  local all_ids all_types
+  all_ids=$(echo "$resp" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+  all_types=$(echo "$resp" | grep -o '"type":"[^"]*"' | cut -d'"' -f4)
+  local i=1
+  while true; do
+    local cid ctype
+    cid=$(echo "$all_ids" | sed -n "${i}p")
+    ctype=$(echo "$all_types" | sed -n "${i}p")
+    [ -z "$cid" ] && break
+    execute_command "$cid" "$ctype" "{}"
+    i=$((i + 1))
+  done
 }
 
 # ── Config rendering and enforcement ──────────────────────────────────────────
