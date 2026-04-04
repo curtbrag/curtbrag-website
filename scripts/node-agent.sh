@@ -662,7 +662,8 @@ render_xmrig_config() {
   local log_file="${6:-}"
   log_file=$(expand_path "${log_file:-~/cluster/logs/xmrig.log}")
   mkdir -p "$(dirname "$log_file")" 2>/dev/null || true
-  local config_file="/tmp/xmrig-config.json"
+  mkdir -p "${HOME}/cluster/config" 2>/dev/null || true
+  local config_file="${HOME}/cluster/config/xmrig-runtime.json"
 
   cat > "$config_file" << EOF
 {
@@ -827,7 +828,7 @@ apply_desired_state() {
 
     # Check restart throttle
     if track_restart_state "${restart_threshold:-5}" "${restart_cooldown:-300}"; then
-      local cfg="/tmp/xmrig-config.json"
+      local cfg="${HOME}/cluster/config/xmrig-runtime.json"
       if [ -f "$cfg" ]; then
         nohup "$APPROVED_BINARY" --config="$cfg" --no-color >> "$log_path" 2>&1 &
       else
