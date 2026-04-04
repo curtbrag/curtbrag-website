@@ -508,11 +508,16 @@ execute_command() {
       if [ ! -f "$bin" ]; then
         stdout="Binary not found: $bin"; success="false"; exit_code=1
       else
-        # Read pool/log from desired state for preflight
         local ds="/tmp/desired-state.json"
         local p_url; p_url=$(grep -o '"pool_url":"[^"]*"' "$ds" 2>/dev/null | cut -d'"' -f4)
         local p_port; p_port=$(grep -o '"pool_port":[0-9]*' "$ds" 2>/dev/null | cut -d: -f2)
+        local p_user; p_user=$(grep -o '"pool_user":"[^"]*"' "$ds" 2>/dev/null | cut -d'"' -f4)
         local p_req; p_req=$(grep -o '"preflight_required":[a-z]*' "$ds" 2>/dev/null | cut -d: -f2)
+        local tcount; tcount=$(grep -o '"thread_count":[0-9]*' "$ds" 2>/dev/null | cut -d: -f2)
+        local rx_mode; rx_mode=$(grep -o '"randomx_mode":"[^"]*"' "$ds" 2>/dev/null | cut -d'"' -f4)
+        local log_path_raw; log_path_raw=$(grep -o '"log_path":"[^"]*"' "$ds" 2>/dev/null | cut -d'"' -f4)
+        local log_path; log_path=$(expand_path "${log_path_raw:-~/cluster/logs/xmrig.log}")
+
         if [ "${p_req:-true}" = "true" ]; then
           if ! run_preflight "${p_url:-192.168.1.179}" "${p_port:-10128}" "$bin"; then
             stdout="BLOCKED: $PREFLIGHT_REASON"
@@ -520,17 +525,20 @@ execute_command() {
             break
           fi
         fi
-        mkdir -p "$(dirname "$MINER_LOG")" 2>/dev/null || true
-        local cfg="/tmp/xmrig-config.json"
-        if [ -f "$cfg" ]; then
-          nohup "$bin" --config="$cfg" --no-color >> "$MINER_LOG" 2>&1 &
+
+        mkdir -p "$(dirname "$log_path")" 2>/dev/null || true
+        local cfg; cfg=$(render_xmrig_config "${p_url:-192.168.1.179}" "${p_port:-10128}" "${p_user:-wallet}" "${tcount:-6}" "${rx_mode:-light}" "$log_path")
+        nohup "$bin" --config="$cfg" --no-color >> "$log_path" 2>&1 &
+        local mpid=$!
+        sleep 3
+        if kill -0 "$mpid" 2>/dev/null; then
+          stdout="Mining started (PID $mpid)"
         else
-          nohup "$bin" --no-color >> "$MINER_LOG" 2>&1 &
+          stdout="Mining failed to stay alive"
+          success="false"; exit_code=1
         fi
-        stdout="Mining started (PID $!)"
       fi
-      ;;
-    mining-stop|stop)
+      ;;    mining-stop|stop)
       stop_custom_miner; stdout="Mining stopped"
       ;;
     mining-status|status)
