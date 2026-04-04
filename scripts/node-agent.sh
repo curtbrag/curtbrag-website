@@ -155,22 +155,45 @@ expand_path() {
 
 get_xmrig_pids() {
   # Returns: custom_pid rogue_pid
-  # Android/Termux: pgrep may not support -x; use ps fallback
   local custom="" rogue=""
+  local approved approved_resolved
+  approved=$(expand_path "$APPROVED_BINARY")
+  approved_resolved=$(readlink -f "$approved" 2>/dev/null || echo "$approved")
+
   local pids
   pids=$(pgrep -f 'xmrig' 2>/dev/null \
     || ps -A 2>/dev/null | grep -i xmrig | grep -v grep | awk '{print $1}' \
     || echo "")
+
   for pid in $pids; do
     local exe; exe=$(readlink -f "/proc/$pid/exe" 2>/dev/null || echo "")
     local cmdline; cmdline=$(cat "/proc/$pid/cmdline" 2>/dev/null | tr '\0' ' ' || echo "")
-    if echo "$exe$cmdline" | grep -q "xmrig-custom"; then
+
+    if [ -n "$exe" ] && [ "$exe" = "$approved_resolved" ]; then
+      custom="$pid"
+    elif echo "$cmdline" | grep -Fq -- "$approved"; then
+      custom="$pid"
+    elif echo "$cmdline" | grep -Fq -- "$approved_resolved"; then
+      custom="$pid"
+    elif echo "$exe$cmdline" | grep -q "xmrig-custom"; then
       custom="$pid"
     else
       rogue="$pid"
     fi
   done
+
   echo "$custom $rogue"
+}
+
+stop_custom_miner() {
+  local pids custom
+  pids=$(get_xmrig_pids)
+  custom=$(echo "$pids" | awk '{print $1}')
+  if [ -n "$custom" ]; then
+    kill "$custom" 2>/dev/null || true
+    sleep 1
+    kill -9 "$custom" 2>/dev/null || true
+  fi
 }
 
 get_xmrig_stats() {
@@ -508,7 +531,7 @@ execute_command() {
       fi
       ;;
     mining-stop|stop)
-      pkill -f "xmrig-custom" 2>/dev/null && stdout="Mining stopped" || stdout="No miner running"
+      stop_custom_miner; stdout="Mining stopped"
       ;;
     mining-status|status)
       stdout=$(ps aux 2>/dev/null | grep -i xmrig | grep -v grep || echo "no xmrig processes")
@@ -558,7 +581,7 @@ execute_command() {
         stdout="Invalid level"
         success="false"; exit_code=1
       elif [ "$level" -eq 0 ]; then
-        pkill -f "xmrig-custom" 2>/dev/null || true
+        stop_custom_miner
         stdout="Mining disabled (level 0)"
       else
         # Level 1-4: start/resume mining (would need desired state config)
@@ -572,7 +595,7 @@ execute_command() {
       pool_user=$(echo "$payload" | grep -o '"user":"[^"]*"' | cut -d'"' -f4)
       if [ -n "$pool_url" ]; then
         # Restart miner with new pool config
-        pkill -f "xmrig-custom" 2>/dev/null || true
+        stop_custom_miner
         local config; config=$(render_xmrig_config "$pool_url" "${pool_port:-10128}" "${pool_user:-wallet}" "2" "light")
         nohup "$APPROVED_BINARY" --config="$config" --no-color >> /tmp/xmrig.log 2>&1 &
         stdout="Pool changed to $pool_url:$pool_port"
@@ -673,7 +696,7 @@ enforce_thermal_policy() {
 
   if [ "$current_temp" -gt "$max_temp" ]; then
     log "THERMAL LIMIT: temp $current_temp > max $max_temp — pausing miner"
-    pkill -f "xmrig-custom" 2>/dev/null || true
+    stop_custom_miner
     post_event "warning" "thermal_throttle" "Mining paused: temp $current_temp°C > max $max_temp°C"
     return 1
   fi
@@ -755,7 +778,7 @@ apply_desired_state() {
   if [ "$pause_on_battery" = "true" ]; then
     local batt_status; batt_status=$(get_battery | awk '{print $2}')
     if [ "$batt_status" = "Discharging" ]; then
-      pkill -f "xmrig-custom" 2>/dev/null || true
+      stop_custom_miner
       post_event "info" "battery_pause" "Mining paused: on battery"
       return 0
     fi
@@ -806,7 +829,7 @@ apply_desired_state() {
       post_event "info" "miner_started" "Miner started by desired-state enforcement"
     fi
   elif [ "$should_mine" = "false" ] && [ "$is_running" = "true" ]; then
-    pkill -f "xmrig-custom" 2>/dev/null || true
+    stop_custom_miner
     log "Stopped miner per desired state"
     post_event "info" "miner_stopped" "Miner stopped by desired-state enforcement"
   fi
