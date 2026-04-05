@@ -504,7 +504,7 @@ exports.handler = async (event, context) => {
 
   const __swarmAction = __swarmQs.action || __swarmBody.action || "";
 
-  globalThis.__swarmTestState = globalThis.__swarmTestState || {
+  globalThis.__swarmTestState = {
     issued: false,
     updates: []
   };
@@ -516,7 +516,7 @@ exports.handler = async (event, context) => {
       return __swarmJson(200, {
         jobs: [
           {
-            id: "infer-job-001",
+            id: "infer-job-002",
             type: "infer",
             payload: {
               task: "intent_basic",
@@ -1201,7 +1201,10 @@ exports.handler = async (event, context) => {
         id: genId(),
         target: device_id,
         type: "reset-restart-count",
-        payload: {},
+        payload: {
+              task: "intent_basic",
+              text: "check node status and run diagnostics"
+            },
         status: "queued",
         created_by: "operator",
         created_at: Date.now(),
