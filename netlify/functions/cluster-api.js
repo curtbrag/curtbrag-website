@@ -516,9 +516,12 @@ exports.handler = async (event, context) => {
       return __swarmJson(200, {
         jobs: [
           {
-            id: "ping-job-001",
-            type: "ping",
-            payload: {}
+            id: "infer-job-001",
+            type: "infer",
+            payload: {
+              task: "intent_basic",
+              text: "check node status and run diagnostics"
+            }
           }
         ]
       });
