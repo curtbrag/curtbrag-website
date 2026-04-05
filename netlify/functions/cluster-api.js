@@ -504,12 +504,40 @@ exports.handler = async (event, context) => {
 
   const __swarmAction = __swarmQs.action || __swarmBody.action || "";
 
+  globalThis.__swarmTestState = globalThis.__swarmTestState || {
+    issued: false,
+    updates: []
+  };
+
   if (event?.httpMethod === "GET" && __swarmAction === "swarm-poll") {
+    const deviceId = __swarmQs.device_id || "";
+    if (deviceId === "node1-a4853b8c" && !globalThis.__swarmTestState.issued) {
+      globalThis.__swarmTestState.issued = true;
+      return __swarmJson(200, {
+        jobs: [
+          {
+            id: "ping-job-001",
+            type: "ping",
+            payload: {}
+          }
+        ]
+      });
+    }
+
     return __swarmJson(200, { jobs: [] });
   }
 
   if (event?.httpMethod === "POST" && __swarmAction === "job-update") {
-    return __swarmJson(200, { ok: true, received: true });
+    globalThis.__swarmTestState.updates.push({
+      at: Date.now(),
+      body: __swarmBody
+    });
+
+    return __swarmJson(200, {
+      ok: true,
+      received: true,
+      updates: globalThis.__swarmTestState.updates
+    });
   }
 
   connectLambda(event);
