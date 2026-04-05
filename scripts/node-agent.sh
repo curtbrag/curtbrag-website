@@ -559,7 +559,7 @@ execute_command() {
         if [ "$_blocked" -eq 0 ]; then
           mkdir -p "$(dirname "$log_path")" 2>/dev/null || true
           local cfg; cfg=$(render_xmrig_config "${p_url:-192.168.1.179}" "${p_port:-10128}" "${p_user:-wallet}" "${tcount:-6}" "${rx_mode:-light}" "$log_path")
-          nohup "$bin" --config="$cfg" --no-color >> "$log_path" 2>&1 &
+          nohup "$bin" --config="$cfg" --threads="${tcount:-6}" --cpu-priority=2 --no-color >> "$log_path" 2>&1 &
           local mpid=$!
           sleep 3
           if kill -0 "$mpid" 2>/dev/null; then
@@ -775,31 +775,61 @@ render_xmrig_config() {
 
   cat > "$config_file" << EOF
 {
-  "api": { "id": null, "worker-id": null },
-  "http": { "enabled": false, "host": "127.0.0.1", "port": 0 },
-  "autosave": false,
+  "api": {
+    "id": null,
+    "worker-id": null
+  },
+  "http": {
+    "enabled": false,
+    "host": "127.0.0.1",
+    "port": 0,
+    "access-token": null,
+    "restricted": true
+  },
+  "autosave": true,
   "background": false,
   "colors": false,
-  "randomx": { "init": -1, "mode": "$mode", "1gb-pages": false },
-  "cpu": { "enabled": true, "huge-pages": false, "hw-aes": true, "priority": 2, "threads": $threads },
+  "title": false,
+  "randomx": {
+    "init": -1,
+    "mode": "$mode",
+    "1gb-pages": false
+  },
+  "cpu": {
+    "enabled": true,
+    "huge-pages": false,
+    "hw-aes": null,
+    "priority": 2,
+    "yield": true
+  },
   "donate-level": 1,
   "log-file": "$log_file",
-  "print-time": 60,
+  "print-time": 10,
+  "health-print-time": 10,
   "retries": 5,
   "retry-pause": 5,
-  "watch": false,
+  "pause-on-battery": false,
+  "pause-on-active": false,
   "pools": [
     {
-      "algo": "rx/0",
-      "coin": "monero",
+      "algo": null,
+      "coin": null,
       "url": "$pool_url:$pool_port",
       "user": "$pool_user",
       "pass": "x",
-      "tls": false,
+      "rig-id": "$DEVICE_ID",
+      "nicehash": false,
       "keepalive": true,
-      "enabled": true
+      "enabled": true,
+      "tls": false,
+      "sni": false,
+      "daemon": false
     }
   ]
+}
+EOF
+
+  echo "$config_file"
 }
 EOF
 
@@ -941,9 +971,9 @@ apply_desired_state() {
     if track_restart_state "${restart_threshold:-5}" "${restart_cooldown:-300}"; then
       local cfg="${HOME}/cluster/config/xmrig-runtime.json"
       if [ -f "$cfg" ]; then
-        nohup "$APPROVED_BINARY" --config="$cfg" --no-color >> "$log_path" 2>&1 &
+        nohup "$APPROVED_BINARY" --config="$cfg" --threads="${thread_count:-6}" --cpu-priority=2 --no-color >> "$log_path" 2>&1 &
       else
-        nohup "$APPROVED_BINARY" --no-color >> "$log_path" 2>&1 &
+        nohup "$APPROVED_BINARY" --config="${HOME}/cluster/config/xmrig-runtime.json" --threads="${thread_count:-6}" --cpu-priority=2 --no-color >> "$log_path" 2>&1 &
       fi
       log "Started miner per desired state (PID $!)"
       post_event "info" "miner_started" "Miner started by desired-state enforcement"
