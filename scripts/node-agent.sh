@@ -843,10 +843,6 @@ EOF
 
   echo "$config_file"
 }
-EOF
-
-  echo "$config_file"
-}
 
 enforce_thermal_policy() {
   local max_temp="$1" current_temp="$2"
