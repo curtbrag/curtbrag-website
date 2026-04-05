@@ -487,6 +487,31 @@ async function buildSummary(devices, observedMap) {
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 exports.handler = async (event, context) => {
+
+  const __swarmJson = (code, obj) => ({
+    statusCode: code,
+    headers: { "content-type": "application/json; charset=utf-8" },
+    body: JSON.stringify(obj)
+  });
+
+  const __swarmQs = event?.queryStringParameters || {};
+  let __swarmBody = {};
+  try {
+    __swarmBody = event?.body ? JSON.parse(event.body) : {};
+  } catch (_) {
+    __swarmBody = {};
+  }
+
+  const __swarmAction = __swarmQs.action || __swarmBody.action || "";
+
+  if (event?.httpMethod === "GET" && __swarmAction === "swarm-poll") {
+    return __swarmJson(200, { jobs: [] });
+  }
+
+  if (event?.httpMethod === "POST" && __swarmAction === "job-update") {
+    return __swarmJson(200, { ok: true, received: true });
+  }
+
   connectLambda(event);
   const origin = event.headers.origin || "";
   const hdrs = corsHeaders(origin);
