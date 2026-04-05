@@ -774,7 +774,7 @@ render_xmrig_config() {
   mkdir -p "${HOME}/cluster/config" 2>/dev/null || true
   local config_file="${HOME}/cluster/config/xmrig-runtime.json"
 
-  cat > "$config_file" << EOF
+  cat > "$config_file" <<EOF
 {
   "api": {
     "id": null,
@@ -827,18 +827,6 @@ render_xmrig_config() {
       "daemon": false
     }
   ]
-}
-EOF
-
-  echo "$config_file"
-}
-EOF
-
-  echo "$config_file"
-}
-EOF
-
-  echo "$config_file"
 }
 EOF
 
