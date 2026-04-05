@@ -516,7 +516,7 @@ exports.handler = async (event, context) => {
       return __swarmJson(200, {
         jobs: [
           {
-            id: "embed-job-001",
+            id: "embed-job-002",
             type: "embed",
             payload: {
               task: "embed_basic",
