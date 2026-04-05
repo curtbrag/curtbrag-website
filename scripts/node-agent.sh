@@ -415,7 +415,7 @@ send_heartbeat() {
   [ -n "$interval" ] && TELEMETRY_INTERVAL="$interval"
 
   # Persist full response so apply_desired_state() can read desired fields
-  [ -n "$resp" ] && printf '%s' "$resp" > ${TMPDIR:-/tmp}/desired-state.json 2>/dev/null || true
+  [ -n "$resp" ] && printf '%s' "$resp" > "${TMPDIR:-/tmp}/desired-state.json" 2>/dev/null || true
 }
 
 # ── Telemetry ─────────────────────────────────────────────────────────────────
@@ -461,8 +461,8 @@ send_telemetry() {
     fi
   done
 
-  local restart_count; restart_count=$(grep '^count=' ${TMPDIR:-/tmp}/xmrig-restart-state.txt 2>/dev/null | cut -d= -f2)
-  local workload_enabled_obs; workload_enabled_obs=$(grep -o '"workload_enabled":[a-z]*' ${TMPDIR:-/tmp}/desired-state.json 2>/dev/null | cut -d: -f2)
+  local restart_count; restart_count=$(grep '^count=' "${TMPDIR:-/tmp}/xmrig-restart-state.txt" 2>/dev/null | cut -d= -f2)
+  local workload_enabled_obs; workload_enabled_obs=$(grep -o '"workload_enabled":[a-z]*' "${TMPDIR:-/tmp}/desired-state.json" 2>/dev/null | cut -d: -f2)
 
   local body; body=$(printf '{
     "ip":"%s",
@@ -574,7 +574,7 @@ execute_command() {
     disable-mining)
       stop_custom_miner
       # Mark disabled in local state file so apply_desired_state respects it
-      sed -i 's/"miner_enabled":true/"miner_enabled":false/g' ${TMPDIR:-/tmp}/desired-state.json 2>/dev/null || true
+      sed -i 's/"miner_enabled":true/"miner_enabled":false/g' "${TMPDIR:-/tmp}/desired-state.json" 2>/dev/null || true
       stdout="Mining disabled"
       ;;
     restart)
@@ -617,7 +617,7 @@ execute_command() {
       stdout="Reconcile complete"
       ;;
     reset-restart-count)
-      rm -f ${TMPDIR:-/tmp}/xmrig-restart-state.txt
+      rm -f "${TMPDIR:-/tmp}/xmrig-restart-state.txt"
       stdout="Restart counter cleared"
       ;;
     reboot)
@@ -960,8 +960,8 @@ send_detailed_telemetry() {
   local batt_pct; batt_pct=$(echo "$batt" | awk '{print $1}')
   local load; load=$(get_load)
 
-  local thread_count; thread_count=$(grep -o '"thread_count":[0-9]*' ${TMPDIR:-/tmp}/desired-state.json 2>/dev/null | cut -d: -f2)
-  local randomx_mode; randomx_mode=$(grep -o '"randomx_mode":"[^"]*"' ${TMPDIR:-/tmp}/desired-state.json 2>/dev/null | cut -d'"' -f4)
+  local thread_count; thread_count=$(grep -o '"thread_count":[0-9]*' "${TMPDIR:-/tmp}/desired-state.json" 2>/dev/null | cut -d: -f2)
+  local randomx_mode; randomx_mode=$(grep -o '"randomx_mode":"[^"]*"' "${TMPDIR:-/tmp}/desired-state.json" 2>/dev/null | cut -d'"' -f4)
 
   local body; body=$(printf '{
     "hashrate_10s":%s,

@@ -924,9 +924,15 @@ exports.handler = async (event, context) => {
           // Extract pool settings from profile.config if present
           const pool = profile.config?.pools?.[0];
           if (pool?.url) {
-            const [poolHost, poolPort] = pool.url.split(":");
-            if (poolHost) updates.pool_url = poolHost;
-            if (poolPort) updates.pool_port = parseInt(poolPort);
+            // Strip protocol prefix (tls://, stratum+tcp://, etc.) before split
+            const rawUrl = pool.url.replace(/^[a-z+]+:\/\//i, "");
+            const colonIdx = rawUrl.lastIndexOf(":");
+            if (colonIdx !== -1) {
+              const poolHost = rawUrl.slice(0, colonIdx);
+              const poolPort = parseInt(rawUrl.slice(colonIdx + 1));
+              if (poolHost) updates.pool_url = poolHost;
+              if (!isNaN(poolPort)) updates.pool_port = poolPort;
+            }
           }
           await saveDesiredState(d.id, { ...des, ...updates });
           affected.push(d.id);
