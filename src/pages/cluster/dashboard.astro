@@ -547,8 +547,11 @@ async function ackAllAlerts() {
 
 function filterEvents(filter) {
   currentEventFilter = filter;
-  document.querySelectorAll('.event-filter').forEach(b => b.style.background = 'transparent');
-  document.querySelectorAll('.event-filter').forEach(b => b.style.borderColor = 'var(--color-border)');
+  document.querySelectorAll('.event-filter').forEach(b => {
+    b.style.background = 'transparent';
+    b.style.borderColor = 'var(--color-border)';
+    b.style.color = '';  // clear so text inherits default — prevents white-on-transparent after active state
+  });
   event.target.style.background = 'var(--color-brand)';
   event.target.style.color = 'white';
   event.target.style.borderColor = 'var(--color-brand)';

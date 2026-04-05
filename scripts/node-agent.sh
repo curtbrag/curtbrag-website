@@ -198,15 +198,18 @@ stop_custom_miner() {
 
 get_xmrig_stats() {
   # Returns: hr10 hr60 hr15m accepted
-  # XMRig speed line format: "speed 10s/60s/15m 523.4 524.1 n/a H/s"
+  # XMRig speed line format: "[HH:MM:SS.mmm]  speed    10s/60s/15m  523.4 524.1 n/a H/s"
   local hr10=0 hr60=0 hr15m=0 accepted=0
   local logfile="$MINER_LOG"
   if [ -f "$logfile" ]; then
     local speed_line
     speed_line=$(tail -200 "$logfile" 2>/dev/null | grep -i 'speed' | tail -1)
     if [ -n "$speed_line" ]; then
-      # Extract the three numbers before "H/s"
-      local nums; nums=$(echo "$speed_line" | grep -o '[0-9][0-9.]*' | head -3)
+      # Strip everything up to and including the time-window token (10s/60s/15m or 10s/60s/1h)
+      # so we don't capture timestamp components (HH:MM:SS) as hashrate values
+      local after_win
+      after_win=$(echo "$speed_line" | sed 's|.*[0-9]*s/[0-9]*s/[0-9]*[mh][[:space:]]*||')
+      local nums; nums=$(echo "$after_win" | grep -o '[0-9][0-9.]*')
       hr10=$(echo "$nums" | sed -n '1p')
       hr60=$(echo "$nums" | sed -n '2p')
       hr15m=$(echo "$nums" | sed -n '3p')
