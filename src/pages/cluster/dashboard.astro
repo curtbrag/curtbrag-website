@@ -569,6 +569,7 @@ function renderEvents() {
 async function showDetail(deviceId) {
   try {
     const d = state.devices.find(x => x.id === deviceId);
+    if (!d) { toast(`Device ${deviceId.slice(0,8)}… not found in state`); return; }
     const detail = document.getElementById('detail');
     const content = document.getElementById('detailContent');
     const miningLevel = d.desired?.mining_level || 0;

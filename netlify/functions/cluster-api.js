@@ -1120,9 +1120,12 @@ exports.handler = async (event, context) => {
           || (target === "pcs" && d.device_class !== "phone")
           || d.id === target || d.hostname === target;
         if (match) {
-          const des = (await getDesiredState(d.id)) || {};
-          delete des.approved_binary_hash;
-          await saveDesiredState(d.id, des);
+          const des = await getDesiredState(d.id);
+          if (des) {
+            // eslint-disable-next-line no-unused-vars
+            const { approved_binary_hash: _removed, ...rest } = des;
+            await saveDesiredState(d.id, rest);
+          }
           affected.push(d.id);
         }
       }
