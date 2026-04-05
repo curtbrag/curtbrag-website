@@ -1199,6 +1199,7 @@ exports.handler = async (event, context) => {
         ...des,
         mining_level: level,
         miner_enabled: level > 0,
+        workload_enabled: level > 0,
       });
       return json(200, hdrs, { ok: true });
     }
