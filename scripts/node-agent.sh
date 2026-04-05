@@ -666,10 +666,19 @@ execute_command() {
       pool_port=$(echo "$payload" | grep -o '"port":[0-9]*' | cut -d: -f2)
       pool_user=$(echo "$payload" | grep -o '"user":"[^"]*"' | cut -d'"' -f4)
       if [ -n "$pool_url" ]; then
-        # Restart miner with new pool config
+        # Read thread/mode/log settings from current desired state
+        local _ds="${TMPDIR:-/tmp}/desired-state.json"
+        local _tcount; _tcount=$(grep -o '"thread_count":[0-9]*' "$_ds" 2>/dev/null | cut -d: -f2)
+        local _rxmode; _rxmode=$(grep -o '"randomx_mode":"[^"]*"' "$_ds" 2>/dev/null | cut -d'"' -f4)
+        local _lograw; _lograw=$(grep -o '"log_path":"[^"]*"' "$_ds" 2>/dev/null | cut -d'"' -f4)
+        local _logpath; _logpath=$(expand_path "${_lograw:-~/cluster/logs/xmrig.log}")
+        # If no user in payload, fall back to desired state
+        if [ -z "$pool_user" ]; then
+          pool_user=$(grep -o '"pool_user":"[^"]*"' "$_ds" 2>/dev/null | cut -d'"' -f4)
+        fi
         stop_custom_miner
-        local config; config=$(render_xmrig_config "$pool_url" "${pool_port:-10128}" "${pool_user:-wallet}" "2" "light")
-        nohup "$APPROVED_BINARY" --config="$config" --no-color >> "${TMPDIR:-/tmp}/xmrig.log" 2>&1 &
+        local config; config=$(render_xmrig_config "$pool_url" "${pool_port:-10128}" "${pool_user:-wallet}" "${_tcount:-6}" "${_rxmode:-light}" "$_logpath")
+        nohup "$APPROVED_BINARY" --config="$config" --no-color >> "$_logpath" 2>&1 &
         stdout="Pool changed to $pool_url:$pool_port"
       else
         stdout="Invalid pool config"

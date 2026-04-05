@@ -915,6 +915,10 @@ exports.handler = async (event, context) => {
           // Push profile settings into desired state so agent acts on them
           const des = (await getDesiredState(d.id)) || {};
           const updates = { miner_profile: profile_id };
+          if (profile.miner_enabled != null) {
+            updates.miner_enabled = profile.miner_enabled;
+            updates.workload_enabled = profile.miner_enabled; // keep in sync
+          }
           if (profile.thread_count != null) updates.thread_count = profile.thread_count;
           if (profile.max_temp != null) updates.max_temp_celsius = profile.max_temp;
           if (profile.pause_on_battery != null) updates.pause_on_battery = profile.pause_on_battery;
