@@ -659,8 +659,9 @@ execute_command() {
         stop_custom_miner
         stdout="Mining disabled (level 0)"
       else
-        # Level 1-4: start/resume mining (would need desired state config)
-        stdout="Mining level set to $level"
+        # Level 1-4: desired state was already updated server-side; re-apply immediately
+        apply_desired_state
+        stdout="Mining level set to $level; desired state re-applied"
       fi
       ;;
     pool-change)

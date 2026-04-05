@@ -817,7 +817,7 @@ exports.handler = async (event, context) => {
       });
       // Also set desired state: disable mining
       const des = (await getDesiredState(device_id)) || {};
-      await saveDesiredState(device_id, { ...des, miner_enabled: false });
+      await saveDesiredState(device_id, { ...des, miner_enabled: false, workload_enabled: false });
       return json(200, hdrs, { ok: true });
     }
 
