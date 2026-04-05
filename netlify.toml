@@ -128,3 +128,15 @@
   for = "/*.html"
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
+
+[[redirects]]
+  from = "/api/cluster"
+  to = "/.netlify/functions/cluster-api"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/cluster-api"
+  to = "/.netlify/functions/cluster-api"
+  status = 200
+  force = true
