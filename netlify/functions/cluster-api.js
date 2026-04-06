@@ -516,11 +516,11 @@ exports.handler = async (event, context) => {
       return __swarmJson(200, {
         jobs: [
           {
-            id: "embed-job-002",
-            type: "embed",
+            id: "util-job-001",
+            type: "utility",
             payload: {
-              task: "embed_basic",
-              text: "check node status and run diagnostics on the worker", dims: 128
+              
+              mode: "hash_text", text: "curtbrag cluster test"
             }
           }
         ]
@@ -1202,8 +1202,8 @@ exports.handler = async (event, context) => {
         target: device_id,
         type: "reset-restart-count",
         payload: {
-              task: "embed_basic",
-              text: "check node status and run diagnostics on the worker", dims: 128
+              
+              mode: "hash_text", text: "curtbrag cluster test"
             },
         status: "queued",
         created_by: "operator",
