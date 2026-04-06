@@ -1,8 +1,4 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+let queue = [];
 
 function json(statusCode, body) {
   return new Response(JSON.stringify(body), {
@@ -14,24 +10,6 @@ function json(statusCode, body) {
       "access-control-allow-headers": "Content-Type, Authorization"
     }
   });
-}
-
-function queuePath() {
-  return path.join(moduleDir, "job-queue.json");
-}
-
-function readQueue() {
-  try {
-    const raw = fs.readFileSync(queuePath(), "utf8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed.jobs) ? parsed.jobs : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeQueue(jobs) {
-  fs.writeFileSync(queuePath(), JSON.stringify({ jobs }, null, 2), "utf8");
 }
 
 export default async (request) => {
@@ -61,7 +39,8 @@ export default async (request) => {
       ok: true,
       message: "swarm-core live",
       action: "test",
-      method: request.method
+      method: request.method,
+      queue_count: queue.length
     });
   }
 
@@ -71,12 +50,9 @@ export default async (request) => {
       return json(400, { ok: false, error: "invalid job payload" });
     }
 
-    const jobs = readQueue();
-    const exists = jobs.some(j => j && j.id === job.id);
-
+    const exists = queue.some(j => j && j.id === job.id);
     if (!exists) {
-      jobs.push(job);
-      writeQueue(jobs);
+      queue.push(job);
     }
 
     return json(200, {
@@ -86,13 +62,13 @@ export default async (request) => {
       enqueued: !exists,
       already_present: exists,
       job_id: job.id,
-      queue_count: readQueue().length
+      queue_count: queue.length
     });
   }
 
   if (request.method === "GET" && action === "swarm-poll") {
     const deviceId = url.searchParams.get("device_id") || "";
-    const jobs = readQueue().filter(j => {
+    const jobs = queue.filter(j => {
       if (!j || typeof j !== "object") return false;
       if (!j.id || !j.type) return false;
       if (!j.device_id) return true;
@@ -108,17 +84,40 @@ export default async (request) => {
   }
 
   if (request.method === "POST" && action === "job-update") {
-    return json(200, { ok: true, message: "swarm-core live", action: "job-update", received: true });
+    let jobId = "";
+    try {
+      jobId = body.job_id || "";
+    } catch {}
+
+    if (jobId) {
+      queue = queue.filter(j => j && j.id !== jobId);
+    }
+
+    return json(200, {
+      ok: true,
+      message: "swarm-core live",
+      action: "job-update",
+      received: true,
+      removed_job_id: jobId,
+      queue_count: queue.length
+    });
   }
 
   if (request.method === "POST" && action === "heartbeat") {
-    return json(200, { ok: true, message: "swarm-core live", action: "heartbeat", received: true });
+    return json(200, {
+      ok: true,
+      message: "swarm-core live",
+      action: "heartbeat",
+      received: true,
+      queue_count: queue.length
+    });
   }
 
   return json(200, {
     ok: true,
     message: "swarm-core live",
     action,
-    method: request.method
+    method: request.method,
+    queue_count: queue.length
   });
 };
