@@ -1,7 +1,7 @@
 {
   "jobs": [
     {
-      "id": "util-job-demo-001",
+      "id": "util-job-demo-002",
       "device_id": "node1-a4853b8c",
       "type": "utility",
       "payload": {
