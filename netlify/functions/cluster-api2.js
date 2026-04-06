@@ -6,7 +6,7 @@ function json(statusCode, body) {
     statusCode,
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "access-control-allow-origin": "https://curtbrag.com",
+      "access-control-allow-origin": "*",
       "access-control-allow-methods": "GET, POST, OPTIONS",
       "access-control-allow-headers": "Content-Type, Authorization"
     },
@@ -14,14 +14,26 @@ function json(statusCode, body) {
   };
 }
 
+function queuePath() {
+  return path.join(__dirname, "job-queue.json");
+}
+
 function readQueue() {
   try {
-    const p = path.join(__dirname, "job-queue.json");
-    const raw = fs.readFileSync(p, "utf8");
+    const raw = fs.readFileSync(queuePath(), "utf8");
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed.jobs) ? parsed.jobs : [];
   } catch (e) {
     return [];
+  }
+}
+
+function writeQueue(jobs) {
+  try {
+    fs.writeFileSync(queuePath(), JSON.stringify({ jobs }, null, 2), "utf8");
+    return true;
+  } catch (e) {
+    return false;
   }
 }
 
@@ -30,7 +42,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 204,
       headers: {
-        "access-control-allow-origin": "https://curtbrag.com",
+        "access-control-allow-origin": "*",
         "access-control-allow-methods": "GET, POST, OPTIONS",
         "access-control-allow-headers": "Content-Type, Authorization"
       },
@@ -39,23 +51,48 @@ exports.handler = async (event) => {
   }
 
   const qs = event.queryStringParameters || {};
+  const action = qs.action || "";
+
   let body = {};
   try {
-    body = event.body ? JSON.parse(event.body) : {};
+    body = JSON.parse(event.body || "{}");
   } catch (_) {
     body = {};
   }
 
-  const action = qs.action || body.action || "";
+  if (event.httpMethod === "POST" && action === "enqueue") {
+    const job = body.job;
+    if (!job || typeof job !== "object" || !job.id || !job.type) {
+      return json(400, { ok: false, error: "invalid job payload" });
+    }
+
+    const jobs = readQueue();
+    const exists = jobs.some(j => j && j.id === job.id);
+
+    if (!exists) {
+      jobs.push(job);
+      writeQueue(jobs);
+    }
+
+    return json(200, {
+      ok: true,
+      action: "enqueue",
+      enqueued: !exists,
+      already_present: exists,
+      job_id: job.id,
+      queue_count: readQueue().length
+    });
+  }
 
   if (event.httpMethod === "GET" && action === "swarm-poll") {
     const deviceId = qs.device_id || "";
-    const jobs = readQueue().filter((job) => {
-      if (!job || typeof job !== "object") return false;
-      if (!job.id || !job.type) return false;
-      if (!job.device_id) return true;
-      return job.device_id === deviceId;
+    const jobs = readQueue().filter(j => {
+      if (!j || typeof j !== "object") return false;
+      if (!j.id || !j.type) return false;
+      if (!j.device_id) return true;
+      return j.device_id === deviceId;
     });
+
     return json(200, { jobs });
   }
 
@@ -69,7 +106,7 @@ exports.handler = async (event) => {
 
   return json(200, {
     ok: true,
-    message: "cluster-api2 alive",
+    message: "cluster-api2 live",
     action,
     method: event.httpMethod
   });
