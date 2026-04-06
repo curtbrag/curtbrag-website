@@ -486,6 +486,19 @@ async function buildSummary(devices, observedMap) {
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
+const fs = require("fs");
+const path = require("path");
+
+function readJobQueue() {
+  try {
+    const p = path.join(__dirname, "job-queue.json");
+    const raw = fs.readFileSync(p, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed.jobs) ? parsed.jobs : [];
+  } catch (e) {
+    return [];
+  }
+}
 exports.handler = async (event, context) => {
 
   const __swarmJson = (code, obj) => ({
@@ -510,15 +523,16 @@ exports.handler = async (event, context) => {
   };
 
   if (event?.httpMethod === "GET" && __swarmAction === "swarm-poll") {
-  return __swarmJson(200, {
-    jobs: [
-      {
-        id: "util-job-001",
-        type: "utility",
-        payload: {
-          mode: "hash_text",
-          text: "curtbrag cluster test"
-        }
+  const deviceId = __swarmQs.device_id || "";
+  const jobs = readJobQueue().filter((job) => {
+    if (!job || typeof job !== "object") return false;
+    if (!job.id || !job.type) return false;
+    if (!job.device_id) return true;
+    return job.device_id === deviceId;
+  });
+
+  return __swarmJson(200, { jobs });
+}
       }
     ]
   });
@@ -532,10 +546,8 @@ exports.handler = async (event, context) => {
   }
 
   if (event?.httpMethod === "POST" && __swarmAction === "job-update") {
-    globalThis.__swarmTestState.updates.push({
-      at: Date.now(),
-      body: __swarmBody
-    });
+  return __swarmJson(200, { ok: true, received: true });
+});
 
     return __swarmJson(200, {
       ok: true,

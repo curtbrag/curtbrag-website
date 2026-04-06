@@ -1,0 +1,13 @@
+{
+  "jobs": [
+    {
+      "id": "util-job-demo-001",
+      "device_id": "node1-a4853b8c",
+      "type": "utility",
+      "payload": {
+        "mode": "hash_text",
+        "text": "curtbrag cluster test"
+      }
+    }
+  ]
+}
