@@ -2,8 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
 function json(statusCode, body) {
   return new Response(JSON.stringify(body), {
@@ -18,7 +17,7 @@ function json(statusCode, body) {
 }
 
 function queuePath() {
-  return path.join(__dirname, "job-queue.json");
+  return path.join(moduleDir, "job-queue.json");
 }
 
 function readQueue() {
