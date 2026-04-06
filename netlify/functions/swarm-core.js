@@ -76,6 +76,7 @@ exports.handler = async (event) => {
 
     return json(200, {
       ok: true,
+      message: "swarm-core live",
       action: "enqueue",
       enqueued: !exists,
       already_present: exists,
@@ -93,20 +94,25 @@ exports.handler = async (event) => {
       return j.device_id === deviceId;
     });
 
-    return json(200, { jobs });
+    return json(200, {
+      ok: true,
+      message: "swarm-core live",
+      action: "swarm-poll",
+      jobs
+    });
   }
 
   if (event.httpMethod === "POST" && action === "job-update") {
-    return json(200, { ok: true, received: true, action: "job-update" });
+    return json(200, { ok: true, message: "swarm-core live", received: true, action: "job-update" });
   }
 
   if (event.httpMethod === "POST" && action === "heartbeat") {
-    return json(200, { ok: true, received: true, action: "heartbeat" });
+    return json(200, { ok: true, message: "swarm-core live", received: true, action: "heartbeat" });
   }
 
   return json(200, {
     ok: true,
-    message: "cluster-api2 live",
+    message: "swarm-core live",
     action,
     method: event.httpMethod
   });
