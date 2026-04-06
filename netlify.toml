@@ -1,3 +1,15 @@
+[[redirects]]
+  from = "/api/cluster"
+  to = "/.netlify/functions/swarm-core"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/cluster-api"
+  to = "/.netlify/functions/swarm-core"
+  status = 200
+  force = true
+
 [functions]
   included_files = ["netlify/functions/swarm-core/job-queue.json"]
 
@@ -34,11 +46,6 @@
 [[redirects]]
   from = "/api/agent/*"
   to = "/.netlify/functions/agent-api/:splat"
-  status = 200
-
-[[redirects]]
-  from = "/api/cluster/*"
-  to = "/.netlify/functions/cluster-api/:splat"
   status = 200
 
 # Legacy .html → clean Astro URL redirects
@@ -132,14 +139,3 @@
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
 
-[[redirects]]
-  from = "/api/cluster"
-  to = "/.netlify/functions/swarm-core"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/cluster-api"
-  to = "/.netlify/functions/swarm-core"
-  status = 200
-  force = true
