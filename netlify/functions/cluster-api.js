@@ -510,18 +510,19 @@ exports.handler = async (event, context) => {
   };
 
   if (event?.httpMethod === "GET" && __swarmAction === "swarm-poll") {
-    const deviceId = __swarmQs.device_id || "";
-    if (deviceId === "node1-a4853b8c" && !globalThis.__swarmTestState.issued) {
-      globalThis.__swarmTestState.issued = true;
-      return __swarmJson(200, {
-        jobs: [
-          {
-            id: "util-job-001",
-            type: "utility",
-            payload: {
-              
-              mode: "hash_text", text: "curtbrag cluster test"
-            }
+  return __swarmJson(200, {
+    jobs: [
+      {
+        id: "util-job-001",
+        type: "utility",
+        payload: {
+          mode: "hash_text",
+          text: "curtbrag cluster test"
+        }
+      }
+    ]
+  });
+}
           }
         ]
       });
