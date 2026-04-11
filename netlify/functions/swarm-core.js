@@ -1,5 +1,4 @@
-const fs = require("fs");
-const path = require("path");
+const { connectLambda, getStore } = require("@netlify/blobs");
 
 function json(statusCode, body) {
   return {
@@ -14,30 +13,40 @@ function json(statusCode, body) {
   };
 }
 
-function queuePath() {
-  return path.join(__dirname, "job-queue.json");
+function openStore() {
+  const siteID =
+    process.env.NETLIFY_BLOBS_SITE_ID ||
+    process.env.SITE_ID ||
+    undefined;
+  const token =
+    process.env.NETLIFY_BLOBS_TOKEN ||
+    process.env.NETLIFY_ACCESS_TOKEN ||
+    process.env.NETLIFY_TOKEN ||
+    undefined;
+  if (siteID && token) return getStore("swarm-queue", { siteID, token });
+  return getStore("swarm-queue");
 }
 
-function readQueue() {
+async function readQueue() {
   try {
-    const raw = fs.readFileSync(queuePath(), "utf8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed.jobs) ? parsed.jobs : [];
-  } catch (e) {
+    return (await openStore().get("jobs", { type: "json" })) || [];
+  } catch {
     return [];
   }
 }
 
-function writeQueue(jobs) {
+async function writeQueue(jobs) {
   try {
-    fs.writeFileSync(queuePath(), JSON.stringify({ jobs }, null, 2), "utf8");
+    await openStore().setJSON("jobs", jobs);
     return true;
-  } catch (e) {
+  } catch {
     return false;
   }
 }
 
 exports.handler = async (event) => {
+  connectLambda(event);
+
   if (event.httpMethod === "OPTIONS") {
     return {
       statusCode: 204,
@@ -66,12 +75,12 @@ exports.handler = async (event) => {
       return json(400, { ok: false, error: "invalid job payload" });
     }
 
-    const jobs = readQueue();
+    const jobs = await readQueue();
     const exists = jobs.some(j => j && j.id === job.id);
 
     if (!exists) {
-      jobs.push(job);
-      writeQueue(jobs);
+      jobs.push({ ...job, queued_at: Date.now() });
+      await writeQueue(jobs);
     }
 
     return json(200, {
@@ -81,13 +90,13 @@ exports.handler = async (event) => {
       enqueued: !exists,
       already_present: exists,
       job_id: job.id,
-      queue_count: readQueue().length
+      queue_count: (await readQueue()).length
     });
   }
 
   if (event.httpMethod === "GET" && action === "swarm-poll") {
     const deviceId = qs.device_id || "";
-    const jobs = readQueue().filter(j => {
+    const jobs = (await readQueue()).filter(j => {
       if (!j || typeof j !== "object") return false;
       if (!j.id || !j.type) return false;
       if (!j.device_id) return true;
@@ -98,8 +107,18 @@ exports.handler = async (event) => {
       ok: true,
       message: "swarm-core live",
       action: "swarm-poll",
-      jobs
+      jobs,
+      queue_count: jobs.length
     });
+  }
+
+  if (event.httpMethod === "POST" && action === "job-complete") {
+    const { job_id } = body;
+    if (job_id) {
+      const jobs = await readQueue();
+      await writeQueue(jobs.filter(j => j && j.id !== job_id));
+    }
+    return json(200, { ok: true, message: "swarm-core live", action: "job-complete" });
   }
 
   if (event.httpMethod === "POST" && action === "job-update") {
@@ -110,10 +129,13 @@ exports.handler = async (event) => {
     return json(200, { ok: true, message: "swarm-core live", received: true, action: "heartbeat" });
   }
 
+  // Default: status + queue count
+  const queueCount = (await readQueue()).length;
   return json(200, {
     ok: true,
     message: "swarm-core live",
     action,
-    method: event.httpMethod
+    method: event.httpMethod,
+    queue_count: queueCount
   });
 };
