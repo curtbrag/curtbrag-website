@@ -4,8 +4,9 @@
 # Usage:
 #   bash scripts/cluster-deploy-swarm.sh [--password PASS] [--nodes node1,node2] [--swarm-url URL]
 #
-# Copies node-swarm.sh to each node, stops any old instance, starts fresh via nohup.
-# Works for phones (user@IP) and PCs (neo@IP or per-node user from cluster-nodes.conf).
+# Copies node-swarm.sh to phone workers only (never controllers).
+# Phones use port 8022 (Termux sshd), user@IP.
+# Uses nohup for launch — tmux is unreliable on nodes 173 and 254.
 
 set -u
 
@@ -25,7 +26,7 @@ if [ -f "$SCRIPT_DIR/cluster-nodes.conf" ]; then
 fi
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
-SSH_PORT="${SSH_PORT:-22}"
+# SSH_PORT is resolved per-node from cluster-nodes.conf (phones=8022, controllers=22)
 SSH_PASS=""
 TARGET_NODES=""
 SWARM_URL="${SWARM_URL:-https://curtbrag.com/api/cluster}"
@@ -40,11 +41,10 @@ while [[ $# -gt 0 ]]; do
     --swarm-url)  SWARM_URL="$2"; shift 2 ;;
     --poll)       POLL_INTERVAL="$2"; shift 2 ;;
     --dry-run)    DRY_RUN=1; shift ;;
-    --ssh-port)   SSH_PORT="$2"; shift 2 ;;
     -h|--help)
       echo "Usage: $0 [options]"
-      echo "  --password PASS     SSH password"
-      echo "  --nodes LIST        Comma-separated node names (default: all)"
+      echo "  --password PASS     SSH password (for sshpass)"
+      echo "  --nodes LIST        Comma-separated node names (default: phone workers only)"
       echo "  --swarm-url URL     Override swarm API URL"
       echo "  --poll SECONDS      Poll interval (default: 10)"
       echo "  --dry-run           Show what would happen, no SSH"
@@ -82,7 +82,7 @@ scp_cmd() {
   fi
 }
 
-# ── Determine deploy set ───────────────────────────────────────────────────────
+# ── Determine deploy set (phone workers only by default) ──────────────────────
 if [ -n "$TARGET_NODES" ]; then
   DEPLOY_NODES=""
   for name in $(echo "$TARGET_NODES" | tr ',' ' '); do
@@ -94,7 +94,8 @@ if [ -n "$TARGET_NODES" ]; then
     done
   done
 else
-  DEPLOY_NODES="$ALL_NODES"
+  # Default: phone workers only — never deploy swarm agent to controllers
+  DEPLOY_NODES="$PHONE_NODES"
 fi
 
 SWARM_SCRIPT="$SCRIPT_DIR/node-swarm.sh"
@@ -151,7 +152,7 @@ for entry in $DEPLOY_NODES; do
 
   # ── Copy script ───────────────────────────────────────────────────────────
   echo -ne "  ${YELLOW}[1/4]${NC} Copying node-swarm.sh ... "
-  if scp_cmd "$SWARM_SCRIPT" "${SSH_TARGET}:/home/${SSH_USER}/node-swarm.sh" "$PORT"; then
+  if scp_cmd "$SWARM_SCRIPT" "${SSH_TARGET}:~/node-swarm.sh" "$PORT"; then
     echo -e "${GREEN}OK${NC}"
   else
     echo -e "${RED}FAIL${NC} — skipping"
@@ -161,7 +162,7 @@ for entry in $DEPLOY_NODES; do
 
   # ── Remote syntax check ───────────────────────────────────────────────────
   echo -ne "  ${YELLOW}[2/4]${NC} Remote syntax check ... "
-  if ssh_cmd "$SSH_TARGET" "$PORT" "sh -n \"/home/${SSH_USER}/node-swarm.sh\"" 2>/dev/null; then
+  if ssh_cmd "$SSH_TARGET" "$PORT" 'sh -n "$HOME/node-swarm.sh"' 2>/dev/null; then
     echo -e "${GREEN}PARSE_OK${NC}"
   else
     echo -e "${RED}PARSE_FAIL${NC} — not starting"
