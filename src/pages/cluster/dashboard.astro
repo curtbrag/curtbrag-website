@@ -350,14 +350,75 @@ function renderSummary() {
   document.getElementById('stat-alerts').textContent = state.summary.active_alerts || 0;
 }
 
+function workerCard(d) {
+  const dot = d.online ? (d.observed?.xmrig_running ? 'var(--color-green)' : 'var(--color-yellow)') : 'var(--color-red)';
+  return `<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;cursor:pointer" onclick="showDetail('${d.id}')">
+    <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+      <div><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${dot}"></span><strong style="margin-left:8px">${d.hostname}</strong></div>
+    </div>
+    <div style="font-size:12px;color:var(--color-muted);margin-bottom:8px">${d.current_ip || 'N/A'}</div>
+    <div style="font-size:13px;margin-bottom:4px">Miner: <strong>${d.observed?.xmrig_running ? 'RUNNING' : 'stopped'}</strong></div>
+    <div style="font-size:13px;margin-bottom:4px">Hash: <strong>${d.observed?.hashrate_60s || '0'} H/s</strong></div>
+    <div style="font-size:13px;color:var(--color-muted)">Last: <strong>${timeAgo(d.last_seen_at)}</strong></div>
+  </div>`;
+}
+
+function controllerCard(d) {
+  const dot = d.online ? 'var(--color-green)' : 'var(--color-red)';
+  return `<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;cursor:pointer;opacity:0.85" onclick="showDetail('${d.id}')">
+    <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+      <div><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${dot}"></span><strong style="margin-left:8px">${d.hostname}</strong></div>
+      <span style="font-size:10px;color:var(--color-muted);border:1px solid var(--color-border);border-radius:4px;padding:2px 5px">CTRL</span>
+    </div>
+    <div style="font-size:12px;color:var(--color-muted);margin-bottom:8px">${d.current_ip || 'N/A'}</div>
+    <div style="font-size:13px;margin-bottom:4px">Class: <strong>${d.device_class || 'pc'}</strong></div>
+    <div style="font-size:13px;color:var(--color-muted)">Last: <strong>${timeAgo(d.last_seen_at)}</strong></div>
+  </div>`;
+}
+
+function sectionHeader(label, count) {
+  return `<div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:8px 0 4px">
+    <span style="font-size:12px;font-weight:600;color:var(--color-muted);text-transform:uppercase;letter-spacing:.05em">${label}</span>
+    <span style="font-size:11px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:10px;padding:1px 8px">${count}</span>
+    <div style="flex:1;height:1px;background:var(--color-border)"></div>
+  </div>`;
+}
+
 function renderFleet() {
   const grid = document.getElementById('deviceGrid');
-  grid.innerHTML = state.devices.map(d => `<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;cursor:pointer" onclick="showDetail('${d.id}')"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px"><div><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${d.online ? (d.observed?.xmrig_running ? 'var(--color-green)' : 'var(--color-yellow)') : 'var(--color-red)'}"></span><strong style="margin-left:8px">${d.hostname}</strong></div></div><div style="font-size:12px;color:var(--color-muted);margin-bottom:8px">${d.current_ip || 'N/A'}</div><div style="font-size:13px;margin-bottom:4px">Miner: <strong>${d.observed?.xmrig_running ? 'RUNNING' : 'stopped'}</strong></div><div style="font-size:13px;margin-bottom:4px">Hash: <strong>${d.observed?.hashrate_60s || '0'} H/s</strong></div><div style="font-size:13px;color:var(--color-muted)">Last: <strong>${timeAgo(d.last_seen_at)}</strong></div></div>`).join('');
+  const workers = state.devices.filter(d => d.device_class === 'phone');
+  const controllers = state.devices.filter(d => d.device_class !== 'phone');
+  grid.innerHTML =
+    sectionHeader('Workers', workers.length) +
+    workers.map(workerCard).join('') +
+    (controllers.length ? sectionHeader('Controllers', controllers.length) + controllers.map(controllerCard).join('') : '');
+}
+
+function deviceRow(d) {
+  return `<tr style="border-bottom:1px solid var(--color-border);cursor:pointer" onclick="showDetail('${d.id}')">
+    <td style="padding:12px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${d.online ? 'var(--color-green)' : 'var(--color-red)'}"></span></td>
+    <td style="padding:12px">${d.hostname}</td>
+    <td style="padding:12px">${d.device_class}</td>
+    <td style="padding:12px;font-family:monospace">${d.current_ip || 'N/A'}</td>
+    <td style="padding:12px">${d.observed?.xmrig_running ? '✓' : '✗'}</td>
+    <td style="padding:12px">${d.observed?.hashrate_60s || 0}</td>
+    <td style="padding:12px">${d.observed?.temp_peak || 0}°</td>
+    <td style="padding:12px">${timeAgo(d.last_seen_at)}</td>
+  </tr>`;
+}
+
+function tableSection(label) {
+  return `<tr><td colspan="8" style="padding:8px 12px 4px;font-size:11px;font-weight:600;color:var(--color-muted);text-transform:uppercase;letter-spacing:.05em;background:var(--color-surface)">${label}</td></tr>`;
 }
 
 function renderDevicesTable() {
   const tbody = document.getElementById('devicesTable');
-  tbody.innerHTML = state.devices.map(d => `<tr style="border-bottom:1px solid var(--color-border);cursor:pointer" onclick="showDetail('${d.id}')"><td style="padding:12px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${d.online ? 'var(--color-green)' : 'var(--color-red)'}"></span></td><td style="padding:12px">${d.hostname}</td><td style="padding:12px">${d.device_class}</td><td style="padding:12px;font-family:monospace">${d.current_ip || 'N/A'}</td><td style="padding:12px">${d.observed?.xmrig_running ? '✓' : '✗'}</td><td style="padding:12px">${d.observed?.hashrate_60s || 0}</td><td style="padding:12px">${d.observed?.temp_peak || 0}°</td><td style="padding:12px">${timeAgo(d.last_seen_at)}</td></tr>`).join('');
+  const workers = state.devices.filter(d => d.device_class === 'phone');
+  const controllers = state.devices.filter(d => d.device_class !== 'phone');
+  tbody.innerHTML =
+    tableSection(`Workers (${workers.length})`) +
+    workers.map(deviceRow).join('') +
+    (controllers.length ? tableSection(`Controllers (${controllers.length})`) + controllers.map(deviceRow).join('') : '');
 }
 
 function renderCommands() {
