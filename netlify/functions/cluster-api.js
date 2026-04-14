@@ -796,9 +796,8 @@ exports.handler = async (event, context) => {
     if (postAction === "queue-command") {
       const VALID_TARGETS = [
         "all","phones","pcs",
-        "node1","node2","node3","node4","node5",
-        "node6","node7","node8","node9","node10",
-        "nexus-prime","viki","skynet","steamdeck",
+        "node1","node2","node3","node4","node5","node6","node7","node8",
+        "viki","nexus-prime",
       ];
       const VALID_COMMANDS = [
         "start","stop","restart","wake","sleep",

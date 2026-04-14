@@ -127,28 +127,29 @@ else
   PODS_JSON='[]'
   SERVICES_JSON='[]'
   EVENTS_JSON='[]'
-  # Build a basic nodes array from what we know: 10 phones on 192.168.1.206-215
+  # Build node array from cluster-nodes.conf (phone workers + controllers)
   NODES_JSON='[]'
-  for i in $(seq 1 10); do
-    NODE_IP="192.168.1.$((205 + i))"
-    NODE_NAME="node$i"
-    NODE_ROLE="worker"
-    [ "$i" = "1" ] && NODE_ROLE="control-plane"
-    # Check reachability: node1 locally, others via SSH (5s timeout)
-    if [ "$i" = "1" ]; then
-      # Actually verify node1 is functional instead of assuming Ready
-      if [ -d /proc ] && [ -r /proc/uptime ]; then
-        NODE_STATUS="Ready"
-      else
-        NODE_STATUS="NotReady"
-      fi
-    elif ssh -p "$(get_node_ssh_port "$NODE_IP")" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then
+  for _entry in ${PHONE_NODES:-}; do
+    NODE_NAME="${_entry%%:*}"
+    NODE_IP="${_entry##*:}"
+    if ssh -p "$(get_node_ssh_port "$NODE_IP")" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "user@$NODE_IP" "echo ok" >/dev/null 2>&1; then
       NODE_STATUS="Ready"
     else
       NODE_STATUS="NotReady"
     fi
-    NODES_JSON=$(echo "$NODES_JSON" | jq --arg name "$NODE_NAME" --arg status "$NODE_STATUS" --arg role "$NODE_ROLE" --arg ip "$NODE_IP" \
-      '. + [{name:$name, status:$status, role:$role, ip:$ip, kubeletVersion:"N/A (K3s down)", osImage:"postmarketOS", arch:"aarch64"}]')
+    NODES_JSON=$(echo "$NODES_JSON" | jq --arg name "$NODE_NAME" --arg status "$NODE_STATUS" --arg ip "$NODE_IP" \
+      '. + [{name:$name, status:$status, role:"worker", ip:$ip, kubeletVersion:"N/A (K3s down)", osImage:"postmarketOS", arch:"aarch64"}]')
+  done
+  for _entry in ${PC_NODES:-}; do
+    NODE_NAME="${_entry%%:*}"
+    NODE_IP="${_entry##*:}"
+    if ssh -p "$(get_node_ssh_port "$NODE_IP")" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$(get_node_ssh_user "$NODE_IP")@$NODE_IP" "echo ok" >/dev/null 2>&1; then
+      NODE_STATUS="Ready"
+    else
+      NODE_STATUS="NotReady"
+    fi
+    NODES_JSON=$(echo "$NODES_JSON" | jq --arg name "$NODE_NAME" --arg status "$NODE_STATUS" --arg ip "$NODE_IP" \
+      '. + [{name:$name, status:$status, role:"control-plane", ip:$ip, kubeletVersion:"N/A (K3s down)", osImage:"Linux PC", arch:"x86_64"}]')
   done
   log "Synthesized $(echo "$NODES_JSON" | jq 'length') nodes from SSH"
 fi

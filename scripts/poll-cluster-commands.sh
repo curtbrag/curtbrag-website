@@ -19,7 +19,7 @@ POLL_INTERVAL=5  # seconds
 # Auto-detect our IP so local-exec works even if IP changes
 LOCAL_IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
 [ -z "$LOCAL_IP" ] && LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-[ -z "$LOCAL_IP" ] && LOCAL_IP="192.168.1.206"
+[ -z "$LOCAL_IP" ] && LOCAL_IP="192.168.1.178"
 # Collect all local IPs so is_local_ip works for Tailscale/USB interfaces too
 ALL_LOCAL_IPS=$(ip -4 addr 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2 | tr '\n' ' ')
 trap 'kill $(jobs -p) 2>/dev/null; rm -rf /tmp/cmdres-* /tmp/sshout-* /tmp/screenshots-* /tmp/cmdstderr-*' EXIT INT TERM
@@ -50,7 +50,7 @@ if [ -f "$SCRIPT_DIR/cluster-nodes.conf" ]; then
   load_node_config
 else
   # Fallback if config file not found
-  ALL_NODES="node1:192.168.1.206 node2:192.168.1.207 node3:192.168.1.208 node4:192.168.1.209 node5:192.168.1.210 node6:192.168.1.211 node7:192.168.1.212 node8:192.168.1.213 node9:192.168.1.214 node10:192.168.1.215"
+  ALL_NODES="node1:192.168.1.173 node2:192.168.1.174 node3:192.168.1.175 node4:192.168.1.176 node5:192.168.1.177 node6:192.168.1.191 node7:192.168.1.253 node8:192.168.1.254 viki:192.168.1.178 nexus-prime:192.168.1.179"
   log "WARN: cluster-nodes.conf not found, using hardcoded IPs"
 fi
 # Ensure PHONE_NODES is populated; fall back to ALL_NODES if empty
