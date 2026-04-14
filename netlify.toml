@@ -10,9 +10,6 @@
   status = 200
   force = true
 
-[functions]
-  included_files = ["netlify/functions/swarm-core/job-queue.json"]
-
 # Netlify configuration
 [build]
   command = "npm run build"

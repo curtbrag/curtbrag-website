@@ -1,6 +1,6 @@
-let queue = [];
+import { getStore } from "@netlify/blobs";
 
-function json(statusCode, body) {
+function jsonResponse(statusCode, body) {
   return new Response(JSON.stringify(body), {
     status: statusCode,
     headers: {
@@ -10,6 +10,27 @@ function json(statusCode, body) {
       "access-control-allow-headers": "Content-Type, Authorization"
     }
   });
+}
+
+function openStore() {
+  return getStore("swarm-queue");
+}
+
+async function readQueue() {
+  try {
+    return (await openStore().get("jobs", { type: "json" })) || [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeQueue(jobs) {
+  try {
+    await openStore().setJSON("jobs", jobs);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export default async (request) => {
@@ -34,90 +55,97 @@ export default async (request) => {
     body = {};
   }
 
-  if (request.method === "GET" && action === "test") {
-    return json(200, {
-      ok: true,
-      message: "swarm-core live",
-      action: "test",
-      method: request.method,
-      queue_count: queue.length
-    });
-  }
-
+  // ── enqueue ────────────────────────────────────────────────────────────────
   if (request.method === "POST" && action === "enqueue") {
     const job = body.job;
     if (!job || typeof job !== "object" || !job.id || !job.type) {
-      return json(400, { ok: false, error: "invalid job payload" });
+      return jsonResponse(400, { ok: false, error: "invalid job payload" });
     }
 
-    const exists = queue.some(j => j && j.id === job.id);
+    const jobs = await readQueue();
+    const exists = jobs.some(j => j && j.id === job.id);
+
     if (!exists) {
-      queue.push(job);
+      jobs.push({ ...job, queued_at: Date.now() });
+      await writeQueue(jobs);
     }
 
-    return json(200, {
+    return jsonResponse(200, {
       ok: true,
       message: "swarm-core live",
       action: "enqueue",
       enqueued: !exists,
       already_present: exists,
       job_id: job.id,
-      queue_count: queue.length
+      queue_count: (await readQueue()).length
     });
   }
 
+  // ── swarm-poll ─────────────────────────────────────────────────────────────
   if (request.method === "GET" && action === "swarm-poll") {
     const deviceId = url.searchParams.get("device_id") || "";
-    const jobs = queue.filter(j => {
+    const jobs = (await readQueue()).filter(j => {
       if (!j || typeof j !== "object") return false;
       if (!j.id || !j.type) return false;
       if (!j.device_id) return true;
       return j.device_id === deviceId;
     });
 
-    return json(200, {
+    return jsonResponse(200, {
       ok: true,
       message: "swarm-core live",
       action: "swarm-poll",
-      jobs
+      jobs,
+      queue_count: jobs.length
     });
   }
 
-  if (request.method === "POST" && action === "job-update") {
-    let jobId = "";
-    try {
-      jobId = body.job_id || "";
-    } catch {}
-
-    if (jobId) {
-      queue = queue.filter(j => j && j.id !== jobId);
+  // ── job-complete (posted by node-swarm.sh after execution) ────────────────
+  if (request.method === "POST" && action === "job-complete") {
+    const { job_id } = body;
+    if (job_id) {
+      const jobs = await readQueue();
+      await writeQueue(jobs.filter(j => j && j.id !== job_id));
     }
+    return jsonResponse(200, {
+      ok: true,
+      message: "swarm-core live",
+      action: "job-complete"
+    });
+  }
 
-    return json(200, {
+  // ── job-update (alias for job-complete, dequeues by job_id) ───────────────
+  if (request.method === "POST" && action === "job-update") {
+    const { job_id } = body;
+    if (job_id) {
+      const jobs = await readQueue();
+      await writeQueue(jobs.filter(j => j && j.id !== job_id));
+    }
+    return jsonResponse(200, {
       ok: true,
       message: "swarm-core live",
       action: "job-update",
-      received: true,
-      removed_job_id: jobId,
-      queue_count: queue.length
+      received: true
     });
   }
 
+  // ── heartbeat ──────────────────────────────────────────────────────────────
   if (request.method === "POST" && action === "heartbeat") {
-    return json(200, {
+    return jsonResponse(200, {
       ok: true,
       message: "swarm-core live",
       action: "heartbeat",
-      received: true,
-      queue_count: queue.length
+      received: true
     });
   }
 
-  return json(200, {
+  // ── default: status ────────────────────────────────────────────────────────
+  const queueCount = (await readQueue()).length;
+  return jsonResponse(200, {
     ok: true,
     message: "swarm-core live",
     action,
     method: request.method,
-    queue_count: queue.length
+    queue_count: queueCount
   });
 };
