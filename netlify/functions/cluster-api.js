@@ -558,8 +558,20 @@ exports.handler = async (event, context) => {
 
   if (action === "auth-check" && event.httpMethod === "POST") {
     const body = JSON.parse(event.body || "{}");
-    const pw = await getWebPassword();
-    if (pw && body.password && safeCompare(body.password, pw)) {
+    const submitted = body.password || "";
+    if (!submitted) return json(401, hdrs, { ok: false });
+
+    let pw = await getWebPassword();
+
+    // Bootstrap: if no password has ever been set, accept and store the first one
+    if (!pw) {
+      try {
+        await openStore("cluster-config").set("web-password", submitted);
+      } catch (_) {}
+      return json(200, hdrs, { ok: true, bootstrapped: true });
+    }
+
+    if (safeCompare(submitted, pw)) {
       return json(200, hdrs, { ok: true });
     }
     return json(401, hdrs, { ok: false });
