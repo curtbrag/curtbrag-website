@@ -487,63 +487,6 @@ async function buildSummary(devices, observedMap) {
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 exports.handler = async (event, context) => {
-
-  const __swarmJson = (code, obj) => ({
-    statusCode: code,
-    headers: { "content-type": "application/json; charset=utf-8" },
-    body: JSON.stringify(obj)
-  });
-
-  const __swarmQs = event?.queryStringParameters || {};
-  let __swarmBody = {};
-  try {
-    __swarmBody = event?.body ? JSON.parse(event.body) : {};
-  } catch (_) {
-    __swarmBody = {};
-  }
-
-  const __swarmAction = __swarmQs.action || __swarmBody.action || "";
-
-  globalThis.__swarmTestState = {
-    issued: false,
-    updates: []
-  };
-
-  if (event?.httpMethod === "GET" && __swarmAction === "swarm-poll") {
-  return __swarmJson(200, {
-    jobs: [
-      {
-        id: "util-job-001",
-        type: "utility",
-        payload: {
-          mode: "hash_text",
-          text: "curtbrag cluster test"
-        }
-      }
-    ]
-  });
-}
-          }
-        ]
-      });
-    }
-
-    return __swarmJson(200, { jobs: [] });
-  }
-
-  if (event?.httpMethod === "POST" && __swarmAction === "job-update") {
-    globalThis.__swarmTestState.updates.push({
-      at: Date.now(),
-      body: __swarmBody
-    });
-
-    return __swarmJson(200, {
-      ok: true,
-      received: true,
-      updates: globalThis.__swarmTestState.updates
-    });
-  }
-
   connectLambda(event);
   const origin = event.headers.origin || "";
   const hdrs = corsHeaders(origin);
