@@ -64,6 +64,7 @@ import Layout from '../../layouts/Layout.astro';
 <button data-tab="commands" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Commands</button>
 <button data-tab="events" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Events</button>
 <button data-tab="alerts" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Alerts</button>
+<button data-tab="swarm" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px" onclick="onSwarmTabClick()">Swarm</button>
 </div>
 
 <div id="tab-fleet" class="tab-content">
@@ -200,6 +201,72 @@ Observed hashes from online devices:
 <button onclick="ackAllAlerts()" style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:11px;color:var(--color-muted)">Ack All</button>
 </div>
 <div id="alertsList" style="margin-top:12px;font-size:12px">No active alerts</div>
+</div>
+</div>
+
+<div id="tab-swarm" class="tab-content" style="display:none">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px">
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;text-align:center">
+<div style="font-size:11px;color:var(--color-muted)">Queued Jobs</div>
+<div style="font-size:28px;font-weight:bold" id="swarm-queued">—</div>
+</div>
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;text-align:center">
+<div style="font-size:11px;color:var(--color-muted)">Nodes Online</div>
+<div style="font-size:28px;font-weight:bold;color:var(--color-green)" id="swarm-nodes-online">—</div>
+</div>
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;text-align:center">
+<div style="font-size:11px;color:var(--color-muted)">Total Completed</div>
+<div style="font-size:28px;font-weight:bold" id="swarm-total">—</div>
+</div>
+</div>
+
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+<h3 style="margin:0">Swarm Nodes</h3>
+<button onclick="fetchSwarmStatus()" style="background:transparent;border:1px solid var(--color-border);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:11px;color:var(--color-muted)">Refresh</button>
+</div>
+<div id="swarm-nodes" style="font-size:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">
+<span style="color:var(--color-muted)">Loading…</span>
+</div>
+</div>
+
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px">
+<h3 style="margin-bottom:12px">Dispatch Swarm Job</h3>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+<div>
+<div style="font-size:11px;color:var(--color-muted);margin-bottom:4px">Type</div>
+<select id="swarm-job-type" style="background:var(--color-bg);border:1px solid var(--color-border);border-radius:6px;padding:8px;font-size:12px;color:var(--color-text)">
+<option value="shell">shell</option>
+<option value="echo">echo</option>
+<option value="status">status</option>
+</select>
+</div>
+<div style="flex:1;min-width:200px">
+<div style="font-size:11px;color:var(--color-muted);margin-bottom:4px">Command / Message</div>
+<input id="swarm-job-cmd" type="text" placeholder="e.g. uptime" style="width:100%;box-sizing:border-box;background:var(--color-bg);border:1px solid var(--color-border);border-radius:6px;padding:8px;font-size:12px;color:var(--color-text);font-family:monospace"/>
+</div>
+<div>
+<div style="font-size:11px;color:var(--color-muted);margin-bottom:4px">Target Device (blank = all)</div>
+<input id="swarm-job-device" type="text" placeholder="device_id (optional)" style="width:180px;background:var(--color-bg);border:1px solid var(--color-border);border-radius:6px;padding:8px;font-size:11px;color:var(--color-text);font-family:monospace"/>
+</div>
+<button onclick="submitSwarmJob()" style="background:var(--color-brand);color:white;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:600;font-size:12px">Enqueue</button>
+</div>
+</div>
+
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+<h3 style="margin:0">Pending Queue</h3>
+<button onclick="flushSwarmQueue()" style="background:transparent;border:1px solid var(--color-red);color:var(--color-red);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:11px">Flush Queue</button>
+</div>
+<div id="swarm-queue-list" style="font-size:12px">Empty</div>
+</div>
+
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+<h3 style="margin:0">Recent Results</h3>
+<button onclick="clearSwarmResults()" style="background:transparent;border:1px solid var(--color-border);color:var(--color-muted);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:11px">Clear</button>
+</div>
+<div id="swarm-results" style="font-size:12px">No results yet</div>
 </div>
 </div>
 
@@ -932,5 +999,115 @@ if (password) {
   document.getElementById('panel').style.display = 'block';
   fetchAll();
   setInterval(fetchAll, 15000);
+}
+
+// ── Swarm tab ────────────────────────────────────────────────────────────────
+const SWARM_API = '/.netlify/functions/swarm-core';
+let swarmInterval = null;
+
+function onSwarmTabClick() {
+  fetchSwarmStatus();
+  if (!swarmInterval) swarmInterval = setInterval(fetchSwarmStatus, 5000);
+}
+
+async function fetchSwarmStatus() {
+  try {
+    const r = await fetch(`${SWARM_API}?action=queue-status`);
+    if (!r.ok) return;
+    const d = await r.json();
+    renderSwarmStatus(d);
+  } catch {}
+}
+
+function renderSwarmStatus(d) {
+  document.getElementById('swarm-queued').textContent = d.queued ?? 0;
+  document.getElementById('swarm-nodes-online').textContent = d.nodes_online ?? 0;
+  document.getElementById('swarm-total').textContent = d.total_completed ?? 0;
+
+  const nodes = d.nodes || [];
+  document.getElementById('swarm-nodes').innerHTML = nodes.length
+    ? nodes.map(n => {
+        const c = n.online ? 'var(--color-green)' : 'var(--color-red)';
+        return `<div style="background:var(--color-bg);border-radius:6px;padding:10px;border-left:3px solid ${c}">
+          <div style="font-weight:600;font-size:12px;margin-bottom:2px">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};margin-right:6px"></span>${n.id}
+          </div>
+          <div style="font-size:11px;color:var(--color-muted)">Last seen: ${timeAgo(n.last_seen)}</div>
+          ${n.last_job ? `<div style="font-size:10px;color:var(--color-muted)">Job: ${n.last_job.slice(0,12)}… exit:${n.last_exit ?? '?'}</div>` : ''}
+        </div>`;
+      }).join('')
+    : '<span style="color:var(--color-muted)">No nodes have checked in yet</span>';
+
+  const jobs = d.jobs || [];
+  document.getElementById('swarm-queue-list').innerHTML = jobs.length
+    ? jobs.map(j => `<div style="padding:8px;background:var(--color-bg);border-radius:4px;margin:4px 0;border-left:3px solid var(--color-yellow);font-family:monospace;font-size:11px">
+        <div style="display:flex;justify-content:space-between">
+          <strong>${j.type}</strong>
+          <span style="color:var(--color-muted)">${timeAgo(j.queued_at)}</span>
+        </div>
+        <div style="color:var(--color-muted)">${j.cmd || j.command || ''}</div>
+        ${j.device_id ? `<div style="font-size:10px;color:var(--color-muted)">→ ${j.device_id}</div>` : ''}
+      </div>`).join('')
+    : 'Empty';
+
+  const results = d.results || [];
+  document.getElementById('swarm-results').innerHTML = results.length
+    ? results.map(r => `<div style="padding:8px;background:var(--color-bg);border-radius:4px;margin:4px 0;border-left:3px solid ${r.exit_code === 0 ? 'var(--color-green)' : 'var(--color-red)'}">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span><strong>${r.type || 'shell'}</strong> · <code style="font-size:10px">${r.device_id}</code> · exit:${r.exit_code ?? '?'}</span>
+          <span style="color:var(--color-muted);font-size:10px">${timeAgo(r.completed_at)}</span>
+        </div>
+        ${r.cmd ? `<div style="font-size:10px;color:var(--color-muted);font-family:monospace;margin-bottom:4px">$ ${r.cmd}</div>` : ''}
+        ${r.stdout ? `<pre style="margin:0;font-size:10px;color:var(--color-muted);white-space:pre-wrap;max-height:60px;overflow-y:auto">${r.stdout.slice(0,300)}</pre>` : ''}
+      </div>`).join('')
+    : 'No results yet';
+}
+
+async function submitSwarmJob() {
+  const type = document.getElementById('swarm-job-type').value;
+  const cmd = document.getElementById('swarm-job-cmd').value.trim();
+  const device_id = document.getElementById('swarm-job-device').value.trim();
+  if (!cmd) { toast('Command / message is required', 'error'); return; }
+  const job = {
+    id: `web-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+    type,
+    cmd,
+    command: cmd,
+  };
+  if (device_id) job.device_id = device_id;
+  try {
+    const r = await fetch(`${SWARM_API}?action=enqueue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      toast(`Job enqueued (queue: ${d.queue_count})`);
+      document.getElementById('swarm-job-cmd').value = '';
+      document.getElementById('swarm-job-device').value = '';
+      fetchSwarmStatus();
+    } else {
+      toast(`Enqueue failed: ${d.error}`, 'error');
+    }
+  } catch (e) { toast(`Error: ${e.message}`, 'error'); }
+}
+
+async function flushSwarmQueue() {
+  if (!confirm('Flush swarm queue?')) return;
+  try {
+    const r = await fetch(`${SWARM_API}?action=flush-queue`, { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) { toast('Swarm queue flushed'); fetchSwarmStatus(); }
+  } catch (e) { toast(`Error: ${e.message}`, 'error'); }
+}
+
+async function clearSwarmResults() {
+  if (!confirm('Clear all swarm results?')) return;
+  try {
+    const r = await fetch(`${SWARM_API}?action=clear-results`, { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) { toast('Results cleared'); fetchSwarmStatus(); }
+  } catch (e) { toast(`Error: ${e.message}`, 'error'); }
 }
 </script>
