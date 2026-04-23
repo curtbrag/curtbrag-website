@@ -85,7 +85,7 @@ export default async (request) => {
     return jsonResponse(200, {
       ok: true, action: "enqueue",
       enqueued: !exists, already_present: exists,
-      job_id: job.id, queue_count: jobs.length + (exists ? 0 : 1)
+      job_id: job.id, queue_count: jobs.length
     });
   }
 
