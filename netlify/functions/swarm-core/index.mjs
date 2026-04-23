@@ -1,4 +1,4 @@
-import { getStore } from "@netlify/blobs";
+import { getStore } from "@netlify/blobs"; // v2
 
 function jsonResponse(statusCode, body) {
   return new Response(JSON.stringify(body), {
