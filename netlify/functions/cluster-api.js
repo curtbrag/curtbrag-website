@@ -1056,7 +1056,7 @@ exports.handler = async (event, context) => {
       return json(200, hdrs, { ok: true, affected: count });
     }
 
-    // Operator: seed all known cluster nodes in one sequential pass
+    // Operator: seed all known cluster nodes (parallel writes)
     if (postAction === "seed-fleet") {
       const FLEET = [
         { hostname: "node1", ip: "192.168.1.173", device_class: "phone", cluster_role: "worker" },
@@ -1072,15 +1072,10 @@ exports.handler = async (event, context) => {
       ];
       const existing = await getAllDevices();
       const existingHostnames = new Set(existing.map(d => d.hostname));
-      const results = [];
-      for (const n of FLEET) {
-        if (existingHostnames.has(n.hostname)) {
-          results.push({ hostname: n.hostname, skipped: true });
-          continue;
-        }
+      const results = await Promise.all(FLEET.map(async (n) => {
+        if (existingHostnames.has(n.hostname)) return { hostname: n.hostname, skipped: true };
         const isPhone = n.device_class === "phone";
         const newId = `${n.hostname}-${genId().slice(0, 8)}`;
-        const agentToken = genId();
         const device = {
           id: newId, hostname: n.hostname,
           device_class: n.device_class, status: "offline",
@@ -1088,32 +1083,34 @@ exports.handler = async (event, context) => {
           registered_at: Date.now(), last_seen_at: null,
           current_ip: n.ip, ips: { primary: n.ip },
           os_info: {}, hardware: {},
-          agent_token: agentToken, agent_version: "0.0",
+          agent_token: genId(), agent_version: "0.0",
           miner_profile: isPhone ? "phone-default" : "default",
           quarantined: false, notes: "pre-seeded by operator", group: "",
         };
+        const ds = {
+          workload_type: "mining", workload_enabled: isPhone,
+          workload_profile: isPhone ? "phone-mining" : "default",
+          miner_enabled: isPhone, mining_level: isPhone ? 3 : 2,
+          pool_url: "192.168.1.179", pool_port: 10128,
+          pool_user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT",
+          pool_pass: "x", pool_tls: false,
+          thread_count: isPhone ? 6 : 4, force_threads: false,
+          huge_pages: false, randomx_mode: "light", affinity: "",
+          max_temp_celsius: 60, pause_on_battery: isPhone,
+          pause_on_high_temp: true, temp_check_interval: 10,
+          log_path: "~/cluster/logs/xmrig.log", print_interval: 60,
+          preflight_required: true, preflight_pool_check: true,
+        };
         try {
-          await openStore("cp-devices").setJSON(newId, device);
-          const ds = {
-            workload_type: "mining", workload_enabled: isPhone,
-            workload_profile: isPhone ? "phone-mining" : "default",
-            miner_enabled: isPhone, mining_level: isPhone ? 3 : 2,
-            pool_url: "192.168.1.179", pool_port: 10128,
-            pool_user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT",
-            pool_pass: "x", pool_tls: false,
-            thread_count: isPhone ? 6 : 4, force_threads: false,
-            huge_pages: false, randomx_mode: "light", affinity: "",
-            max_temp_celsius: 60, pause_on_battery: isPhone,
-            pause_on_high_temp: true, temp_check_interval: 10,
-            log_path: "~/cluster/logs/xmrig.log", print_interval: 60,
-            preflight_required: true, preflight_pool_check: true,
-          };
-          await openStore("cp-desired").setJSON(newId, ds);
-          results.push({ hostname: n.hostname, device_id: newId, seeded: true });
+          await Promise.all([
+            openStore("cp-devices").setJSON(newId, device),
+            openStore("cp-desired").setJSON(newId, ds),
+          ]);
+          return { hostname: n.hostname, device_id: newId, seeded: true };
         } catch (e) {
-          results.push({ hostname: n.hostname, error: e.message });
+          return { hostname: n.hostname, error: e.message };
         }
-      }
+      }));
       const seeded = results.filter(r => r.seeded).length;
       const skipped = results.filter(r => r.skipped).length;
       const errors = results.filter(r => r.error).length;

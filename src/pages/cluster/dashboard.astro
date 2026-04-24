@@ -948,11 +948,15 @@ async function seedFleet() {
   const btn = document.querySelector('[onclick="seedFleet()"]');
   if (btn) { btn.disabled = true; btn.textContent = 'Seeding…'; }
   try {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 20000);
     const r = await fetch(`${API}?action=seed-fleet`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' },
       body: '{}',
+      signal: ctrl.signal,
     });
+    clearTimeout(tid);
     const data = await r.json();
     if (!r.ok) {
       toast(`Seed failed: HTTP ${r.status} — ${data.error || JSON.stringify(data)}`, 'error');
@@ -963,7 +967,7 @@ async function seedFleet() {
       fetchAll();
     }
   } catch (e) {
-    toast(`Seed failed: ${e.message}`, 'error');
+    toast(e.name === 'AbortError' ? 'Seed timed out — function took >20s' : `Seed failed: ${e.message}`, 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-seedling"></i> Seed Missing Nodes'; }
   }
