@@ -960,17 +960,31 @@ async function seedFleet() {
     { hostname: 'nexus-prime', ip: '192.168.1.179', device_class: 'control-plane', cluster_role: 'control-plane' },
   ];
   try {
-    const results = await Promise.all(KNOWN_NODES.map(n =>
-      callApi('create-device', 'POST', n).catch(e => ({ _err: e.message }))
-    ));
+    const results = await Promise.all(KNOWN_NODES.map(async n => {
+      try {
+        const r = await fetch(`${API}?action=create-device`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(n),
+        });
+        const data = await r.json();
+        console.log('create-device', n.hostname, r.status, data);
+        if (!r.ok) return { _err: `${n.hostname}: HTTP ${r.status} — ${data.error || JSON.stringify(data)}` };
+        return data;
+      } catch (e) {
+        console.error('create-device', n.hostname, e);
+        return { _err: `${n.hostname}: ${e.message}` };
+      }
+    }));
     const seeded = results.filter(r => r && !r._err && !r.skipped).length;
     const skipped = results.filter(r => r && !r._err && r.skipped).length;
-    const errors = results.filter(r => r && r._err).length;
-    const msg = errors
-      ? `Seeded ${seeded}, skipped ${skipped}, errors ${errors}`
-      : `Seeded ${seeded} node(s), skipped ${skipped} existing`;
-    toast(msg, errors ? 'error' : 'ok');
-    setTimeout(fetchAll, 500);
+    const errList = results.filter(r => r && r._err).map(r => r._err);
+    if (errList.length) {
+      toast(`Seeded ${seeded}, skipped ${skipped} — first error: ${errList[0]}`, 'error');
+    } else {
+      toast(`Seeded ${seeded} node(s), skipped ${skipped} existing`);
+      fetchAll();
+    }
   } catch (e) {
     toast(`Seed failed: ${e.message}`, 'error');
   } finally {
