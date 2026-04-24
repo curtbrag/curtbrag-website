@@ -1056,6 +1056,66 @@ exports.handler = async (event, context) => {
       return json(200, hdrs, { ok: true, affected: count });
     }
 
+    // Operator: pre-register a device (skips if hostname already exists)
+    if (postAction === "create-device") {
+      const { hostname, ip, device_class, cluster_role } = body;
+      if (!hostname || !ip) return json(400, hdrs, { error: "hostname and ip required" });
+      const existing = await getAllDevices();
+      const dup = existing.find(d => d.hostname === hostname);
+      if (dup) return json(200, hdrs, { ok: true, skipped: true, device_id: dup.id });
+      const isPhone = device_class === "phone" || (!device_class && !/^(viki|nexus)/.test(hostname));
+      const newId = `${hostname.replace(/[^a-z0-9-]/gi, "-")}-${genId().slice(0, 8)}`;
+      const agentToken = genId();
+      const device = {
+        id: newId,
+        hostname,
+        device_class: device_class || (isPhone ? "phone" : "control-plane"),
+        status: "offline",
+        cluster_role: cluster_role || (isPhone ? "worker" : "control-plane"),
+        registered_at: Date.now(),
+        last_seen_at: null,
+        current_ip: ip,
+        ips: { primary: ip },
+        os_info: {},
+        hardware: {},
+        agent_token: agentToken,
+        agent_version: "0.0",
+        miner_profile: isPhone ? "phone-default" : "default",
+        quarantined: false,
+        notes: "pre-seeded by operator",
+        group: "",
+      };
+      await saveDevice(newId, device);
+      const isPhoneClass = device.device_class === "phone" || /^node\d+$/.test(hostname);
+      const ds = {
+        workload_type: "mining",
+        workload_enabled: isPhoneClass,
+        workload_profile: isPhoneClass ? "phone-mining" : "default",
+        miner_enabled: isPhoneClass,
+        mining_level: isPhoneClass ? 3 : 2,
+        pool_url: "192.168.1.179",
+        pool_port: 10128,
+        pool_user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT",
+        pool_pass: "x",
+        pool_tls: false,
+        thread_count: isPhoneClass ? 6 : 4,
+        force_threads: false,
+        huge_pages: false,
+        randomx_mode: "light",
+        affinity: "",
+        max_temp_celsius: 60,
+        pause_on_battery: isPhoneClass,
+        pause_on_high_temp: true,
+        temp_check_interval: 10,
+        log_path: "~/cluster/logs/xmrig.log",
+        print_interval: 60,
+        preflight_required: true,
+        preflight_pool_check: true,
+      };
+      await openStore("cp-desired").setJSON(newId, ds);
+      return json(200, hdrs, { ok: true, skipped: false, device_id: newId });
+    }
+
     // Delete device (remove from registry)
     if (postAction === "delete-device") {
       const { device_id } = body;

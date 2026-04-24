@@ -68,6 +68,9 @@ import Layout from '../../layouts/Layout.astro';
 </div>
 
 <div id="tab-fleet" class="tab-content">
+<div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+<button onclick="seedFleet()" style="background:transparent;border:1px solid var(--color-border);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:11px;color:var(--color-muted)"><i class="fa-solid fa-seedling"></i> Seed Missing Nodes</button>
+</div>
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px" id="deviceGrid"></div>
 </div>
 
@@ -939,6 +942,30 @@ async function rolloutToGroup(groupId) {
     toast(`Profile ${profileId} → group ${groupId}`);
     setTimeout(fetchAll, 800);
   } catch (e) { toast(`Rollout failed: ${e.message}`, 'error'); }
+}
+
+async function seedFleet() {
+  const KNOWN_NODES = [
+    { hostname: 'node1', ip: '192.168.1.173', device_class: 'phone', cluster_role: 'worker' },
+    { hostname: 'node2', ip: '192.168.1.174', device_class: 'phone', cluster_role: 'worker' },
+    { hostname: 'node3', ip: '192.168.1.175', device_class: 'phone', cluster_role: 'worker' },
+    { hostname: 'node4', ip: '192.168.1.176', device_class: 'phone', cluster_role: 'worker' },
+    { hostname: 'node5', ip: '192.168.1.177', device_class: 'phone', cluster_role: 'worker' },
+    { hostname: 'node6', ip: '192.168.1.191', device_class: 'phone', cluster_role: 'worker' },
+    { hostname: 'node7', ip: '192.168.1.253', device_class: 'phone', cluster_role: 'worker' },
+    { hostname: 'node8', ip: '192.168.1.254', device_class: 'phone', cluster_role: 'worker' },
+    { hostname: 'viki', ip: '192.168.1.178', device_class: 'control-plane', cluster_role: 'control-plane' },
+    { hostname: 'nexus-prime', ip: '192.168.1.179', device_class: 'control-plane', cluster_role: 'control-plane' },
+  ];
+  let seeded = 0, skipped = 0;
+  for (const n of KNOWN_NODES) {
+    try {
+      const r = await callApi('create-device', 'POST', n);
+      if (r.skipped) skipped++; else seeded++;
+    } catch (e) { /* continue */ }
+  }
+  toast(`Seeded ${seeded} node(s), skipped ${skipped} existing`);
+  setTimeout(fetchAll, 1000);
 }
 
 async function seedDefaultGroups() {
