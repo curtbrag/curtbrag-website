@@ -1056,6 +1056,70 @@ exports.handler = async (event, context) => {
       return json(200, hdrs, { ok: true, affected: count });
     }
 
+    // Operator: seed all known cluster nodes in one sequential pass
+    if (postAction === "seed-fleet") {
+      const FLEET = [
+        { hostname: "node1", ip: "192.168.1.173", device_class: "phone", cluster_role: "worker" },
+        { hostname: "node2", ip: "192.168.1.174", device_class: "phone", cluster_role: "worker" },
+        { hostname: "node3", ip: "192.168.1.175", device_class: "phone", cluster_role: "worker" },
+        { hostname: "node4", ip: "192.168.1.176", device_class: "phone", cluster_role: "worker" },
+        { hostname: "node5", ip: "192.168.1.177", device_class: "phone", cluster_role: "worker" },
+        { hostname: "node6", ip: "192.168.1.191", device_class: "phone", cluster_role: "worker" },
+        { hostname: "node7", ip: "192.168.1.253", device_class: "phone", cluster_role: "worker" },
+        { hostname: "node8", ip: "192.168.1.254", device_class: "phone", cluster_role: "worker" },
+        { hostname: "viki", ip: "192.168.1.178", device_class: "control-plane", cluster_role: "control-plane" },
+        { hostname: "nexus-prime", ip: "192.168.1.179", device_class: "control-plane", cluster_role: "control-plane" },
+      ];
+      const existing = await getAllDevices();
+      const existingHostnames = new Set(existing.map(d => d.hostname));
+      const results = [];
+      for (const n of FLEET) {
+        if (existingHostnames.has(n.hostname)) {
+          results.push({ hostname: n.hostname, skipped: true });
+          continue;
+        }
+        const isPhone = n.device_class === "phone";
+        const newId = `${n.hostname}-${genId().slice(0, 8)}`;
+        const agentToken = genId();
+        const device = {
+          id: newId, hostname: n.hostname,
+          device_class: n.device_class, status: "offline",
+          cluster_role: n.cluster_role,
+          registered_at: Date.now(), last_seen_at: null,
+          current_ip: n.ip, ips: { primary: n.ip },
+          os_info: {}, hardware: {},
+          agent_token: agentToken, agent_version: "0.0",
+          miner_profile: isPhone ? "phone-default" : "default",
+          quarantined: false, notes: "pre-seeded by operator", group: "",
+        };
+        try {
+          await openStore("cp-devices").setJSON(newId, device);
+          const ds = {
+            workload_type: "mining", workload_enabled: isPhone,
+            workload_profile: isPhone ? "phone-mining" : "default",
+            miner_enabled: isPhone, mining_level: isPhone ? 3 : 2,
+            pool_url: "192.168.1.179", pool_port: 10128,
+            pool_user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT",
+            pool_pass: "x", pool_tls: false,
+            thread_count: isPhone ? 6 : 4, force_threads: false,
+            huge_pages: false, randomx_mode: "light", affinity: "",
+            max_temp_celsius: 60, pause_on_battery: isPhone,
+            pause_on_high_temp: true, temp_check_interval: 10,
+            log_path: "~/cluster/logs/xmrig.log", print_interval: 60,
+            preflight_required: true, preflight_pool_check: true,
+          };
+          await openStore("cp-desired").setJSON(newId, ds);
+          results.push({ hostname: n.hostname, device_id: newId, seeded: true });
+        } catch (e) {
+          results.push({ hostname: n.hostname, error: e.message });
+        }
+      }
+      const seeded = results.filter(r => r.seeded).length;
+      const skipped = results.filter(r => r.skipped).length;
+      const errors = results.filter(r => r.error).length;
+      return json(200, hdrs, { ok: true, seeded, skipped, errors, results });
+    }
+
     // Operator: pre-register a device (skips if hostname already exists)
     if (postAction === "create-device") {
       const { hostname, ip, device_class, cluster_role } = body;

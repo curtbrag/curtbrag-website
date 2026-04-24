@@ -947,42 +947,19 @@ async function rolloutToGroup(groupId) {
 async function seedFleet() {
   const btn = document.querySelector('[onclick="seedFleet()"]');
   if (btn) { btn.disabled = true; btn.textContent = 'Seeding…'; }
-  const KNOWN_NODES = [
-    { hostname: 'node1', ip: '192.168.1.173', device_class: 'phone', cluster_role: 'worker' },
-    { hostname: 'node2', ip: '192.168.1.174', device_class: 'phone', cluster_role: 'worker' },
-    { hostname: 'node3', ip: '192.168.1.175', device_class: 'phone', cluster_role: 'worker' },
-    { hostname: 'node4', ip: '192.168.1.176', device_class: 'phone', cluster_role: 'worker' },
-    { hostname: 'node5', ip: '192.168.1.177', device_class: 'phone', cluster_role: 'worker' },
-    { hostname: 'node6', ip: '192.168.1.191', device_class: 'phone', cluster_role: 'worker' },
-    { hostname: 'node7', ip: '192.168.1.253', device_class: 'phone', cluster_role: 'worker' },
-    { hostname: 'node8', ip: '192.168.1.254', device_class: 'phone', cluster_role: 'worker' },
-    { hostname: 'viki', ip: '192.168.1.178', device_class: 'control-plane', cluster_role: 'control-plane' },
-    { hostname: 'nexus-prime', ip: '192.168.1.179', device_class: 'control-plane', cluster_role: 'control-plane' },
-  ];
   try {
-    const results = await Promise.all(KNOWN_NODES.map(async n => {
-      try {
-        const r = await fetch(`${API}?action=create-device`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(n),
-        });
-        const data = await r.json();
-        console.log('create-device', n.hostname, r.status, data);
-        if (!r.ok) return { _err: `${n.hostname}: HTTP ${r.status} — ${data.error || JSON.stringify(data)}` };
-        return data;
-      } catch (e) {
-        console.error('create-device', n.hostname, e);
-        return { _err: `${n.hostname}: ${e.message}` };
-      }
-    }));
-    const seeded = results.filter(r => r && !r._err && !r.skipped).length;
-    const skipped = results.filter(r => r && !r._err && r.skipped).length;
-    const errList = results.filter(r => r && r._err).map(r => r._err);
-    if (errList.length) {
-      toast(`Seeded ${seeded}, skipped ${skipped} — first error: ${errList[0]}`, 'error');
+    const r = await fetch(`${API}?action=seed-fleet`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      toast(`Seed failed: HTTP ${r.status} — ${data.error || JSON.stringify(data)}`, 'error');
+    } else if (data.errors > 0) {
+      toast(`Seeded ${data.seeded}, skipped ${data.skipped}, errors ${data.errors}`, 'error');
     } else {
-      toast(`Seeded ${seeded} node(s), skipped ${skipped} existing`);
+      toast(`Seeded ${data.seeded} node(s), skipped ${data.skipped} existing`);
       fetchAll();
     }
   } catch (e) {
