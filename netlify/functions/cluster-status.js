@@ -24,7 +24,7 @@ async function getApiKey() {
   } catch { return null; }
 }
 
-// Demo data for when no live data is available
+// DEMO fallback data for UI testing only (not real fleet telemetry)
 const DEMO_DATA = {
   nodes: [
     { name: 'node1', status: 'Ready', role: 'control-plane', ip: '192.168.1.206', kubeletVersion: 'v1.28.4+k3s1', osImage: 'Alpine Linux', arch: 'aarch64' },
@@ -106,7 +106,8 @@ const DEMO_DATA = {
       { name: 'node9', online: false },
       { name: 'node10', online: false }
     ],
-    summary: { avgLevel: 70, charging: 4, low: 0, critical: 0, online: 7, total: 10 }
+    is_demo: true,
+  summary: { avgLevel: 70, charging: 4, low: 0, critical: 0, online: 7, total: 10 }
   },
   events: [
     { type: 'Normal', reason: 'Scheduled', message: 'Successfully assigned default/nginx-deployment-7c5b4f9d8-x2k9m to node2', object: 'Pod/nginx-deployment-7c5b4f9d8-x2k9m', namespace: 'default', count: 1, timestamp: new Date(Date.now() - 120000).toISOString() },
@@ -129,11 +130,12 @@ const DEMO_DATA = {
     { name: 'node10', unschedulable: false, taints: [] }
   ],
   mining: {
-    enabled: true,
-    minersRunning: 3,
-    minersTotal: 14,
-    totalHashrate: '~1.5 KH/s',
-    totalHashrateRaw: 1500,
+    enabled: false,
+    demo: true,
+    minersRunning: 0,
+    minersTotal: 0,
+    totalHashrate: '0 H/s',
+    totalHashrateRaw: 0,
     coin: 'XMR',
     pool: 'moneroocean.stream',
     estimatedDaily: '$0.08',
@@ -151,8 +153,8 @@ const DEMO_DATA = {
       { name: 'node10', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 },
       { name: 'nexus-prime', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 },
       { name: 'coffee-table', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 },
-      { name: 'viki', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 },
-      { name: 'steamdeck', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', accepted: 0 }
+      { name: 'viki', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', ip: '192.168.1.180', accepted: 0 },
+      { name: 'steamdeck', hashrate: '0 H/s', hashrateRaw: 0, status: 'offline', ip: '192.168.1.166', accepted: 0 }
     ]
   },
   summary: {

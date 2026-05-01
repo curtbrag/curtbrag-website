@@ -173,6 +173,27 @@ async function getCommandHistory() {
   }
 }
 
+
+async function saveCommandHistory(history) {
+  try {
+    await openStore("cp-commands").setJSON("history", history.slice(-200));
+  } catch {}
+}
+
+async function saveQueue(queue) {
+  try {
+    await openStore("cp-commands").setJSON("queue", queue);
+  } catch {}
+}
+
+async function getBridgeHeartbeat() {
+  try {
+    return (await openStore("cp-bridge").get("heartbeat", { type: "json" })) || null;
+  } catch {
+    return null;
+  }
+}
+
 async function enqueueCommand(cmd) {
   try {
     // Write to new cp-commands store (for new node agents)
@@ -609,6 +630,20 @@ exports.handler = async (event, context) => {
     }
 
     // Commands (queue + history)
+    if (action === "bridge-status") {
+      const hb = await getBridgeHeartbeat();
+      const now = Date.now();
+      const lastSeen = hb?.last_seen_at || null;
+      const ageMs = lastSeen ? now - new Date(lastSeen).getTime() : null;
+      return json(200, hdrs, {
+        alive: !!(ageMs !== null && ageMs < 60000),
+        last_seen_at: lastSeen,
+        age_ms: ageMs,
+        hostname: hb?.hostname || null,
+        summary: hb?.summary || null,
+      });
+    }
+
     if (action === "commands") {
       const queue = await getQueue();
       const history = await getCommandHistory();
@@ -750,9 +785,8 @@ exports.handler = async (event, context) => {
     // Queue a command
     if (postAction === "queue-command") {
       const VALID_TARGETS = [
-        "all","phones","pcs",
-        "node1","node2","node3","node4","node5","node6","node7","node8",
-        "viki","nexus-prime",
+        "all","phones","pcs","steamdeck","viki","nexus",
+        "phone173","phone174","phone175","phone176","phone177","phone191","phone253","phone254",
       ];
       const VALID_COMMANDS = [
         "start","stop","restart","wake","sleep",
@@ -763,7 +797,7 @@ exports.handler = async (event, context) => {
         "kill-rogue","reconcile","fetch-logs",
         "disable-mining","quarantine","clear-quarantine",
         "run-diagnostic","switch-profile","force-binary-redeploy",
-        "reset-restart-count",
+        "reset-restart-count","fresh-connect",
       ];
 
       const target = body.target || "all";
@@ -796,6 +830,41 @@ exports.handler = async (event, context) => {
 
       await enqueueCommand(cmd);
       return json(200, hdrs, { ok: true, command_id: cmd.id });
+    }
+
+    if (postAction === "bridge-heartbeat") {
+      const payload = {
+        last_seen_at: new Date().toISOString(),
+        hostname: body.hostname || "unknown",
+        summary: body.summary || "",
+      };
+      await openStore("cp-bridge").setJSON("heartbeat", payload);
+      return json(200, hdrs, { ok: true, bridge: payload });
+    }
+
+    if (postAction === "bridge-complete") {
+      const { id, target, type, result_summary, output } = body;
+      if (!id || !target || !type) return json(400, hdrs, { error: "id, target, type required" });
+      const queue = await getQueue();
+      const idx = queue.findIndex((c) => c.id === id);
+      const cmd = idx >= 0 ? queue[idx] : null;
+      if (idx >= 0) {
+        queue.splice(idx, 1);
+        await saveQueue(queue);
+      }
+      const history = await getCommandHistory();
+      history.push({
+        ...(cmd || {}),
+        id,
+        target,
+        type,
+        status: "completed",
+        result_summary: result_summary || "",
+        output: output || "",
+        finished_at: Date.now(),
+      });
+      await saveCommandHistory(history);
+      return json(200, hdrs, { ok: true });
     }
 
     // Flush command queue
@@ -1059,16 +1128,17 @@ exports.handler = async (event, context) => {
     // Operator: seed all known cluster nodes (parallel writes)
     if (postAction === "seed-fleet") {
       const FLEET = [
-        { hostname: "node1", ip: "192.168.1.173", device_class: "phone", cluster_role: "worker" },
-        { hostname: "node2", ip: "192.168.1.174", device_class: "phone", cluster_role: "worker" },
-        { hostname: "node3", ip: "192.168.1.175", device_class: "phone", cluster_role: "worker" },
-        { hostname: "node4", ip: "192.168.1.176", device_class: "phone", cluster_role: "worker" },
-        { hostname: "node5", ip: "192.168.1.177", device_class: "phone", cluster_role: "worker" },
-        { hostname: "node6", ip: "192.168.1.191", device_class: "phone", cluster_role: "worker" },
-        { hostname: "node7", ip: "192.168.1.253", device_class: "phone", cluster_role: "worker" },
-        { hostname: "node8", ip: "192.168.1.254", device_class: "phone", cluster_role: "worker" },
-        { hostname: "viki", ip: "192.168.1.178", device_class: "control-plane", cluster_role: "control-plane" },
-        { hostname: "nexus-prime", ip: "192.168.1.179", device_class: "control-plane", cluster_role: "control-plane" },
+        { hostname: "phone173", ip: "192.168.1.173", device_class: "phone", cluster_role: "worker" },
+        { hostname: "phone174", ip: "192.168.1.174", device_class: "phone", cluster_role: "worker" },
+        { hostname: "phone175", ip: "192.168.1.175", device_class: "phone", cluster_role: "worker" },
+        { hostname: "phone176", ip: "192.168.1.176", device_class: "phone", cluster_role: "worker" },
+        { hostname: "phone177", ip: "192.168.1.177", device_class: "phone", cluster_role: "worker" },
+        { hostname: "phone191", ip: "192.168.1.191", device_class: "phone", cluster_role: "worker" },
+        { hostname: "phone253", ip: "192.168.1.253", device_class: "phone", cluster_role: "worker" },
+        { hostname: "phone254", ip: "192.168.1.254", device_class: "phone", cluster_role: "worker" },
+        { hostname: "viki", ip: "192.168.1.180", device_class: "pc", cluster_role: "control-plane" },
+        { hostname: "nexus", ip: "192.168.1.179", device_class: "pc", cluster_role: "control-plane" },
+        { hostname: "steamdeck", ip: "192.168.1.166", device_class: "steamdeck", cluster_role: "worker" },
       ];
       const existing = await getAllDevices();
       const existingHostnames = new Set(existing.map(d => d.hostname));
@@ -1114,6 +1184,13 @@ exports.handler = async (event, context) => {
       const seeded = results.filter(r => r.seeded).length;
       const skipped = results.filter(r => r.skipped).length;
       const errors = results.filter(r => r.error).length;
+      const allDevices = await getAllDevices();
+      const idsByClass = (klass) => allDevices.filter((d) => d.device_class === klass).map((d) => d.id);
+      const phoneIds = idsByClass("phone");
+      const pcIds = allDevices.filter((d) => ["pc","steamdeck"].includes(d.device_class)).map((d) => d.id);
+      await openStore("cp-groups").setJSON("phones", { id: "phones", name: "Phones", device_ids: phoneIds, updated_at: Date.now() });
+      await openStore("cp-groups").setJSON("pcs", { id: "pcs", name: "PCs", device_ids: pcIds, updated_at: Date.now() });
+      await openStore("cp-groups").setJSON("all", { id: "all", name: "All", device_ids: allDevices.map((d) => d.id), updated_at: Date.now() });
       return json(200, hdrs, { ok: true, seeded, skipped, errors, results });
     }
 
@@ -1276,7 +1353,7 @@ exports.handler = async (event, context) => {
       const cmd = {
         id: genId(),
         target: device_id,
-        type: "reset-restart-count",
+        type: "reset-restart-count","fresh-connect",
         payload: {
               
               mode: "hash_text", text: "curtbrag cluster test"
