@@ -22,7 +22,7 @@ import Layout from '../../layouts/Layout.astro';
 
 <div id="panel" style="display:none">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px">
-<h1 style="font-size:24px;font-weight:bold"><i class="fa-solid fa-sliders" style="color:var(--color-brand);margin-right:8px"></i>Control Plane</h1>
+<div><h1 style="font-size:24px;font-weight:bold"><i class="fa-solid fa-sliders" style="color:var(--color-brand);margin-right:8px"></i>Control Plane</h1><div id="bridgeStatus" style="font-size:12px;color:var(--color-muted);margin-top:4px">Bridge: checking...</div></div>
 <div style="display:flex;gap:8px">
 <a href="/cluster" style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:8px 12px;text-decoration:none;color:var(--color-text);font-size:12px;cursor:pointer"><i class="fa-solid fa-arrow-left"></i> Dashboard</a>
 <button id="logoutBtn" style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:8px 12px;color:var(--color-red);cursor:pointer;font-size:12px"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
@@ -151,6 +151,22 @@ Observed hashes from online devices:
 </div>
 
 <div id="tab-commands" class="tab-content" style="display:none">
+
+<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px">
+<h3 style="margin-bottom:10px">Command Shortcuts</h3>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<button onclick="queueShortcut('all','fresh-connect')">Full Cluster Fresh Connect</button>
+<button onclick="queueShortcut('all','mining-status')">Verify All</button>
+<button onclick="queueShortcut('all','mining-stop')">Stop All</button>
+<button onclick="queueShortcut('phones','mining-start')">Phones Start</button>
+<button onclick="queueShortcut('phones','mining-status')">Phones Verify</button>
+<button onclick="queueShortcut('viki','mining-start')">Viki Start</button>
+<button onclick="queueShortcut('viki','mining-status')">Viki Verify</button>
+<button onclick="queueShortcut('nexus','mining-start')">Nexus Start</button>
+<button onclick="queueShortcut('nexus','mining-status')">Nexus Verify</button>
+<button onclick="queueShortcut('steamdeck','mining-start')">SteamDeck Start</button>
+<button onclick="queueShortcut('steamdeck','mining-status')">SteamDeck Verify</button>
+</div></div>
 <div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px">
 <h3 style="margin-bottom:12px">Dispatch Command</h3>
 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -168,6 +184,7 @@ Observed hashes from online devices:
     <option value="run-diagnostic">run-diagnostic</option>
     <option value="fetch-logs">fetch-logs</option>
     <option value="reboot">reboot</option>
+    <option value="fresh-connect">fresh-connect</option>
     <option value="restart">restart</option>
   </select>
   <button onclick="dispatchCommand()" style="background:var(--color-brand);color:white;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:600;font-size:12px">Dispatch</button>
@@ -304,6 +321,7 @@ const state = {
   alerts: [],
   events: [],
   commands: { queue: [], history: [] },
+  bridge: null,
   analytics: null,
   thermalReport: null,
   profiles: {},
@@ -362,18 +380,20 @@ function logout() {
 
 async function fetchAll() {
   try {
-    const [s, d, a, c, e] = await Promise.all([
+    const [s, d, a, c, e, b] = await Promise.all([
       callApi('summary'),
       callApi('devices'),
       callApi('alerts'),
       callApi('commands'),
       callApi('events'),
+      callApi('bridge-status'),
     ]);
     state.summary = s.summary;
     state.devices = d.devices || [];
     state.alerts = a.alerts || [];
     state.commands = { queue: c.queue || [], history: c.history || [] };
     state.events = e.events || [];
+    state.bridge = b || null;
 
     try {
       const analytics = await callApi('fleet-analytics');
@@ -407,7 +427,25 @@ async function fetchAll() {
     renderEvents();
     renderHashReport();
     renderCommandTargets();
+    renderBridgeStatus();
   } catch (e) { toast(`Fetch failed: ${e.message}`, 'error'); }
+}
+
+
+function renderBridgeStatus() {
+  const el = document.getElementById('bridgeStatus');
+  if (!el || !state.bridge) return;
+  const alive = !!state.bridge.alive;
+  const when = state.bridge.last_seen_at ? new Date(state.bridge.last_seen_at).toLocaleString() : 'never';
+  el.innerHTML = `Bridge: <strong style="color:${alive ? 'var(--color-green)' : 'var(--color-red)'}">${alive ? 'online' : 'offline'}</strong> · last seen ${when}${state.bridge.hostname ? ` · ${state.bridge.hostname}` : ''}`;
+}
+
+async function queueShortcut(target, type) {
+  try {
+    await callApi('queue-command', 'POST', { target, type });
+    toast(`Queued ${type} -> ${target}`);
+    setTimeout(fetchAll, 700);
+  } catch (e) { toast(`Shortcut failed: ${e.message}`, 'error'); }
 }
 
 function renderSummary() {
@@ -512,7 +550,7 @@ function renderCommands() {
             <span style="color:var(--color-muted);font-size:10px">${timeAgo(c.finished_at || c.created_at)}</span>
           </div>
           <div style="color:var(--color-muted);font-size:11px">→ ${c.target} · ${c.status}</div>
-          ${c.stdout ? `<pre style="margin:6px 0 0;font-size:10px;color:var(--color-muted);white-space:pre-wrap;max-height:80px;overflow-y:auto">${c.stdout.slice(0,400)}</pre>` : ''}
+          ${(c.output || c.stdout) ? `<pre style="margin:6px 0 0;font-size:10px;color:var(--color-muted);white-space:pre-wrap;max-height:140px;overflow-y:auto">${(c.output || c.stdout).slice(0,1200)}</pre>` : ''}
         </div>`).join('')
     : 'No history';
 }
