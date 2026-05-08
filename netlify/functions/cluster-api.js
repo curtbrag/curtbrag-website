@@ -785,7 +785,7 @@ exports.handler = async (event, context) => {
     // Queue a command
     if (postAction === "queue-command") {
       const VALID_TARGETS = [
-        "all","phones","pcs","steamdeck","viki","nexus",
+        "all","phones","pcs","steamdeck","viki","nexus","controller","skynet",
         "phone173","phone174","phone175","phone176","phone177","phone191","phone253","phone254",
       ];
       const VALID_COMMANDS = [
