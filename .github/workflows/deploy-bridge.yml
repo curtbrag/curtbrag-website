@@ -1,11 +1,15 @@
 name: Deploy Cluster Bridge
 
-# Manually trigger from Actions tab. Joins user's tailnet via Tailscale,
-# resolves target host to its tailnet IP, SSHes in, installs the bridge
-# as a systemd --user service, polls bridge-status to confirm heartbeat.
+# Triggers:
+#  - manual via Actions tab
+#  - automatic when this workflow file changes on main (lets the AI assistant
+#    iterate on the deploy by pushing commits, without you clicking anything)
+#
+# Captures the full deploy log to .deploy-logs/latest.log + a timestamped copy,
+# committed back to main. The assistant reads the log from there to debug.
 #
 # Required repo secrets:
-#   TS_AUTHKEY            Tailscale auth key
+#   TS_AUTHKEY            Tailscale auth key (REUSABLE + EPHEMERAL recommended)
 #   NEXUS_SSH_KEY         private SSH key whose pub half is on the target
 #   CLUSTER_WEB_PASSWORD  dashboard password
 #   CLUSTER_WALLET        Monero wallet
@@ -14,22 +18,38 @@ on:
   workflow_dispatch:
     inputs:
       target_host:
-        description: 'Tailscale hostname or IP (e.g. nexus, viki, 100.123.45.6)'
+        description: 'Tailscale hostname or 100.x.x.x IP'
         required: true
         default: 'nexus'
       target_user:
-        description: 'SSH user on target'
+        description: 'SSH user'
         required: true
         default: 'neo'
+  push:
+    branches: [main]
+    paths: ['.github/workflows/deploy-bridge.yml']
+
+permissions:
+  contents: write   # needed to commit logs back
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     concurrency:
-      group: deploy-bridge-${{ inputs.target_host }}
+      group: deploy-bridge
       cancel-in-progress: true
+    env:
+      TARGET_HOST: ${{ inputs.target_host || 'nexus' }}
+      TARGET_USER: ${{ inputs.target_user || 'neo' }}
+      LOG: /tmp/deploy.log
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Verify required secrets
         env:
           TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
@@ -37,104 +57,134 @@ jobs:
           CLUSTER_WEB_PASSWORD: ${{ secrets.CLUSTER_WEB_PASSWORD }}
           CLUSTER_WALLET: ${{ secrets.CLUSTER_WALLET }}
         run: |
-          missing=()
-          [ -z "$TS_AUTHKEY" ]           && missing+=(TS_AUTHKEY)
-          [ -z "$NEXUS_SSH_KEY" ]        && missing+=(NEXUS_SSH_KEY)
-          [ -z "$CLUSTER_WEB_PASSWORD" ] && missing+=(CLUSTER_WEB_PASSWORD)
-          [ -z "$CLUSTER_WALLET" ]       && missing+=(CLUSTER_WALLET)
-          if [ ${#missing[@]} -ne 0 ]; then
-            echo "::error::Missing secrets: ${missing[*]}"
-            exit 1
-          fi
+          : > "$LOG"
+          {
+            echo "=== verify secrets ==="
+            missing=()
+            [ -z "$TS_AUTHKEY" ]           && missing+=(TS_AUTHKEY)
+            [ -z "$NEXUS_SSH_KEY" ]        && missing+=(NEXUS_SSH_KEY)
+            [ -z "$CLUSTER_WEB_PASSWORD" ] && missing+=(CLUSTER_WEB_PASSWORD)
+            [ -z "$CLUSTER_WALLET" ]       && missing+=(CLUSTER_WALLET)
+            if [ ${#missing[@]} -ne 0 ]; then
+              echo "MISSING: ${missing[*]}"
+              exit 1
+            fi
+            echo "all 4 secrets present"
+          } 2>&1 | tee -a "$LOG"
 
       - name: Connect to tailnet
+        id: ts
+        continue-on-error: true
         uses: tailscale/github-action@v3
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
           version: latest
 
-      - name: Show tailnet state (debug)
+      - name: Diagnose tailscale
         run: |
-          echo "::group::tailscale status"
-          tailscale status || true
-          echo "::endgroup::"
-          echo "::group::tailscale ip (this runner)"
-          tailscale ip || true
-          echo "::endgroup::"
+          {
+            echo ""
+            echo "=== tailscale state ==="
+            echo "join step outcome: ${{ steps.ts.outcome }}"
+            command -v tailscale && tailscale version || echo "no tailscale binary"
+            echo "--- tailscale status ---"
+            tailscale status 2>&1 || echo "tailscale status FAILED"
+            echo "--- tailscale ip ---"
+            tailscale ip 2>&1 || echo "tailscale ip FAILED"
+            echo "--- self info ---"
+            tailscale status --json 2>&1 | (jq '.Self | {DNSName, TailscaleIPs, Online}' 2>&1 || cat) | head -20
+          } 2>&1 | tee -a "$LOG"
+          if [ "${{ steps.ts.outcome }}" != "success" ]; then
+            echo "::error::Tailscale join failed. Most likely cause: TS_AUTHKEY is exhausted (one-time key already used) or revoked. Generate a NEW reusable + ephemeral key at https://login.tailscale.com/admin/settings/keys, update the TS_AUTHKEY secret, and re-run." | tee -a "$LOG"
+            exit 1
+          fi
 
       - name: Resolve target to tailnet IP
         id: resolve
-        env:
-          TARGET: ${{ inputs.target_host }}
         run: |
-          set -euo pipefail
-          if echo "$TARGET" | grep -Eq '^[0-9]+(\.[0-9]+){3}$'; then
-            echo "Target $TARGET already an IP"
-            echo "ip=$TARGET" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          IP=$(tailscale status --json | jq -r --arg h "$TARGET" '
-            [.Peer | to_entries[].value | select(
-              (.HostName | ascii_downcase) == ($h | ascii_downcase)
-              or (.DNSName // "" | ascii_downcase | startswith(($h | ascii_downcase) + "."))
-            ) | .TailscaleIPs[0]] | .[0] // empty')
-          if [ -z "$IP" ]; then
-            echo "::error::Could not find '$TARGET' in tailnet. Peers:"
-            tailscale status --json | jq -r '.Peer[] | "  \(.HostName // "?") \(.TailscaleIPs[0] // "no-ip") dns=\(.DNSName // "?")"' || true
-            exit 1
-          fi
-          echo "Resolved $TARGET -> $IP"
-          echo "ip=$IP" >> "$GITHUB_OUTPUT"
+          {
+            echo ""
+            echo "=== resolve $TARGET_HOST ==="
+            if echo "$TARGET_HOST" | grep -Eq '^[0-9]+(\.[0-9]+){3}$'; then
+              echo "already an IP"
+              IP="$TARGET_HOST"
+            else
+              IP=$(tailscale status --json | jq -r --arg h "$TARGET_HOST" '
+                [.Peer | to_entries[].value | select(
+                  (.HostName | ascii_downcase) == ($h | ascii_downcase)
+                  or (.DNSName // "" | ascii_downcase | startswith(($h | ascii_downcase) + "."))
+                ) | .TailscaleIPs[0]] | .[0] // empty')
+            fi
+            echo "resolved IP: '$IP'"
+            if [ -z "$IP" ]; then
+              echo "::error::Target '$TARGET_HOST' not in tailnet. Available peers:"
+              tailscale status --json | jq -r '.Peer[] | "  HostName=\(.HostName // "?") DNSName=\(.DNSName // "?") IPs=\(.TailscaleIPs // [])"'
+              exit 1
+            fi
+            echo "ip=$IP" >> "$GITHUB_OUTPUT"
+          } 2>&1 | tee -a "$LOG"
 
       - name: Install SSH key
         env:
           KEY: ${{ secrets.NEXUS_SSH_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
+          {
+            echo ""
+            echo "=== install SSH key ==="
+            mkdir -p ~/.ssh
+            printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+            chmod 600 ~/.ssh/id_ed25519
+            echo "key length: $(wc -c < ~/.ssh/id_ed25519) bytes"
+            head -1 ~/.ssh/id_ed25519
+            tail -1 ~/.ssh/id_ed25519
+          } 2>&1 | tee -a "$LOG"
 
-      - name: Smoke-test SSH
+      - name: SSH smoke test
         env:
           HOST: ${{ steps.resolve.outputs.ip }}
-          USER: ${{ inputs.target_user }}
         run: |
-          set -euxo pipefail
-          ssh -i ~/.ssh/id_ed25519 \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            -o BatchMode=yes \
-            -o ConnectTimeout=15 \
-            -o ServerAliveInterval=5 \
-            "$USER@$HOST" 'echo "[ok] $(whoami)@$(hostname)"; uname -a'
+          {
+            echo ""
+            echo "=== ssh smoke test to $TARGET_USER@$HOST ==="
+            ssh -i ~/.ssh/id_ed25519 \
+              -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              -o BatchMode=yes \
+              -o ConnectTimeout=15 \
+              -o ServerAliveInterval=5 \
+              -vv \
+              "$TARGET_USER@$HOST" 'echo "[ok] $(whoami)@$(hostname) $(uname -srm)"'
+            rc=$?
+            echo "ssh exit: $rc"
+            exit $rc
+          } 2>&1 | tee -a "$LOG"
 
-      - name: Install bridge as systemd --user service
+      - name: Install bridge on target
         env:
           HOST: ${{ steps.resolve.outputs.ip }}
-          USER: ${{ inputs.target_user }}
           CLUSTER_WEB_PASSWORD: ${{ secrets.CLUSTER_WEB_PASSWORD }}
           CLUSTER_WALLET: ${{ secrets.CLUSTER_WALLET }}
         run: |
-          ssh -i ~/.ssh/id_ed25519 \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            -o BatchMode=yes \
-            -o ConnectTimeout=15 \
-            "$USER@$HOST" \
-            CLUSTER_WEB_PASSWORD="$CLUSTER_WEB_PASSWORD" \
-            CLUSTER_WALLET="$CLUSTER_WALLET" \
-            'bash -se' <<'REMOTE'
-          set -euo pipefail
-
-          REPO_DIR="$HOME/curtbrag-website"
-
-          if [ ! -d "$REPO_DIR/.git" ]; then
-            git clone https://github.com/curtbrag/curtbrag-website.git "$REPO_DIR"
+          {
+            echo ""
+            echo "=== install bridge on $TARGET_USER@$HOST ==="
+            ssh -i ~/.ssh/id_ed25519 \
+              -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              -o BatchMode=yes \
+              -o ConnectTimeout=15 \
+              "$TARGET_USER@$HOST" \
+              CLUSTER_WEB_PASSWORD="$CLUSTER_WEB_PASSWORD" \
+              CLUSTER_WALLET="$CLUSTER_WALLET" \
+              'bash -se' <<'REMOTE'
+          set -euxo pipefail
+          REPO="$HOME/curtbrag-website"
+          if [ ! -d "$REPO/.git" ]; then
+            git clone https://github.com/curtbrag/curtbrag-website.git "$REPO"
           fi
-          cd "$REPO_DIR"
+          cd "$REPO"
           git fetch origin main
           git reset --hard origin/main
-
           umask 077
           cat > "$HOME/.cluster-env" <<ENV
           WEB_PASSWORD=$CLUSTER_WEB_PASSWORD
@@ -143,30 +193,49 @@ jobs:
           SSH_KEY=$HOME/.ssh/id_ed25519
           ENV
           chmod 600 "$HOME/.cluster-env"
-
           chmod +x scripts/curt-cluster-bridge.example.sh
           bash scripts/install-cluster-bridge.sh
-
           loginctl enable-linger "$(whoami)" 2>/dev/null || sudo loginctl enable-linger "$(whoami)" 2>/dev/null || true
           systemctl --user daemon-reload
           systemctl --user enable --now curt-cluster-bridge.service
-
           sleep 3
           systemctl --user status --no-pager curt-cluster-bridge.service | head -20 || true
-          journalctl --user -u curt-cluster-bridge.service -n 30 --no-pager || true
+          journalctl --user -u curt-cluster-bridge.service -n 40 --no-pager || true
           REMOTE
+          } 2>&1 | tee -a "$LOG"
 
       - name: Wait up to 90s for bridge heartbeat
         env:
           CLUSTER_WEB_PASSWORD: ${{ secrets.CLUSTER_WEB_PASSWORD }}
         run: |
-          for i in $(seq 1 18); do
-            r="$(curl -s -H "Authorization: Bearer $CLUSTER_WEB_PASSWORD" \
-              "https://curtbrag.com/.netlify/functions/cluster-api?action=bridge-status&_=$(date +%s%N)" \
-              --max-time 8 || true)"
-            echo "poll $i: $r"
-            echo "$r" | grep -q '"alive":true' && { echo "::notice::bridge online"; exit 0; }
-            sleep 5
-          done
-          echo "::warning::bridge did not heartbeat within 90s"
-          exit 1
+          {
+            echo ""
+            echo "=== heartbeat poll ==="
+            for i in $(seq 1 18); do
+              r=$(curl -s -H "Authorization: Bearer $CLUSTER_WEB_PASSWORD" \
+                "https://curtbrag.com/.netlify/functions/cluster-api?action=bridge-status&_=$(date +%s%N)" \
+                --max-time 8 || echo "{}")
+              echo "poll $i: $r"
+              if echo "$r" | grep -q '"alive":true'; then
+                echo "BRIDGE ONLINE"
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "BRIDGE DID NOT HEARTBEAT IN 90s"
+            exit 1
+          } 2>&1 | tee -a "$LOG"
+
+      - name: Commit log back to repo
+        if: always()
+        run: |
+          mkdir -p .deploy-logs
+          STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+          cp "$LOG" ".deploy-logs/${STAMP}-${GITHUB_RUN_ID}.log"
+          cp "$LOG" ".deploy-logs/latest.log"
+          git config user.email "deploy-bridge@curtbrag-website.local"
+          git config user.name  "deploy-bridge bot"
+          git add .deploy-logs/
+          git commit -m "ci: deploy-bridge log ${STAMP} run=${GITHUB_RUN_ID}" || { echo "no changes to commit"; exit 0; }
+          git pull --rebase origin main || true
+          git push origin HEAD:main
