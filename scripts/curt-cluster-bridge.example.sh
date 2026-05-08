@@ -357,8 +357,24 @@ parse_node_state() {
   if echo "$out" | grep -E '\bxmrig\b' | grep -v 'pgrep' | grep -v 'tmux' | grep -qv 'NO_XMRIG'; then
     running=true
   fi
-  # hashrate from "miner    speed 10s/60s/15m  X  Y  Z H/s" — Y is 60s avg.
-  hr=$(echo "$out" | awk '/miner    speed/{a=$5} END{print (a==""||a=="n/a")?0:a}')
+  # hashrate from "[ts] miner speed 10s/60s/15m X Y Z H/s ..." — Y is 60s avg.
+  # Default awk splits on whitespace; with the "[YYYY-MM-DD HH:MM:SS.sss]"
+  # timestamp prefix the fields are: $1=[date $2=time] $3=miner $4=speed
+  # $5=10s/60s/15m $6=10s_val $7=60s_val $8=15m_val.
+  # If a 'NO_SPEED' marker is present, treat as 0. n/a too.
+  hr=$(echo "$out" | awk '
+    /NO_SPEED/{seen_no=1}
+    / miner +speed /{
+      # Find the field index of the 10s/60s/15m header, then take the next 3
+      for (i=1; i<=NF; i++) if ($i ~ /^10s\/60s\/15m$/) { a=$(i+2); break }
+    }
+    END{
+      if (seen_no && a=="") print 0
+      else if (a==""||a=="n/a") print 0
+      else print a
+    }')
+  # sanitize: must be a valid number for jq --argjson; fall back to 0.
+  if ! [[ "$hr" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then hr=0; fi
   echo "$running $hr"
 }
 
