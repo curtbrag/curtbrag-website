@@ -867,6 +867,24 @@ exports.handler = async (event, context) => {
       return json(200, hdrs, { ok: true });
     }
 
+    // Bridge pushes per-device state after each node command. Updates
+    // last_seen_at (so dashboard shows online) and observed state
+    // (xmrig_running, hashrate_60s, etc — so dashboard shows mining + hashrate).
+    if (postAction === "bridge-touch-device") {
+      const { hostname, observed } = body;
+      if (!hostname) return json(400, hdrs, { error: "hostname required" });
+      const all = await getAllDevices();
+      const dev = all.find((d) => d.hostname === hostname);
+      if (!dev) return json(404, hdrs, { error: `no device with hostname ${hostname}` });
+      dev.last_seen_at = Date.now();
+      await saveDevice(dev.id, dev);
+      if (observed && typeof observed === "object") {
+        const merged = { ...(await getObservedState(dev.id) || {}), ...observed, updated_at: Date.now() };
+        await openStore("cp-observed").setJSON(dev.id, merged);
+      }
+      return json(200, hdrs, { ok: true, device_id: dev.id });
+    }
+
     // Flush command queue
     if (postAction === "flush-queue") {
       await flushQueue();
@@ -1139,6 +1157,7 @@ exports.handler = async (event, context) => {
         { hostname: "viki", ip: "192.168.1.180", device_class: "pc", cluster_role: "control-plane" },
         { hostname: "nexus", ip: "192.168.1.179", device_class: "pc", cluster_role: "control-plane" },
         { hostname: "steamdeck", ip: "192.168.1.166", device_class: "steamdeck", cluster_role: "worker" },
+        { hostname: "skynet", ip: "192.168.1.188", device_class: "pc", cluster_role: "control-plane" },
       ];
       const existing = await getAllDevices();
       const existingHostnames = new Set(existing.map(d => d.hostname));
