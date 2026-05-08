@@ -1,0 +1,34 @@
+# This repo's site is hosted on Netlify (curtbrag.com), NOT GitHub Pages.
+# This file exists only to keep GitHub Pages' built-in Jekyll builder from
+# choking on Astro source files (the `---` Astro frontmatter looks like
+# YAML to Jekyll). To stop GitHub Pages entirely, go to Settings -> Pages
+# and set Source to "None".
+
+title: curtbrag-website
+description: Hosted on Netlify; this Pages output is unused.
+theme: jekyll-theme-primer
+
+# Hide everything that isn't a Jekyll input from Jekyll's source scan.
+exclude:
+  - .gitattributes
+  - .github/
+  - .gitignore
+  - .nojekyll
+  - CLAUDE.md
+  - DEPLOYMENT.md
+  - Gemfile
+  - Gemfile.lock
+  - README.md
+  - astro.config.mjs
+  - configs/
+  - dist/
+  - netlify/
+  - netlify.toml
+  - node_modules/
+  - package-lock.json
+  - package.json
+  - public/
+  - scripts/
+  - src/
+  - tsconfig.json
+  - vendor/
