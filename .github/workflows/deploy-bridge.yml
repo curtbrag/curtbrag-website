@@ -1,0 +1,136 @@
+name: Deploy Cluster Bridge
+
+# Manually trigger from Actions tab (or via API). Joins your tailnet via
+# Tailscale, SSHes to the target host, installs scripts/curt-cluster-bridge.example.sh
+# as a systemd user service.
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   TS_AUTHKEY            Tailscale auth key (https://login.tailscale.com/admin/settings/keys, reusable+ephemeral OK)
+#   NEXUS_SSH_KEY         private SSH key whose public half is in ~/.ssh/authorized_keys on the target
+#   CLUSTER_WEB_PASSWORD  dashboard password (same one used to log in at /cluster/dashboard)
+#   CLUSTER_WALLET        Monero wallet for mining commands
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_host:
+        description: 'SSH target (Tailscale hostname, MagicDNS, or IP)'
+        required: true
+        default: 'nexus'
+      target_user:
+        description: 'SSH user on target'
+        required: true
+        default: 'neo'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    concurrency:
+      group: deploy-bridge-${{ inputs.target_host }}
+      cancel-in-progress: true
+    steps:
+      - name: Verify required secrets
+        env:
+          TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
+          NEXUS_SSH_KEY: ${{ secrets.NEXUS_SSH_KEY }}
+          CLUSTER_WEB_PASSWORD: ${{ secrets.CLUSTER_WEB_PASSWORD }}
+          CLUSTER_WALLET: ${{ secrets.CLUSTER_WALLET }}
+        run: |
+          missing=()
+          [ -z "$TS_AUTHKEY" ]           && missing+=(TS_AUTHKEY)
+          [ -z "$NEXUS_SSH_KEY" ]        && missing+=(NEXUS_SSH_KEY)
+          [ -z "$CLUSTER_WEB_PASSWORD" ] && missing+=(CLUSTER_WEB_PASSWORD)
+          [ -z "$CLUSTER_WALLET" ]       && missing+=(CLUSTER_WALLET)
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Connect to tailnet
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          version: latest
+          args: --ssh
+
+      - name: Install SSH key
+        env:
+          KEY: ${{ secrets.NEXUS_SSH_KEY }}
+          HOST: ${{ inputs.target_host }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 5 -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Smoke-test SSH
+        env:
+          USER_AT_HOST: ${{ inputs.target_user }}@${{ inputs.target_host }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            -o StrictHostKeyChecking=no \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            "$USER_AT_HOST" 'echo "[ok] reachable as $(whoami)@$(hostname) on $(date)"'
+
+      - name: Install bridge as systemd --user service
+        env:
+          USER_AT_HOST: ${{ inputs.target_user }}@${{ inputs.target_host }}
+          CLUSTER_WEB_PASSWORD: ${{ secrets.CLUSTER_WEB_PASSWORD }}
+          CLUSTER_WALLET: ${{ secrets.CLUSTER_WALLET }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            -o StrictHostKeyChecking=no \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            "$USER_AT_HOST" \
+            CLUSTER_WEB_PASSWORD="$CLUSTER_WEB_PASSWORD" \
+            CLUSTER_WALLET="$CLUSTER_WALLET" \
+            'bash -se' <<'REMOTE'
+          set -euo pipefail
+
+          REPO_DIR="$HOME/curtbrag-website"
+
+          if [ ! -d "$REPO_DIR/.git" ]; then
+            git clone https://github.com/curtbrag/curtbrag-website.git "$REPO_DIR"
+          fi
+          cd "$REPO_DIR"
+          git fetch origin main
+          git reset --hard origin/main
+
+          umask 077
+          cat > "$HOME/.cluster-env" <<ENV
+          WEB_PASSWORD=$CLUSTER_WEB_PASSWORD
+          WALLET=$CLUSTER_WALLET
+          POOL=gulf.moneroocean.stream:10128
+          SSH_KEY=$HOME/.ssh/id_ed25519
+          ENV
+          chmod 600 "$HOME/.cluster-env"
+
+          chmod +x scripts/curt-cluster-bridge.example.sh
+          bash scripts/install-cluster-bridge.sh
+
+          loginctl enable-linger "$(whoami)" 2>/dev/null || true
+          systemctl --user daemon-reload
+          systemctl --user enable --now curt-cluster-bridge.service
+
+          sleep 2
+          systemctl --user status --no-pager curt-cluster-bridge.service | head -20 || true
+          journalctl --user -u curt-cluster-bridge.service -n 30 --no-pager || true
+          REMOTE
+
+      - name: Wait up to 60s for bridge heartbeat
+        env:
+          CLUSTER_WEB_PASSWORD: ${{ secrets.CLUSTER_WEB_PASSWORD }}
+        run: |
+          for i in $(seq 1 12); do
+            r="$(curl -s -H "Authorization: Bearer $CLUSTER_WEB_PASSWORD" \
+              "https://curtbrag.com/.netlify/functions/cluster-api?action=bridge-status&_=$(date +%s%N)" \
+              --max-time 8 || true)"
+            echo "poll $i: $r"
+            echo "$r" | grep -q '"alive":true' && { echo "::notice::bridge online"; exit 0; }
+            sleep 5
+          done
+          echo "::warning::bridge did not heartbeat within 60s; check journalctl on target"
+          exit 0
