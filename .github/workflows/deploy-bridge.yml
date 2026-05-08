@@ -9,7 +9,8 @@ name: Deploy Cluster Bridge
 # committed back to main. The assistant reads the log from there to debug.
 #
 # Required repo secrets:
-#   TS_AUTHKEY            Tailscale auth key (REUSABLE + EPHEMERAL recommended)
+#   TS_AUTHKEY            Tailscale auth key (REUSABLE + EPHEMERAL recommended,
+#                         must start with "tskey-auth-")
 #   NEXUS_SSH_KEY         private SSH key whose pub half is on the target
 #   CLUSTER_WEB_PASSWORD  dashboard password
 #   CLUSTER_WALLET        Monero wallet
