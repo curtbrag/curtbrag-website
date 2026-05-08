@@ -1,20 +1,20 @@
 name: Deploy Cluster Bridge
 
-# Manually trigger from Actions tab (or via API). Joins your tailnet via
-# Tailscale, SSHes to the target host, installs scripts/curt-cluster-bridge.example.sh
-# as a systemd user service.
+# Manually trigger from Actions tab. Joins user's tailnet via Tailscale,
+# resolves target host to its tailnet IP, SSHes in, installs the bridge
+# as a systemd --user service, polls bridge-status to confirm heartbeat.
 #
-# Required repo secrets (Settings -> Secrets and variables -> Actions):
-#   TS_AUTHKEY            Tailscale auth key (https://login.tailscale.com/admin/settings/keys, reusable+ephemeral OK)
-#   NEXUS_SSH_KEY         private SSH key whose public half is in ~/.ssh/authorized_keys on the target
-#   CLUSTER_WEB_PASSWORD  dashboard password (same one used to log in at /cluster/dashboard)
-#   CLUSTER_WALLET        Monero wallet for mining commands
+# Required repo secrets:
+#   TS_AUTHKEY            Tailscale auth key
+#   NEXUS_SSH_KEY         private SSH key whose pub half is on the target
+#   CLUSTER_WEB_PASSWORD  dashboard password
+#   CLUSTER_WALLET        Monero wallet
 
 on:
   workflow_dispatch:
     inputs:
       target_host:
-        description: 'SSH target (Tailscale hostname, MagicDNS, or IP)'
+        description: 'Tailscale hostname or IP (e.g. nexus, viki, 100.123.45.6)'
         required: true
         default: 'nexus'
       target_user:
@@ -25,7 +25,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     concurrency:
       group: deploy-bridge-${{ inputs.target_host }}
       cancel-in-progress: true
@@ -52,39 +52,75 @@ jobs:
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
           version: latest
-          args: --ssh
+
+      - name: Show tailnet state (debug)
+        run: |
+          echo "::group::tailscale status"
+          tailscale status || true
+          echo "::endgroup::"
+          echo "::group::tailscale ip (this runner)"
+          tailscale ip || true
+          echo "::endgroup::"
+
+      - name: Resolve target to tailnet IP
+        id: resolve
+        env:
+          TARGET: ${{ inputs.target_host }}
+        run: |
+          set -euo pipefail
+          if echo "$TARGET" | grep -Eq '^[0-9]+(\.[0-9]+){3}$'; then
+            echo "Target $TARGET already an IP"
+            echo "ip=$TARGET" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          IP=$(tailscale status --json | jq -r --arg h "$TARGET" '
+            [.Peer | to_entries[].value | select(
+              (.HostName | ascii_downcase) == ($h | ascii_downcase)
+              or (.DNSName // "" | ascii_downcase | startswith(($h | ascii_downcase) + "."))
+            ) | .TailscaleIPs[0]] | .[0] // empty')
+          if [ -z "$IP" ]; then
+            echo "::error::Could not find '$TARGET' in tailnet. Peers:"
+            tailscale status --json | jq -r '.Peer[] | "  \(.HostName // "?") \(.TailscaleIPs[0] // "no-ip") dns=\(.DNSName // "?")"' || true
+            exit 1
+          fi
+          echo "Resolved $TARGET -> $IP"
+          echo "ip=$IP" >> "$GITHUB_OUTPUT"
 
       - name: Install SSH key
         env:
           KEY: ${{ secrets.NEXUS_SSH_KEY }}
-          HOST: ${{ inputs.target_host }}
         run: |
           mkdir -p ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -T 5 -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Smoke-test SSH
         env:
-          USER_AT_HOST: ${{ inputs.target_user }}@${{ inputs.target_host }}
+          HOST: ${{ steps.resolve.outputs.ip }}
+          USER: ${{ inputs.target_user }}
         run: |
+          set -euxo pipefail
           ssh -i ~/.ssh/id_ed25519 \
             -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
             -o BatchMode=yes \
-            -o ConnectTimeout=10 \
-            "$USER_AT_HOST" 'echo "[ok] reachable as $(whoami)@$(hostname) on $(date)"'
+            -o ConnectTimeout=15 \
+            -o ServerAliveInterval=5 \
+            "$USER@$HOST" 'echo "[ok] $(whoami)@$(hostname)"; uname -a'
 
       - name: Install bridge as systemd --user service
         env:
-          USER_AT_HOST: ${{ inputs.target_user }}@${{ inputs.target_host }}
+          HOST: ${{ steps.resolve.outputs.ip }}
+          USER: ${{ inputs.target_user }}
           CLUSTER_WEB_PASSWORD: ${{ secrets.CLUSTER_WEB_PASSWORD }}
           CLUSTER_WALLET: ${{ secrets.CLUSTER_WALLET }}
         run: |
           ssh -i ~/.ssh/id_ed25519 \
             -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
             -o BatchMode=yes \
-            -o ConnectTimeout=10 \
-            "$USER_AT_HOST" \
+            -o ConnectTimeout=15 \
+            "$USER@$HOST" \
             CLUSTER_WEB_PASSWORD="$CLUSTER_WEB_PASSWORD" \
             CLUSTER_WALLET="$CLUSTER_WALLET" \
             'bash -se' <<'REMOTE'
@@ -111,20 +147,20 @@ jobs:
           chmod +x scripts/curt-cluster-bridge.example.sh
           bash scripts/install-cluster-bridge.sh
 
-          loginctl enable-linger "$(whoami)" 2>/dev/null || true
+          loginctl enable-linger "$(whoami)" 2>/dev/null || sudo loginctl enable-linger "$(whoami)" 2>/dev/null || true
           systemctl --user daemon-reload
           systemctl --user enable --now curt-cluster-bridge.service
 
-          sleep 2
+          sleep 3
           systemctl --user status --no-pager curt-cluster-bridge.service | head -20 || true
           journalctl --user -u curt-cluster-bridge.service -n 30 --no-pager || true
           REMOTE
 
-      - name: Wait up to 60s for bridge heartbeat
+      - name: Wait up to 90s for bridge heartbeat
         env:
           CLUSTER_WEB_PASSWORD: ${{ secrets.CLUSTER_WEB_PASSWORD }}
         run: |
-          for i in $(seq 1 12); do
+          for i in $(seq 1 18); do
             r="$(curl -s -H "Authorization: Bearer $CLUSTER_WEB_PASSWORD" \
               "https://curtbrag.com/.netlify/functions/cluster-api?action=bridge-status&_=$(date +%s%N)" \
               --max-time 8 || true)"
@@ -132,5 +168,5 @@ jobs:
             echo "$r" | grep -q '"alive":true' && { echo "::notice::bridge online"; exit 0; }
             sleep 5
           done
-          echo "::warning::bridge did not heartbeat within 60s; check journalctl on target"
-          exit 0
+          echo "::warning::bridge did not heartbeat within 90s"
+          exit 1
