@@ -72,32 +72,44 @@ jobs:
             echo "all 4 secrets present"
           } 2>&1 | tee -a "$LOG"
 
-      - name: Connect to tailnet
-        id: ts
-        continue-on-error: true
-        uses: tailscale/github-action@v3
-        with:
-          authkey: ${{ secrets.TS_AUTHKEY }}
-          version: latest
-
-      - name: Diagnose tailscale
+      - name: Install Tailscale (direct CLI, bypass action)
+        env:
+          TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
         run: |
           {
             echo ""
-            echo "=== tailscale state ==="
-            echo "join step outcome: ${{ steps.ts.outcome }}"
-            command -v tailscale && tailscale version || echo "no tailscale binary"
-            echo "--- tailscale status ---"
-            tailscale status 2>&1 || echo "tailscale status FAILED"
-            echo "--- tailscale ip ---"
-            tailscale ip 2>&1 || echo "tailscale ip FAILED"
-            echo "--- self info ---"
-            tailscale status --json 2>&1 | (jq '.Self | {DNSName, TailscaleIPs, Online}' 2>&1 || cat) | head -20
+            echo "=== install tailscale ==="
+            curl -fsSL https://tailscale.com/install.sh | sudo bash 2>&1 | tail -10
+            tailscale version
+
+            echo ""
+            echo "=== tailscale up (verbose) ==="
+            sudo tailscale up \
+              --authkey="$TS_AUTHKEY" \
+              --hostname="gh-runner-${GITHUB_RUN_ID}" \
+              --accept-routes \
+              --accept-dns=false \
+              --reset \
+              --timeout=60s 2>&1 || echo "TAILSCALE_UP_FAILED rc=$?"
+
+            echo ""
+            echo "=== verify joined ==="
+            sleep 2
+            sudo tailscale status 2>&1 || true
+            tailscale status 2>&1 || true
+            tailscale ip 2>&1 || true
+            STATE=$(tailscale status --json 2>/dev/null | jq -r '.BackendState // "Unknown"')
+            echo "BackendState=$STATE"
+
+            if [ "$STATE" != "Running" ]; then
+              echo ""
+              echo "::error::Tailscale failed to authenticate. BackendState=$STATE."
+              echo "::error::This means TS_AUTHKEY is invalid (expired / revoked / one-time and consumed)."
+              echo "::error::FIX: https://login.tailscale.com/admin/settings/keys -> revoke old key -> Generate auth key -> Reusable=ON, Ephemeral=ON -> copy tskey-auth-... -> update TS_AUTHKEY secret at https://github.com/curtbrag/curtbrag-website/settings/secrets/actions"
+              exit 1
+            fi
+            echo "TAILSCALE READY"
           } 2>&1 | tee -a "$LOG"
-          if [ "${{ steps.ts.outcome }}" != "success" ]; then
-            echo "::error::Tailscale join failed. Most likely cause: TS_AUTHKEY is exhausted (one-time key already used) or revoked. Generate a NEW reusable + ephemeral key at https://login.tailscale.com/admin/settings/keys, update the TS_AUTHKEY secret, and re-run." | tee -a "$LOG"
-            exit 1
-          fi
 
       - name: Resolve target to tailnet IP
         id: resolve
