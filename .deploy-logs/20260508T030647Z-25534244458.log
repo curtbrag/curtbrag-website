@@ -1,0 +1,65 @@
+=== verify secrets ===
+all 4 secrets present
+
+=== tailscale state ===
+join step outcome: success
+/usr/bin/tailscale
+1.96.4
+  tailscale commit: 8cf541dfd1e0a97096c01cb775d5e26336f3bc6c
+  long version: 1.96.4-t8cf541dfd-g62bc84ce7
+  other commit: 62bc84ce7236dafdeb40272171dae03a66502ed1
+  go version: go1.26.1
+--- tailscale status ---
+Logged out.
+tailscale status FAILED
+--- tailscale ip ---
+no current Tailscale IPs; state: NeedsLogin
+tailscale ip FAILED
+--- self info ---
+{
+  "DNSName": "",
+  "TailscaleIPs": null,
+  "Online": false
+}
+
+=== resolve nexus ===
+jq: error (at <stdin>:44): null (null) has no keys
+
+=== install SSH key ===
+key length: 411 bytes
+-----BEGIN OPENSSH PRIVATE KEY-----
+-----END OPENSSH PRIVATE KEY-----
+
+=== ssh smoke test to neo@ ===
+OpenSSH_9.6p1 Ubuntu-3ubuntu13.15, OpenSSL 3.0.13 30 Jan 2024
+debug1: Reading configuration data /etc/ssh/ssh_config
+debug1: /etc/ssh/ssh_config line 19: include /etc/ssh/ssh_config.d/*.conf matched no files
+debug1: /etc/ssh/ssh_config line 21: Applying options for *
+debug2: resolve_addr: could not resolve name  as address: Name or service not known
+debug1: resolve_canonicalize: hostname  is an unrecognised address
+debug2: resolving "" port 22
+ssh: Could not resolve hostname : Name or service not known
+
+=== install bridge on neo@ ===
+ssh: Could not resolve hostname : Name or service not known
+
+=== heartbeat poll ===
+poll 1: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 2: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 3: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 4: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 5: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 6: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 7: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 8: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 9: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 10: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 11: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 12: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 13: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 14: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 15: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 16: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 17: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+poll 18: {"alive":false,"last_seen_at":null,"age_ms":null,"hostname":null,"summary":null}
+BRIDGE DID NOT HEARTBEAT IN 90s
