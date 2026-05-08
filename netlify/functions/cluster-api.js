@@ -1353,11 +1353,8 @@ exports.handler = async (event, context) => {
       const cmd = {
         id: genId(),
         target: device_id,
-        type: "reset-restart-count","fresh-connect",
-        payload: {
-              
-              mode: "hash_text", text: "curtbrag cluster test"
-            },
+        type: "reset-restart-count",
+        payload: {},
         status: "queued",
         created_by: "operator",
         created_at: Date.now(),
