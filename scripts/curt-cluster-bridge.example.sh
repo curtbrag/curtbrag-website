@@ -96,7 +96,7 @@ complete_cmd() {
 
 phone_ssh() {
   local id="$1"; shift
-  timeout 25 ssh -n -p "$PHONE_PORT" -i "$SSH_KEY" \
+  timeout 60 ssh -n -p "$PHONE_PORT" -i "$SSH_KEY" \
     -o BatchMode=yes -o ConnectTimeout=5 -o ConnectionAttempts=1 \
     -o ServerAliveInterval=2 -o ServerAliveCountMax=2 \
     -o StrictHostKeyChecking=no -o LogLevel=ERROR \
@@ -105,7 +105,7 @@ phone_ssh() {
 
 linux_ssh() {
   local user="$1" ip="$2"; shift 2
-  timeout 25 ssh -n -i "$SSH_KEY" \
+  timeout 60 ssh -n -i "$SSH_KEY" \
     -o BatchMode=yes -o ConnectTimeout=5 -o ConnectionAttempts=1 \
     -o ServerAliveInterval=2 -o ServerAliveCountMax=2 \
     -o StrictHostKeyChecking=no -o LogLevel=ERROR \
@@ -324,6 +324,44 @@ run_node_cmd() {
   esac
 }
 
+# Push per-device observed state to the website (so the dashboard shows
+# real online/mining/hashrate, not "unreachable: 11").
+push_device_state() {
+  local hostname="$1" running="$2" hashrate="$3" body
+  body="$(jq -nc \
+    --arg h "$hostname" \
+    --argjson xmrig "$running" \
+    --argjson hr "${hashrate:-0}" \
+    '{hostname:$h, observed:{xmrig_running:$xmrig, hashrate_60s:$hr}}')"
+  api_post bridge-touch-device "$body" >/dev/null 2>&1 || true
+}
+
+# Hostname mapping: bridge target name → device registry hostname
+# (controller is local skynet, registered as itself if seeded; phones same name)
+device_hostname_for() {
+  case "$1" in
+    controller|skynet) hostname 2>/dev/null || echo controller ;;
+    *) echo "$1" ;;
+  esac
+}
+
+# Best-effort parse of mining-status / mining-start output.
+# Returns "running hashrate" as space-separated string.
+parse_node_state() {
+  local out="$1" running=false hr=0
+  # If output is empty / SSH errored / no auth, skip — caller decides.
+  if echo "$out" | grep -Eq 'Permission denied|No route to host|Connection refused|Connection timed out|UNREACHABLE|UNKNOWN_TARGET'; then
+    echo "false 0"; return
+  fi
+  # xmrig running? Look for non-grep, non-tmux xmrig in PROC line.
+  if echo "$out" | grep -E '\bxmrig\b' | grep -v 'pgrep' | grep -v 'tmux' | grep -qv 'NO_XMRIG'; then
+    running=true
+  fi
+  # hashrate from "miner    speed 10s/60s/15m  X  Y  Z H/s" — Y is 60s avg.
+  hr=$(echo "$out" | awk '/miner    speed/{a=$5} END{print (a==""||a=="n/a")?0:a}')
+  echo "$running $hr"
+}
+
 execute_command() {
   local id="$1" target="$2" type="$3" output="" node node_out
   log "executing id=$id target=$target type=$type"
@@ -331,6 +369,15 @@ execute_command() {
   for node in $(target_list "$target"); do
     node_out="$(run_node_cmd "$node" "$type" 2>&1)"
     output+=$'\n===== '"$node / $type"$' =====\n'"$node_out"$'\n'
+
+    # Push observed state per device so the dashboard reflects reality.
+    if ! echo "$node_out" | grep -Eq 'Permission denied|No route to host|UNKNOWN_TARGET|UNSUPPORTED_COMMAND'; then
+      local dev_host state running hr
+      dev_host="$(device_hostname_for "$node")"
+      state="$(parse_node_state "$node_out")"
+      running="${state% *}"; hr="${state##* }"
+      push_device_state "$dev_host" "$running" "$hr"
+    fi
   done
 
   printf '%s' "$output"
