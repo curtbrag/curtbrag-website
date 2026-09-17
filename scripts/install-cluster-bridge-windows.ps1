@@ -18,44 +18,51 @@ Write-Host ''
 
 Write-Host 'Downloading current bridge...'
 Invoke-WebRequest -Uri $RepoRaw -OutFile $bridge -UseBasicParsing
+if (-not (Test-Path $bridge) -or (Get-Item $bridge).Length -lt 1000) { throw 'Bridge download failed or was unexpectedly small.' }
 
-if (-not (Test-Path $bridge) -or (Get-Item $bridge).Length -lt 1000) {
-    throw 'Bridge download failed or was unexpectedly small.'
+# Refuse to schedule malformed PowerShell.
+$tokens = $null
+$parseErrors = $null
+[void][System.Management.Automation.Language.Parser]::ParseFile($bridge, [ref]$tokens, [ref]$parseErrors)
+if ($parseErrors.Count) {
+    $parseErrors | ForEach-Object { Write-Host ("PARSE ERROR line {0}: {1}" -f $_.Extent.StartLineNumber, $_.Message) }
+    throw "Downloaded bridge has $($parseErrors.Count) PowerShell parse error(s)."
 }
+Write-Host 'Bridge syntax check: OK'
 
 $sshKey = Join-Path $env:USERPROFILE '.ssh\id_ed25519'
 if (-not (Test-Path $sshKey)) { throw "SSH key missing: $sshKey" }
 
-$pw = Read-Host 'Dashboard password for https://curtbrag.com/cluster/dashboard/' -AsSecureString
-$pwCipher = ConvertFrom-SecureString $pw
-
-# Public wallet already used by the existing cluster configuration. This is not a secret.
-$wallet = '44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT'
-
-$config = [ordered]@{
-    api_url = 'https://curtbrag.com/.netlify/functions/cluster-api'
-    password_cipher = $pwCipher
-    wallet = $wallet
-    pool_host = 'gulf.moneroocean.stream'
-    pool_port = 10128
-    ssh_key = $sshKey
-    phone_user = 'user'
-    phone_port = 8022
+if (Test-Path $configPath) {
+    Write-Host 'Existing bridge configuration found; keeping stored dashboard credentials.'
+    $config = Get-Content $configPath -Raw | ConvertFrom-Json
+} else {
+    $pw = Read-Host 'Dashboard password for https://curtbrag.com/cluster/dashboard/' -AsSecureString
+    $pwCipher = ConvertFrom-SecureString $pw
+    $wallet = '44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT'
+    $config = [ordered]@{
+        api_url = 'https://curtbrag.com/.netlify/functions/cluster-api'
+        password_cipher = $pwCipher
+        wallet = $wallet
+        pool_host = 'gulf.moneroocean.stream'
+        pool_port = 10128
+        ssh_key = $sshKey
+        phone_user = 'user'
+        phone_port = 8022
+    }
+    $config | ConvertTo-Json -Depth 5 | Set-Content -Path $configPath -Encoding UTF8
 }
-$config | ConvertTo-Json -Depth 5 | Set-Content -Path $configPath -Encoding UTF8
 
-# Validate dashboard credentials before installing persistence.
-$plain = [System.Net.NetworkCredential]::new('', $pw).Password
+$secure = ConvertTo-SecureString $config.password_cipher
+$plain = [System.Net.NetworkCredential]::new('', $secure).Password
 $headers = @{ Authorization = "Bearer $plain"; 'Content-Type' = 'application/json' }
-try {
-    $probe = Invoke-RestMethod -Uri 'https://curtbrag.com/.netlify/functions/cluster-api?action=summary' -Headers $headers -Method Get -TimeoutSec 15
-} catch {
-    throw "Dashboard authentication/API check failed: $($_.Exception.Message)"
-}
+$api = if ($config.api_url) { [string]$config.api_url } else { 'https://curtbrag.com/.netlify/functions/cluster-api' }
 
+$summaryUri = "$($api)?action=summary&_=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"
+try { $null = Invoke-RestMethod -Uri $summaryUri -Headers $headers -Method Get -TimeoutSec 15 }
+catch { throw "Dashboard authentication/API check failed: $($_.Exception.Message)" }
 Write-Host 'Dashboard API authentication: OK'
 
-# Stop/remove prior copy if present.
 Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue | Stop-ScheduledTask -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
 Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
@@ -78,18 +85,28 @@ Write-Host 'Bridge task installed and started.'
 Write-Host "Config: $configPath"
 Write-Host "Log:    $base\bridge.log"
 Write-Host ''
-Write-Host 'Waiting briefly for first dashboard heartbeat...'
-Start-Sleep -Seconds 8
+Write-Host 'Waiting for Windows bridge heartbeat...'
 
-try {
-    $b = Invoke-RestMethod -Uri 'https://curtbrag.com/.netlify/functions/cluster-api?action=bridge-status' -Headers $headers -Method Get -TimeoutSec 15
-    Write-Host ("Bridge alive: {0}" -f $b.alive)
-    Write-Host ("Bridge host:  {0}" -f $b.hostname)
-    Write-Host ("Last seen:    {0}" -f $b.last_seen_at)
-} catch {
-    Write-Warning "Could not verify heartbeat yet: $($_.Exception.Message)"
+$ok = $false
+for ($i=1; $i -le 18; $i++) {
+    Start-Sleep -Seconds 3
+    try {
+        $uri = "$($api)?action=bridge-status&_=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"
+        $b = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -TimeoutSec 10
+        Write-Host ("[{0}/18] alive={1} host={2} last={3}" -f $i,$b.alive,$b.hostname,$b.last_seen_at)
+        if ($b.alive -eq $true -and $b.hostname -eq $env:COMPUTERNAME) { $ok=$true; break }
+    } catch { Write-Host "Heartbeat check failed: $($_.Exception.Message)" }
+}
+
+if (-not $ok) {
+    $info = Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction SilentlyContinue
+    Write-Host "Task result: $($info.LastTaskResult)"
+    $log = Join-Path $base 'bridge.log'
+    if (Test-Path $log) { Get-Content $log -Tail 50 }
+    throw 'Windows bridge did not become healthy.'
 }
 
 Write-Host ''
+Write-Host 'WINDOWS BRIDGE ONLINE.'
 Write-Host 'Open: https://curtbrag.com/cluster/dashboard/'
 Write-Host '============================================================'
