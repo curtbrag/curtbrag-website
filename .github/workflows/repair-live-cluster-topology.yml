@@ -1,0 +1,79 @@
+name: Repair Live Cluster Topology
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-live-cluster-topology.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch stale cluster topology
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def patch(path, replacements):
+              p = Path(path)
+              s = p.read_text()
+              old = s
+              for a,b in replacements:
+                  s = s.replace(a,b)
+              if s != old:
+                  p.write_text(s)
+                  print('patched', path)
+              else:
+                  print('no changes', path)
+
+          patch('netlify/functions/cluster-api.js', [
+              ('{ hostname: "phone175", ip: "192.168.1.175", device_class: "phone", cluster_role: "worker" }',
+               '{ hostname: "phone195", ip: "192.168.1.195", device_class: "phone", cluster_role: "worker" }'),
+              ('{ hostname: "nexus", ip: "192.168.1.179", device_class: "pc", cluster_role: "control-plane" }',
+               '{ hostname: "nexus", ip: "192.168.1.192", device_class: "pc", cluster_role: "control-plane" }'),
+              ('url: "192.168.1.179:10128"', 'url: "gulf.moneroocean.stream:10128"'),
+              ('pool_url: "192.168.1.179"', 'pool_url: "gulf.moneroocean.stream"'),
+          ])
+
+          patch('src/pages/cluster/dashboard.astro', [
+              ("d.desired?.pool_url || '192.168.1.179'", "d.desired?.pool_url || 'gulf.moneroocean.stream'"),
+          ])
+
+          patch('scripts/curt-cluster-bridge.example.sh', [
+              ('PHONE_USER="${PHONE_USER:-u0_a191}"', 'PHONE_USER="${PHONE_USER:-user}"'),
+              ('PHONES="${PHONES:-173 174 175 176 177 191 253 254}"', 'PHONES="${PHONES:-173 174 195 176 177 191 253 254}"'),
+              ('NEXUS_IP="${NEXUS_IP:-192.168.1.178}"', 'NEXUS_IP="${NEXUS_IP:-192.168.1.192}"'),
+          ])
+
+          patch('scripts/install-cluster-bridge.sh', [
+              ('PHONES="173 174 175 176 177 191 253 254"', 'PHONES="173 174 195 176 177 191 253 254"'),
+              ('defaults: nexus@neo:192.168.1.178', 'defaults: nexus@neo:192.168.1.192'),
+              ('NEXUS_IP=192.168.1.178', 'NEXUS_IP=192.168.1.192'),
+          ])
+
+          patch('.github/workflows/deploy-bridge.yml', [
+              ("default: 'nexus'", "default: '100.113.84.72'"),
+              ("TARGET_HOST: ${{ inputs.target_host || 'nexus' }}", "TARGET_HOST: ${{ inputs.target_host || '100.113.84.72' }}"),
+              ('POOL=gulf.moneroocean.stream:10128\n          SSH_KEY=$HOME/.ssh/id_ed25519',
+               'POOL=gulf.moneroocean.stream:10128\n          SSH_KEY=$HOME/.ssh/id_ed25519\n          PHONE_USER=user\n          PHONE_PORT=8022\n          PHONES="173 174 195 176 177 191 253 254"\n          NEXUS_IP=192.168.1.192'),
+          ])
+          PY
+
+      - name: Commit normalized topology
+        run: |
+          git config user.name 'cluster-topology-bot'
+          git config user.email 'cluster-topology@curtbrag.com'
+          git add netlify/functions/cluster-api.js src/pages/cluster/dashboard.astro scripts/curt-cluster-bridge.example.sh scripts/install-cluster-bridge.sh .github/workflows/deploy-bridge.yml
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix(cluster): normalize live fleet topology'
+          git push origin HEAD:main
