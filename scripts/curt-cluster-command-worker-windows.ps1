@@ -144,7 +144,7 @@ function Push-State($Phone,$State) {
             hashrate_60s=$State.Hashrate
             custom_pid=$State.ProcId
             binary_hash=$State.Hash
-            agent_version='windows-command-worker-1.0'
+            agent_version='windows-command-worker-1.1'
             workload_type='mining'
             workload_enabled=$State.Running
             preflight_status='ok'
@@ -171,7 +171,6 @@ function Start-Phone($Phone,[bool]$Force=$false) {
     $approved = if ($device.desired.approved_binary_hash -match '^[a-fA-F0-9]{64}$') { [string]$device.desired.approved_binary_hash } else { '' }
     $workerName = "$wallet.$($Phone.Hostname)"
     $endpoint = "$ph`:$pp"
-    $forceText = if ($Force) { '1' } else { '0' }
 
     $template = @'
 export HOME=/data/data/com.termux/files/home
@@ -183,27 +182,28 @@ WORKER='__WORKER__'
 THREADS='__THREADS__'
 RXMODE='__RXMODE__'
 APPROVED='__APPROVED__'
-FORCE='__FORCE__'
 [ -x "$BIN" ] || { echo NO_BIN; exit 0; }
 if [ -n "$APPROVED" ]; then
   ACTUAL="$(sha256sum "$BIN" 2>/dev/null | awk '{print $1}')"
   [ "$ACTUAL" = "$APPROVED" ] || { echo BLOCKED_BINARY_HASH_MISMATCH; exit 0; }
 fi
-OLD="$(pgrep -af xmrig 2>/dev/null | grep -v grep)"
-if [ "$FORCE" != 1 ] && echo "$OLD" | grep -q "$WORKER" && echo "$OLD" | grep -q "$POOL"; then
-  echo ALREADY_RUNNING_CORRECT
+pkill -9 xmrig 2>/dev/null || true
+sleep 1
+: > "$HOME/xmrig.log"
+nohup "$BIN" -o "$POOL" -u "$WORKER" -p x -k --threads="$THREADS" --randomx-mode="$RXMODE" --print-time=10 --log-file="$HOME/xmrig.log" --no-color >/dev/null 2>&1 &
+sleep 4
+XPID="$(pgrep -x xmrig 2>/dev/null | head -1)"
+if [ -n "$XPID" ]; then
+  echo "XMRIG_PID=$XPID"
+  tr '\0' ' ' < "/proc/$XPID/cmdline" 2>/dev/null || true
+  echo
 else
-  pkill -9 xmrig 2>/dev/null || true
-  sleep 1
-  : > "$HOME/xmrig.log"
-  nohup "$BIN" -o "$POOL" -u "$WORKER" -p x -k --threads="$THREADS" --randomx-mode="$RXMODE" --print-time=10 --log-file="$HOME/xmrig.log" --no-color >/dev/null 2>&1 &
-  sleep 4
+  echo NO_PROCESS
 fi
-pgrep -af xmrig 2>/dev/null | grep -v grep || echo NO_PROCESS
 tail -20 "$HOME/xmrig.log" 2>/dev/null | grep -E 'miner    speed|new job|accepted|error' | tail -5 || true
 '@
 
-    $remote = $template.Replace('__POOL__',$endpoint).Replace('__WORKER__',$workerName).Replace('__THREADS__',"$threads").Replace('__RXMODE__',$rx).Replace('__APPROVED__',$approved).Replace('__FORCE__',$forceText)
+    $remote = $template.Replace('__POOL__',$endpoint).Replace('__WORKER__',$workerName).Replace('__THREADS__',"$threads").Replace('__RXMODE__',$rx).Replace('__APPROVED__',$approved)
     Invoke-Phone $Phone.IP $remote
 }
 
