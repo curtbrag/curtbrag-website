@@ -19,9 +19,6 @@ function jsonResponse(statusCode, body) {
   });
 }
 
-// Queue coordination needs immediate visibility for updates/deletes. Netlify
-// Blobs defaults to eventual consistency, which can re-deliver just-completed
-// assignments for up to the propagation window. Use strong consistency here.
 const store = () => getStore({ name: STORE_NAME, consistency: "strong" });
 
 function safeCompare(a, b) {
@@ -48,9 +45,11 @@ async function configValue(envName, blobKey) {
 }
 
 async function authorized(request, kind) {
-  // Compatibility mode is intentional until the dashboard and all workers are
-  // confirmed sending credentials. Then SWARM_ENFORCE_AUTH=1 can close it.
-  if (process.env.SWARM_ENFORCE_AUTH !== "1") return true;
+  // Operator actions are always protected because they can enqueue shell work.
+  // Worker auth stays in compatibility mode until every deployed v2 agent is
+  // confirmed to have CLUSTER_API_KEY/SWARM_TOKEN available.
+  if (kind === "worker" && process.env.SWARM_ENFORCE_AUTH !== "1") return true;
+
   const expected = kind === "worker"
     ? await configValue("CLUSTER_API_KEY", "api-key")
     : await configValue("CLUSTER_WEB_PASSWORD", "web-password");
@@ -423,7 +422,8 @@ export default async (request) => {
       results: snap.results.slice(0, 50),
       total_completed: snap.results.length,
       schema: AGENT_SCHEMA,
-      auth_enforced: process.env.SWARM_ENFORCE_AUTH === "1"
+      auth_enforced: true,
+      worker_auth_enforced: process.env.SWARM_ENFORCE_AUTH === "1"
     });
   }
 
