@@ -3,7 +3,7 @@
   if (!tab) return;
 
   const API = '/api/cluster';
-  const REQUIRED_AGENT = '2.1.0';
+  const REQUIRED_AGENT = '2.1.1';
   const FLEET = [
     ['phone173','worker'], ['phone174','worker'], ['phone176','worker'], ['phone177','worker'],
     ['phone191','worker'], ['phone195','worker'], ['phone253','worker'], ['phone254','worker'],
@@ -164,8 +164,8 @@
     }
 
     const typeSelect = document.getElementById('swarm-job-type');
-    if (typeSelect && typeSelect.dataset.v21 !== '1') {
-      typeSelect.dataset.v21 = '1';
+    if (typeSelect && typeSelect.dataset.v211 !== '1') {
+      typeSelect.dataset.v211 = '1';
       typeSelect.innerHTML = `
         <option value="status">node-status</option>
         <option value="mining-status">mining-status</option>
