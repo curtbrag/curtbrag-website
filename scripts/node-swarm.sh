@@ -1,11 +1,11 @@
 #!/bin/sh
-# node-swarm.sh — Curt Cluster Swarm worker agent v2
+# node-swarm.sh — Curt Cluster Swarm worker agent v2.1
 # Polls curtbrag.com Swarm, executes assigned jobs, and reports results.
 # Works on Termux and Linux. Requires curl + sh; jq or python3 recommended.
 
 set -u
 
-AGENT_VERSION="2.0.0"
+AGENT_VERSION="2.1.0"
 SWARM_URL="${SWARM_URL:-https://curtbrag.com/api/cluster}"
 POLL_INTERVAL="${POLL_INTERVAL:-10}"
 DEVICE_ID="${DEVICE_ID:-}"
@@ -16,6 +16,9 @@ LOG_FILE="${LOG_DIR}/swarm-agent.log"
 STATE_FILE="${STATE_DIR}/last_response.json"
 PID_FILE="${STATE_DIR}/node-swarm.pid"
 PENDING_RESULT_FILE="${STATE_DIR}/pending-result.json"
+MINER_ARGV_FILE="${STATE_DIR}/miner-argv.bin"
+MINER_SERVICE_FILE="${STATE_DIR}/miner-service.txt"
+MINER_START_LOG="${LOG_DIR}/xmrig-swarm-start.log"
 
 mkdir -p "$LOG_DIR" "$STATE_DIR"
 
@@ -131,6 +134,227 @@ retry_pending_result() {
   return 1
 }
 
+# -----------------------------------------------------------------------------
+# Miner control
+# -----------------------------------------------------------------------------
+# Miner operations intentionally use exact /proc argv matching. Do not use
+# pgrep -f here: the command doing the search can match itself.
+
+xmrig_pids() {
+  for _d in /proc/[0-9]*; do
+    [ -r "$_d/cmdline" ] || continue
+    _first=$(tr '\0' '\n' < "$_d/cmdline" 2>/dev/null | head -1)
+    [ -n "$_first" ] || continue
+    _hit=0
+    case "$_first" in
+      "$HOME/bin/xmrig"|"$HOME/curt_abilities/ability1_mining/xmrig"|"$HOME/.local/opt/xmrig/xmrig"|/usr/bin/xmrig|/usr/local/bin/xmrig)
+        _hit=1
+        ;;
+      */xmrig)
+        _exe=$(readlink -f "$_d/exe" 2>/dev/null || true)
+        case "$_exe" in */xmrig) _hit=1 ;; esac
+        ;;
+    esac
+    [ "$_hit" -eq 1 ] && printf '%s\n' "${_d##*/}"
+  done
+}
+
+save_miner_argv() {
+  _pid=$(xmrig_pids | head -1)
+  case "$_pid" in ''|*[!0-9]*) return 1 ;; esac
+  [ -r "/proc/$_pid/cmdline" ] || return 1
+  cat "/proc/$_pid/cmdline" > "$MINER_ARGV_FILE" 2>/dev/null || return 1
+  chmod 600 "$MINER_ARGV_FILE" 2>/dev/null || true
+  return 0
+}
+
+detect_miner_service() {
+  command -v systemctl >/dev/null 2>&1 || return 1
+
+  for _svc in curt-xmrig.service xmrig.service curt-miner.service miner.service; do
+    if systemctl --user cat "$_svc" >/dev/null 2>&1; then
+      printf '%s\n' "$_svc"
+      return 0
+    fi
+  done
+
+  for _unit in "$HOME/.config/systemd/user/"*.service /etc/systemd/user/*.service; do
+    [ -f "$_unit" ] || continue
+    if grep -qi 'xmrig' "$_unit" 2>/dev/null; then
+      basename "$_unit"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+remember_miner_service() {
+  _svc=$(detect_miner_service 2>/dev/null || true)
+  [ -n "$_svc" ] || return 1
+  printf '%s\n' "$_svc" > "$MINER_SERVICE_FILE" 2>/dev/null || true
+  chmod 600 "$MINER_SERVICE_FILE" 2>/dev/null || true
+  printf '%s\n' "$_svc"
+}
+
+miner_threads() {
+  _pid="$1"
+  _threads="?"
+  _want_next=0
+  while IFS= read -r _arg; do
+    if [ "$_want_next" -eq 1 ]; then
+      _threads="$_arg"
+      _want_next=0
+      continue
+    fi
+    case "$_arg" in
+      --threads=*) _threads=${_arg#--threads=} ;;
+      -t|--threads) _want_next=1 ;;
+    esac
+  done <<EOF
+$(tr '\0' '\n' < "/proc/$_pid/cmdline" 2>/dev/null)
+EOF
+  printf '%s' "$_threads"
+}
+
+miner_status_text() {
+  _pids=$(xmrig_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+  _svc=""
+  [ -s "$MINER_SERVICE_FILE" ] && _svc=$(head -1 "$MINER_SERVICE_FILE" 2>/dev/null || true)
+  [ -n "$_svc" ] || _svc=$(detect_miner_service 2>/dev/null || true)
+  _service_state="n/a"
+  if [ -n "$_svc" ] && command -v systemctl >/dev/null 2>&1; then
+    _service_state=$(systemctl --user is-active "$_svc" 2>/dev/null || true)
+    [ -n "$_service_state" ] || _service_state="inactive"
+  fi
+
+  if [ -n "$_pids" ]; then
+    _first_pid=$(printf '%s' "$_pids" | awk '{print $1}')
+    _threads=$(miner_threads "$_first_pid")
+    printf 'device=%s miner=RUNNING pid=%s threads=%s service=%s service_state=%s restart_snapshot=%s' \
+      "$DEVICE_ID" "$_pids" "$_threads" "${_svc:-none}" "$_service_state" "$([ -s "$MINER_ARGV_FILE" ] && echo yes || echo no)"
+  else
+    printf 'device=%s miner=STOPPED pid=none threads=0 service=%s service_state=%s restart_snapshot=%s' \
+      "$DEVICE_ID" "${_svc:-none}" "$_service_state" "$([ -s "$MINER_ARGV_FILE" ] && echo yes || echo no)"
+  fi
+}
+
+stop_miner() {
+  _before=$(xmrig_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+  if [ -z "$_before" ]; then
+    printf 'device=%s miner=STOPPED already_stopped=true' "$DEVICE_ID"
+    return 0
+  fi
+
+  save_miner_argv >/dev/null 2>&1 || true
+  _svc=$(remember_miner_service 2>/dev/null || true)
+  if [ -n "$_svc" ] && command -v systemctl >/dev/null 2>&1; then
+    systemctl --user stop "$_svc" >/dev/null 2>&1 || true
+  fi
+
+  _pids=$(xmrig_pids)
+  for _pid in $_pids; do
+    kill "$_pid" 2>/dev/null || true
+  done
+
+  _i=0
+  while [ "$_i" -lt 6 ]; do
+    [ -z "$(xmrig_pids | head -1)" ] && break
+    sleep 1
+    _i=$((_i + 1))
+  done
+
+  _pids=$(xmrig_pids)
+  for _pid in $_pids; do
+    kill -9 "$_pid" 2>/dev/null || true
+  done
+  sleep 1
+
+  _after=$(xmrig_pids | head -1)
+  if [ -n "$_after" ]; then
+    printf 'device=%s miner=STOP_FAILED pid=%s service=%s' "$DEVICE_ID" "$_after" "${_svc:-none}"
+    return 1
+  fi
+
+  printf 'device=%s miner=STOPPED prior_pid=%s service=%s restart_snapshot=%s' \
+    "$DEVICE_ID" "$_before" "${_svc:-none}" "$([ -s "$MINER_ARGV_FILE" ] && echo yes || echo no)"
+  return 0
+}
+
+start_saved_argv() {
+  [ -s "$MINER_ARGV_FILE" ] || return 1
+  command -v python3 >/dev/null 2>&1 || return 1
+
+  python3 - "$MINER_ARGV_FILE" "$HOME" "$MINER_START_LOG" <<'PY'
+import os, subprocess, sys
+path, home, log_path = sys.argv[1:4]
+raw = open(path, 'rb').read().split(b'\0')
+args = [x.decode('utf-8', 'surrogateescape') for x in raw if x]
+if not args:
+    raise SystemExit(2)
+os.makedirs(os.path.dirname(log_path), exist_ok=True)
+with open(log_path, 'ab', buffering=0) as log:
+    subprocess.Popen(args, cwd=home, stdin=subprocess.DEVNULL,
+                     stdout=log, stderr=log, start_new_session=True,
+                     close_fds=True)
+PY
+}
+
+start_miner() {
+  case "$(printf '%s' "$DEVICE_ID" | tr '[:upper:]' '[:lower:]')" in
+    nexus)
+      printf 'device=Nexus miner=POLICY_BLOCKED reason=thermal_history_start_disabled'
+      return 2
+      ;;
+  esac
+
+  _running=$(xmrig_pids | head -1)
+  if [ -n "$_running" ]; then
+    printf 'device=%s miner=RUNNING already_running=true pid=%s' "$DEVICE_ID" "$_running"
+    return 0
+  fi
+
+  _svc=""
+  [ -s "$MINER_SERVICE_FILE" ] && _svc=$(head -1 "$MINER_SERVICE_FILE" 2>/dev/null || true)
+  if [ -z "$_svc" ]; then
+    _svc=$(remember_miner_service 2>/dev/null || true)
+  fi
+
+  if [ -n "$_svc" ] && command -v systemctl >/dev/null 2>&1; then
+    if systemctl --user start "$_svc" >/dev/null 2>&1; then
+      sleep 3
+      _pid=$(xmrig_pids | head -1)
+      if [ -n "$_pid" ]; then
+        printf 'device=%s miner=RUNNING pid=%s service=%s launch=systemd' "$DEVICE_ID" "$_pid" "$_svc"
+        return 0
+      fi
+    fi
+  fi
+
+  if start_saved_argv >/dev/null 2>&1; then
+    sleep 3
+    _pid=$(xmrig_pids | head -1)
+    if [ -n "$_pid" ]; then
+      printf 'device=%s miner=RUNNING pid=%s service=%s launch=saved_argv' "$DEVICE_ID" "$_pid" "${_svc:-none}"
+      return 0
+    fi
+  fi
+
+  printf 'device=%s miner=START_FAILED reason=no_working_service_or_restart_snapshot' "$DEVICE_ID"
+  return 1
+}
+
+restart_miner() {
+  case "$(printf '%s' "$DEVICE_ID" | tr '[:upper:]' '[:lower:]')" in
+    nexus)
+      printf 'device=Nexus miner=POLICY_BLOCKED reason=thermal_history_start_disabled'
+      return 2
+      ;;
+  esac
+  stop_miner >/dev/null 2>&1 || true
+  start_miner
+}
+
 execute_job() {
   job_id="$1"
   job_type="$2"
@@ -167,6 +391,26 @@ execute_job() {
       _mem=$(awk '/MemAvailable:/ {printf "%.0fMB", $2/1024}' /proc/meminfo 2>/dev/null || echo "?")
       stdout="device=$DEVICE_ID platform=$PLATFORM class=$NODE_CLASS uptime=$_uptime load=$_load mem_available=$_mem agent=$AGENT_VERSION pid=$$"
       exit_code=0
+      ;;
+
+    mining-status|miner-status)
+      stdout=$(miner_status_text)
+      exit_code=0
+      ;;
+
+    mining-stop|miner-stop)
+      stdout=$(stop_miner)
+      exit_code=$?
+      ;;
+
+    mining-start|miner-start)
+      stdout=$(start_miner)
+      exit_code=$?
+      ;;
+
+    mining-restart|miner-restart)
+      stdout=$(restart_miner)
+      exit_code=$?
       ;;
 
     *)
