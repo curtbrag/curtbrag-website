@@ -1,11 +1,11 @@
 #!/bin/sh
-# node-swarm.sh — Curt Cluster Swarm worker agent v2.1
+# node-swarm.sh — Curt Cluster Swarm worker agent v2.1.1
 # Polls curtbrag.com Swarm, executes assigned jobs, and reports results.
 # Works on Termux and Linux. Requires curl + sh; jq or python3 recommended.
 
 set -u
 
-AGENT_VERSION="2.1.0"
+AGENT_VERSION="2.1.1"
 SWARM_URL="${SWARM_URL:-https://curtbrag.com/api/cluster}"
 POLL_INTERVAL="${POLL_INTERVAL:-10}"
 DEVICE_ID="${DEVICE_ID:-}"
@@ -41,6 +41,43 @@ fi
 PLATFORM=$(uname -s 2>/dev/null || echo unknown)
 HOSTNAME_NOW=$(hostname 2>/dev/null || echo "$DEVICE_ID")
 
+# A node must have exactly one Swarm poller. Older deployments could leave an
+# earlier node-swarm.sh alive, which lets two versions race for the same job.
+# The newest agent therefore takes ownership by terminating sibling agents that
+# have this exact script path in argv. No pgrep -f is used because it can match
+# the command doing the search.
+SWARM_SCRIPT="$HOME/node-swarm.sh"
+prune_other_swarm_agents() {
+  for _d in /proc/[0-9]*; do
+    [ -r "$_d/cmdline" ] || continue
+    _p=${_d##*/}
+    [ "$_p" = "$$" ] && continue
+    _hit=0
+    while IFS= read -r _arg; do
+      [ "$_arg" = "$SWARM_SCRIPT" ] && _hit=1
+    done <<EOF
+$(tr '\0' '\n' < "$_d/cmdline" 2>/dev/null)
+EOF
+    [ "$_hit" -eq 1 ] && kill "$_p" 2>/dev/null || true
+  done
+
+  sleep 1
+
+  for _d in /proc/[0-9]*; do
+    [ -r "$_d/cmdline" ] || continue
+    _p=${_d##*/}
+    [ "$_p" = "$$" ] && continue
+    _hit=0
+    while IFS= read -r _arg; do
+      [ "$_arg" = "$SWARM_SCRIPT" ] && _hit=1
+    done <<EOF
+$(tr '\0' '\n' < "$_d/cmdline" 2>/dev/null)
+EOF
+    [ "$_hit" -eq 1 ] && kill -9 "$_p" 2>/dev/null || true
+  done
+}
+
+prune_other_swarm_agents
 echo $$ > "$PID_FILE" 2>/dev/null || true
 
 log() {
@@ -48,7 +85,8 @@ log() {
 }
 
 cleanup() {
-  rm -f "$PID_FILE" 2>/dev/null || true
+  _owner=$(cat "$PID_FILE" 2>/dev/null || true)
+  [ "$_owner" = "$$" ] && rm -f "$PID_FILE" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
