@@ -3,6 +3,7 @@
   if (!tab) return;
 
   const API = '/api/cluster';
+  const REQUIRED_AGENT = '2.1.0';
   const FLEET = [
     ['phone173','worker'], ['phone174','worker'], ['phone176','worker'], ['phone177','worker'],
     ['phone191','worker'], ['phone195','worker'], ['phone253','worker'], ['phone254','worker'],
@@ -11,6 +12,11 @@
   const IDS = new Set(FLEET.map(([id]) => id));
   const PHONE_IDS = new Set(FLEET.filter(([, cls]) => cls === 'worker').map(([id]) => id));
   const PC_IDS = new Set(FLEET.filter(([, cls]) => cls === 'pc').map(([id]) => id));
+  const MINER_TYPES = new Set(['mining-status','mining-stop','mining-start','mining-restart']);
+
+  const legacyQueueShortcut = window.queueShortcut;
+  const legacyDispatchCommand = window.dispatchCommand;
+  const legacyFleetMining = window.fleetMining;
 
   let current = null;
   let pollTimer = null;
@@ -18,11 +24,10 @@
   let started = false;
 
   const esc = (v) => String(v ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
+    .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
+
+  const token = () => sessionStorage.getItem('cp_password') || '';
 
   const ago = (ts) => {
     if (!ts) return 'never';
@@ -36,7 +41,20 @@
     return `${Math.floor(sec / 86400)}d`;
   };
 
-  const token = () => sessionStorage.getItem('cp_password') || '';
+  const versionAtLeast = (actual, required) => {
+    const a = String(actual || '0.0.0').split('.').map((n) => Number(n) || 0);
+    const r = String(required).split('.').map((n) => Number(n) || 0);
+    for (let i = 0; i < 3; i++) {
+      if ((a[i] || 0) > (r[i] || 0)) return true;
+      if ((a[i] || 0) < (r[i] || 0)) return false;
+    }
+    return true;
+  };
+
+  const notify = (msg, type = 'ok') => {
+    if (typeof window.toast === 'function') window.toast(msg, type);
+    else console[type === 'error' ? 'error' : 'log'](msg);
+  };
 
   async function api(action, method = 'GET', body = null) {
     const pw = token();
@@ -55,9 +73,7 @@
 
     let data = {};
     try { data = await response.json(); } catch {}
-    if (!response.ok || data.ok === false) {
-      throw new Error(data.error || `HTTP ${response.status}`);
-    }
+    if (!response.ok || data.ok === false) throw new Error(data.error || `HTTP ${response.status}`);
     return data;
   }
 
@@ -66,34 +82,60 @@
     const byId = new Map(source.map((n) => [String(n.id), n]));
     const nodes = FLEET.map(([id, cls]) => {
       const n = byId.get(id);
-      return n ? { ...n, id, node_class: n.node_class || cls } : {
-        id,
-        node_class: cls,
-        online: false,
-        busy: false,
-        active_jobs: [],
-        last_seen: null,
-        agent_version: null,
-        agent_pid: null,
+      return n ? { ...n, id, node_class:n.node_class || cls } : {
+        id, node_class:cls, online:false, busy:false, active_jobs:[],
+        last_seen:null, agent_version:null, agent_pid:null,
       };
     });
-
-    const jobs = (raw?.jobs || []).map((j) => ({
-      ...j,
-      target_device_ids: (j.target_device_ids || []).filter((id) => IDS.has(String(id))),
-    }));
-    const results = (raw?.results || []).filter((r) => IDS.has(String(r.device_id)));
-    const extras = source.filter((n) => !IDS.has(String(n.id)));
 
     return {
       ...raw,
       nodes,
-      jobs,
-      results,
-      nodes_online: nodes.filter((n) => n.online).length,
-      nodes_busy: nodes.filter((n) => n.busy).length,
-      hidden_extras: extras,
+      jobs:(raw?.jobs || []).map((j) => ({
+        ...j,
+        target_device_ids:(j.target_device_ids || []).filter((id) => IDS.has(String(id))),
+      })),
+      results:(raw?.results || []).filter((r) => IDS.has(String(r.device_id))),
+      nodes_online:nodes.filter((n) => n.online).length,
+      nodes_busy:nodes.filter((n) => n.busy).length,
+      hidden_extras:source.filter((n) => !IDS.has(String(n.id))),
     };
+  }
+
+  function ensureStateNote() {
+    const heading = Array.from(tab.querySelectorAll('h3'))
+      .find((h) => h.textContent?.trim() === 'Swarm Nodes');
+    if (!heading) return null;
+    let note = document.getElementById('swarm-live-state');
+    if (!note) {
+      note = document.createElement('div');
+      note.id = 'swarm-live-state';
+      note.style.cssText = 'font-size:10px;margin:5px 0 10px;color:var(--color-muted)';
+      heading.insertAdjacentElement('afterend', note);
+    }
+    return note;
+  }
+
+  function setState(text, color = 'var(--color-muted)') {
+    const el = ensureStateNote();
+    if (el) {
+      el.textContent = text;
+      el.style.color = color;
+    }
+  }
+
+  function syncJobInput() {
+    const type = document.getElementById('swarm-job-type')?.value || 'status';
+    const input = document.getElementById('swarm-job-cmd');
+    if (!input) return;
+    const needsCommand = type === 'shell';
+    input.disabled = !needsCommand;
+    input.placeholder = needsCommand
+      ? 'Shell command (advanced)'
+      : type.startsWith('mining-')
+        ? 'No command text needed for miner actions'
+        : 'No command text needed';
+    if (!needsCommand) input.value = '';
   }
 
   function ensureUi() {
@@ -111,14 +153,7 @@
       `);
     }
 
-    const heading = Array.from(tab.querySelectorAll('h3'))
-      .find((h) => h.textContent?.trim() === 'Swarm Nodes');
-    if (heading && !document.getElementById('swarm-live-state')) {
-      const note = document.createElement('div');
-      note.id = 'swarm-live-state';
-      note.style.cssText = 'font-size:10px;margin:5px 0 10px;color:var(--color-muted)';
-      heading.insertAdjacentElement('afterend', note);
-    }
+    ensureStateNote();
 
     const target = document.getElementById('swarm-job-device');
     if (target && target.tagName !== 'SELECT') {
@@ -127,15 +162,44 @@
       select.style.cssText = 'width:230px;background:var(--color-bg);border:1px solid var(--color-border);border-radius:6px;padding:8px;font-size:11px;color:var(--color-text);font-family:monospace';
       target.replaceWith(select);
     }
-  }
 
-  function setState(text, color = 'var(--color-muted)') {
-    ensureUi();
-    const el = document.getElementById('swarm-live-state');
-    if (el) {
-      el.textContent = text;
-      el.style.color = color;
+    const typeSelect = document.getElementById('swarm-job-type');
+    if (typeSelect && typeSelect.dataset.v21 !== '1') {
+      typeSelect.dataset.v21 = '1';
+      typeSelect.innerHTML = `
+        <option value="status">node-status</option>
+        <option value="mining-status">mining-status</option>
+        <option value="mining-stop">mining-stop</option>
+        <option value="mining-start">mining-start</option>
+        <option value="mining-restart">mining-restart</option>
+        <option value="echo">ping</option>
+        <option value="shell">shell (advanced)</option>
+      `;
+      typeSelect.value = 'mining-status';
+      typeSelect.addEventListener('change', syncJobInput);
     }
+    syncJobInput();
+
+    const dispatchHeading = Array.from(tab.querySelectorAll('h3'))
+      .find((h) => h.textContent?.includes('Dispatch Swarm Job'));
+    const dispatchCard = dispatchHeading?.parentElement;
+    if (dispatchCard && !document.getElementById('swarm-miner-presets')) {
+      dispatchCard.insertAdjacentHTML('afterbegin', `
+        <div id="swarm-miner-presets" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-bottom:10px">
+          <button type="button" data-swarm-action="status" data-swarm-target="__all__">Node Status</button>
+          <button type="button" data-swarm-action="mining-status" data-swarm-target="__all__">Miner Status</button>
+          <button type="button" data-swarm-action="mining-stop" data-swarm-target="__all__">Stop Miners</button>
+          <button type="button" data-swarm-action="mining-start" data-swarm-target="__phones__">Start Phones</button>
+          <button type="button" data-swarm-action="mining-start" data-swarm-target="__pcs__">Start PCs</button>
+        </div>
+      `);
+      dispatchCard.querySelectorAll('#swarm-miner-presets button').forEach((b) => {
+        b.style.cssText = 'background:transparent;border:1px solid var(--color-border);border-radius:5px;padding:5px 9px;cursor:pointer;font-size:10px;color:var(--color-muted)';
+        b.addEventListener('click', () => runAction(b.dataset.swarmAction, b.dataset.swarmTarget));
+      });
+    }
+
+    patchCommandShortcuts();
   }
 
   function updateTargets(nodes) {
@@ -155,18 +219,14 @@
       option.textContent = `${node.online ? '●' : '○'} ${node.id} (${node.node_class || 'unknown'})`;
       select.appendChild(option);
     }
-    if (Array.from(select.options).some((o) => o.value === previous && !o.disabled)) {
-      select.value = previous;
-    } else {
-      select.value = '__all__';
-    }
+    if (Array.from(select.options).some((o) => o.value === previous && !o.disabled)) select.value = previous;
+    else select.value = '__all__';
   }
 
   function render(raw) {
     ensureUi();
     current = canonicalize(raw || {});
     const d = current;
-
     const setText = (id, value) => {
       const el = document.getElementById(id);
       if (el) el.textContent = value;
@@ -179,13 +239,14 @@
     setText('swarm-busy', d.nodes_busy ?? 0);
 
     const offline = d.nodes.filter((n) => !n.online).map((n) => n.id);
+    const oldAgents = d.nodes.filter((n) => n.online && !versionAtLeast(n.agent_version, REQUIRED_AGENT)).map((n) => n.id);
     const ghostCount = d.hidden_extras.length;
-    setState(
-      offline.length
-        ? `Canonical fleet: ${11 - offline.length}/11 online · offline: ${offline.join(', ')}${ghostCount ? ` · ${ghostCount} stale record hidden` : ''}`
-        : `Canonical fleet: 11/11 online${ghostCount ? ` · ${ghostCount} stale record hidden` : ''}`,
-      offline.length ? 'var(--color-yellow)' : 'var(--color-green)'
-    );
+    let note = offline.length
+      ? `Canonical fleet: ${11 - offline.length}/11 online · offline: ${offline.join(', ')}`
+      : 'Canonical fleet: 11/11 online';
+    if (oldAgents.length) note += ` · miner controls need v${REQUIRED_AGENT}: ${oldAgents.join(', ')}`;
+    if (ghostCount) note += ` · ${ghostCount} stale record hidden`;
+    setState(note, offline.length || oldAgents.length ? 'var(--color-yellow)' : 'var(--color-green)');
 
     const grid = document.getElementById('swarm-nodes');
     if (grid) {
@@ -193,13 +254,14 @@
         const color = n.busy ? 'var(--color-yellow)' : n.online ? 'var(--color-green)' : 'var(--color-red)';
         const label = n.busy ? 'BUSY' : n.online ? 'ONLINE' : 'OFFLINE';
         const active = (n.active_jobs || []).map(esc).join(', ');
+        const minerCtl = n.online && versionAtLeast(n.agent_version, REQUIRED_AGENT) ? 'miner ctl ✓' : 'miner ctl —';
         return `<div style="background:var(--color-bg);border-radius:6px;padding:10px;border-left:3px solid ${color}">
           <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:4px">
             <div style="font-weight:600;font-size:12px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px"></span>${esc(n.id)}</div>
             <span style="font-size:9px;font-weight:700;color:${color}">${label}</span>
           </div>
           <div style="font-size:10px;color:var(--color-muted)">${esc(n.node_class || 'unknown')} · agent ${esc(n.agent_version || '?')} · pid ${esc(n.agent_pid || '?')}</div>
-          <div style="font-size:10px;color:var(--color-muted)">Seen ${ago(n.last_seen)} ago</div>
+          <div style="font-size:10px;color:var(--color-muted)">${minerCtl} · seen ${ago(n.last_seen)} ago</div>
           ${active ? `<div style="font-size:10px;color:var(--color-yellow);margin-top:3px">Active: ${active}</div>` : ''}
           ${n.last_job ? `<div style="font-size:10px;color:var(--color-muted);margin-top:3px">Last: ${esc(n.last_job).slice(0,22)} · exit ${esc(n.last_exit ?? '?')}</div>` : ''}
         </div>`;
@@ -242,7 +304,7 @@
     if (requestBusy) return current;
     requestBusy = true;
     try {
-      setState('Loading live Swarm state…');
+      if (!current) setState('Loading live Swarm state…');
       const data = await api('queue-status');
       render(data);
       return current;
@@ -267,29 +329,77 @@
     if (!pollTimer) pollTimer = setInterval(load, 5000);
   }
 
-  function targetIds(value) {
+  function rawTargetIds(value) {
     const nodes = current?.nodes || [];
     const online = nodes.filter((n) => n.online);
-    if (value === '__all__') return online.map((n) => n.id);
-    if (value === '__phones__') return online.filter((n) => PHONE_IDS.has(n.id)).map((n) => n.id);
-    if (value === '__pcs__') return online.filter((n) => PC_IDS.has(n.id)).map((n) => n.id);
-    return value && IDS.has(value) && online.some((n) => n.id === value) ? [value] : [];
+    if (value === '__all__' || value === 'all') return online.map((n) => n.id);
+    if (value === '__phones__' || value === 'phones') return online.filter((n) => PHONE_IDS.has(n.id)).map((n) => n.id);
+    if (value === '__pcs__' || value === 'pcs') return online.filter((n) => PC_IDS.has(n.id)).map((n) => n.id);
+    const normalized = ({nexus:'Nexus', steamdeck:'SteamDeck', alina:'Alina'}[String(value).toLowerCase()] || value);
+    return normalized && IDS.has(normalized) && online.some((n) => n.id === normalized) ? [normalized] : [];
   }
 
-  async function enqueue(type, cmd, targetValue) {
+  async function enqueue(type, cmd = '', targetValue = '__all__') {
     if (!current) await load();
-    const targets = targetIds(targetValue || '__all__');
+    let targets = rawTargetIds(targetValue);
     if (!targets.length) throw new Error('No online canonical nodes match that target');
+
+    if ((type === 'mining-start' || type === 'mining-restart') && targets.includes('Nexus')) {
+      if (targets.length === 1) throw new Error('Nexus mining start is blocked by thermal policy');
+      targets = targets.filter((id) => id !== 'Nexus');
+    }
+
+    if (MINER_TYPES.has(type)) {
+      const old = targets.filter((id) => {
+        const node = current.nodes.find((n) => n.id === id);
+        return !node || !versionAtLeast(node.agent_version, REQUIRED_AGENT);
+      });
+      if (old.length) throw new Error(`Upgrade Swarm agent to v${REQUIRED_AGENT}: ${old.join(', ')}`);
+    }
+
     if (type === 'shell' && !cmd) throw new Error('Shell jobs require a command');
+
     const job = {
-      id: `web-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
-      type,
-      cmd: cmd || '',
-      command: cmd || '',
+      id:`web-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      type, cmd:cmd || '', command:cmd || '',
     };
-    const data = await api('enqueue', 'POST', { job, target_device_ids: targets });
+    const data = await api('enqueue', 'POST', { job, target_device_ids:targets });
     await load();
     return data;
+  }
+
+  async function runAction(type, target = '__all__') {
+    try {
+      const data = await enqueue(type, '', target);
+      notify(`${type}: ${data.target_count} target${data.target_count === 1 ? '' : 's'}`);
+    } catch (error) {
+      notify(`${type} failed: ${error.message}`, 'error');
+    }
+  }
+
+  function patchCommandShortcuts() {
+    const heading = Array.from(document.querySelectorAll('#tab-commands h3'))
+      .find((h) => h.textContent?.trim() === 'Command Shortcuts');
+    const box = heading?.nextElementSibling;
+    if (!box || box.dataset.swarmMinerShortcuts === '1') return;
+    box.dataset.swarmMinerShortcuts = '1';
+    box.innerHTML = `
+      <button data-miner-type="mining-status" data-miner-target="__all__">Miner Status All</button>
+      <button data-miner-type="mining-stop" data-miner-target="__all__">Stop All Miners</button>
+      <button data-miner-type="mining-start" data-miner-target="__phones__">Start Phones</button>
+      <button data-miner-type="mining-stop" data-miner-target="__phones__">Stop Phones</button>
+      <button data-miner-type="mining-status" data-miner-target="__pcs__">PC Miner Status</button>
+      <button data-miner-type="mining-stop" data-miner-target="__pcs__">Stop PC Miners</button>
+      <button data-miner-type="mining-start" data-miner-target="Alina">Alina Start</button>
+      <button data-miner-type="mining-stop" data-miner-target="Alina">Alina Stop</button>
+      <button data-miner-type="mining-start" data-miner-target="SteamDeck">SteamDeck Start</button>
+      <button data-miner-type="mining-stop" data-miner-target="SteamDeck">SteamDeck Stop</button>
+      <button data-miner-type="mining-status" data-miner-target="Nexus">Nexus Status</button>
+      <button data-miner-type="mining-stop" data-miner-target="Nexus">Nexus Stop</button>
+    `;
+    box.querySelectorAll('[data-miner-type]').forEach((button) => {
+      button.addEventListener('click', () => runAction(button.dataset.minerType, button.dataset.minerTarget));
+    });
   }
 
   window.fetchSwarmStatus = load;
@@ -297,17 +407,16 @@
   window.onSwarmTabClick = start;
 
   window.submitSwarmJob = async () => {
+    const type = document.getElementById('swarm-job-type')?.value || 'mining-status';
+    const cmd = document.getElementById('swarm-job-cmd')?.value?.trim() || '';
+    const target = document.getElementById('swarm-job-device')?.value || '__all__';
     try {
-      const type = document.getElementById('swarm-job-type')?.value || 'status';
-      const cmd = document.getElementById('swarm-job-cmd')?.value?.trim() || '';
-      const target = document.getElementById('swarm-job-device')?.value || '__all__';
       const data = await enqueue(type, cmd, target);
-      if (typeof window.toast === 'function') window.toast(`Swarm job ${data.job_id}: ${data.target_count} target(s)`);
+      notify(`Swarm job ${data.job_id}: ${data.target_count} target${data.target_count === 1 ? '' : 's'}`);
       const input = document.getElementById('swarm-job-cmd');
-      if (input) input.value = '';
+      if (input && type === 'shell') input.value = '';
     } catch (error) {
-      if (typeof window.toast === 'function') window.toast(`Enqueue failed: ${error.message}`, 'error');
-      else setState(`Enqueue failed: ${error.message}`, 'var(--color-red)');
+      notify(`Enqueue failed: ${error.message}`, 'error');
     }
   };
 
@@ -315,64 +424,52 @@
     if (!confirm('Flush all pending Swarm jobs and assignments?')) return;
     try {
       await api('flush-queue', 'POST', {});
-      if (typeof window.toast === 'function') window.toast('Swarm queue flushed');
+      notify('Swarm queue flushed');
       await load();
-    } catch (error) {
-      if (typeof window.toast === 'function') window.toast(`Flush failed: ${error.message}`, 'error');
-    }
+    } catch (error) { notify(`Flush failed: ${error.message}`, 'error'); }
   };
 
   window.clearSwarmResults = async () => {
     if (!confirm('Clear Swarm result history?')) return;
     try {
       await api('clear-results', 'POST', {});
-      if (typeof window.toast === 'function') window.toast('Swarm results cleared');
+      notify('Swarm results cleared');
       await load();
-    } catch (error) {
-      if (typeof window.toast === 'function') window.toast(`Clear failed: ${error.message}`, 'error');
-    }
+    } catch (error) { notify(`Clear failed: ${error.message}`, 'error'); }
+  };
+
+  // Route legacy mining shortcuts through Swarm so laptops and phones use the
+  // same command path. Non-mining legacy actions retain their original handler.
+  window.queueShortcut = async (target, type) => {
+    if (MINER_TYPES.has(type)) return runAction(type, target);
+    if (typeof legacyQueueShortcut === 'function') return legacyQueueShortcut(target, type);
+  };
+
+  window.fleetMining = async (enabled, target) => {
+    return runAction(enabled ? 'mining-start' : 'mining-stop', target || '__all__');
+  };
+
+  window.dispatchCommand = async () => {
+    const type = document.getElementById('cmdType')?.value || '';
+    const target = document.getElementById('cmdTarget')?.value || 'all';
+    if (MINER_TYPES.has(type)) return runAction(type, target);
+    if (typeof legacyDispatchCommand === 'function') return legacyDispatchCommand();
   };
 
   ensureUi();
+  patchCommandShortcuts();
 
   const swarmButton = document.querySelector('[data-tab="swarm"]');
-  if (swarmButton) {
-    swarmButton.addEventListener('click', () => setTimeout(start, 0), true);
-  }
+  if (swarmButton) swarmButton.addEventListener('click', () => setTimeout(start, 0), true);
 
   const refreshButton = Array.from(tab.querySelectorAll('button'))
     .find((b) => b.textContent?.trim() === 'Refresh');
-  if (refreshButton) {
-    refreshButton.addEventListener('click', (event) => {
-      event.preventDefault();
-      load();
-    }, true);
-  }
-
-  function rebindPresets() {
-    for (const [key, type] of [['ping','echo'], ['status','status']]) {
-      const old = document.querySelector(`[data-swarm-preset="${key}"]`);
-      if (!old || old.dataset.liveBound === '1') continue;
-      const button = old.cloneNode(true);
-      button.dataset.liveBound = '1';
-      old.replaceWith(button);
-      button.addEventListener('click', async () => {
-        try {
-          const data = await enqueue(type, '', '__all__');
-          if (typeof window.toast === 'function') window.toast(`${key === 'ping' ? 'Ping' : 'Status'}: ${data.target_count} target(s)`);
-        } catch (error) {
-          if (typeof window.toast === 'function') window.toast(`${key} failed: ${error.message}`, 'error');
-        }
-      });
-    }
-  }
-
-  rebindPresets();
-  setTimeout(rebindPresets, 100);
-  setTimeout(rebindPresets, 1000);
+  if (refreshButton) refreshButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    load();
+  }, true);
 
   if (token()) setTimeout(start, 50);
-
   setInterval(() => {
     if (!started && token()) start();
   }, 1000);
