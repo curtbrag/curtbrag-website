@@ -1,6 +1,7 @@
 param(
     [string]$SshKey = "$env:USERPROFILE\.ssh\id_ed25519",
     [string]$SwarmUrl = "https://curtbrag.com/api/cluster",
+    [string]$ConfigPath = "$env:LOCALAPPDATA\CurtCluster\bridge-config.json",
     [int]$PollSeconds = 10
 )
 
@@ -29,6 +30,20 @@ if (-not (Test-Path $SshKey)) {
 
 $null = Get-Command ssh.exe -ErrorAction Stop
 $null = Get-Command scp.exe -ErrorAction Stop
+
+$WebPassword = $null
+if (Test-Path $ConfigPath) {
+    try {
+        $cfg = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+        if ($cfg.password_cipher) {
+            $secure = ConvertTo-SecureString $cfg.password_cipher
+            $WebPassword = [System.Net.NetworkCredential]::new('', $secure).Password
+        }
+    }
+    catch {
+        $WebPassword = $null
+    }
+}
 
 Write-Host ""
 Write-Host "======================================================================"
@@ -72,9 +87,10 @@ function Invoke-NodeSsh {
         [string]$Command
     )
 
-    $args = @($sshBase)
-    $args += @('-p', [string]$Node.Port, "$($Node.User)@$($Node.IP)", $Command)
-    $out = @(& ssh.exe @args 2>&1)
+    $sshArgs = @($sshBase)
+    $sshArgs += @('-p', [string]$Node.Port, "$($Node.User)@$($Node.IP)", $Command)
+    $out = @(& ssh.exe @sshArgs 2>&1)
+
     return [pscustomobject]@{
         ExitCode = $LASTEXITCODE
         Output   = ($out -join "`n")
@@ -84,7 +100,7 @@ function Invoke-NodeSsh {
 function Copy-NodeFile {
     param([pscustomobject]$Node)
 
-    $args = @(
+    $scpArgs = @(
         '-q',
         '-P', [string]$Node.Port,
         '-i', $SshKey,
@@ -98,12 +114,10 @@ function Copy-NodeFile {
         "$($Node.User)@$($Node.IP):node-swarm.sh"
     )
 
-    & scp.exe @args 2>$null
+    & scp.exe @scpArgs 2>$null
     return ($LASTEXITCODE -eq 0)
 }
 
-# Exact process scan: kills only sh instances whose argv contains the exact
-# $HOME/node-swarm.sh path as its own argument. No pgrep -f self-match games.
 $stopScript = @'
 SCRIPT="$HOME/node-swarm.sh"
 for D in /proc/[0-9]*; do
@@ -174,7 +188,7 @@ foreach ($node in $Nodes) {
 
     $null = Invoke-NodeSsh $node $stopScript
 
-    $launch = "mkdir -p `"`$HOME/cluster/logs`" `"`$HOME/cluster/state`"; DEVICE_ID='$($node.Name)' NODE_CLASS='$($node.Class)' SWARM_URL='$SwarmUrl' POLL_INTERVAL='$PollSeconds' nohup sh `"`$HOME/node-swarm.sh`" >> `"`$HOME/cluster/logs/swarm-agent.log`" 2>&1 </dev/null &"
+    $launch = "mkdir -p `$HOME/cluster/logs `$HOME/cluster/state; DEVICE_ID='$($node.Name)' NODE_CLASS='$($node.Class)' SWARM_URL='$SwarmUrl' POLL_INTERVAL='$PollSeconds' nohup sh `$HOME/node-swarm.sh >> `$HOME/cluster/logs/swarm-agent.log 2>&1 </dev/null &"
     $null = Invoke-NodeSsh $node $launch
 
     Start-Sleep -Seconds 2
@@ -207,11 +221,20 @@ Write-Host "[3] Waiting for heartbeats..."
 Start-Sleep -Seconds 12
 
 $status = $null
-try {
-    $status = Invoke-RestMethod -Uri "$SwarmUrl?action=queue-status" -Method Get -TimeoutSec 20
+if ($WebPassword) {
+    try {
+        $status = Invoke-RestMethod `
+            -Uri "$SwarmUrl?action=queue-status" `
+            -Method Get `
+            -Headers @{ Authorization = "Bearer $WebPassword" } `
+            -TimeoutSec 20
+    }
+    catch {
+        Write-Host "    API_STATUS=FAILED: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
 }
-catch {
-    Write-Host "    API_STATUS=FAILED: $($_.Exception.Message)" -ForegroundColor Yellow
+else {
+    Write-Host "    API_STATUS=SKIPPED (dashboard password not available locally)" -ForegroundColor Yellow
 }
 
 Write-Host ""
@@ -229,6 +252,8 @@ if ($status) {
     Write-Host "Swarm nodes online: $($status.nodes_online)"
     Write-Host "Queued jobs       : $($status.queued)"
     Write-Host "Pending assigns   : $($status.assignments_pending)"
+    Write-Host "Operator auth     : $($status.auth_enforced)"
+    Write-Host "Worker auth       : $($status.worker_auth_enforced)"
     Write-Host ""
     if ($status.nodes) {
         $status.nodes |
