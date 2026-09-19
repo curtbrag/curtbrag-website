@@ -24,10 +24,7 @@ $Nodes = @(
     [pscustomobject]@{ Name="SteamDeck"; IP="192.168.1.166"; User="deck"; Port=22; Class="pc" }
 )
 
-if (-not (Test-Path $SshKey)) {
-    throw "SSH key missing: $SshKey"
-}
-
+if (-not (Test-Path $SshKey)) { throw "SSH key missing: $SshKey" }
 $null = Get-Command ssh.exe -ErrorAction Stop
 $null = Get-Command scp.exe -ErrorAction Stop
 
@@ -40,14 +37,12 @@ if (Test-Path $ConfigPath) {
             $WebPassword = [System.Net.NetworkCredential]::new('', $secure).Password
         }
     }
-    catch {
-        $WebPassword = $null
-    }
+    catch { $WebPassword = $null }
 }
 
 Write-Host ""
 Write-Host "======================================================================"
-Write-Host " CURT CLUSTER - SWARM V2 DEPLOY (WINDOWS)"
+Write-Host " CURT CLUSTER - SWARM V2.1 DEPLOY (WINDOWS)"
 Write-Host "======================================================================"
 Write-Host "Nodes     : 11"
 Write-Host "Phones    : 8"
@@ -60,19 +55,20 @@ Write-Host "====================================================================
 Write-Host ""
 Write-Host "[1] Downloading current node-swarm.sh..."
 Invoke-WebRequest -Uri $WorkerUrl -OutFile $TempWorker -UseBasicParsing
-if (-not (Test-Path $TempWorker)) {
-    throw "Could not download node-swarm.sh"
-}
+if (-not (Test-Path $TempWorker)) { throw "Could not download node-swarm.sh" }
 
 $workerText = Get-Content $TempWorker -Raw
-if ($workerText -notmatch 'AGENT_VERSION="2\.0\.0"') {
-    throw "Downloaded worker is not Swarm v2.0.0. Stopping."
+if ($workerText -notmatch 'AGENT_VERSION="2\.1\.0"') {
+    throw "Downloaded worker is not Swarm v2.1.0. Stopping."
 }
-Write-Host "    SWARM_WORKER=2.0.0"
+if ($workerText -notmatch 'mining-stop\|miner-stop' -or $workerText -notmatch 'mining-start\|miner-start') {
+    throw "Downloaded worker is missing miner controls."
+}
+Write-Host "    SWARM_WORKER=2.1.0"
+Write-Host "    MINER_COMMANDS=PASS"
 
 $sshBase = @(
-    '-n',
-    '-i', $SshKey,
+    '-n', '-i', $SshKey,
     '-o', 'BatchMode=yes',
     '-o', 'IdentitiesOnly=yes',
     '-o', 'StrictHostKeyChecking=no',
@@ -82,38 +78,22 @@ $sshBase = @(
 )
 
 function Invoke-NodeSsh {
-    param(
-        [pscustomobject]$Node,
-        [string]$Command
-    )
-
+    param([pscustomobject]$Node, [string]$Command)
     $sshArgs = @($sshBase)
     $sshArgs += @('-p', [string]$Node.Port, "$($Node.User)@$($Node.IP)", $Command)
     $out = @(& ssh.exe @sshArgs 2>&1)
-
-    return [pscustomobject]@{
-        ExitCode = $LASTEXITCODE
-        Output   = ($out -join "`n")
-    }
+    [pscustomobject]@{ ExitCode=$LASTEXITCODE; Output=($out -join "`n") }
 }
 
 function Copy-NodeFile {
     param([pscustomobject]$Node)
-
     $scpArgs = @(
-        '-q',
-        '-P', [string]$Node.Port,
-        '-i', $SshKey,
-        '-o', 'BatchMode=yes',
-        '-o', 'IdentitiesOnly=yes',
-        '-o', 'StrictHostKeyChecking=no',
-        '-o', 'UserKnownHostsFile=NUL',
-        '-o', 'LogLevel=ERROR',
-        '-o', 'ConnectTimeout=6',
-        $TempWorker,
-        "$($Node.User)@$($Node.IP):node-swarm.sh"
+        '-q', '-P', [string]$Node.Port, '-i', $SshKey,
+        '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes',
+        '-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=NUL',
+        '-o', 'LogLevel=ERROR', '-o', 'ConnectTimeout=6',
+        $TempWorker, "$($Node.User)@$($Node.IP):node-swarm.sh"
     )
-
     & scp.exe @scpArgs 2>$null
     return ($LASTEXITCODE -eq 0)
 }
@@ -140,9 +120,7 @@ true
 $verifyScript = @'
 STATE="$HOME/cluster/state/node-swarm.pid"
 P="$(cat "$STATE" 2>/dev/null || true)"
-case "$P" in
-  ''|*[!0-9]*) exit 1 ;;
-esac
+case "$P" in ''|*[!0-9]*) exit 1 ;; esac
 [ -r "/proc/$P/cmdline" ] || exit 1
 FOUND=0
 while IFS= read -r ARG; do
@@ -156,7 +134,6 @@ printf 'SWARM_PID=%s' "$P"
 
 Write-Host ""
 Write-Host "[2] Deploying agent..."
-
 $results = @()
 
 foreach ($node in $Nodes) {
@@ -166,53 +143,62 @@ foreach ($node in $Nodes) {
     $probe = Invoke-NodeSsh $node 'printf CONNECT_OK'
     if ($probe.ExitCode -ne 0 -or $probe.Output -notmatch 'CONNECT_OK') {
         Write-Host "    SSH=FAIL" -ForegroundColor Red
-        $results += [pscustomobject]@{ Name=$node.Name; SSH=$false; Copy=$false; Parse=$false; Running=$false; PID='' }
+        $results += [pscustomobject]@{ Name=$node.Name; SSH=$false; Copy=$false; Parse=$false; Running=$false; PID=''; Mode='' }
         continue
     }
     Write-Host "    SSH=PASS"
 
     if (-not (Copy-NodeFile $node)) {
         Write-Host "    COPY=FAIL" -ForegroundColor Red
-        $results += [pscustomobject]@{ Name=$node.Name; SSH=$true; Copy=$false; Parse=$false; Running=$false; PID='' }
+        $results += [pscustomobject]@{ Name=$node.Name; SSH=$true; Copy=$false; Parse=$false; Running=$false; PID=''; Mode='' }
         continue
     }
     Write-Host "    COPY=PASS"
 
-    $parse = Invoke-NodeSsh $node 'sh -n "$HOME/node-swarm.sh" && printf PARSE_OK'
+    $parse = Invoke-NodeSsh $node 'chmod 700 "$HOME/node-swarm.sh"; sh -n "$HOME/node-swarm.sh" && printf PARSE_OK'
     if ($parse.ExitCode -ne 0 -or $parse.Output -notmatch 'PARSE_OK') {
         Write-Host "    PARSE=FAIL" -ForegroundColor Red
-        $results += [pscustomobject]@{ Name=$node.Name; SSH=$true; Copy=$true; Parse=$false; Running=$false; PID='' }
+        $results += [pscustomobject]@{ Name=$node.Name; SSH=$true; Copy=$true; Parse=$false; Running=$false; PID=''; Mode='' }
         continue
     }
     Write-Host "    PARSE=PASS"
 
-    $null = Invoke-NodeSsh $node $stopScript
+    $serviceProbe = Invoke-NodeSsh $node 'systemctl --user cat curt-swarm.service >/dev/null 2>&1 && printf SYSTEMD || true'
+    $mode = 'nohup'
 
-    $launch = "mkdir -p `$HOME/cluster/logs `$HOME/cluster/state; DEVICE_ID='$($node.Name)' NODE_CLASS='$($node.Class)' SWARM_URL='$SwarmUrl' POLL_INTERVAL='$PollSeconds' nohup sh `$HOME/node-swarm.sh >> `$HOME/cluster/logs/swarm-agent.log 2>&1 </dev/null &"
-    $null = Invoke-NodeSsh $node $launch
+    if ($serviceProbe.Output -match 'SYSTEMD') {
+        $restart = Invoke-NodeSsh $node 'systemctl --user daemon-reload >/dev/null 2>&1 || true; systemctl --user restart curt-swarm.service; sleep 2; systemctl --user is-active curt-swarm.service'
+        if ($restart.ExitCode -eq 0 -and $restart.Output -match 'active') {
+            $mode = 'systemd'
+        }
+        else {
+            Write-Host "    SYSTEMD_RESTART=FAIL; falling back to nohup" -ForegroundColor Yellow
+            $null = Invoke-NodeSsh $node 'systemctl --user stop curt-swarm.service >/dev/null 2>&1 || true'
+        }
+    }
+
+    if ($mode -eq 'nohup') {
+        $null = Invoke-NodeSsh $node $stopScript
+        $launch = "mkdir -p `$HOME/cluster/logs `$HOME/cluster/state; DEVICE_ID='$($node.Name)' NODE_CLASS='$($node.Class)' SWARM_URL='$SwarmUrl' POLL_INTERVAL='$PollSeconds' nohup sh `$HOME/node-swarm.sh >> `$HOME/cluster/logs/swarm-agent.log 2>&1 </dev/null &"
+        $null = Invoke-NodeSsh $node $launch
+    }
 
     Start-Sleep -Seconds 2
-
     $verify = Invoke-NodeSsh $node $verifyScript
     $running = ($verify.ExitCode -eq 0 -and $verify.Output -match 'SWARM_PID=(\d+)')
     $remoteProcId = if ($running) { $Matches[1] } else { '' }
 
     if ($running) {
-        Write-Host "    SWARM=RUNNING PID=$remoteProcId" -ForegroundColor Green
+        Write-Host "    SWARM=RUNNING PID=$remoteProcId MODE=$mode" -ForegroundColor Green
     }
     else {
         Write-Host "    SWARM=FAIL" -ForegroundColor Red
-        $tail = Invoke-NodeSsh $node 'tail -n 10 "$HOME/cluster/logs/swarm-agent.log" 2>/dev/null || true'
+        $tail = Invoke-NodeSsh $node 'tail -n 12 "$HOME/cluster/logs/swarm-agent.log" 2>/dev/null || true'
         if ($tail.Output) { Write-Host $tail.Output }
     }
 
     $results += [pscustomobject]@{
-        Name    = $node.Name
-        SSH     = $true
-        Copy    = $true
-        Parse   = $true
-        Running = $running
-        PID     = $remoteProcId
+        Name=$node.Name; SSH=$true; Copy=$true; Parse=$true; Running=$running; PID=$remoteProcId; Mode=$mode
     }
 }
 
@@ -224,7 +210,7 @@ $status = $null
 if ($WebPassword) {
     try {
         $status = Invoke-RestMethod `
-            -Uri "$SwarmUrl?action=queue-status" `
+            -Uri "${SwarmUrl}?action=queue-status" `
             -Method Get `
             -Headers @{ Authorization = "Bearer $WebPassword" } `
             -TimeoutSec 20
@@ -239,9 +225,9 @@ else {
 
 Write-Host ""
 Write-Host "======================================================================"
-Write-Host " SWARM V2 DEPLOY RESULT"
+Write-Host " SWARM V2.1 DEPLOY RESULT"
 Write-Host "======================================================================"
-$results | Format-Table Name,SSH,Copy,Parse,Running,PID -AutoSize
+$results | Format-Table Name,SSH,Copy,Parse,Running,PID,Mode -AutoSize
 
 $runningCount = @($results | Where-Object { $_.Running }).Count
 Write-Host ""
