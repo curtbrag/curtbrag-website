@@ -42,7 +42,7 @@ if (Test-Path $ConfigPath) {
 
 Write-Host ""
 Write-Host "======================================================================"
-Write-Host " CURT CLUSTER - SWARM V2.1 DEPLOY (WINDOWS)"
+Write-Host " CURT CLUSTER - SWARM V2.1.1 DEPLOY (WINDOWS)"
 Write-Host "======================================================================"
 Write-Host "Nodes     : 11"
 Write-Host "Phones    : 8"
@@ -58,14 +58,18 @@ Invoke-WebRequest -Uri $WorkerUrl -OutFile $TempWorker -UseBasicParsing
 if (-not (Test-Path $TempWorker)) { throw "Could not download node-swarm.sh" }
 
 $workerText = Get-Content $TempWorker -Raw
-if ($workerText -notmatch 'AGENT_VERSION="2\.1\.0"') {
-    throw "Downloaded worker is not Swarm v2.1.0. Stopping."
+if ($workerText -notmatch 'AGENT_VERSION="2\.1\.1"') {
+    throw "Downloaded worker is not Swarm v2.1.1. Stopping."
 }
 if ($workerText -notmatch 'mining-stop\|miner-stop' -or $workerText -notmatch 'mining-start\|miner-start') {
     throw "Downloaded worker is missing miner controls."
 }
-Write-Host "    SWARM_WORKER=2.1.0"
+if ($workerText -notmatch 'prune_other_swarm_agents') {
+    throw "Downloaded worker is missing singleton ownership protection."
+}
+Write-Host "    SWARM_WORKER=2.1.1"
 Write-Host "    MINER_COMMANDS=PASS"
+Write-Host "    SINGLETON_GUARD=PASS"
 
 $sshBase = @(
     '-n', '-i', $SshKey,
@@ -100,19 +104,25 @@ function Copy-NodeFile {
 
 $stopScript = @'
 SCRIPT="$HOME/node-swarm.sh"
-for D in /proc/[0-9]*; do
-  [ -r "$D/cmdline" ] || continue
-  HIT=0
-  while IFS= read -r ARG; do
-    [ "$ARG" = "$SCRIPT" ] && HIT=1
-  done <<EOF
+kill_swarm() {
+  SIG="$1"
+  for D in /proc/[0-9]*; do
+    [ -r "$D/cmdline" ] || continue
+    P="${D##*/}"
+    HIT=0
+    while IFS= read -r ARG; do
+      [ "$ARG" = "$SCRIPT" ] && HIT=1
+    done <<EOF
 $(tr '\0' '\n' < "$D/cmdline" 2>/dev/null)
 EOF
-  if [ "$HIT" = 1 ]; then
-    P="${D##*/}"
-    [ "$P" = "$$" ] || kill "$P" 2>/dev/null || true
-  fi
-done
+    if [ "$HIT" = 1 ] && [ "$P" != "$$" ]; then
+      if [ "$SIG" = KILL ]; then kill -9 "$P" 2>/dev/null || true; else kill "$P" 2>/dev/null || true; fi
+    fi
+  done
+}
+kill_swarm TERM
+sleep 1
+kill_swarm KILL
 sleep 1
 true
 '@
@@ -122,14 +132,26 @@ STATE="$HOME/cluster/state/node-swarm.pid"
 P="$(cat "$STATE" 2>/dev/null || true)"
 case "$P" in ''|*[!0-9]*) exit 1 ;; esac
 [ -r "/proc/$P/cmdline" ] || exit 1
-FOUND=0
-while IFS= read -r ARG; do
-  [ "$ARG" = "$HOME/node-swarm.sh" ] && FOUND=1
-done <<EOF
-$(tr '\0' '\n' < "/proc/$P/cmdline" 2>/dev/null)
+SCRIPT="$HOME/node-swarm.sh"
+COUNT=0
+OWNER=0
+for D in /proc/[0-9]*; do
+  [ -r "$D/cmdline" ] || continue
+  Q="${D##*/}"
+  HIT=0
+  while IFS= read -r ARG; do
+    [ "$ARG" = "$SCRIPT" ] && HIT=1
+  done <<EOF
+$(tr '\0' '\n' < "$D/cmdline" 2>/dev/null)
 EOF
-[ "$FOUND" = 1 ] || exit 1
-printf 'SWARM_PID=%s' "$P"
+  if [ "$HIT" = 1 ]; then
+    COUNT=$((COUNT + 1))
+    [ "$Q" = "$P" ] && OWNER=1
+  fi
+done
+[ "$OWNER" = 1 ] || exit 1
+[ "$COUNT" -eq 1 ] || { printf 'DUPLICATE_COUNT=%s' "$COUNT"; exit 2; }
+printf 'SWARM_PID=%s SINGLETON=1' "$P"
 '@
 
 Write-Host ""
@@ -143,14 +165,14 @@ foreach ($node in $Nodes) {
     $probe = Invoke-NodeSsh $node 'printf CONNECT_OK'
     if ($probe.ExitCode -ne 0 -or $probe.Output -notmatch 'CONNECT_OK') {
         Write-Host "    SSH=FAIL" -ForegroundColor Red
-        $results += [pscustomobject]@{ Name=$node.Name; SSH=$false; Copy=$false; Parse=$false; Running=$false; PID=''; Mode='' }
+        $results += [pscustomobject]@{ Name=$node.Name; SSH=$false; Copy=$false; Parse=$false; Running=$false; Singleton=$false; PID=''; Mode='' }
         continue
     }
     Write-Host "    SSH=PASS"
 
     if (-not (Copy-NodeFile $node)) {
         Write-Host "    COPY=FAIL" -ForegroundColor Red
-        $results += [pscustomobject]@{ Name=$node.Name; SSH=$true; Copy=$false; Parse=$false; Running=$false; PID=''; Mode='' }
+        $results += [pscustomobject]@{ Name=$node.Name; SSH=$true; Copy=$false; Parse=$false; Running=$false; Singleton=$false; PID=''; Mode='' }
         continue
     }
     Write-Host "    COPY=PASS"
@@ -158,7 +180,7 @@ foreach ($node in $Nodes) {
     $parse = Invoke-NodeSsh $node 'chmod 700 "$HOME/node-swarm.sh"; sh -n "$HOME/node-swarm.sh" && printf PARSE_OK'
     if ($parse.ExitCode -ne 0 -or $parse.Output -notmatch 'PARSE_OK') {
         Write-Host "    PARSE=FAIL" -ForegroundColor Red
-        $results += [pscustomobject]@{ Name=$node.Name; SSH=$true; Copy=$true; Parse=$false; Running=$false; PID=''; Mode='' }
+        $results += [pscustomobject]@{ Name=$node.Name; SSH=$true; Copy=$true; Parse=$false; Running=$false; Singleton=$false; PID=''; Mode='' }
         continue
     }
     Write-Host "    PARSE=PASS"
@@ -167,7 +189,8 @@ foreach ($node in $Nodes) {
     $mode = 'nohup'
 
     if ($serviceProbe.Output -match 'SYSTEMD') {
-        $restart = Invoke-NodeSsh $node 'systemctl --user daemon-reload >/dev/null 2>&1 || true; systemctl --user restart curt-swarm.service; sleep 2; systemctl --user is-active curt-swarm.service'
+        $null = Invoke-NodeSsh $node $stopScript
+        $restart = Invoke-NodeSsh $node 'systemctl --user daemon-reload >/dev/null 2>&1 || true; systemctl --user restart curt-swarm.service; sleep 3; systemctl --user is-active curt-swarm.service'
         if ($restart.ExitCode -eq 0 -and $restart.Output -match 'active') {
             $mode = 'systemd'
         }
@@ -183,22 +206,23 @@ foreach ($node in $Nodes) {
         $null = Invoke-NodeSsh $node $launch
     }
 
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 3
     $verify = Invoke-NodeSsh $node $verifyScript
     $running = ($verify.ExitCode -eq 0 -and $verify.Output -match 'SWARM_PID=(\d+)')
+    $singleton = ($verify.ExitCode -eq 0 -and $verify.Output -match 'SINGLETON=1')
     $remoteProcId = if ($running) { $Matches[1] } else { '' }
 
-    if ($running) {
-        Write-Host "    SWARM=RUNNING PID=$remoteProcId MODE=$mode" -ForegroundColor Green
+    if ($running -and $singleton) {
+        Write-Host "    SWARM=RUNNING PID=$remoteProcId MODE=$mode SINGLETON=PASS" -ForegroundColor Green
     }
     else {
-        Write-Host "    SWARM=FAIL" -ForegroundColor Red
-        $tail = Invoke-NodeSsh $node 'tail -n 12 "$HOME/cluster/logs/swarm-agent.log" 2>/dev/null || true'
+        Write-Host "    SWARM=FAIL VERIFY=$($verify.Output)" -ForegroundColor Red
+        $tail = Invoke-NodeSsh $node 'tail -n 14 "$HOME/cluster/logs/swarm-agent.log" 2>/dev/null || true'
         if ($tail.Output) { Write-Host $tail.Output }
     }
 
     $results += [pscustomobject]@{
-        Name=$node.Name; SSH=$true; Copy=$true; Parse=$true; Running=$running; PID=$remoteProcId; Mode=$mode
+        Name=$node.Name; SSH=$true; Copy=$true; Parse=$true; Running=$running; Singleton=$singleton; PID=$remoteProcId; Mode=$mode
     }
 }
 
@@ -225,30 +249,30 @@ else {
 
 Write-Host ""
 Write-Host "======================================================================"
-Write-Host " SWARM V2.1 DEPLOY RESULT"
+Write-Host " SWARM V2.1.1 DEPLOY RESULT"
 Write-Host "======================================================================"
-$results | Format-Table Name,SSH,Copy,Parse,Running,PID,Mode -AutoSize
+$results | Format-Table Name,SSH,Copy,Parse,Running,Singleton,PID,Mode -AutoSize
 
-$runningCount = @($results | Where-Object { $_.Running }).Count
+$runningCount = @($results | Where-Object { $_.Running -and $_.Singleton }).Count
 Write-Host ""
-Write-Host "Agents running    : $runningCount / 11"
+Write-Host "Singleton agents   : $runningCount / 11"
 
 if ($status) {
-    Write-Host "API schema        : $($status.schema)"
-    Write-Host "Swarm nodes online: $($status.nodes_online)"
-    Write-Host "Queued jobs       : $($status.queued)"
-    Write-Host "Pending assigns   : $($status.assignments_pending)"
-    Write-Host "Operator auth     : $($status.auth_enforced)"
-    Write-Host "Worker auth       : $($status.worker_auth_enforced)"
+    Write-Host "API schema         : $($status.schema)"
+    Write-Host "Swarm nodes online : $($status.nodes_online)"
+    Write-Host "Queued jobs        : $($status.queued)"
+    Write-Host "Pending assigns    : $($status.assignments_pending)"
+    Write-Host "Operator auth      : $($status.auth_enforced)"
+    Write-Host "Worker auth        : $($status.worker_auth_enforced)"
     Write-Host ""
     if ($status.nodes) {
         $status.nodes |
-            Select-Object id,online,busy,node_class,agent_version,last_seen |
+            Select-Object id,online,busy,node_class,agent_version,agent_pid,last_seen |
             Sort-Object id |
             Format-Table -AutoSize
     }
 }
 
-Write-Host "Mining changed    : NO"
-Write-Host "Reboots           : NONE"
+Write-Host "Mining changed     : NO"
+Write-Host "Reboots            : NONE"
 Write-Host "======================================================================"
