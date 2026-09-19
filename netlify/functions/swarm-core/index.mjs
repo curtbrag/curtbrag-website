@@ -19,7 +19,10 @@ function jsonResponse(statusCode, body) {
   });
 }
 
-const store = () => getStore(STORE_NAME);
+// Queue coordination needs immediate visibility for updates/deletes. Netlify
+// Blobs defaults to eventual consistency, which can re-deliver just-completed
+// assignments for up to the propagation window. Use strong consistency here.
+const store = () => getStore({ name: STORE_NAME, consistency: "strong" });
 
 function safeCompare(a, b) {
   if (typeof a !== "string" || typeof b !== "string") return false;
@@ -38,15 +41,15 @@ function bearerToken(request) {
 async function configValue(envName, blobKey) {
   if (process.env[envName]) return process.env[envName];
   try {
-    return (await getStore("cluster-config").get(blobKey, { type: "text" })) || "";
+    return (await getStore("cluster-config").get(blobKey, { type: "text", consistency: "strong" })) || "";
   } catch {
     return "";
   }
 }
 
 async function authorized(request, kind) {
-  // Compatibility mode is intentional until the dashboard is switched to
-  // authenticated Swarm requests. Set SWARM_ENFORCE_AUTH=1 after that patch.
+  // Compatibility mode is intentional until the dashboard and all workers are
+  // confirmed sending credentials. Then SWARM_ENFORCE_AUTH=1 can close it.
   if (process.env.SWARM_ENFORCE_AUTH !== "1") return true;
   const expected = kind === "worker"
     ? await configValue("CLUSTER_API_KEY", "api-key")
@@ -83,10 +86,9 @@ async function deleteKey(key) {
 
 async function listEntries(prefix) {
   try {
-    const listing = await store().list();
-    const hits = (listing.blobs || []).filter(entry => entry.key.startsWith(prefix));
+    const listing = await store().list({ prefix });
     const out = [];
-    for (const entry of hits) {
+    for (const entry of listing.blobs || []) {
       const value = await getJson(entry.key, null);
       if (value) out.push({ key: entry.key, value });
     }
