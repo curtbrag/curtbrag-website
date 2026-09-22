@@ -9,7 +9,7 @@
   const FLEET = [
     ['phone173','worker'], ['phone174','worker'], ['phone176','worker'], ['phone177','worker'],
     ['phone191','worker'], ['phone195','worker'], ['phone253','worker'], ['phone254','worker'],
-    ['Alina','pc'], ['Nexus','pc'], ['SteamDeck','pc'], ['viki','pc'],
+    ['Alina','pc'], ['Nexus','pc'], ['SteamDeck','pc'], ['viki','pc'], ['RenderRig','gpu-worker'],
   ];
 
   const PHONE_TARGET_THREADS = {
@@ -19,8 +19,10 @@
 
   const IDS = new Set(FLEET.map(([id]) => id));
   const PHONE_IDS = new Set(Object.keys(PHONE_TARGET_THREADS));
-  const PC_IDS = new Set(['Alina','Nexus','SteamDeck','viki']);
+  const PC_IDS = new Set(['Alina','Nexus','SteamDeck','viki','RenderRig']);
+  const GPU_IDS = new Set(['RenderRig']);
   const TRANSCRIBE_IDS = new Set(['Alina','Nexus']);
+  const GPU_WORK_TYPES = new Set(['gpu-status','salad-status','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow']);
   const PC_TARGET_THREADS = { Alina:12, Nexus:0, SteamDeck:4, viki:4 };
   const MINER_TYPES = new Set(['mining-status','mining-stop','mining-start','mining-restart']);
 
@@ -139,15 +141,21 @@
     const type = document.getElementById('swarm-job-type')?.value || 'status';
     const input = document.getElementById('swarm-job-cmd');
     if (!input) return;
-    const needsCommand = type === 'shell' || type === 'transcribe';
+    const workloadHelp = {
+      'blender-render':'{"input":"C:\\\\Jobs\\\\scene.blend","output":"C:\\\\Jobs\\\\renders\\\\frame_","engine":"cycles"}',
+      'ffmpeg-transcode':'{"input":"C:\\\\Jobs\\\\source.mov","output":"C:\\\\Jobs\\\\output.mp4","preset":"medium"}',
+      'whisper-transcribe':'{"input":"C:\\\\Jobs\\\\audio.mp3","output":"C:\\\\Jobs\\\\transcripts","model":"small.en"}',
+      'comfyui-workflow':'{"workflow":"C:\\\\Jobs\\\\workflow.json"}',
+    };
+    const needsCommand = type === 'shell' || type === 'transcribe' || Object.hasOwn(workloadHelp, type);
     input.disabled = !needsCommand;
-    input.placeholder = type === 'transcribe'
+    input.placeholder = workloadHelp[type] || (type === 'transcribe'
       ? 'Media URL or existing file path on Alina/Nexus'
       : needsCommand
         ? 'Shell command (advanced)'
       : type.startsWith('mining-')
         ? 'Phones use Windows ADB thermal authority; PCs use Swarm'
-        : 'No command text needed';
+        : 'No command text needed');
     if (!needsCommand) input.value = '';
   }
 
@@ -235,7 +243,9 @@
     if (stateNote && !document.getElementById('swarm-useful-tools')) {
       stateNote.insertAdjacentHTML('afterend', `
         <div id="swarm-useful-tools" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin:0 0 12px">
-          <button type="button" id="swarm-sample">Load Sample</button>
+          <button type="button" id="swarm-gpu-status">GPU Check</button>
+          <button type="button" id="swarm-salad-status">Salad Check</button>
+          <button type="button" id="swarm-sample">Transcription Sample</button>
           <button type="button" id="swarm-copy-latest">Copy Latest Output</button>
           <button type="button" id="swarm-live-toggle">Pause Live Updates</button>
           <select id="swarm-node-filter" aria-label="Filter workers">
@@ -261,6 +271,8 @@
         input?.focus();
         notify('Sample loaded. Press Start when ready.');
       });
+      document.getElementById('swarm-gpu-status').addEventListener('click', () => runAction('gpu-status', 'RenderRig'));
+      document.getElementById('swarm-salad-status').addEventListener('click', () => runAction('salad-status', 'RenderRig'));
       document.getElementById('swarm-copy-latest').addEventListener('click', async () => {
         const latest = current?.results?.[0];
         const text = latest?.stdout || latest?.stderr || '';
@@ -292,12 +304,30 @@
     if (typeSelect && typeSelect.dataset.clusterV8 !== '1') {
       typeSelect.dataset.clusterV8 = '1';
       typeSelect.innerHTML = `
+        <optgroup label="RTX RenderRig">
+          <option value="gpu-status">Check GPUs</option>
+          <option value="salad-status">Check Salad</option>
+          <option value="blender-render">Render Blender project</option>
+          <option value="comfyui-workflow">Run ComfyUI workflow</option>
+          <option value="ffmpeg-transcode">GPU video transcode</option>
+          <option value="whisper-transcribe">GPU transcription</option>
+        </optgroup>
+        <optgroup label="Linux workers">
         <option value="transcribe">Transcribe audio or video</option>
         <option value="status">Check node status</option>
+        </optgroup>
+        <optgroup label="Advanced">
         <option value="shell">Advanced command</option>
+        </optgroup>
       `;
-      typeSelect.value = 'transcribe';
-      typeSelect.addEventListener('change', syncJobInput);
+      typeSelect.value = 'gpu-status';
+      typeSelect.addEventListener('change', () => {
+        if (GPU_WORK_TYPES.has(typeSelect.value)) {
+          const target = document.getElementById('swarm-job-device');
+          if (target && Array.from(target.options || []).some((o) => o.value === 'RenderRig' && !o.disabled)) target.value = 'RenderRig';
+        }
+        syncJobInput();
+      });
     }
     syncJobInput();
 
@@ -308,7 +338,7 @@
     if (dispatchCard && !document.getElementById('swarm-work-note')) {
       dispatchCard.insertAdjacentHTML('afterbegin', `
         <div id="swarm-work-note" style="margin-bottom:12px;color:var(--color-muted);font-size:11px">
-          Paste a media link or file path. Alina and Nexus will create TXT, SRT, and JSON files.
+          Check the RTX rig, render Blender scenes, run ComfyUI workflows, transcribe media, or convert video. GPU work pauses Salad and resumes it afterward.
         </div>
       `);
       const enqueueButton = Array.from(dispatchCard.querySelectorAll('button'))
@@ -324,7 +354,8 @@
     if (!select || select.tagName !== 'SELECT') return;
     const previous = select.value || '__pcs__';
     select.innerHTML = `
-      <option value="__pcs__">Alina + Nexus (recommended)</option>
+      <option value="RenderRig">RenderRig (RTX, hybrid Salad)</option>
+      <option value="__pcs__">All online PCs</option>
       <option value="__all__">All online nodes (status only)</option>
       <option disabled>──────────────</option>
     `;
@@ -616,6 +647,15 @@ async function syncPcDesired(type, targets) {
     try {
       if (!current) await load();
       const resolvedTarget = await resolveTarget(target);
+
+      if (GPU_WORK_TYPES.has(type)) {
+        const targets = swarmTargets(resolvedTarget).filter((id) => GPU_IDS.has(id));
+        if (!targets.length) throw new Error('RenderRig must be online for RTX work');
+        const data = await enqueueSwarm(type, cmd, targets);
+        notify(`${type}: queued on RenderRig`);
+        await load();
+        return data;
+      }
 
       if (type === 'transcribe') {
         const targets = swarmTargets(resolvedTarget).filter((id) => TRANSCRIBE_IDS.has(id));
