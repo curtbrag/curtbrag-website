@@ -20,10 +20,10 @@ function openStore(name) {
     process.env.NETLIFY_TOKEN ||
     undefined;
 
-  const options = { name, consistency: "strong" };
-  if (siteID) options.siteID = siteID;
-  if (token) options.token = token;
-  return getStore(options);
+  if (siteID && token) {
+    return getStore(name, { siteID, token });
+  }
+  return getStore(name);
 }
 const CANONICAL_HOSTNAMES = [
   "phone173", "phone174", "phone176", "phone177",
