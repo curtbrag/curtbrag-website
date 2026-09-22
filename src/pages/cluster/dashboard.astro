@@ -61,6 +61,7 @@ import Layout from '../../layouts/Layout.astro';
 <button data-tab="devices" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Devices</button>
 <button data-tab="config" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Config</button>
 <button data-tab="analytics" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Analytics</button>
+<button data-tab="jobs" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Jobs</button>
 <button data-tab="commands" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Commands</button>
 <button data-tab="events" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Events</button>
 <button data-tab="alerts" class="tab-btn" style="background:transparent;color:var(--color-muted);border:none;cursor:pointer;padding:8px 16px">Alerts</button>
@@ -145,6 +146,24 @@ Observed hashes from online devices:
 <h3>Thermal Report</h3>
 <div id="thermalReport" style="margin-top:16px;font-size:12px"></div>
 </div>
+</div>
+
+<div id="tab-jobs" class="tab-content" style="display:none">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px">
+    <div><h2 style="margin:0">Distributed Jobs</h2><div style="font-size:12px;color:var(--color-muted)">Queue work across phones, Linux systems, or the whole 11-device fleet.</div></div>
+    <div style="display:flex;gap:8px;align-items:center"><span id="jobsLiveCount" style="font-size:12px;color:var(--color-muted)">0 running</span><button id="refreshJobsBtn" style="padding:8px 12px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-panel);color:var(--color-text);cursor:pointer">Refresh</button></div>
+  </div>
+  <div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+      <label style="font-size:12px;color:var(--color-muted)">Workload<select id="jobType" style="display:block;width:100%;margin-top:5px;padding:9px;background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-border);border-radius:6px"><option value="health-audit">Health audit</option><option value="inventory">File inventory</option><option value="checksum">SHA-256 checksums</option><option value="archive">Create archive</option><option value="backup">Incremental backup</option><option value="download">Media download</option><option value="media-probe">Inspect media</option><option value="media-convert">Convert media</option><option value="transcribe">Transcribe audio/video</option></select></label>
+      <label style="font-size:12px;color:var(--color-muted)">Target<select id="jobTarget" style="display:block;width:100%;margin-top:5px;padding:9px;background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-border);border-radius:6px"><option value="all">All 11 devices</option><option value="phones">Phones only (8)</option><option value="pcs">Linux systems (3)</option><option>phone173</option><option>phone174</option><option>phone176</option><option>phone177</option><option>phone191</option><option>phone195</option><option>phone253</option><option>phone254</option><option>Alina</option><option>Nexus</option><option>SteamDeck</option></select></label>
+      <label style="font-size:12px;color:var(--color-muted)">Job name<input id="jobName" placeholder="Optional label" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:9px;background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-border);border-radius:6px"></label>
+      <label id="jobSourceWrap" style="font-size:12px;color:var(--color-muted)">Source / URL<input id="jobSource" placeholder="/path/file or https://…" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:9px;background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-border);border-radius:6px"></label>
+      <label id="jobDestinationWrap" style="font-size:12px;color:var(--color-muted)">Destination<input id="jobDestination" placeholder="/path/output" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:9px;background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-border);border-radius:6px"></label>
+    </div>
+    <button id="queueJobBtn" style="margin-top:14px;background:var(--color-brand);color:white;border:0;border-radius:6px;padding:10px 16px;font-weight:700;cursor:pointer">Queue Job</button>
+  </div>
+  <div id="jobsList"></div>
 </div>
 
 <div id="tab-commands" class="tab-content" style="display:none">
@@ -1076,3 +1095,4 @@ if (password) {
 
 // Swarm tab behavior is owned by /scripts/cluster-swarm-live-v8.js.
 </script>
+<script is:inline src="/scripts/cluster-jobs-v1.js?v=1"></script>
