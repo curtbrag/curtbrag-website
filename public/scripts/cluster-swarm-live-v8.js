@@ -20,6 +20,7 @@
   const IDS = new Set(FLEET.map(([id]) => id));
   const PHONE_IDS = new Set(Object.keys(PHONE_TARGET_THREADS));
   const PC_IDS = new Set(['Alina','Nexus','SteamDeck','viki']);
+  const TRANSCRIBE_IDS = new Set(['Alina','Nexus']);
   const PC_TARGET_THREADS = { Alina:12, Nexus:0, SteamDeck:4, viki:4 };
   const MINER_TYPES = new Set(['mining-status','mining-stop','mining-start','mining-restart']);
 
@@ -135,10 +136,12 @@
     const type = document.getElementById('swarm-job-type')?.value || 'status';
     const input = document.getElementById('swarm-job-cmd');
     if (!input) return;
-    const needsCommand = type === 'shell';
+    const needsCommand = type === 'shell' || type === 'transcribe';
     input.disabled = !needsCommand;
-    input.placeholder = needsCommand
-      ? 'Shell command (advanced)'
+    input.placeholder = type === 'transcribe'
+      ? 'Media URL or existing file path on Alina/Nexus'
+      : needsCommand
+        ? 'Shell command (advanced)'
       : type.startsWith('mining-')
         ? 'Phones use Windows ADB thermal authority; PCs use Swarm'
         : 'No command text needed';
@@ -209,6 +212,7 @@
         <option value="mining-start">mining-start</option>
         <option value="mining-restart">mining-restart</option>
         <option value="echo">ping</option>
+        <option value="transcribe">transcribe audio/video</option>
         <option value="shell">shell (advanced)</option>
       `;
       typeSelect.value = 'mining-status';
@@ -485,10 +489,28 @@ async function syncPcDesired(type, targets) {
     return { count:targets.length, commands };
   }
 
+  function transcriptionCommand(source) {
+    if (!source) throw new Error('Transcription requires a media URL or file path');
+    const bytes = new TextEncoder().encode(source);
+    let binary = '';
+    bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+    const encoded = btoa(binary);
+    return `cd "$HOME/curt-revenue-worker" && . venv/bin/activate && SOURCE="$(printf '%s' '${encoded}' | base64 -d)" && python transcribe.py "$SOURCE" --model tiny.en --output-dir outputs`;
+  }
+
   async function runAction(type, target='__all__', cmd='') {
     try {
       if (!current) await load();
       const resolvedTarget = await resolveTarget(target);
+
+      if (type === 'transcribe') {
+        const targets = swarmTargets(resolvedTarget).filter((id) => TRANSCRIBE_IDS.has(id));
+        if (!targets.length) throw new Error('Transcription runs on online Alina or Nexus nodes only');
+        const data = await enqueueSwarm('shell', transcriptionCommand(cmd), targets);
+        notify(`transcribe: queued on ${targets.join(', ')}`);
+        await load();
+        return data;
+      }
 
       if (!MINER_TYPES.has(type)) {
         const targets = swarmTargets(resolvedTarget);
