@@ -1,0 +1,104 @@
+name: Stop All Cluster Miners
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stop-all-miners.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  stop-miners:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      WEB_PASSWORD: ${{ secrets.CLUSTER_WEB_PASSWORD }}
+      CONTROL_API: https://curtbrag.com/.netlify/functions/cluster-api
+      SWARM_API: https://curtbrag.com/api/cluster
+    steps:
+      - name: Verify operator secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$WEB_PASSWORD" || { echo 'CLUSTER_WEB_PASSWORD secret missing'; exit 1; }
+
+      - name: Disable desired mining fleet-wide
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 3 --retry-delay 2 \
+            -H "Authorization: Bearer $WEB_PASSWORD" \
+            -H 'Content-Type: application/json' \
+            -X POST \
+            "$CONTROL_API?action=fleet-disable-mining" \
+            --data '{"target":"all"}' | tee /tmp/desired-stop.json
+          grep -q '"ok":true' /tmp/desired-stop.json
+
+      - name: Queue Windows bridge phone stop
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 3 --retry-delay 2 \
+            -H "Authorization: Bearer $WEB_PASSWORD" \
+            -H 'Content-Type: application/json' \
+            -X POST \
+            "$CONTROL_API?action=queue-command" \
+            --data '{"target":"phones","type":"mining-stop","payload":{"source":"github-stop-all"}}' | tee /tmp/bridge-stop.json
+          grep -q '"ok":true' /tmp/bridge-stop.json
+
+      - name: Stop every online canonical Swarm node
+        shell: bash
+        run: |
+          set -euo pipefail
+          CANON='["phone173","phone174","phone176","phone177","phone191","phone195","phone253","phone254","Alina","Nexus","SteamDeck","viki"]'
+          STATUS="$(curl -fsS --retry 3 --retry-delay 2 -H "Authorization: Bearer $WEB_PASSWORD" "$SWARM_API?action=queue-status&_=$(date +%s%N)")"
+          printf '%s\n' "$STATUS" > /tmp/swarm-before.json
+          TARGETS="$(printf '%s' "$STATUS" | jq -c --argjson canon "$CANON" '[.nodes[] | select(.online == true and (.id as $id | $canon | index($id))) | .id]')"
+          COUNT="$(printf '%s' "$TARGETS" | jq 'length')"
+          echo "Swarm online canonical targets: $COUNT"
+          printf '%s\n' "$TARGETS"
+          if [ "$COUNT" -gt 0 ]; then
+            JOB="stop-all-$(date +%s)"
+            jq -n --arg id "$JOB" --argjson targets "$TARGETS" '{job:{id:$id,type:"mining-stop",cmd:"",command:""},target_device_ids:$targets}' > /tmp/swarm-stop-body.json
+            curl -fsS --retry 3 --retry-delay 2 \
+              -H "Authorization: Bearer $WEB_PASSWORD" \
+              -H 'Content-Type: application/json' \
+              -X POST \
+              "$SWARM_API?action=enqueue" \
+              --data-binary @/tmp/swarm-stop-body.json | tee /tmp/swarm-stop.json
+            grep -q '"ok":true' /tmp/swarm-stop.json
+            echo "$JOB" > /tmp/stop-job-id
+          else
+            echo 'No canonical Swarm nodes online; bridge stop remains queued for phones.'
+          fi
+
+      - name: Wait for stop completion and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          JOB="$(cat /tmp/stop-job-id 2>/dev/null || true)"
+          for i in $(seq 1 12); do
+            sleep 5
+            STATUS="$(curl -fsS -H "Authorization: Bearer $WEB_PASSWORD" "$SWARM_API?action=queue-status&_=$(date +%s%N)")"
+            printf '%s\n' "$STATUS" > /tmp/swarm-after.json
+            if [ -z "$JOB" ]; then break; fi
+            PENDING="$(printf '%s' "$STATUS" | jq --arg job "$JOB" '[.assignments[]? | select(.job_id == $job)] | length')"
+            RESULTS="$(printf '%s' "$STATUS" | jq --arg job "$JOB" '[.results[]? | select(.job_id == $job)] | length')"
+            echo "poll $i: pending=$PENDING results=$RESULTS"
+            if [ "$PENDING" -eq 0 ]; then break; fi
+          done
+
+          echo '--- stop results ---'
+          if [ -n "$JOB" ]; then
+            jq --arg job "$JOB" '[.results[]? | select(.job_id == $job) | {device_id,exit_code,stdout,stderr}]' /tmp/swarm-after.json
+          fi
+
+          echo '--- control-plane device state ---'
+          curl -fsS -H "Authorization: Bearer $WEB_PASSWORD" "$CONTROL_API?action=devices&_=$(date +%s%N)" > /tmp/devices.json
+          jq '[.devices[] | {hostname,online,mining:(.observed.xmrig_running // false),pid:(.observed.custom_pid // null)}]' /tmp/devices.json
+
+          RUNNING="$(jq '[.devices[] | select(.observed.xmrig_running == true)] | length' /tmp/devices.json)"
+          echo "CONTROL_PLANE_REPORTED_RUNNING=$RUNNING"
