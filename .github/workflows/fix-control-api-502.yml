@@ -1,0 +1,104 @@
+name: Fix Control API 502
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-control-api-502.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Remove unsupported strong-consistency store mode from Lambda control API
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          paths = [
+              Path('netlify/functions/cluster-api.js'),
+              Path('.github/workflows/repair-live-cluster-topology.yml'),
+          ]
+
+          replacements = [
+              ('const options = { name, consistency: "strong" };', 'if (siteID && token) {'),
+              ('if (siteID) options.siteID = siteID;', '  return getStore(name, { siteID, token });'),
+              ('if (token) options.token = token;', '}'),
+              ('return getStore(options);', 'return getStore(name);'),
+              ('# cluster-api.js: strong consistency + canonical 12-node topology.', '# cluster-api.js: Lambda-safe Blob access + canonical 12-node topology.'),
+          ]
+
+          for path in paths:
+              text = path.read_text()
+              before = text
+              for old, new in replacements:
+                  text = text.replace(old, new)
+              if text != before:
+                  path.write_text(text)
+                  print('patched', path)
+              else:
+                  print('no changes', path)
+
+          api = Path('netlify/functions/cluster-api.js').read_text()
+          if 'consistency: "strong"' in api:
+              raise SystemExit('cluster-api still requests strong consistency')
+          if 'return getStore(name);' not in api:
+              raise SystemExit('Lambda-safe getStore fallback missing')
+          PY
+
+      - name: Syntax and build checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check netlify/functions/cluster-api.js
+          npm install --no-package-lock --no-audit --no-fund
+          npm run build
+
+      - name: Commit API fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'cluster-api-repair-bot'
+          git config user.email 'cluster-api-repair@curtbrag.com'
+          git add netlify/functions/cluster-api.js .github/workflows/repair-live-cluster-topology.yml
+          if git diff --cached --quiet; then
+            echo 'No repair commit required'
+            exit 0
+          fi
+          git commit -m 'fix(cluster): restore Lambda-compatible Blob reads'
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Verify live control API no longer returns 502
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://curtbrag.com/.netlify/functions/cluster-api?action=auth-check'
+          for i in $(seq 1 36); do
+            code=$(curl -sS -o /tmp/api-body.txt -w '%{http_code}' \
+              -H 'Content-Type: application/json' \
+              -X POST "$URL&_=$(date +%s%N)" \
+              --data '{"password":"__probe_invalid_password__"}' \
+              --max-time 10 || echo 000)
+            echo "probe $i: HTTP $code"
+            cat /tmp/api-body.txt 2>/dev/null || true
+            echo
+            if [ "$code" != '502' ] && [ "$code" != '000' ] && [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then
+              echo 'CONTROL API RESPONDING'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'Control API still unavailable after deployment window'
+          exit 1
