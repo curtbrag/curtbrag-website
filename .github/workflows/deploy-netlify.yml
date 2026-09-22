@@ -29,6 +29,7 @@ jobs:
           node-version: '20'
 
       - name: Select Netlify credential
+        id: netlify
         shell: bash
         run: |
           set -euo pipefail
@@ -36,9 +37,14 @@ jobs:
           [ -n "$token" ] || token="$TOKEN_ALT1"
           [ -n "$token" ] || token="$TOKEN_ALT2"
           [ -n "$token" ] || token="$TOKEN_ALT3"
-          [ -n "$token" ] || { echo 'No Netlify API token secret is configured in GitHub Actions'; exit 2; }
-          echo "NETLIFY_AUTH_TOKEN=$token" >> "$GITHUB_ENV"
-          echo 'Netlify credential selected'
+          if [ -n "$token" ]; then
+            echo "NETLIFY_AUTH_TOKEN=$token" >> "$GITHUB_ENV"
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo 'Netlify credential selected'
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo 'No Netlify API token configured; skipping explicit deploy because Netlify handles repository deploys.'
+          fi
 
       - name: Install dependencies
         run: npm install --no-package-lock --no-audit --no-fund
@@ -47,6 +53,7 @@ jobs:
         run: npm run build
 
       - name: Deploy production to Netlify
+        if: steps.netlify.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
