@@ -26,31 +26,27 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          paths = [
-              Path('netlify/functions/cluster-api.js'),
-              Path('.github/workflows/repair-live-cluster-topology.yml'),
-          ]
+          path = Path('netlify/functions/cluster-api.js')
+          text = path.read_text()
+          before = text
 
           replacements = [
               ('const options = { name, consistency: "strong" };', 'if (siteID && token) {'),
               ('if (siteID) options.siteID = siteID;', '  return getStore(name, { siteID, token });'),
               ('if (token) options.token = token;', '}'),
               ('return getStore(options);', 'return getStore(name);'),
-              ('# cluster-api.js: strong consistency + canonical 12-node topology.', '# cluster-api.js: Lambda-safe Blob access + canonical 12-node topology.'),
           ]
 
-          for path in paths:
-              text = path.read_text()
-              before = text
-              for old, new in replacements:
-                  text = text.replace(old, new)
-              if text != before:
-                  path.write_text(text)
-                  print('patched', path)
-              else:
-                  print('no changes', path)
+          for old, new in replacements:
+              text = text.replace(old, new)
 
-          api = Path('netlify/functions/cluster-api.js').read_text()
+          if text != before:
+              path.write_text(text)
+              print('patched', path)
+          else:
+              print('no changes', path)
+
+          api = path.read_text()
           if 'consistency: "strong"' in api:
               raise SystemExit('cluster-api still requests strong consistency')
           if 'return getStore(name);' not in api:
@@ -71,7 +67,7 @@ jobs:
           set -euo pipefail
           git config user.name 'cluster-api-repair-bot'
           git config user.email 'cluster-api-repair@curtbrag.com'
-          git add netlify/functions/cluster-api.js .github/workflows/repair-live-cluster-topology.yml
+          git add netlify/functions/cluster-api.js
           if git diff --cached --quiet; then
             echo 'No repair commit required'
             exit 0
