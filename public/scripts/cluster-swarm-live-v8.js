@@ -192,8 +192,25 @@
     }
     if (workTab && document.documentElement.dataset.clusterSimpleView !== '1') {
       document.documentElement.dataset.clusterSimpleView = '1';
-      workTab.click();
+      setTimeout(() => workTab.click(), 700);
     }
+
+    const simpleLabels = new Map([
+      ['Swarm Nodes', 'Workers'],
+      ['Dispatch Swarm Job', 'Start Work'],
+      ['Pending Queue', 'In Progress'],
+      ['Recent Results', 'Completed Work'],
+      ['Queued Jobs', 'Waiting'],
+      ['Total Completed', 'Completed'],
+      ['Pending Assignments', 'Assigned'],
+      ['Busy Nodes', 'Working'],
+    ]);
+    tab.querySelectorAll('h3, div').forEach((element) => {
+      const label = element.textContent?.trim();
+      if (simpleLabels.has(label) && element.children.length === 0) {
+        element.textContent = simpleLabels.get(label);
+      }
+    });
 
     const stats = tab.firstElementChild;
     if (stats && !document.getElementById('swarm-assignments')) {
@@ -225,8 +242,6 @@
       typeSelect.innerHTML = `
         <option value="transcribe">Transcribe audio or video</option>
         <option value="status">Check node status</option>
-        <option value="mining-status">Check miner status</option>
-        <option value="mining-stop">Stop all miners</option>
         <option value="shell">Advanced command</option>
       `;
       typeSelect.value = 'transcribe';
@@ -235,21 +250,18 @@
     syncJobInput();
 
     const dispatchHeading = Array.from(tab.querySelectorAll('h3'))
-      .find((h) => h.textContent?.includes('Dispatch Swarm Job'));
-    if (dispatchHeading) dispatchHeading.textContent = 'Run Work';
+      .find((h) => ['Dispatch Swarm Job', 'Start Work', 'Run Work'].includes(h.textContent?.trim()));
+    if (dispatchHeading) dispatchHeading.textContent = 'Start Work';
     const dispatchCard = dispatchHeading?.parentElement;
-    if (dispatchCard && !document.getElementById('swarm-miner-presets')) {
+    if (dispatchCard && !document.getElementById('swarm-work-note')) {
       dispatchCard.insertAdjacentHTML('afterbegin', `
-        <div id="swarm-miner-presets" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-bottom:10px">
-          <button type="button" data-v8-type="status" data-v8-target="__all__">Check Nodes</button>
-          <button type="button" data-v8-type="mining-status" data-v8-target="__all__">Check Miners</button>
-          <button type="button" data-v8-type="mining-stop" data-v8-target="__all__">Stop All Miners</button>
+        <div id="swarm-work-note" style="margin-bottom:12px;color:var(--color-muted);font-size:11px">
+          Paste a media link or file path. Alina and Nexus will create TXT, SRT, and JSON files.
         </div>
       `);
-      dispatchCard.querySelectorAll('#swarm-miner-presets button').forEach((button) => {
-        button.style.cssText = 'background:transparent;border:1px solid var(--color-border);border-radius:5px;padding:5px 9px;cursor:pointer;font-size:10px;color:var(--color-muted)';
-        button.addEventListener('click', () => runAction(button.dataset.v8Type, button.dataset.v8Target));
-      });
+      const enqueueButton = Array.from(dispatchCard.querySelectorAll('button'))
+        .find((button) => button.textContent?.trim() === 'Enqueue');
+      if (enqueueButton) enqueueButton.textContent = 'Start';
     }
 
     patchCommandShortcuts();
@@ -260,9 +272,8 @@
     if (!select || select.tagName !== 'SELECT') return;
     const previous = select.value || '__pcs__';
     select.innerHTML = `
-      <option value="__all__">All 12 canonical devices</option>
-      <option value="__phones__">All 8 phones</option>
-      <option value="__pcs__">All 4 PCs</option>
+      <option value="__pcs__">Alina + Nexus (recommended)</option>
+      <option value="__all__">All online nodes (status only)</option>
       <option disabled>──────────────</option>
     `;
     for (const node of nodes) {
