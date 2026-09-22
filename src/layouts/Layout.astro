@@ -89,7 +89,7 @@ const structuredData = {
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
-      integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOP6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA=="
+      integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOP6xxalwEsw9c2QQwqQAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA=="
       crossorigin="anonymous"
       referrerpolicy="no-referrer"
     />
@@ -139,7 +139,8 @@ const structuredData = {
       });
     </script>
 
-    <!-- One authoritative cluster client. Phone starts/stops route through Windows ADB thermal control. -->
+    <!-- Cluster control: legacy v6 plus 12-node Viki compatibility overlay. -->
     <script is:inline src="/scripts/cluster-swarm-live-v6.js?v=6"></script>
+    <script is:inline src="/scripts/cluster-swarm-live-v7.js?v=1"></script>
   </body>
 </html>
