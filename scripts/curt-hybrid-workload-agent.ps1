@@ -8,7 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$AgentVersion = '3.2.0'
+$AgentVersion = '3.2.1'
 $Root = Join-Path $env:LOCALAPPDATA 'CurtCompute'
 $AgentPath = Join-Path $Root 'curt-hybrid-workload-agent.ps1'
 $ConfigPath = Join-Path $Root 'agent-config.json'
@@ -212,7 +212,7 @@ function Invoke-WorkstationSelfTest {
     Remove-Item -LiteralPath $png,$video -Force -ErrorAction SilentlyContinue
 
     $pngJson = $png | ConvertTo-Json -Compress
-    $scene = "import bpy; from mathutils import Vector; bpy.ops.object.select_all(action='SELECT'); bpy.ops.object.delete(use_global=False); bpy.ops.mesh.primitive_cube_add(location=(0,0,1)); cube=bpy.context.object; cube.rotation_euler=(0.35,0.2,0.65); bpy.ops.mesh.primitive_plane_add(size=20, location=(0,0,0)); bpy.ops.object.light_add(type='AREA', location=(4,-4,6)); bpy.context.object.data.energy=1200; bpy.context.object.data.shape='DISK'; bpy.context.object.data.size=5; bpy.ops.object.camera_add(location=(5,-5,4)); cam=bpy.context.object; cam.rotation_euler=((Vector((0,0,1))-cam.location).to_track_quat('-Z','Y').to_euler()); bpy.context.scene.camera=cam; scene=bpy.context.scene; scene.render.engine='BLENDER_EEVEE_NEXT'; scene.render.resolution_x=640; scene.render.resolution_y=360; scene.render.resolution_percentage=100; scene.render.image_settings.file_format='PNG'; scene.render.filepath=$pngJson; bpy.ops.render.render(write_still=True)"
+    $scene = "import bpy; from mathutils import Vector; bpy.ops.object.select_all(action='SELECT'); bpy.ops.object.delete(use_global=False); bpy.ops.mesh.primitive_cube_add(location=(0,0,1)); cube=bpy.context.object; cube.rotation_euler=(0.35,0.2,0.65); bpy.ops.mesh.primitive_plane_add(size=20, location=(0,0,0)); bpy.ops.object.light_add(type='AREA', location=(4,-4,6)); bpy.context.object.data.energy=1200; bpy.context.object.data.shape='DISK'; bpy.context.object.data.size=5; bpy.ops.object.camera_add(location=(5,-5,4)); cam=bpy.context.object; cam.rotation_euler=((Vector((0,0,1))-cam.location).to_track_quat('-Z','Y').to_euler()); bpy.context.scene.camera=cam; scene=bpy.context.scene; scene.render.engine='BLENDER_EEVEE'; scene.render.resolution_x=640; scene.render.resolution_y=360; scene.render.resolution_percentage=100; scene.render.image_settings.file_format='PNG'; scene.render.filepath=$pngJson; bpy.ops.render.render(write_still=True)"
     $blenderResult = Invoke-External $blender @('--background','--factory-startup','--python-expr',$scene)
     if ($blenderResult.exit_code -ne 0 -or -not (Test-Path -LiteralPath $png)) {
         throw "Blender self-test failed: $($blenderResult.stderr)"
@@ -247,7 +247,7 @@ function Invoke-Workload([string]$Type, [string]$Command) {
         'blender-render' {
             $exe = Get-CommandPath 'blender.exe'; if (-not $exe) { throw 'Blender is not installed or not on PATH.' }
             $input = Resolve-SafePath ([string]$spec.input); $output = Resolve-SafePath ([string]$spec.output) -Output
-            $args = @('-b',$input,'-o',$output,'-E','BLENDER_EEVEE_NEXT','-a'); if ($spec.engine -eq 'cycles') { $args[5] = 'CYCLES' }
+            $args = @('-b',$input,'-o',$output,'-E','BLENDER_EEVEE','-a'); if ($spec.engine -eq 'cycles') { $args[5] = 'CYCLES' }
             return Invoke-External $exe $args
         }
         'ffmpeg-transcode' {
