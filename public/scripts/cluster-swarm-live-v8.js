@@ -32,6 +32,9 @@
   let pollTimer = null;
   let requestBusy = false;
   let started = false;
+  let livePaused = false;
+  let nodeFilter = 'all';
+  const SAMPLE_MEDIA = 'https://github.com/ggerganov/whisper.cpp/raw/master/samples/jfk.wav';
 
   const token = () => sessionStorage.getItem('cp_password') || '';
   const esc = (v) => String(v ?? '')
@@ -113,7 +116,7 @@
 
   function ensureStateNote() {
     const heading = Array.from(tab.querySelectorAll('h3'))
-      .find((h) => h.textContent?.trim() === 'Swarm Nodes');
+      .find((h) => ['Swarm Nodes', 'Workers'].includes(h.textContent?.trim()));
     if (!heading) return null;
     let note = document.getElementById('swarm-live-state');
     if (!note) {
@@ -228,6 +231,55 @@
 
     ensureStateNote();
 
+    const stateNote = document.getElementById('swarm-live-state');
+    if (stateNote && !document.getElementById('swarm-useful-tools')) {
+      stateNote.insertAdjacentHTML('afterend', `
+        <div id="swarm-useful-tools" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin:0 0 12px">
+          <button type="button" id="swarm-sample">Load Sample</button>
+          <button type="button" id="swarm-copy-latest">Copy Latest Output</button>
+          <button type="button" id="swarm-live-toggle">Pause Live Updates</button>
+          <select id="swarm-node-filter" aria-label="Filter workers">
+            <option value="all">All workers</option>
+            <option value="online">Online only</option>
+            <option value="offline">Offline only</option>
+            <option value="busy">Working only</option>
+          </select>
+        </div>
+      `);
+      const tools = document.getElementById('swarm-useful-tools');
+      tools.querySelectorAll('button,select').forEach((control) => {
+        control.style.cssText = 'background:var(--color-bg);border:1px solid var(--color-border);border-radius:5px;padding:6px 9px;font-size:10px;color:var(--color-muted)';
+      });
+      document.getElementById('swarm-sample').addEventListener('click', () => {
+        const input = document.getElementById('swarm-job-cmd');
+        const type = document.getElementById('swarm-job-type');
+        const target = document.getElementById('swarm-job-device');
+        if (type) type.value = 'transcribe';
+        if (target) target.value = '__pcs__';
+        if (input) input.value = SAMPLE_MEDIA;
+        syncJobInput();
+        input?.focus();
+        notify('Sample loaded. Press Start when ready.');
+      });
+      document.getElementById('swarm-copy-latest').addEventListener('click', async () => {
+        const latest = current?.results?.[0];
+        const text = latest?.stdout || latest?.stderr || '';
+        if (!text) return notify('No completed output to copy', 'error');
+        await navigator.clipboard.writeText(text);
+        notify('Latest output copied');
+      });
+      document.getElementById('swarm-live-toggle').addEventListener('click', (event) => {
+        livePaused = !livePaused;
+        event.currentTarget.textContent = livePaused ? 'Resume Live Updates' : 'Pause Live Updates';
+        notify(livePaused ? 'Live updates paused' : 'Live updates resumed');
+        if (!livePaused) load(true);
+      });
+      document.getElementById('swarm-node-filter').addEventListener('change', (event) => {
+        nodeFilter = event.target.value;
+        if (current) render(current);
+      });
+    }
+
     const oldTarget = document.getElementById('swarm-job-device');
     if (oldTarget && oldTarget.tagName !== 'SELECT') {
       const select = document.createElement('select');
@@ -315,7 +367,13 @@
 
     const grid = document.getElementById('swarm-nodes');
     if (grid) {
-      grid.innerHTML = d.nodes.map((n) => {
+      const visibleNodes = d.nodes.filter((node) => {
+        if (nodeFilter === 'online') return node.online;
+        if (nodeFilter === 'offline') return !node.online;
+        if (nodeFilter === 'busy') return node.busy;
+        return true;
+      });
+      grid.innerHTML = visibleNodes.map((n) => {
         const color = n.busy ? 'var(--color-yellow)' : n.online ? 'var(--color-green)' : 'var(--color-red)';
         const label = n.busy ? 'BUSY' : n.online ? 'ONLINE' : 'OFFLINE';
         const active = (n.active_jobs || []).map(esc).join(', ');
@@ -352,8 +410,8 @@
 
     const results = document.getElementById('swarm-results');
     if (results) {
-      results.innerHTML = d.results.length ? d.results.map((r) => `
-        <div style="padding:9px;background:var(--color-bg);border-radius:5px;margin:5px 0;border-left:3px solid ${Number(r.exit_code) === 0 ? 'var(--color-green)' : 'var(--color-red)'}">
+      results.innerHTML = d.results.length ? d.results.map((r, resultIndex) => `
+        <div data-result-index="${resultIndex}" style="padding:9px;background:var(--color-bg);border-radius:5px;margin:5px 0;border-left:3px solid ${Number(r.exit_code) === 0 ? 'var(--color-green)' : 'var(--color-red)'}">
           <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px">
             <span><strong>${esc(r.type || 'shell')}</strong> · <code style="font-size:10px">${esc(r.device_id)}</code> · exit:${esc(r.exit_code ?? '?')}</span>
             <span style="color:var(--color-muted);font-size:10px">${ago(r.completed_at)}</span>
@@ -361,13 +419,46 @@
           ${r.cmd ? `<div style="font-size:10px;color:var(--color-muted);font-family:monospace;margin-bottom:4px">$ ${esc(r.cmd)}</div>` : ''}
           ${r.stdout ? `<pre style="margin:0;font-size:10px;color:var(--color-muted);white-space:pre-wrap;max-height:130px;overflow:auto">${esc(r.stdout)}</pre>` : ''}
           ${r.stderr ? `<pre style="margin:4px 0 0;font-size:10px;color:var(--color-red);white-space:pre-wrap;max-height:100px;overflow:auto">${esc(r.stderr)}</pre>` : ''}
-        </div>`).join('') : 'No Swarm results yet';
+        </div>`).join('') : 'No completed work yet';
+
+      results.querySelectorAll('[data-result-index]').forEach((card) => {
+        const index = Number(card.dataset.resultIndex);
+        const item = d.results[index];
+        const row = card.firstElementChild;
+        if (!row || row.querySelector('[data-result-action]')) return;
+        const actions = document.createElement('span');
+        actions.dataset.resultAction = '1';
+        actions.style.cssText = 'display:flex;gap:5px;align-items:center';
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.textContent = 'Copy';
+        copy.addEventListener('click', async () => {
+          const text = item?.stdout || item?.stderr || '';
+          if (!text) return notify('No output to copy', 'error');
+          await navigator.clipboard.writeText(text);
+          notify('Output copied');
+        });
+        actions.appendChild(copy);
+        if (item?.cmd?.includes('transcribe.py')) {
+          const retry = document.createElement('button');
+          retry.type = 'button';
+          retry.textContent = 'Retry';
+          retry.addEventListener('click', async () => {
+            await enqueueSwarm('shell', item.cmd, [item.device_id]);
+            notify('Retry queued on ' + item.device_id);
+            await load(true);
+          });
+          actions.appendChild(retry);
+        }
+        row.lastElementChild?.replaceWith(actions);
+      });
     }
 
     updateTargets(d.nodes);
   }
 
-  async function load() {
+  async function load(force=false) {
+    if (livePaused && !force) return current;
     if (requestBusy) return current;
     requestBusy = true;
     try {
