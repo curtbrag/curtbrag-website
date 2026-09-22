@@ -8,7 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$AgentVersion = '3.0.1'
+$AgentVersion = '3.0.2'
 $Root = Join-Path $env:LOCALAPPDATA 'CurtCompute'
 $AgentPath = Join-Path $Root 'curt-hybrid-workload-agent.ps1'
 $ConfigPath = Join-Path $Root 'agent-config.json'
@@ -95,6 +95,9 @@ function Get-Config {
 
 function Invoke-Swarm([string]$Action, [string]$Method='GET', $Body=$null, $Config, [hashtable]$Query=@{}) {
     $headers = @{ Authorization="Bearer $($Config.password)"; 'Content-Type'='application/json' }
+    if ($Query.ContainsKey('device_id') -and $Query.device_id) {
+        $headers['X-Device-Id'] = [string]$Query.device_id
+    }
     $queryParts = @("action=$([uri]::EscapeDataString($Action))", "_=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())")
     foreach ($entry in $Query.GetEnumerator()) {
         $queryParts += "$([uri]::EscapeDataString([string]$entry.Key))=$([uri]::EscapeDataString([string]$entry.Value))"
@@ -217,7 +220,11 @@ function Run-Agent {
                 finally { if ($saladRecord) { Resume-Salad $saladRecord } }
                 Send-Result $config $job $result; Write-AgentLog "Finished $($job.id) exit=$($result.exit_code)"
             }
-        } catch { Write-AgentLog "Poll error: $($_.Exception.Message)" }
+        } catch {
+            $detail = $_.Exception.Message
+            if ($_.ErrorDetails.Message) { $detail += " body=$($_.ErrorDetails.Message)" }
+            Write-AgentLog "Poll error: $detail"
+        }
         Start-Sleep -Seconds ([math]::Max(5,$PollSeconds))
     }
 }
