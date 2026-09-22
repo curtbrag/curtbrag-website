@@ -2,7 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 ---
 
-<Layout title="Phone Cluster - Curtis Bragdon" description="Live status dashboard for Curtis Bragdon's 10-node OnePlus 6T phone cluster running postmarketOS and K3s.">
+<Layout title="Compute Cluster - Curtis Bragdon" description="Live status dashboard for Curtis Bragdon's 11-device hybrid compute cluster: eight Android/Termux phones and three Linux systems.">
 
   <!-- ═══════════════════════════════════ HERO ═══════════════════════════════════ -->
   <section class="relative py-14 md:py-20 overflow-hidden">
@@ -13,20 +13,20 @@ import Layout from '../../layouts/Layout.astro';
 
     <div class="relative max-w-6xl mx-auto px-4 sm:px-6 text-center">
       <div class="text-5xl mb-4">
-        <i class="fa-solid fa-mobile-screen-button text-brand"></i>
+        <i class="fa-solid fa-network-wired text-brand"></i>
       </div>
       <h1 class="text-3xl md:text-5xl font-bold mb-3">
-        <span class="gradient-text">Phone Cluster</span>
+        <span class="gradient-text">Compute Cluster</span>
       </h1>
       <p class="text-text-secondary max-w-2xl mx-auto mb-6 text-base">
-        10 OnePlus 6T phones running postmarketOS &bull; K3s Kubernetes &bull; XMR Mining
+        11-device hybrid fleet &bull; 8 Android/Termux phones &bull; 3 Linux systems
       </p>
       <div class="flex flex-wrap justify-center gap-3 text-sm">
         <span class="inline-flex items-center gap-2 bg-panel border border-border rounded-lg px-4 py-2">
-          <i class="fa-brands fa-linux text-yellow"></i> postmarketOS
+          <i class="fa-brands fa-android text-green"></i> Android / Termux
         </span>
         <span class="inline-flex items-center gap-2 bg-panel border border-border rounded-lg px-4 py-2">
-          <i class="fa-solid fa-dharmachakra" style="color:#326ce5"></i> K3s v1.34
+          <i class="fa-solid fa-layer-group" style="color:#326ce5"></i> K3s / Swarm
         </span>
         <span class="inline-flex items-center gap-2 bg-panel border border-border rounded-lg px-4 py-2">
           <i class="fa-solid fa-microchip text-blue"></i> ARM64 / aarch64
