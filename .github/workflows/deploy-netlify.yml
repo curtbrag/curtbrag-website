@@ -15,6 +15,12 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      NETLIFY_SITE_ID: f72cbb6e-d6de-4acc-969e-27b0cf4b1c23
+      TOKEN_PRIMARY: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      TOKEN_ALT1: ${{ secrets.NETLIFY_TOKEN }}
+      TOKEN_ALT2: ${{ secrets.NETLIFY_ACCESS_TOKEN }}
+      TOKEN_ALT3: ${{ secrets.NETLIFY_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -22,14 +28,17 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Verify Netlify credentials
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      - name: Select Netlify credential
+        shell: bash
         run: |
           set -euo pipefail
-          [ -n "$NETLIFY_AUTH_TOKEN" ] || { echo 'NETLIFY_AUTH_TOKEN secret is missing'; exit 2; }
-          [ -n "$NETLIFY_SITE_ID" ] || { echo 'NETLIFY_SITE_ID secret is missing'; exit 2; }
+          token="$TOKEN_PRIMARY"
+          [ -n "$token" ] || token="$TOKEN_ALT1"
+          [ -n "$token" ] || token="$TOKEN_ALT2"
+          [ -n "$token" ] || token="$TOKEN_ALT3"
+          [ -n "$token" ] || { echo 'No Netlify API token secret is configured in GitHub Actions'; exit 2; }
+          echo "NETLIFY_AUTH_TOKEN=$token" >> "$GITHUB_ENV"
+          echo 'Netlify credential selected'
 
       - name: Install dependencies
         run: npm install --no-package-lock --no-audit --no-fund
@@ -38,9 +47,7 @@ jobs:
         run: npm run build
 
       - name: Deploy production to Netlify
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        shell: bash
         run: |
           set -euo pipefail
           npx --yes netlify-cli deploy \
