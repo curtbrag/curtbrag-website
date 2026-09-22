@@ -1,4 +1,10 @@
 [[redirects]]
+  from = "/api/jobs"
+  to = "/.netlify/functions/cluster-jobs"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/cluster"
   to = "/.netlify/functions/swarm-core"
   status = 200
