@@ -155,28 +155,45 @@
     if (!box || box.dataset.clusterV8 === '1') return;
     box.dataset.clusterV8 = '1';
     box.innerHTML = `
-      <button data-v8-type="mining-status" data-v8-target="__all__">Miner Status All</button>
+      <button data-v8-type="status" data-v8-target="__all__">Check All Nodes</button>
+      <button data-v8-type="mining-status" data-v8-target="__all__">Check All Miners</button>
       <button data-v8-type="mining-stop" data-v8-target="__all__">Stop All Miners</button>
-      <button data-v8-type="mining-start" data-v8-target="__phones__">Start Phones (Thermal Safe)</button>
-      <button data-v8-type="mining-stop" data-v8-target="__phones__">Stop Phones</button>
-      <button data-v8-type="mining-status" data-v8-target="__pcs__">PC Miner Status</button>
-      <button data-v8-type="mining-stop" data-v8-target="__pcs__">Stop PC Miners</button>
-      <button data-v8-type="mining-start" data-v8-target="Alina">Alina Start</button>
-      <button data-v8-type="mining-stop" data-v8-target="Alina">Alina Stop</button>
-      <button data-v8-type="mining-start" data-v8-target="SteamDeck">SteamDeck Start</button>
-      <button data-v8-type="mining-stop" data-v8-target="SteamDeck">SteamDeck Stop</button>
-      <button data-v8-type="mining-start" data-v8-target="viki">Viki Start</button>
-      <button data-v8-type="mining-stop" data-v8-target="viki">Viki Stop</button>
-      <button data-v8-type="mining-status" data-v8-target="Nexus">Nexus Status</button>
-      <button data-v8-type="mining-stop" data-v8-target="Nexus">Nexus Stop</button>
     `;
-    box.querySelectorAll('[data-v8-type]').forEach((button) => {
+        box.querySelectorAll('[data-v8-type]').forEach((button) => {
       button.addEventListener('click', () => runAction(button.dataset.v8Type, button.dataset.v8Target));
     });
   }
 
   function ensureUi() {
     document.querySelectorAll('[onclick="seedFleet()"]').forEach((button) => button.remove());
+
+    const tabs = Array.from(document.querySelectorAll('.tab-btn'));
+    const workTab = tabs.find((button) => button.dataset.tab === 'swarm');
+    const advancedTabs = new Set(['config', 'analytics', 'jobs', 'commands', 'events', 'alerts']);
+    if (workTab) workTab.textContent = 'Work';
+    tabs.forEach((button) => {
+      if (advancedTabs.has(button.dataset.tab)) button.style.display = 'none';
+    });
+    if (workTab && !document.getElementById('cluster-more-tabs')) {
+      const more = document.createElement('button');
+      more.id = 'cluster-more-tabs';
+      more.type = 'button';
+      more.className = 'tab-btn';
+      more.textContent = 'More';
+      more.addEventListener('click', () => {
+        const showing = more.dataset.showing === '1';
+        tabs.forEach((button) => {
+          if (advancedTabs.has(button.dataset.tab)) button.style.display = showing ? 'none' : '';
+        });
+        more.dataset.showing = showing ? '0' : '1';
+        more.textContent = showing ? 'More' : 'Less';
+      });
+      workTab.parentElement?.appendChild(more);
+    }
+    if (workTab && document.documentElement.dataset.clusterSimpleView !== '1') {
+      document.documentElement.dataset.clusterSimpleView = '1';
+      workTab.click();
+    }
 
     const stats = tab.firstElementChild;
     if (stats && !document.getElementById('swarm-assignments')) {
@@ -206,32 +223,27 @@
     if (typeSelect && typeSelect.dataset.clusterV8 !== '1') {
       typeSelect.dataset.clusterV8 = '1';
       typeSelect.innerHTML = `
-        <option value="status">node-status</option>
-        <option value="mining-status">mining-status</option>
-        <option value="mining-stop">mining-stop</option>
-        <option value="mining-start">mining-start</option>
-        <option value="mining-restart">mining-restart</option>
-        <option value="echo">ping</option>
-        <option value="transcribe">transcribe audio/video</option>
-        <option value="shell">shell (advanced)</option>
+        <option value="transcribe">Transcribe audio or video</option>
+        <option value="status">Check node status</option>
+        <option value="mining-status">Check miner status</option>
+        <option value="mining-stop">Stop all miners</option>
+        <option value="shell">Advanced command</option>
       `;
-      typeSelect.value = 'mining-status';
+      typeSelect.value = 'transcribe';
       typeSelect.addEventListener('change', syncJobInput);
     }
     syncJobInput();
 
     const dispatchHeading = Array.from(tab.querySelectorAll('h3'))
       .find((h) => h.textContent?.includes('Dispatch Swarm Job'));
+    if (dispatchHeading) dispatchHeading.textContent = 'Run Work';
     const dispatchCard = dispatchHeading?.parentElement;
     if (dispatchCard && !document.getElementById('swarm-miner-presets')) {
       dispatchCard.insertAdjacentHTML('afterbegin', `
         <div id="swarm-miner-presets" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-bottom:10px">
-          <button type="button" data-v8-type="status" data-v8-target="__all__">Node Status</button>
-          <button type="button" data-v8-type="mining-status" data-v8-target="__all__">Miner Status</button>
+          <button type="button" data-v8-type="status" data-v8-target="__all__">Check Nodes</button>
+          <button type="button" data-v8-type="mining-status" data-v8-target="__all__">Check Miners</button>
           <button type="button" data-v8-type="mining-stop" data-v8-target="__all__">Stop All Miners</button>
-          <button type="button" data-v8-type="mining-start" data-v8-target="__phones__">Start Phones (Thermal Safe)</button>
-          <button type="button" data-v8-type="mining-stop" data-v8-target="__phones__">Stop Phones</button>
-          <button type="button" data-v8-type="mining-start" data-v8-target="__pcs__">Start PCs (Nexus blocked)</button>
         </div>
       `);
       dispatchCard.querySelectorAll('#swarm-miner-presets button').forEach((button) => {
@@ -246,7 +258,7 @@
   function updateTargets(nodes) {
     const select = document.getElementById('swarm-job-device');
     if (!select || select.tagName !== 'SELECT') return;
-    const previous = select.value || '__all__';
+    const previous = select.value || '__pcs__';
     select.innerHTML = `
       <option value="__all__">All 12 canonical devices</option>
       <option value="__phones__">All 8 phones</option>
@@ -560,9 +572,9 @@ async function syncPcDesired(type, targets) {
   window.onSwarmTabClick = start;
 
   window.submitSwarmJob = async () => {
-    const type = document.getElementById('swarm-job-type')?.value || 'mining-status';
+    const type = document.getElementById('swarm-job-type')?.value || 'transcribe';
     const cmd = document.getElementById('swarm-job-cmd')?.value?.trim() || '';
-    const target = document.getElementById('swarm-job-device')?.value || '__all__';
+    const target = document.getElementById('swarm-job-device')?.value || '__pcs__';
     try { return await runAction(type, target, cmd); } catch { return null; }
   };
 
