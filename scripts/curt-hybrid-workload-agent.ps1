@@ -8,7 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$AgentVersion = '3.0.2'
+$AgentVersion = '3.0.3'
 $Root = Join-Path $env:LOCALAPPDATA 'CurtCompute'
 $AgentPath = Join-Path $Root 'curt-hybrid-workload-agent.ps1'
 $ConfigPath = Join-Path $Root 'agent-config.json'
@@ -230,6 +230,8 @@ function Run-Agent {
 }
 
 function Install-Agent {
+    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 750
     New-Item -ItemType Directory -Force -Path $Root | Out-Null
     if ([IO.Path]::GetFullPath($PSCommandPath) -ne [IO.Path]::GetFullPath($AgentPath)) { Copy-Item -LiteralPath $PSCommandPath -Destination $AgentPath -Force }
     $password = Read-PlainDashboardPassword
