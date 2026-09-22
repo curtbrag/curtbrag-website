@@ -135,9 +135,24 @@ exports.handler = async (event) => {
   }
 
   const id=cleanText(body.jobId,120);
-  const node=cleanNode(body.node);
   const job=id ? await getJob(id) : null;
-  if (!job || !node || !job.tasks?.[node]) return response(404,h,{ok:false,error:"Job task not found"});
+  if (!job) return response(404,h,{ok:false,error:"Job not found"});
+
+  if (action==="cancel" || action==="retry") {
+    for (const t of Object.values(job.tasks || {})) {
+      if (action==="cancel" && (t.status==="queued" || t.status==="running")) {
+        t.status="cancelled"; t.completedAt=new Date().toISOString(); delete t.leaseUntil;
+      }
+      if (action==="retry" && (t.status==="failed" || t.status==="cancelled")) {
+        t.status="queued"; t.progress=0; delete t.error; delete t.output; delete t.completedAt; delete t.leaseUntil;
+      }
+    }
+    await putJob(job);
+    return response(200,h,{ok:true,job:publicJob(job)});
+  }
+
+  const node=cleanNode(body.node);
+  if (!node || !job.tasks?.[node]) return response(404,h,{ok:false,error:"Job task not found"});
   const task=job.tasks[node];
 
   if (action==="progress") {
@@ -147,10 +162,6 @@ exports.handler = async (event) => {
     task.status="completed"; task.progress=100; task.output=cleanText(body.output,12000); task.completedAt=new Date().toISOString(); delete task.leaseUntil;
   } else if (action==="fail") {
     task.status="failed"; task.error=cleanText(body.error||"Workload failed",3000); task.completedAt=new Date().toISOString(); delete task.leaseUntil;
-  } else if (action==="cancel") {
-    for (const t of Object.values(job.tasks)) if (t.status==="queued" || t.status==="running") { t.status="cancelled"; t.completedAt=new Date().toISOString(); delete t.leaseUntil; }
-  } else if (action==="retry") {
-    for (const t of Object.values(job.tasks)) if (t.status==="failed" || t.status==="cancelled") { t.status="queued"; t.progress=0; delete t.error; delete t.output; delete t.completedAt; delete t.leaseUntil; }
   } else return response(400,h,{ok:false,error:"Unknown action"});
 
   await putJob(job);
