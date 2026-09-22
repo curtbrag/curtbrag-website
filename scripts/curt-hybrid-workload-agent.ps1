@@ -1,6 +1,6 @@
 #Requires -Version 7.0
 param(
-    [ValidateSet('Audit','Install','Run','Status','Stop')]
+    [ValidateSet('Audit','Install','InstallTools','Run','Status','Stop')]
     [string]$Mode = 'Audit',
     [string]$DeviceId = 'RenderRig',
     [string]$SwarmUrl = 'https://curtbrag.com/api/cluster',
@@ -8,7 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$AgentVersion = '3.0.3'
+$AgentVersion = '3.1.0'
 $Root = Join-Path $env:LOCALAPPDATA 'CurtCompute'
 $AgentPath = Join-Path $Root 'curt-hybrid-workload-agent.ps1'
 $ConfigPath = Join-Path $Root 'agent-config.json'
@@ -25,7 +25,50 @@ function Write-AgentLog([string]$Message) {
 function Get-CommandPath([string]$Name) {
     $command = Get-Command $Name -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($command) { return $command.Source }
+    $fallbacks = switch ($Name.ToLowerInvariant()) {
+        'blender.exe' { @((Join-Path $env:ProgramFiles 'Blender Foundation\Blender *\blender.exe')) }
+        'ffmpeg.exe' {
+            @(
+                (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\ffmpeg.exe'),
+                (Join-Path $env:ProgramFiles 'WinGet\Links\ffmpeg.exe')
+            )
+        }
+        default { @() }
+    }
+    foreach ($pattern in $fallbacks) {
+        $match = Get-Item -Path $pattern -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+        if ($match) { return $match.FullName }
+    }
     return $null
+}
+
+function Install-ProductionTools {
+    $winget = Get-CommandPath 'winget.exe'
+    if (-not $winget) { throw 'WinGet is required. Install or update App Installer from Microsoft Store, then retry.' }
+
+    $packages = @(
+        [pscustomobject]@{ Id='BlenderFoundation.Blender'; Name='Blender' },
+        [pscustomobject]@{ Id='Gyan.FFmpeg'; Name='FFmpeg' }
+    )
+
+    foreach ($package in $packages) {
+        Write-Host "Installing $($package.Name)..." -ForegroundColor Cyan
+        & $winget install --id $package.Id --exact --source winget --silent --disable-interactivity --accept-package-agreements --accept-source-agreements
+        if ($LASTEXITCODE -ne 0) { throw "$($package.Name) installation failed with exit code $LASTEXITCODE." }
+    }
+
+    $blender = Get-CommandPath 'blender.exe'
+    $ffmpeg = Get-CommandPath 'ffmpeg.exe'
+    if (-not $blender -or -not $ffmpeg) { throw 'Installation finished, but one or more tools could not be located. Sign out and back in, then run -Mode Status.' }
+
+    Write-Host 'Production tools installed and verified.' -ForegroundColor Green
+    [ordered]@{
+        blender = (& $blender --version 2>$null | Select-Object -First 1)
+        blender_path = $blender
+        ffmpeg = (& $ffmpeg -version 2>$null | Select-Object -First 1)
+        ffmpeg_path = $ffmpeg
+        nvenc = [bool]((& $ffmpeg -hide_banner -encoders 2>$null | Select-String 'h264_nvenc'))
+    } | ConvertTo-Json -Depth 4
 }
 
 function Get-GpuInfo {
@@ -251,6 +294,7 @@ function Install-Agent {
 switch ($Mode) {
     'Audit' { Get-Audit | ConvertTo-Json -Depth 8 }
     'Install' { Install-Agent }
+    'InstallTools' { Install-ProductionTools }
     'Run' { Run-Agent }
     'Status' { $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue; [ordered]@{ installed=(Test-Path $AgentPath); task_state=if($task){[string]$task.State}else{'Missing'}; audit=(Get-Audit); log=$LogPath } | ConvertTo-Json -Depth 9 }
     'Stop' { Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue; Write-Host 'Hybrid worker stopped. Salad was not changed.' }
