@@ -20,10 +20,12 @@
   const IDS = new Set(FLEET.map(([id]) => id));
   const PHONE_IDS = new Set(Object.keys(PHONE_TARGET_THREADS));
   const PC_IDS = new Set(['Alina','Nexus','SteamDeck','viki']);
+  const PC_TARGET_THREADS = { Alina:12, Nexus:0, SteamDeck:4, viki:4 };
   const MINER_TYPES = new Set(['mining-status','mining-stop','mining-start','mining-restart']);
 
   const legacyQueueShortcut = window.queueShortcut;
   const legacyDispatchCommand = window.dispatchCommand;
+  const legacyQueueCmd = window.queueCmd;
 
   let current = null;
   let pollTimer = null;
@@ -369,6 +371,39 @@
     return ({ nexus:'Nexus', steamdeck:'SteamDeck', alina:'Alina', viki:'viki' }[lower] || v);
   }
 
+  async function resolveTarget(value) {
+  const normalized = normalizeTarget(value);
+  if (["__all__","all","__phones__","phones","__pcs__","pcs"].includes(normalized)) return normalized;
+  if (IDS.has(normalized)) return normalized;
+
+  try {
+    const data = await controlApi('devices');
+    const devices = Array.isArray(data.devices) ? data.devices : [];
+    const hit = devices.find((d) => d.id === value || String(d.hostname || '').toLowerCase() === String(value || '').toLowerCase());
+    if (hit) return normalizeTarget(hit.hostname);
+  } catch {}
+  return normalized;
+}
+
+async function syncPcDesired(type, targets) {
+  if (!targets.length || type === 'mining-status') return;
+  const data = await controlApi('devices');
+  const devices = Array.isArray(data.devices) ? data.devices : [];
+  const enabled = type !== 'mining-stop';
+  for (const hostname of targets) {
+    const device = devices.find((d) => String(d.hostname || '').toLowerCase() === hostname.toLowerCase());
+    if (!device) continue;
+    await controlApi('update-desired', 'POST', {
+      device_id: device.id,
+      desired: {
+        miner_enabled: enabled,
+        workload_enabled: enabled,
+        thread_count: PC_TARGET_THREADS[hostname] ?? 4,
+      },
+    });
+  }
+}
+
   function phoneTargets(value) {
     const v = normalizeTarget(value);
     if (v === '__all__' || v === 'all' || v === '__phones__' || v === 'phones') return Array.from(PHONE_IDS);
@@ -453,9 +488,10 @@
   async function runAction(type, target='__all__', cmd='') {
     try {
       if (!current) await load();
+      const resolvedTarget = await resolveTarget(target);
 
       if (!MINER_TYPES.has(type)) {
-        const targets = swarmTargets(target);
+        const targets = swarmTargets(resolvedTarget);
         const data = await enqueueSwarm(type, cmd, targets);
         notify(`${type}: ${data.target_count} Swarm target${data.target_count === 1 ? '' : 's'}`);
         await load();
@@ -463,16 +499,16 @@
       }
 
       if (type === 'mining-status') {
-        const targets = swarmTargets(target);
+        const targets = swarmTargets(resolvedTarget);
         const data = await enqueueSwarm(type, '', targets);
         notify(`mining-status: ${data.target_count} Swarm target${data.target_count === 1 ? '' : 's'}`);
         await load();
         return data;
       }
 
-      const phones = phoneTargets(target);
-      const pcs = pcTargets(target, type);
-      const normalized = normalizeTarget(target);
+      const phones = phoneTargets(resolvedTarget);
+      const pcs = pcTargets(resolvedTarget, type);
+      const normalized = normalizeTarget(resolvedTarget);
       if ((type === 'mining-start' || type === 'mining-restart') && normalized === 'Nexus') {
         throw new Error('Nexus mining start is blocked by thermal policy');
       }
@@ -484,6 +520,7 @@
         parts.push(`${phoneResult.count} phone${phoneResult.count === 1 ? '' : 's'} via Windows ADB thermal control`);
       }
       if (pcs.length) {
+        await syncPcDesired(type, pcs);
         const pcResult = await enqueueSwarm(type, '', pcs);
         parts.push(`${pcResult.target_count} PC${pcResult.target_count === 1 ? '' : 's'} via Swarm`);
       }
@@ -530,6 +567,13 @@
     if (typeof legacyQueueShortcut === 'function') return legacyQueueShortcut(target, type);
     return runAction(type, target);
   };
+
+
+window.queueCmd = async (deviceId, type) => {
+  if (MINER_TYPES.has(type)) return runAction(type, deviceId);
+  if (typeof legacyQueueCmd === 'function') return legacyQueueCmd(deviceId, type);
+  return controlApi('queue-command', 'POST', { target:deviceId, type });
+};
 
   window.fleetMining = async (enabled, target) => runAction(enabled ? 'mining-start' : 'mining-stop', target || '__all__');
 

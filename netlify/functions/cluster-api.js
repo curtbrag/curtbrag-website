@@ -20,12 +20,24 @@ function openStore(name) {
     process.env.NETLIFY_TOKEN ||
     undefined;
 
-  if (siteID && token) {
-    return getStore(name, { siteID, token });
-  }
-
-  return getStore(name);
+  const options = { name, consistency: "strong" };
+  if (siteID) options.siteID = siteID;
+  if (token) options.token = token;
+  return getStore(options);
 }
+const CANONICAL_HOSTNAMES = [
+  "phone173", "phone174", "phone176", "phone177",
+  "phone191", "phone195", "phone253", "phone254",
+  "Alina", "Nexus", "SteamDeck", "viki",
+];
+const CANONICAL_HOSTNAME_MAP = new Map(
+  CANONICAL_HOSTNAMES.map((name) => [name.toLowerCase(), name])
+);
+
+function canonicalHostname(value) {
+  return CANONICAL_HOSTNAME_MAP.get(String(value || "").toLowerCase()) || null;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function safeCompare(a, b) {
@@ -96,18 +108,24 @@ async function authOperator(headers) {
 // ─── Device helpers ───────────────────────────────────────────────────────────
 
 async function getAllDevices() {
-  try {
-    const store = openStore("cp-devices");
-    const list = await store.list();
-    const devices = [];
-    for (const entry of list.blobs) {
-      const d = await store.get(entry.key, { type: "json" });
-      if (d) devices.push(d);
-    }
-    return devices;
-  } catch {
-    return [];
+  const store = openStore("cp-devices");
+  const list = await store.list();
+  const byHostname = new Map();
+
+  for (const entry of list.blobs) {
+    const d = await store.get(entry.key, { type: "json" });
+    if (!d) continue;
+    const canonical = canonicalHostname(d.hostname);
+    if (!canonical) continue;
+
+    const normalized = { ...d, hostname: canonical };
+    const previous = byHostname.get(canonical);
+    const stamp = Number(normalized.last_seen_at || normalized.registered_at || 0);
+    const previousStamp = Number(previous?.last_seen_at || previous?.registered_at || 0);
+    if (!previous || stamp >= previousStamp) byHostname.set(canonical, normalized);
   }
+
+  return CANONICAL_HOSTNAMES.map((hostname) => byHostname.get(hostname)).filter(Boolean);
 }
 
 async function getDevice(deviceId) {
@@ -248,7 +266,7 @@ const DEFAULT_PROFILES = {
     description: "6-thread profile proven on node1 @ ~525 H/s. Local Nexus pool. 60°C limit.",
     device_class: "phone",
     config: {
-      pools: [{ url: "192.168.1.179:10128", user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT", pass: "x", tls: false }],
+      pools: [{ url: "gulf.moneroocean.stream:10128", user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT", pass: "x", tls: false }],
       cpu: { enabled: true, "huge-pages": false, priority: 2, threads: 6 },
       randomx: { mode: "light" },
       "log-file": "~/cluster/logs/xmrig.log",
@@ -272,7 +290,7 @@ const DEFAULT_PROFILES = {
     config: {
       pools: [
         {
-          url: "192.168.1.179:10128",
+          url: "gulf.moneroocean.stream:10128",
           user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT",
           pass: "node-default",
           tls: false,
@@ -301,7 +319,7 @@ const DEFAULT_PROFILES = {
     config: {
       pools: [
         {
-          url: "192.168.1.179:10128",
+          url: "gulf.moneroocean.stream:10128",
           user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT",
           pass: "node-cool",
           tls: false,
@@ -328,7 +346,7 @@ const DEFAULT_PROFILES = {
     config: {
       pools: [
         {
-          url: "192.168.1.179:10128",
+          url: "gulf.moneroocean.stream:10128",
           user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT",
           pass: "steamdeck",
           tls: true,
@@ -786,7 +804,8 @@ exports.handler = async (event, context) => {
     if (postAction === "queue-command") {
       const VALID_TARGETS = [
         "all","phones","pcs","steamdeck","viki","nexus","controller","skynet",
-        "phone173","phone174","phone175","phone176","phone177","phone191","phone253","phone254",
+        "phone173","phone174","phone176","phone177","phone191","phone195","phone253","phone254",
+        "Alina","Nexus","SteamDeck",
       ];
       const VALID_COMMANDS = [
         "start","stop","restart","wake","sleep",
@@ -1148,21 +1167,21 @@ exports.handler = async (event, context) => {
       const FLEET = [
         { hostname: "phone173", ip: "192.168.1.173", device_class: "phone", cluster_role: "worker" },
         { hostname: "phone174", ip: "192.168.1.174", device_class: "phone", cluster_role: "worker" },
-        { hostname: "phone175", ip: "192.168.1.175", device_class: "phone", cluster_role: "worker" },
+        { hostname: "phone195", ip: "192.168.1.195", device_class: "phone", cluster_role: "worker" },
         { hostname: "phone176", ip: "192.168.1.176", device_class: "phone", cluster_role: "worker" },
         { hostname: "phone177", ip: "192.168.1.177", device_class: "phone", cluster_role: "worker" },
         { hostname: "phone191", ip: "192.168.1.191", device_class: "phone", cluster_role: "worker" },
         { hostname: "phone253", ip: "192.168.1.253", device_class: "phone", cluster_role: "worker" },
         { hostname: "phone254", ip: "192.168.1.254", device_class: "phone", cluster_role: "worker" },
-        { hostname: "viki", ip: "192.168.1.180", device_class: "pc", cluster_role: "control-plane" },
-        { hostname: "nexus", ip: "192.168.1.179", device_class: "pc", cluster_role: "control-plane" },
-        { hostname: "steamdeck", ip: "192.168.1.166", device_class: "steamdeck", cluster_role: "worker" },
-        { hostname: "skynet", ip: "192.168.1.188", device_class: "pc", cluster_role: "control-plane" },
+        { hostname: "viki", ip: "192.168.1.239", device_class: "pc", cluster_role: "worker" },
+        { hostname: "Nexus", ip: "192.168.1.192", device_class: "pc", cluster_role: "worker" },
+        { hostname: "SteamDeck", ip: "192.168.1.166", device_class: "steamdeck", cluster_role: "worker" },
+        { hostname: "Alina", ip: "192.168.1.193", device_class: "pc", cluster_role: "worker" },
       ];
       const existing = await getAllDevices();
-      const existingHostnames = new Set(existing.map(d => d.hostname));
+      const existingHostnames = new Set(existing.map(d => String(d.hostname || "").toLowerCase()));
       const results = await Promise.all(FLEET.map(async (n) => {
-        if (existingHostnames.has(n.hostname)) return { hostname: n.hostname, skipped: true };
+        if (existingHostnames.has(n.hostname.toLowerCase())) return { hostname: n.hostname, skipped: true };
         const isPhone = n.device_class === "phone";
         const newId = `${n.hostname}-${genId().slice(0, 8)}`;
         const device = {
@@ -1180,7 +1199,7 @@ exports.handler = async (event, context) => {
           workload_type: "mining", workload_enabled: isPhone,
           workload_profile: isPhone ? "phone-mining" : "default",
           miner_enabled: isPhone, mining_level: isPhone ? 3 : 2,
-          pool_url: "192.168.1.179", pool_port: 10128,
+          pool_url: "gulf.moneroocean.stream", pool_port: 10128,
           pool_user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT",
           pool_pass: "x", pool_tls: false,
           thread_count: isPhone ? 6 : 4, force_threads: false,
@@ -1250,7 +1269,7 @@ exports.handler = async (event, context) => {
         workload_profile: isPhoneClass ? "phone-mining" : "default",
         miner_enabled: isPhoneClass,
         mining_level: isPhoneClass ? 3 : 2,
-        pool_url: "192.168.1.179",
+        pool_url: "gulf.moneroocean.stream",
         pool_port: 10128,
         pool_user: "44Ris5ep9FE6hmwAbi7CtAV5NexMuZixhKeGk8xDFHNYWi57TjsMXEyEFQyVWNQxLkaPY1xVPjoTY2yaTfkTzkCMRur3PwT",
         pool_pass: "x",
