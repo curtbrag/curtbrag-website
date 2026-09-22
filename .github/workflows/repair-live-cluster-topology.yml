@@ -1,4 +1,4 @@
-name: Repair Live Cluster Topology
+name: Repair Live Cluster Dashboard
 
 on:
   workflow_dispatch:
@@ -18,62 +18,315 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Patch stale cluster topology
+      - name: Repair control API and dashboard
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
-          def patch(path, replacements):
-              p = Path(path)
-              s = p.read_text()
-              old = s
-              for a,b in replacements:
-                  s = s.replace(a,b)
-              if s != old:
-                  p.write_text(s)
-                  print('patched', path)
-              else:
-                  print('no changes', path)
+          def read(path):
+              return Path(path).read_text()
 
-          patch('netlify/functions/cluster-api.js', [
-              ('{ hostname: "phone175", ip: "192.168.1.175", device_class: "phone", cluster_role: "worker" }',
-               '{ hostname: "phone195", ip: "192.168.1.195", device_class: "phone", cluster_role: "worker" }'),
-              ('{ hostname: "nexus", ip: "192.168.1.179", device_class: "pc", cluster_role: "control-plane" }',
-               '{ hostname: "nexus", ip: "192.168.1.192", device_class: "pc", cluster_role: "control-plane" }'),
-              ('url: "192.168.1.179:10128"', 'url: "gulf.moneroocean.stream:10128"'),
-              ('pool_url: "192.168.1.179"', 'pool_url: "gulf.moneroocean.stream"'),
-          ])
+          def write(path, text):
+              Path(path).write_text(text)
+              print('patched', path)
 
-          patch('src/pages/cluster/dashboard.astro', [
-              ("d.desired?.pool_url || '192.168.1.179'", "d.desired?.pool_url || 'gulf.moneroocean.stream'"),
-          ])
+          # -----------------------------------------------------------------
+          # cluster-api.js: strong consistency + canonical 12-node topology.
+          # -----------------------------------------------------------------
+          p = Path('netlify/functions/cluster-api.js')
+          s = p.read_text()
 
-          patch('scripts/curt-cluster-bridge.example.sh', [
-              ('PHONE_USER="${PHONE_USER:-u0_a191}"', 'PHONE_USER="${PHONE_USER:-user}"'),
-              ('PHONES="${PHONES:-173 174 175 176 177 191 253 254}"', 'PHONES="${PHONES:-173 174 195 176 177 191 253 254}"'),
-              ('NEXUS_IP="${NEXUS_IP:-192.168.1.178}"', 'NEXUS_IP="${NEXUS_IP:-192.168.1.192}"'),
-          ])
+          old_open = '''function openStore(name) {
+            const siteID =
+              process.env.NETLIFY_BLOBS_SITE_ID ||
+              process.env.SITE_ID ||
+              undefined;
 
-          patch('scripts/install-cluster-bridge.sh', [
-              ('PHONES="173 174 175 176 177 191 253 254"', 'PHONES="173 174 195 176 177 191 253 254"'),
-              ('defaults: nexus@neo:192.168.1.178', 'defaults: nexus@neo:192.168.1.192'),
-              ('NEXUS_IP=192.168.1.178', 'NEXUS_IP=192.168.1.192'),
-          ])
+            const token =
+              process.env.NETLIFY_BLOBS_TOKEN ||
+              process.env.NETLIFY_ACCESS_TOKEN ||
+              process.env.NETLIFY_TOKEN ||
+              undefined;
 
-          patch('.github/workflows/deploy-bridge.yml', [
-              ("default: 'nexus'", "default: '100.113.84.72'"),
-              ("TARGET_HOST: ${{ inputs.target_host || 'nexus' }}", "TARGET_HOST: ${{ inputs.target_host || '100.113.84.72' }}"),
-              ('POOL=gulf.moneroocean.stream:10128\n          SSH_KEY=$HOME/.ssh/id_ed25519',
-               'POOL=gulf.moneroocean.stream:10128\n          SSH_KEY=$HOME/.ssh/id_ed25519\n          PHONE_USER=user\n          PHONE_PORT=8022\n          PHONES="173 174 195 176 177 191 253 254"\n          NEXUS_IP=192.168.1.192'),
-          ])
+            if (siteID && token) {
+              return getStore(name, { siteID, token });
+            }
+
+            return getStore(name);
+          }'''
+          new_open = '''function openStore(name) {
+            const siteID =
+              process.env.NETLIFY_BLOBS_SITE_ID ||
+              process.env.SITE_ID ||
+              undefined;
+
+            const token =
+              process.env.NETLIFY_BLOBS_TOKEN ||
+              process.env.NETLIFY_ACCESS_TOKEN ||
+              process.env.NETLIFY_TOKEN ||
+              undefined;
+
+            const options = { name, consistency: "strong" };
+            if (siteID) options.siteID = siteID;
+            if (token) options.token = token;
+            return getStore(options);
+          }'''
+          if old_open not in s:
+              raise SystemExit('openStore block not found')
+          s = s.replace(old_open, new_open, 1)
+
+          marker = '// ─── Helpers ─────────────────────────────────────────────────────────────────'
+          canonical = '''const CANONICAL_HOSTNAMES = [
+            "phone173", "phone174", "phone176", "phone177",
+            "phone191", "phone195", "phone253", "phone254",
+            "Alina", "Nexus", "SteamDeck", "viki",
+          ];
+          const CANONICAL_HOSTNAME_MAP = new Map(
+            CANONICAL_HOSTNAMES.map((name) => [name.toLowerCase(), name])
+          );
+
+          function canonicalHostname(value) {
+            return CANONICAL_HOSTNAME_MAP.get(String(value || "").toLowerCase()) || null;
+          }
+
+          '''
+          if 'const CANONICAL_HOSTNAMES = [' not in s:
+              s = s.replace(marker, canonical + marker, 1)
+
+          old_get_all = re.compile(r'''async function getAllDevices\(\) \{.*?\n\}\n\nasync function getDevice''', re.S)
+          new_get_all = '''async function getAllDevices() {
+            const store = openStore("cp-devices");
+            const list = await store.list();
+            const byHostname = new Map();
+
+            for (const entry of list.blobs) {
+              const d = await store.get(entry.key, { type: "json" });
+              if (!d) continue;
+              const canonical = canonicalHostname(d.hostname);
+              if (!canonical) continue;
+
+              const normalized = { ...d, hostname: canonical };
+              const previous = byHostname.get(canonical);
+              const stamp = Number(normalized.last_seen_at || normalized.registered_at || 0);
+              const previousStamp = Number(previous?.last_seen_at || previous?.registered_at || 0);
+              if (!previous || stamp >= previousStamp) byHostname.set(canonical, normalized);
+            }
+
+            return CANONICAL_HOSTNAMES.map((hostname) => byHostname.get(hostname)).filter(Boolean);
+          }
+
+          async function getDevice'''
+          s, n = old_get_all.subn(new_get_all, s, count=1)
+          if n != 1:
+              raise SystemExit('getAllDevices block not found')
+
+          s = s.replace(
+              '"phone173","phone174","phone175","phone176","phone177","phone191","phone253","phone254",',
+              '"phone173","phone174","phone176","phone177","phone191","phone195","phone253","phone254",\n        "Alina","Nexus","SteamDeck",',
+              1,
+          )
+
+          fleet_replacements = {
+              '{ hostname: "phone175", ip: "192.168.1.175", device_class: "phone", cluster_role: "worker" }':
+              '{ hostname: "phone195", ip: "192.168.1.195", device_class: "phone", cluster_role: "worker" }',
+              '{ hostname: "viki", ip: "192.168.1.180", device_class: "pc", cluster_role: "control-plane" }':
+              '{ hostname: "viki", ip: "192.168.1.239", device_class: "pc", cluster_role: "worker" }',
+              '{ hostname: "nexus", ip: "192.168.1.179", device_class: "pc", cluster_role: "control-plane" }':
+              '{ hostname: "Nexus", ip: "192.168.1.192", device_class: "pc", cluster_role: "worker" }',
+              '{ hostname: "steamdeck", ip: "192.168.1.166", device_class: "steamdeck", cluster_role: "worker" }':
+              '{ hostname: "SteamDeck", ip: "192.168.1.166", device_class: "steamdeck", cluster_role: "worker" }',
+              '{ hostname: "skynet", ip: "192.168.1.188", device_class: "pc", cluster_role: "control-plane" },':
+              '{ hostname: "Alina", ip: "192.168.1.193", device_class: "pc", cluster_role: "worker" },',
+          }
+          for a, b in fleet_replacements.items():
+              s = s.replace(a, b)
+
+          s = s.replace(
+              'const existingHostnames = new Set(existing.map(d => d.hostname));',
+              'const existingHostnames = new Set(existing.map(d => String(d.hostname || "").toLowerCase()));',
+          )
+          s = s.replace(
+              'if (existingHostnames.has(n.hostname)) return { hostname: n.hostname, skipped: true };',
+              'if (existingHostnames.has(n.hostname.toLowerCase())) return { hostname: n.hostname, skipped: true };',
+          )
+
+          s = s.replace('url: "192.168.1.179:10128"', 'url: "gulf.moneroocean.stream:10128"')
+          s = s.replace('pool_url: "192.168.1.179"', 'pool_url: "gulf.moneroocean.stream"')
+
+          # Nexus is a protected no-start node in desired state whenever it is seeded.
+          needle = 'const ds = {\n          workload_type: "mining",\n          workload_enabled: isPhone,'
+          replacement = 'const protectNexus = String(n.hostname).toLowerCase() === "nexus";\n        const ds = {\n          workload_type: "mining",\n          workload_enabled: isPhone && !protectNexus,'
+          if needle in s:
+              s = s.replace(needle, replacement, 1)
+              s = s.replace('miner_enabled: isPhone, mining_level: isPhone ? 3 : 2,', 'miner_enabled: isPhone && !protectNexus, mining_level: protectNexus ? 0 : (isPhone ? 3 : 2),', 1)
+
+          write(p, s)
+
+          # -----------------------------------------------------------------
+          # dashboard.astro: remove dangerous seed UI and legacy unauthenticated
+          # Swarm implementation. v8 is the one authoritative Swarm client.
+          # -----------------------------------------------------------------
+          p = Path('src/pages/cluster/dashboard.astro')
+          s = p.read_text()
+          s = re.sub(
+              r'<div style="display:flex;justify-content:flex-end;margin-bottom:12px">\s*<button onclick="seedFleet\(\)".*?</div>\s*',
+              '', s, count=1, flags=re.S,
+          )
+          s = s.replace("d.desired?.pool_url || '192.168.1.179'", "d.desired?.pool_url || 'gulf.moneroocean.stream'")
+
+          old_filter = re.compile(r'''function filterEvents\(filter\) \{.*?\n\}\n\nfunction renderEvents''', re.S)
+          new_filter = '''function filterEvents(filter) {
+            currentEventFilter = filter;
+            const buttons = Array.from(document.querySelectorAll('.event-filter'));
+            buttons.forEach((b) => {
+              b.style.background = 'transparent';
+              b.style.borderColor = 'var(--color-border)';
+              b.style.color = '';
+            });
+            const active = buttons.find((b) => (b.getAttribute('onclick') || '').includes(`'${filter}'`));
+            if (active) {
+              active.style.background = 'var(--color-brand)';
+              active.style.color = 'white';
+              active.style.borderColor = 'var(--color-brand)';
+            }
+            renderEvents();
+          }
+
+          function renderEvents'''
+          s, n = old_filter.subn(new_filter, s, count=1)
+          if n != 1:
+              raise SystemExit('filterEvents block not found')
+
+          # Remove the obsolete unauthenticated inline Swarm client. It races the
+          # external authenticated client and was the source of several dead buttons.
+          s, n = re.subn(
+              r'\n// ── Swarm tab ─+.*?</script>\s*$',
+              '\n// Swarm tab behavior is owned by /scripts/cluster-swarm-live-v8.js.\n</script>\n',
+              s,
+              count=1,
+              flags=re.S,
+          )
+          if n != 1:
+              raise SystemExit('legacy Swarm block not found')
+          write(p, s)
+
+          # -----------------------------------------------------------------
+          # cluster-swarm-live-v8.js: resolve registry IDs to canonical hosts,
+          # make detail-panel miner buttons safe, and keep PC desired state in sync.
+          # -----------------------------------------------------------------
+          p = Path('public/scripts/cluster-swarm-live-v8.js')
+          s = p.read_text()
+
+          s = s.replace(
+              "  const PC_IDS = new Set(['Alina','Nexus','SteamDeck','viki']);\n",
+              "  const PC_IDS = new Set(['Alina','Nexus','SteamDeck','viki']);\n  const PC_TARGET_THREADS = { Alina:12, Nexus:0, SteamDeck:4, viki:4 };\n",
+              1,
+          )
+          s = s.replace(
+              '  const legacyDispatchCommand = window.dispatchCommand;\n',
+              '  const legacyDispatchCommand = window.dispatchCommand;\n  const legacyQueueCmd = window.queueCmd;\n',
+              1,
+          )
+
+          helper_marker = "  function phoneTargets(value) {"
+          helper = '''  async function resolveTarget(value) {
+            const normalized = normalizeTarget(value);
+            if (["__all__","all","__phones__","phones","__pcs__","pcs"].includes(normalized)) return normalized;
+            if (IDS.has(normalized)) return normalized;
+
+            try {
+              const data = await controlApi('devices');
+              const devices = Array.isArray(data.devices) ? data.devices : [];
+              const hit = devices.find((d) => d.id === value || String(d.hostname || '').toLowerCase() === String(value || '').toLowerCase());
+              if (hit) return normalizeTarget(hit.hostname);
+            } catch {}
+            return normalized;
+          }
+
+          async function syncPcDesired(type, targets) {
+            if (!targets.length || type === 'mining-status') return;
+            const data = await controlApi('devices');
+            const devices = Array.isArray(data.devices) ? data.devices : [];
+            const enabled = type !== 'mining-stop';
+            for (const hostname of targets) {
+              const device = devices.find((d) => String(d.hostname || '').toLowerCase() === hostname.toLowerCase());
+              if (!device) continue;
+              await controlApi('update-desired', 'POST', {
+                device_id: device.id,
+                desired: {
+                  miner_enabled: enabled,
+                  workload_enabled: enabled,
+                  thread_count: PC_TARGET_THREADS[hostname] ?? 4,
+                },
+              });
+            }
+          }
+
+          '''
+          if 'async function resolveTarget(value)' not in s:
+              s = s.replace(helper_marker, helper + helper_marker, 1)
+
+          s = s.replace(
+              "      if (!current) await load();\n\n      if (!MINER_TYPES.has(type)) {\n        const targets = swarmTargets(target);",
+              "      if (!current) await load();\n      const resolvedTarget = await resolveTarget(target);\n\n      if (!MINER_TYPES.has(type)) {\n        const targets = swarmTargets(resolvedTarget);",
+              1,
+          )
+          s = s.replace("        const targets = swarmTargets(target);", "        const targets = swarmTargets(resolvedTarget);", 1)
+          s = s.replace("      const phones = phoneTargets(target);\n      const pcs = pcTargets(target, type);\n      const normalized = normalizeTarget(target);", "      const phones = phoneTargets(resolvedTarget);\n      const pcs = pcTargets(resolvedTarget, type);\n      const normalized = normalizeTarget(resolvedTarget);", 1)
+          s = s.replace(
+              "      if (pcs.length) {\n        const pcResult = await enqueueSwarm(type, '', pcs);",
+              "      if (pcs.length) {\n        await syncPcDesired(type, pcs);\n        const pcResult = await enqueueSwarm(type, '', pcs);",
+              1,
+          )
+
+          queue_hook = '''
+          window.queueCmd = async (deviceId, type) => {
+            if (MINER_TYPES.has(type)) return runAction(type, deviceId);
+            if (typeof legacyQueueCmd === 'function') return legacyQueueCmd(deviceId, type);
+            return controlApi('queue-command', 'POST', { target:deviceId, type });
+          };
+
+          '''
+          hook_marker = "  window.fleetMining = async (enabled, target) =>"
+          if 'window.queueCmd = async' not in s:
+              s = s.replace(hook_marker, queue_hook + hook_marker, 1)
+
+          write(p, s)
+
+          # Cache-bust the repaired authoritative client.
+          p = Path('src/layouts/Layout.astro')
+          s = p.read_text()
+          s = s.replace('/scripts/cluster-swarm-live-v8.js?v=1', '/scripts/cluster-swarm-live-v8.js?v=2')
+          write(p, s)
           PY
 
-      - name: Commit normalized topology
+      - name: Static sanity checks
+        shell: bash
         run: |
-          git config user.name 'cluster-topology-bot'
-          git config user.email 'cluster-topology@curtbrag.com'
-          git add netlify/functions/cluster-api.js src/pages/cluster/dashboard.astro scripts/curt-cluster-bridge.example.sh scripts/install-cluster-bridge.sh .github/workflows/deploy-bridge.yml
+          set -euo pipefail
+          node --check public/scripts/cluster-swarm-live-v8.js
+          node --check netlify/functions/cluster-api.js
+          grep -q "viki','pc" public/scripts/cluster-swarm-live-v8.js
+          grep -q 'phone195' netlify/functions/cluster-api.js
+          ! grep -q 'phone175' netlify/functions/cluster-api.js
+          ! grep -q '192.168.1.179:10128' netlify/functions/cluster-api.js
+          ! grep -q 'const SWARM_API =' src/pages/cluster/dashboard.astro
+          grep -q 'cluster-swarm-live-v8.js?v=2' src/layouts/Layout.astro
+
+      - name: Build site
+        shell: bash
+        run: |
+          npm install --no-package-lock --no-audit --no-fund
+          npm run build
+
+      - name: Commit repaired site
+        shell: bash
+        run: |
+          git config user.name 'cluster-repair-bot'
+          git config user.email 'cluster-repair@curtbrag.com'
+          git add netlify/functions/cluster-api.js src/pages/cluster/dashboard.astro public/scripts/cluster-swarm-live-v8.js src/layouts/Layout.astro
           git diff --cached --quiet && exit 0
-          git commit -m 'fix(cluster): normalize live fleet topology'
+          git commit -m 'fix(cluster): make dashboard controls consistent and canonical'
           git push origin HEAD:main
