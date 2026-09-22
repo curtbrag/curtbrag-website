@@ -8,7 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$AgentVersion = '3.2.2'
+$AgentVersion = '3.2.3'
 $Root = Join-Path $env:LOCALAPPDATA 'CurtCompute'
 $AgentPath = Join-Path $Root 'curt-hybrid-workload-agent.ps1'
 $ConfigPath = Join-Path $Root 'agent-config.json'
@@ -192,7 +192,7 @@ function Parse-JobSpec([string]$Text) {
 function Invoke-External([string]$FilePath, [string[]]$Arguments) {
     $errFile = Join-Path $Root ('stderr-' + [guid]::NewGuid().ToString('N') + '.txt')
     try {
-        $stdout = (& $FilePath @Arguments 2> $errFile | Out-String).Trim()
+        $stdout = ([string](& $FilePath @Arguments 2> $errFile | Out-String)).Trim()
         $exitCode = $LASTEXITCODE
         [ordered]@{
             exit_code = $exitCode
