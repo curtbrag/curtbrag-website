@@ -8,7 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$AgentVersion = '3.2.1'
+$AgentVersion = '3.2.2'
 $Root = Join-Path $env:LOCALAPPDATA 'CurtCompute'
 $AgentPath = Join-Path $Root 'curt-hybrid-workload-agent.ps1'
 $ConfigPath = Join-Path $Root 'agent-config.json'
@@ -167,7 +167,9 @@ function Suspend-Salad {
 function Resume-Salad($Record) {
     foreach ($service in @($Record.services)) { Start-Service -Name $service -ErrorAction SilentlyContinue }
     foreach ($path in @($Record.processes | Select-Object -Unique)) {
-        if (Test-Path -LiteralPath $path) { Start-Process -FilePath $path -ErrorAction SilentlyContinue }
+$AgentVersion = '3.2.1'
+$AgentVersion = '3.2.2'istderr = if (Test-Path $errFile) { (Get-Content $errFile -Raw).Trim() } else { '' }
+stderr = if (Test-Path $errFile) { ([string](Get-Content $errFile -Raw)).Trim() } else { '' }f (Test-Path -LiteralPath $path) { Start-Process -FilePath $path -ErrorAction SilentlyContinue }
     }
 }
 
@@ -197,7 +199,7 @@ function Invoke-External([string]$FilePath, [string[]]$Arguments) {
         [ordered]@{
             exit_code = $exitCode
             stdout = $stdout
-            stderr = if (Test-Path $errFile) { (Get-Content $errFile -Raw).Trim() } else { '' }
+            stderr = if (Test-Path $errFile) { ([string](Get-Content $errFile -Raw)).Trim() } else { '' }
         }
     } finally { Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue }
 }
