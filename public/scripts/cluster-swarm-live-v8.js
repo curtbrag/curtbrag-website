@@ -22,7 +22,7 @@
   const PC_IDS = new Set(['Alina','Nexus','SteamDeck','viki','RenderRig']);
   const GPU_IDS = new Set(['RenderRig']);
   const TRANSCRIBE_IDS = new Set(['Alina','Nexus']);
-  const GPU_WORK_TYPES = new Set(['gpu-status','salad-status','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow']);
+  const GPU_WORK_TYPES = new Set(['gpu-status','salad-status','workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow']);
   const PC_TARGET_THREADS = { Alina:12, Nexus:0, SteamDeck:4, viki:4 };
   const MINER_TYPES = new Set(['mining-status','mining-stop','mining-start','mining-restart']);
 
@@ -245,6 +245,7 @@
         <div id="swarm-useful-tools" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin:0 0 12px">
           <button type="button" id="swarm-gpu-status">GPU Check</button>
           <button type="button" id="swarm-salad-status">Salad Check</button>
+          <button type="button" id="swarm-workstation-test">Workstation Test</button>
           <button type="button" id="swarm-sample">Transcription Sample</button>
           <button type="button" id="swarm-copy-latest">Copy Latest Output</button>
           <button type="button" id="swarm-live-toggle">Pause Live Updates</button>
@@ -273,6 +274,7 @@
       });
       document.getElementById('swarm-gpu-status').addEventListener('click', () => runAction('gpu-status', 'RenderRig'));
       document.getElementById('swarm-salad-status').addEventListener('click', () => runAction('salad-status', 'RenderRig'));
+      document.getElementById('swarm-workstation-test').addEventListener('click', () => runAction('workstation-selftest', 'RenderRig'));
       document.getElementById('swarm-copy-latest').addEventListener('click', async () => {
         const latest = current?.results?.[0];
         const text = latest?.stdout || latest?.stderr || '';
@@ -307,6 +309,7 @@
         <optgroup label="RTX RenderRig">
           <option value="gpu-status">Check GPUs</option>
           <option value="salad-status">Check Salad</option>
+          <option value="workstation-selftest">Run complete workstation test</option>
           <option value="blender-render">Render Blender project</option>
           <option value="comfyui-workflow">Run ComfyUI workflow</option>
           <option value="ffmpeg-transcode">GPU video transcode</option>
