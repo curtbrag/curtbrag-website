@@ -323,7 +323,11 @@ export default async (request) => {
   }
 
   if (request.method === "GET" && action === "swarm-poll") {
-    const deviceId = (url.searchParams.get("device_id") || "").trim();
+    const deviceId = (
+      url.searchParams.get("device_id") ||
+      request.headers.get("x-device-id") ||
+      ""
+    ).trim();
     if (!deviceId) return jsonResponse(400, { ok: false, error: "device_id required" });
 
     await updateNode(deviceId, { polling: true });
