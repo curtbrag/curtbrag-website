@@ -167,9 +167,7 @@ function Suspend-Salad {
 function Resume-Salad($Record) {
     foreach ($service in @($Record.services)) { Start-Service -Name $service -ErrorAction SilentlyContinue }
     foreach ($path in @($Record.processes | Select-Object -Unique)) {
-$AgentVersion = '3.2.1'
-$AgentVersion = '3.2.2'istderr = if (Test-Path $errFile) { (Get-Content $errFile -Raw).Trim() } else { '' }
-stderr = if (Test-Path $errFile) { ([string](Get-Content $errFile -Raw)).Trim() } else { '' }f (Test-Path -LiteralPath $path) { Start-Process -FilePath $path -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $path) { Start-Process -FilePath $path -ErrorAction SilentlyContinue }
     }
 }
 
