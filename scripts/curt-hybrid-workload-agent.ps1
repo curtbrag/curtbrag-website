@@ -8,7 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$AgentVersion = '3.2.3'
+$AgentVersion = '3.2.4'
 $Root = Join-Path $env:LOCALAPPDATA 'CurtCompute'
 $AgentPath = Join-Path $Root 'curt-hybrid-workload-agent.ps1'
 $ConfigPath = Join-Path $Root 'agent-config.json'
@@ -192,12 +192,15 @@ function Parse-JobSpec([string]$Text) {
 function Invoke-External([string]$FilePath, [string[]]$Arguments) {
     $errFile = Join-Path $Root ('stderr-' + [guid]::NewGuid().ToString('N') + '.txt')
     try {
-        $stdout = ([string](& $FilePath @Arguments 2> $errFile | Out-String)).Trim()
+        $stdoutRaw = & $FilePath @Arguments 2> $errFile | Out-String
+        $stdout = if ($null -eq $stdoutRaw) { '' } else { ([string]$stdoutRaw).Trim() }
         $exitCode = $LASTEXITCODE
+        $stderrRaw = if (Test-Path $errFile) { Get-Content $errFile -Raw } else { $null }
+        $stderr = if ($null -eq $stderrRaw) { '' } else { ([string]$stderrRaw).Trim() }
         [ordered]@{
             exit_code = $exitCode
             stdout = $stdout
-            stderr = if (Test-Path $errFile) { ([string](Get-Content $errFile -Raw)).Trim() } else { '' }
+            stderr = $stderr
         }
     } finally { Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue }
 }
