@@ -8,6 +8,18 @@
   const DIAGNOSTIC_LINUX_AGENT = '2.2.0';
   const DIAGNOSTIC_WINDOWS_AGENT = '3.3.0';
   const REEL_WINDOWS_AGENT = '3.5.0';
+  const EPISODE_WINDOWS_AGENT = '3.6.0';
+  const EPISODE_SAMPLE = {
+    title:'Before a socket rounds a bolt',
+    scenes:[
+      {heading:'A loose socket is a warning',caption:'Watch the tool move before the fastener.',narration:'See that tiny rock? If the socket moves on the fastener, more force can damage the head before it loosens.',visual:'socket',duration:12},
+      {heading:'Seat the socket fully',caption:'Clean the head. Check the size. Push straight on.',narration:'Clear the fastener head, confirm the socket size, and seat it all the way before you pull.',visual:'bolt',duration:12},
+      {heading:'Six points or twelve?',caption:'Choose the contact that fits the fastener.',narration:'A six point socket can offer more stable contact on a worn hex. Check the fit before you commit.',visual:'socket',duration:12},
+      {heading:'Keep the drive square',caption:'Side load can make a socket slip.',narration:'Line up the handle and the fastener. If the socket leans, reset your angle before adding torque.',visual:'socket',duration:12},
+      {heading:'Use controlled force',caption:'Pull steadily and watch the fastener.',narration:'Apply force smoothly and pay attention to what moves. A socket slipping is your signal to stop.',visual:'impact',duration:12},
+      {heading:'Know when to stop',caption:'Recheck the fit before damage gets worse.',narration:'If the tool starts to slip, back off and choose a better approach. Saving the fastener now saves work later.',visual:'bolt',duration:12},
+    ],
+  };
   const DIAGNOSTIC_TYPES = new Set(['storage-status','process-snapshot','network-check']);
   const DIAGNOSTIC_FALLBACK = {
     'storage-status':'df -hP "$HOME"',
@@ -31,8 +43,8 @@
   const PC_IDS = new Set(['Alina','Nexus','SteamDeck','viki','RenderRig']);
   const GPU_IDS = new Set(['RenderRig']);
   const TRANSCRIBE_IDS = new Set(['Alina','Nexus']);
-  const GPU_WORK_TYPES = new Set(['gpu-status','salad-status','workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow','reel-create']);
-  const GPU_SETTINGS_TYPES = new Set(['blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow','reel-create']);
+  const GPU_WORK_TYPES = new Set(['gpu-status','salad-status','workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow','reel-create','episode-create']);
+  const GPU_SETTINGS_TYPES = new Set(['blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow','reel-create','episode-create']);
   const PC_TARGET_THREADS = { Alina:12, Nexus:0, SteamDeck:4, viki:4 };
   const MINER_TYPES = new Set(['mining-status','mining-stop','mining-start','mining-restart']);
 
@@ -157,9 +169,11 @@
       'whisper-transcribe':'{"input":"C:\\\\Jobs\\\\audio.mp3","output":"C:\\\\Jobs\\\\transcripts","model":"small.en"}',
       'comfyui-workflow':'{"workflow":"C:\\\\Jobs\\\\workflow.json"}',
       'reel-create':'{"input":"%USERPROFILE%\\\\Videos\\\\shop-clip.mp4","hook":"What I check before a stuck bolt strips","tip":"Seat a 6-point socket fully and keep it square before the first pull.","cta":"Follow @curtbrag for shop tips"}',
+      'episode-create':'Paste episode JSON or use Produce Episode to load a complete example.',
     };
     const needsCommand = type === 'shell' || type === 'transcribe' || Object.hasOwn(workloadHelp, type);
     input.disabled = !needsCommand;
+    input.rows = type === 'episode-create' ? 9 : 2;
     input.placeholder = workloadHelp[type] || (type === 'transcribe'
       ? 'Media URL or existing file path on Alina/Nexus'
       : needsCommand
@@ -260,6 +274,7 @@
           <button type="button" id="swarm-workstation-test">Workstation Test</button>
           <button type="button" id="swarm-reel-gpu-test" title="GPU encode the Reel created on RenderRig in Videos/impact-bolt-poc.mp4">Reel GPU Test</button>
           <button type="button" id="swarm-reel-create" title="Create an original Reel and preview it here">Produce Reel</button>
+          <button type="button" id="swarm-episode-create" title="Create a narrated animated episode, short cut and full video">Produce Episode</button>
           <button type="button" id="swarm-fleet-storage">Fleet Storage</button>
           <button type="button" id="swarm-fleet-processes">Fleet Processes</button>
           <button type="button" id="swarm-fleet-network">Fleet Network</button>
@@ -301,6 +316,17 @@
         syncJobInput();
         input?.focus();
         notify('Enter your clip path and Reel text as JSON, then press Start.');
+      });
+      document.getElementById('swarm-episode-create').addEventListener('click', () => {
+        const type = document.getElementById('swarm-job-type');
+        const target = document.getElementById('swarm-job-device');
+        const input = document.getElementById('swarm-job-cmd');
+        if (type) type.value = 'episode-create';
+        if (target) target.value = 'RenderRig';
+        syncJobInput();
+        if (input) input.value = JSON.stringify(EPISODE_SAMPLE, null, 2);
+        input?.focus();
+        notify('Review the original episode script, then press Start.');
       });
       document.getElementById('swarm-reel-gpu-test').addEventListener('click', () => {
         const settings = {
@@ -349,6 +375,7 @@
           <option value="salad-status">Check Salad</option>
           <option value="workstation-selftest">Run complete workstation test</option>
           <option value="reel-create">Produce original Reel</option>
+          <option value="episode-create">Produce narrated episode + short cut</option>
           <option value="blender-render">Render Blender project</option>
           <option value="comfyui-workflow">Run ComfyUI workflow</option>
           <option value="ffmpeg-transcode">GPU video transcode</option>
@@ -546,6 +573,13 @@
           preview.addEventListener('click', () => openReel(item.job_id));
           actions.appendChild(preview);
         }
+        if (item?.type === 'episode-create' && Number(item.exit_code) === 0 && item.job_id) {
+          const preview = document.createElement('button');
+          preview.type = 'button';
+          preview.textContent = 'Preview Episode';
+          preview.addEventListener('click', () => openEpisode(item.job_id));
+          actions.appendChild(preview);
+        }
         if (item?.cmd?.includes('transcribe.py')) {
           const retry = document.createElement('button');
           retry.type = 'button';
@@ -602,6 +636,89 @@
       overlay.append(panel);
       document.body.append(overlay);
     } catch (error) { notify(`Reel preview failed: ${error.message}`, 'error'); }
+  }
+
+  async function episodeBlob(jobId, variant) {
+    const base = `/api/episode-media?id=${encodeURIComponent(jobId)}&variant=${variant}`;
+    const headers = { Authorization:`Bearer ${token()}` };
+    const metadata = await fetch(`${base}&manifest=1`, { headers, cache:'no-store' });
+    if (!metadata.ok) throw new Error((await metadata.json().catch(() => ({}))).error || 'Episode unavailable');
+    const manifest = await metadata.json();
+    if (!Number.isInteger(manifest.parts) || manifest.parts < 1 || manifest.parts > 16) throw new Error('Invalid media manifest');
+    const parts = [];
+    for (let part = 0; part < manifest.parts; part++) {
+      const response = await fetch(`${base}&part=${part}`, { headers, cache:'no-store' });
+      if (!response.ok) throw new Error(`Missing episode part ${part}`);
+      parts.push(await response.arrayBuffer());
+    }
+    const blob = new Blob(parts, { type:'video/mp4' });
+    if (blob.size !== manifest.bytes) throw new Error('Episode file size does not match its manifest');
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())))
+      .map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    if (hash !== manifest.sha256) throw new Error('Episode file integrity check failed');
+    return blob;
+  }
+
+  async function openEpisode(jobId) {
+    try {
+      notify('Loading episode preview…');
+      const shortUrl = URL.createObjectURL(await episodeBlob(jobId, 'short'));
+      let masterUrl = null;
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:#000d;display:flex;align-items:center;justify-content:center;padding:16px';
+      const panel = document.createElement('div');
+      panel.style.cssText = 'background:var(--color-panel);color:var(--color-text);padding:16px;border-radius:10px;width:min(100%,440px);max-height:100%;overflow:auto';
+      const title = document.createElement('h3');
+      title.textContent = 'Episode · short cut';
+      const video = document.createElement('video');
+      video.src = shortUrl;
+      video.controls = true;
+      video.playsInline = true;
+      video.style.cssText = 'display:block;width:100%;max-height:65vh;background:#000';
+      const shortDownload = document.createElement('a');
+      shortDownload.href = shortUrl;
+      shortDownload.download = `${jobId}-short.mp4`;
+      shortDownload.textContent = 'Download short';
+      shortDownload.style.cssText = 'display:inline-block;margin:12px 12px 0 0;color:var(--color-brand)';
+      const master = document.createElement('button');
+      master.type = 'button';
+      master.textContent = 'Load full episode';
+      master.addEventListener('click', async () => {
+        master.disabled = true;
+        master.textContent = 'Loading full episode…';
+        try {
+          masterUrl = URL.createObjectURL(await episodeBlob(jobId, 'master'));
+          video.pause();
+          video.src = masterUrl;
+          title.textContent = 'Episode · full video';
+          const download = document.createElement('a');
+          download.href = masterUrl;
+          download.download = `${jobId}-master.mp4`;
+          download.textContent = 'Download full episode';
+          download.style.cssText = shortDownload.style.cssText;
+          master.replaceWith(download);
+        } catch (error) {
+          master.disabled = false;
+          master.textContent = 'Retry full episode';
+          notify(error.message, 'error');
+        }
+      });
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.textContent = 'Close';
+      const dismiss = () => {
+        video.pause(); overlay.remove(); URL.revokeObjectURL(shortUrl);
+        if (masterUrl) URL.revokeObjectURL(masterUrl);
+        document.removeEventListener('keydown', onKey);
+      };
+      const onKey = (event) => { if (event.key === 'Escape') dismiss(); };
+      close.addEventListener('click', dismiss);
+      overlay.addEventListener('click', (event) => { if (event.target === overlay) dismiss(); });
+      document.addEventListener('keydown', onKey);
+      panel.append(title, video, shortDownload, master, close);
+      overlay.append(panel);
+      document.body.append(overlay);
+    } catch (error) { notify(`Episode preview failed: ${error.message}`, 'error'); }
   }
 
   async function load(force=false) {
@@ -789,6 +906,9 @@ async function syncPcDesired(type, targets) {
         if (type === 'reel-create' && !versionAtLeast(current?.nodes?.find((n) => n.id === 'RenderRig')?.agent_version, REEL_WINDOWS_AGENT)) {
           throw new Error(`Update RenderRig to ${REEL_WINDOWS_AGENT} to create Reels`);
         }
+        if (type === 'episode-create' && !versionAtLeast(current?.nodes?.find((n) => n.id === 'RenderRig')?.agent_version, EPISODE_WINDOWS_AGENT)) {
+          throw new Error(`Update RenderRig to ${EPISODE_WINDOWS_AGENT} to create episodes`);
+        }
         if (GPU_SETTINGS_TYPES.has(type)) {
           let settings;
           try { settings = JSON.parse(cmd); } catch { throw new Error('Job settings must be JSON from the dashboard form.'); }
@@ -797,6 +917,17 @@ async function syncPcDesired(type, targets) {
           }
           if (type === 'reel-create' && !['input','hook','tip','cta'].every((key) => typeof settings[key] === 'string' && settings[key].trim())) {
             throw new Error('Reel settings require input, hook, tip, and cta text.');
+          }
+          if (type === 'episode-create') {
+            if (cmd.length > 4000) throw new Error('Episode JSON must be 4,000 characters or fewer.');
+            if (typeof settings.title !== 'string' || !Array.isArray(settings.scenes) || settings.scenes.length < 5 || settings.scenes.length > 8) {
+              throw new Error('Episode settings require a title and 5–8 scenes.');
+            }
+            const total = settings.scenes.reduce((sum, scene) => sum + Number(scene?.duration || 0), 0);
+            if (total < 60 || total > 90 || settings.scenes.some((scene) =>
+              !['heading','caption','narration','visual'].every((key) => typeof scene?.[key] === 'string' && scene[key].trim()))) {
+              throw new Error('Episode scenes need heading, caption, narration, visual, and 60–90 seconds total.');
+            }
           }
         }
         const data = await enqueueSwarm(type, cmd, targets);
