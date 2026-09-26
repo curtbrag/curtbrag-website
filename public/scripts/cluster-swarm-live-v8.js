@@ -8,16 +8,16 @@
   const DIAGNOSTIC_LINUX_AGENT = '2.2.0';
   const DIAGNOSTIC_WINDOWS_AGENT = '3.3.0';
   const REEL_WINDOWS_AGENT = '3.5.0';
-  const EPISODE_WINDOWS_AGENT = '3.6.0';
+  const EPISODE_WINDOWS_AGENT = '3.7.0';
   const EPISODE_SAMPLE = {
     title:'Before a socket rounds a bolt',
     scenes:[
-      {heading:'A loose socket is a warning',caption:'Watch the tool move before the fastener.',narration:'See that tiny rock? If the socket moves on the fastener, more force can damage the head before it loosens.',visual:'socket',duration:12},
-      {heading:'Seat the socket fully',caption:'Clean the head. Check the size. Push straight on.',narration:'Clear the fastener head, confirm the socket size, and seat it all the way before you pull.',visual:'bolt',duration:12},
-      {heading:'Six points or twelve?',caption:'Choose the contact that fits the fastener.',narration:'A six point socket can offer more stable contact on a worn hex. Check the fit before you commit.',visual:'socket',duration:12},
-      {heading:'Keep the drive square',caption:'Side load can make a socket slip.',narration:'Line up the handle and the fastener. If the socket leans, reset your angle before adding torque.',visual:'socket',duration:12},
-      {heading:'Use controlled force',caption:'Pull steadily and watch the fastener.',narration:'Apply force smoothly and pay attention to what moves. A socket slipping is your signal to stop.',visual:'impact',duration:12},
-      {heading:'Know when to stop',caption:'Recheck the fit before damage gets worse.',narration:'If the tool starts to slip, back off and choose a better approach. Saving the fastener now saves work later.',visual:'bolt',duration:12},
+      {heading:'A loose socket is a warning',caption:'Watch the tool move before the fastener.',narration:'See that tiny rock? If the socket moves on the fastener, more force can damage the head before it loosens.',visual:'rock',duration:12},
+      {heading:'Seat the socket fully',caption:'Clean the head. Check the size. Push straight on.',narration:'Clear the fastener head, confirm the socket size, and seat it all the way before you pull.',visual:'seat',duration:12},
+      {heading:'Six points or twelve?',caption:'Choose the contact that fits the fastener.',narration:'A six point socket can offer more stable contact on a worn hex. Check the fit before you commit.',visual:'contact',duration:12},
+      {heading:'Keep the drive square',caption:'Side load can make a socket slip.',narration:'Line up the handle and the fastener. If the socket leans, reset your angle before adding torque.',visual:'align',duration:12},
+      {heading:'Use controlled force',caption:'Pull steadily and watch the fastener.',narration:'Apply force smoothly and pay attention to what moves. A socket slipping is your signal to stop.',visual:'force',duration:12},
+      {heading:'Know when to stop',caption:'Recheck the fit before damage gets worse.',narration:'If the tool starts to slip, back off and choose a better approach. Saving the fastener now saves work later.',visual:'stop',duration:12},
     ],
   };
   const DIAGNOSTIC_TYPES = new Set(['storage-status','process-snapshot','network-check']);
