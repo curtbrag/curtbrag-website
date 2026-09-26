@@ -68,7 +68,8 @@ def discover(query, kind, offset, limit, fetcher=fetch):
         page_url = info.get("descriptionurl", "")
         if not license_name or not url.startswith("https://upload.wikimedia.org/") or not page_url.startswith("https://commons.wikimedia.org/"):
             continue
-        if int(info.get("width") or 0) < 720 or int(info.get("height") or 0) < 720:
+        min_width, min_height = (640, 360) if mime.startswith("video/") else (720, 720)
+        if int(info.get("width") or 0) < min_width or int(info.get("height") or 0) < min_height:
             continue
         items.append({"title": clean(page.get("title"), 120), "url": url,
                       "page": page_url, "license": license_name,
