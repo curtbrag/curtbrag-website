@@ -208,9 +208,10 @@ foreach ($node in $Nodes) {
 
     Start-Sleep -Seconds 3
     $verify = Invoke-NodeSsh $node $verifyScript
-    $running = ($verify.ExitCode -eq 0 -and $verify.Output -match 'SWARM_PID=(\d+)')
+    $pidMatch = [regex]::Match($verify.Output, 'SWARM_PID=(\d+)')
+    $running = ($verify.ExitCode -eq 0 -and $pidMatch.Success)
     $singleton = ($verify.ExitCode -eq 0 -and $verify.Output -match 'SINGLETON=1')
-    $remoteProcId = if ($running) { $Matches[1] } else { '' }
+    $remoteProcId = if ($running) { $pidMatch.Groups[1].Value } else { '' }
 
     if ($running -and $singleton) {
         Write-Host "    SWARM=RUNNING PID=$remoteProcId MODE=$mode SINGLETON=PASS" -ForegroundColor Green
