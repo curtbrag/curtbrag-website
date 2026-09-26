@@ -6,7 +6,9 @@ param(
     [int]$PollSeconds = 60,
     [ValidateSet('all','phones','pcs','viki','recovery')]
     [string]$TargetGroup = 'all',
-    [switch]$EnablePhoneBoot
+    [switch]$EnablePhoneBoot,
+    [string[]]$NodeNames = @(),
+    [switch]$BootOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,6 +33,14 @@ if ($TargetGroup -eq 'phones') { $Nodes = @($Nodes | Where-Object { $_.Name -lik
 if ($TargetGroup -eq 'pcs') { $Nodes = @($Nodes | Where-Object { $_.Name -notlike 'phone*' }) }
 if ($TargetGroup -eq 'viki') { $Nodes = @($Nodes | Where-Object { $_.Name -eq 'viki' }) }
 if ($TargetGroup -eq 'recovery') { $Nodes = @($Nodes | Where-Object { $_.Name -like 'phone*' -or $_.Name -eq 'viki' }) }
+if ($NodeNames.Count -gt 0) {
+    $unknown = @($NodeNames | Where-Object { $_ -notin @($Nodes | ForEach-Object { $_.Name }) })
+    if ($unknown.Count -gt 0) { throw "Unknown nodes in target group: $($unknown -join ', ')" }
+    $Nodes = @($Nodes | Where-Object { $_.Name -in $NodeNames })
+}
+if ($BootOnly -and (-not $EnablePhoneBoot -or @($Nodes | Where-Object { $_.Name -notlike 'phone*' }).Count -gt 0)) {
+    throw 'BootOnly requires EnablePhoneBoot and phone targets only.'
+}
 
 if (-not (Test-Path $SshKey)) { throw "SSH key missing: $SshKey" }
 $null = Get-Command ssh.exe -ErrorAction Stop
@@ -50,7 +60,7 @@ if (Test-Path $ConfigPath) {
 
 Write-Host ""
 Write-Host "======================================================================"
-Write-Host " CURT CLUSTER - SWARM V2.2.0 DEPLOY (WINDOWS)"
+Write-Host " CURT CLUSTER - SWARM V2.2.0 $(if ($BootOnly) { 'BOOT SETUP' } else { 'DEPLOY' }) (WINDOWS)"
 Write-Host "======================================================================"
 $phoneCount = @($Nodes | Where-Object { $_.Name -like 'phone*' }).Count
 $pcNames = @($Nodes | Where-Object { $_.Name -notlike 'phone*' } | ForEach-Object { $_.Name }) -join ', '
@@ -64,23 +74,25 @@ Write-Host "API       : $SwarmUrl"
 Write-Host "======================================================================"
 
 Write-Host ""
-Write-Host "[1] Downloading current node-swarm.sh..."
-Invoke-WebRequest -Uri $WorkerUrl -OutFile $TempWorker -UseBasicParsing
-if (-not (Test-Path $TempWorker)) { throw "Could not download node-swarm.sh" }
+if (-not $BootOnly) {
+    Write-Host "[1] Downloading current node-swarm.sh..."
+    Invoke-WebRequest -Uri $WorkerUrl -OutFile $TempWorker -UseBasicParsing
+    if (-not (Test-Path $TempWorker)) { throw "Could not download node-swarm.sh" }
 
-$workerText = Get-Content $TempWorker -Raw
-if ($workerText -notmatch 'AGENT_VERSION="2\.2\.0"') {
-    throw "Downloaded worker is not Swarm v2.2.0. Stopping."
+    $workerText = Get-Content $TempWorker -Raw
+    if ($workerText -notmatch 'AGENT_VERSION="2\.2\.0"') {
+        throw "Downloaded worker is not Swarm v2.2.0. Stopping."
+    }
+    if ($workerText -notmatch 'mining-stop\|miner-stop' -or $workerText -notmatch 'mining-start\|miner-start') {
+        throw "Downloaded worker is missing miner controls."
+    }
+    if ($workerText -notmatch 'prune_other_swarm_agents') {
+        throw "Downloaded worker is missing singleton ownership protection."
+    }
+    Write-Host "    SWARM_WORKER=2.2.0"
+    Write-Host "    MINER_COMMANDS=PASS"
+    Write-Host "    SINGLETON_GUARD=PASS"
 }
-if ($workerText -notmatch 'mining-stop\|miner-stop' -or $workerText -notmatch 'mining-start\|miner-start') {
-    throw "Downloaded worker is missing miner controls."
-}
-if ($workerText -notmatch 'prune_other_swarm_agents') {
-    throw "Downloaded worker is missing singleton ownership protection."
-}
-Write-Host "    SWARM_WORKER=2.2.0"
-Write-Host "    MINER_COMMANDS=PASS"
-Write-Host "    SINGLETON_GUARD=PASS"
 
 $sshBase = @(
     '-n', '-i', $SshKey,
@@ -135,6 +147,28 @@ fi
     if ($installed.ExitCode -ne 0 -or $installed.Output -notmatch 'BOOT_READY') { return $false }
     $null = Invoke-NodeSsh $Node 'command -v termux-wake-lock >/dev/null 2>&1 && termux-wake-lock >/dev/null 2>&1 || true'
     return $true
+}
+
+if ($BootOnly) {
+    Write-Host ""
+    Write-Host "[1] Installing boot scripts on existing phone workers..."
+    $bootResults = foreach ($node in $Nodes) {
+        $probe = Invoke-NodeSsh $node 'printf CONNECT_OK'
+        if ($probe.ExitCode -ne 0 -or $probe.Output -notmatch 'CONNECT_OK') {
+            [pscustomobject]@{ Name=$node.Name; SSH=$false; WorkerReady=$false; Boot='SKIPPED' }
+            continue
+        }
+        $worker = Invoke-NodeSsh $node 'test -f "$HOME/node-swarm.sh" && sh -n "$HOME/node-swarm.sh" && printf WORKER_READY'
+        if ($worker.ExitCode -ne 0 -or $worker.Output -notmatch 'WORKER_READY') {
+            [pscustomobject]@{ Name=$node.Name; SSH=$true; WorkerReady=$false; Boot='SKIPPED' }
+            continue
+        }
+        $bootReady = Install-PhoneBoot $node
+        [pscustomobject]@{ Name=$node.Name; SSH=$true; WorkerReady=$true; Boot=$(if ($bootReady) { 'SCRIPT_READY' } else { 'FAIL' }) }
+    }
+    $bootResults | Format-Table -AutoSize
+    Write-Host 'Termux:Boot app must be installed and opened once on each phone for boot scripts to run.'
+    return
 }
 
 $stopScript = @'
@@ -257,9 +291,9 @@ foreach ($node in $Nodes) {
         if ($tail.Output) { Write-Host $tail.Output }
     }
 
-    if ($running -and $EnablePhoneBoot -and $node.Name -like 'phone*') {
+    if ($EnablePhoneBoot -and $node.Name -like 'phone*') {
         if (Install-PhoneBoot $node) { Write-Host '    BOOT=SCRIPT_READY (Termux:Boot app required)' -ForegroundColor Green }
-        else { Write-Host '    BOOT=FAIL (agent remains running)' -ForegroundColor Yellow }
+        else { Write-Host '    BOOT=FAIL (check SSH and Termux permissions)' -ForegroundColor Yellow }
     }
 
     $results += [pscustomobject]@{
