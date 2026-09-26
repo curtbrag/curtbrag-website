@@ -17,7 +17,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 W, H, FPS = 540, 960, 20
 NAVY, WHITE, CYAN, ORANGE = (9, 19, 29), (244, 248, 250), (77, 221, 222), (255, 182, 74)
-VISUALS = {"socket", "bolt", "impact", "gear", "circuit", "meter"}
+VISUALS = {"socket", "bolt", "impact", "gear", "circuit", "meter",
+           "rock", "seat", "contact", "align", "force", "stop"}
 
 
 def face(size, bold=True):
@@ -88,10 +89,78 @@ def parse_spec(path):
     return spec, total
 
 
+def hexagon(x, y, radius, sides=6, angle=math.pi / 6):
+    return [(x + radius * math.cos(angle + i * math.tau / sides),
+             y + radius * math.sin(angle + i * math.tau / sides)) for i in range(sides)]
+
+
+def draw_lesson_visual(draw, visual, t):
+    cx, cy = W // 2, 507
+    steel = (155, 182, 195)
+    shadow = (41, 66, 79)
+    if visual == "rock":
+        shift = 6 * math.sin(t * 3.1)
+        angle = 0.06 * math.sin(t * 3.1)
+        draw.polygon(hexagon(cx + shift, cy, 121, angle=math.pi / 6 + angle), fill=shadow, outline=ORANGE, width=5)
+        draw.polygon(hexagon(cx + shift, cy, 94, angle=math.pi / 6 + angle), fill=(22, 42, 57))
+        draw.polygon(hexagon(cx, cy, 81), fill=steel, outline=WHITE, width=4)
+        draw.ellipse((cx - 30, cy - 30, cx + 30, cy + 30), fill=(22, 42, 57), outline=CYAN, width=3)
+        draw.text((87, 648), "MOVEMENT = WARNING", font=FONT_TAG, fill=ORANGE)
+    elif visual == "seat":
+        travel = 76 * (1 - min((t % 5) / 2, 1))
+        draw.line((cx, 370, cx, 642), fill=(55, 101, 119), width=2)
+        draw.rounded_rectangle((122, 582, 418, 616), radius=7, fill=shadow, outline=steel, width=3)
+        draw.rectangle((207, 511, 333, 583), fill=steel)
+        draw.line((207, 511, 333, 511), fill=WHITE, width=5)
+        y = 408 - travel
+        draw.polygon([(174, y), (366, y), (352, y + 126), (322, y + 126),
+                      (322, y + 42), (218, y + 42), (218, y + 126), (188, y + 126)],
+                     fill=(72, 114, 133), outline=CYAN, width=4)
+        draw.line((cx, y - 26, cx, y - 8), fill=ORANGE, width=8)
+        draw.polygon([(cx - 12, y - 14), (cx + 12, y - 14), (cx, y + 3)], fill=ORANGE)
+        draw.text((170, 639), "SEAT ALL THE WAY", font=FONT_TAG, fill=CYAN)
+    elif visual == "contact":
+        draw.line((cx, 373, cx, 635), fill=(55, 101, 119), width=3)
+        for x, sides, color, label in ((158, 6, CYAN, "6 POINT"), (382, 12, ORANGE, "12 POINT")):
+            draw.polygon(hexagon(x, cy, 87, sides=sides), fill=shadow, outline=color, width=4)
+            draw.polygon(hexagon(x, cy, 66), fill=steel, outline=WHITE, width=2)
+            draw.ellipse((x - 19, cy - 19, x + 19, cy + 19), fill=(22, 42, 57))
+            draw.text((x - 45, 617), label, font=FONT_TAG, fill=color)
+    elif visual == "align":
+        shift = 43 * math.sin(t * 0.7)
+        draw.line((cx, 375, cx, 617), fill=(64, 117, 132), width=3)
+        draw.polygon(hexagon(cx, 539, 94), fill=steel, outline=WHITE, width=4)
+        draw.ellipse((cx - 29, 510, cx + 29, 568), fill=(22, 42, 57), outline=CYAN, width=4)
+        draw.line((cx, 521, cx + shift, 380), fill=shadow, width=36)
+        draw.line((cx, 521, cx + shift, 380), fill=WHITE, width=23)
+        draw.rounded_rectangle((cx + shift - 68, 363, cx + shift + 68, 385), radius=10, fill=steel)
+        draw.text((158, 635), "KEEP IT SQUARE", font=FONT_TAG, fill=CYAN)
+    elif visual == "force":
+        theta = -0.26 - 0.18 * (1 + math.sin(t * 0.7)) / 2
+        origin = (157, 548)
+        end = (origin[0] + 252 * math.cos(theta), origin[1] + 252 * math.sin(theta))
+        draw.polygon(hexagon(*origin, 66), fill=steel, outline=WHITE, width=4)
+        draw.line((*origin, *end), fill=shadow, width=36)
+        draw.line((*origin, *end), fill=WHITE, width=22)
+        draw.ellipse((end[0] - 20, end[1] - 20, end[0] + 20, end[1] + 20), fill=CYAN)
+        draw.arc((90, 385, 408, 705), 215, 306, fill=ORANGE, width=9)
+        draw.polygon([(405, 397), (421, 408), (399, 417)], fill=ORANGE)
+        draw.text((105, 638), "CONTROLLED FORCE", font=FONT_TAG, fill=CYAN)
+    elif visual == "stop":
+        draw.polygon(hexagon(cx, cy, 115), fill=shadow, outline=steel, width=5)
+        draw.polygon(hexagon(cx, cy, 89), fill=(22, 42, 57), outline=WHITE, width=3)
+        draw.regular_polygon((cx, cy, 71), 8, rotation=22.5, fill=(165, 70, 51), outline=ORANGE, width=5)
+        draw.text((cx - 46, cy - 17), "STOP", font=FONT_TITLE, fill=WHITE)
+        draw.text((141, 642), "RESET THE FIT", font=FONT_TAG, fill=ORANGE)
+
+
 def draw_visual(draw, visual, t):
     cx, cy = W // 2, 497
     pulse = (1 + math.sin(t * 3.1)) / 2
     draw.rounded_rectangle((56, 338, W - 56, 680), radius=28, fill=(22, 42, 57), outline=(49, 91, 105), width=3)
+    if visual in {"rock", "seat", "contact", "align", "force", "stop"}:
+        draw_lesson_visual(draw, visual, t)
+        return
     if visual in ("socket", "bolt", "impact"):
         angle = t * (0.21 if visual != "socket" else 0.09)
         for radius, color in ((117, (62, 88, 103)), (96, (167, 187, 198))):
