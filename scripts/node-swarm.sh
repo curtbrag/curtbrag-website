@@ -1,11 +1,11 @@
 #!/bin/sh
-# node-swarm.sh — Curt Cluster Swarm worker agent v2.2.0
+# node-swarm.sh — Curt Cluster Swarm worker agent v2.2.1
 # Polls curtbrag.com Swarm, executes assigned jobs, and reports results.
 # Works on Termux and Linux. Requires curl + sh; jq or python3 recommended.
 
 set -u
 
-AGENT_VERSION="2.2.0"
+AGENT_VERSION="2.2.1"
 SWARM_URL="${SWARM_URL:-https://curtbrag.com/api/cluster}"
 POLL_INTERVAL="${POLL_INTERVAL:-60}"
 DEVICE_ID="${DEVICE_ID:-}"
@@ -117,7 +117,7 @@ json_escape() {
     | tr -d '\000-\010\013\014\016-\037' \
     | head -c 4000 \
     | sed 's/\\/\\\\/g; s/"/\\"/g' \
-    | tr '\n' ' '
+    | tr '\011\012\015' '   '
 }
 
 send_heartbeat() {
@@ -161,6 +161,47 @@ report_result() {
 
 retry_pending_result() {
   [ -s "$PENDING_RESULT_FILE" ] || return 0
+  if command -v python3 >/dev/null 2>&1; then
+    # Earlier workers could leave literal tabs or carriage returns inside JSON
+    # strings. Back up the exact bytes and escape them before retrying delivery.
+    if ! python3 - "$PENDING_RESULT_FILE" "$DEVICE_ID" <<'PY'
+import json
+import os
+import sys
+import tempfile
+import time
+
+path, device_id = sys.argv[1:]
+with open(path, "rb") as pending:
+    original = pending.read()
+try:
+    result = json.loads(original)
+except (UnicodeError, ValueError):
+    repaired = original.replace(b"\t", b"\\t").replace(b"\r", b"\\r")
+    try:
+        result = json.loads(repaired)
+    except (UnicodeError, ValueError):
+        sys.exit(1)
+    if not isinstance(result, dict) or not result.get("job_id") or result.get("device_id") != device_id:
+        sys.exit(1)
+    backup = f"{path}.invalid-{time.time_ns()}"
+    with open(backup, "xb") as saved:
+        os.chmod(backup, 0o600)
+        saved.write(original)
+    with tempfile.NamedTemporaryFile(dir=os.path.dirname(path), prefix=".pending-repaired-", delete=False) as temp:
+        temp.write(repaired)
+        temp_path = temp.name
+    os.replace(temp_path, path)
+    print("repaired malformed pending result; original saved to " + backup)
+    sys.exit(0)
+if not isinstance(result, dict) or not result.get("job_id") or result.get("device_id") != device_id:
+    sys.exit(1)
+PY
+    then
+      log "pending result invalid; saved file retained for inspection"
+      return 1
+    fi
+  fi
   _pending=$(cat "$PENDING_RESULT_FILE" 2>/dev/null || true)
   [ -n "$_pending" ] || return 0
   if http_post "${SWARM_URL}?action=job-complete" "$_pending" >/dev/null 2>&1; then
