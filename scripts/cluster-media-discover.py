@@ -42,7 +42,9 @@ def fetch(params):
 
 def discover(query, kind, offset, limit, fetcher=fetch):
     # Two small API calls per worker; offsets split the search across devices.
-    search = fetcher({"list": "search", "srnamespace": 6, "srsearch": query,
+    search_query = query + (" filetype:video" if kind == "video" else
+                            " filetype:image" if kind == "image" else "")
+    search = fetcher({"list": "search", "srnamespace": 6, "srsearch": search_query,
                       "sroffset": offset, "srlimit": min(30, limit * 6)})
     titles = [row["title"] for row in search.get("query", {}).get("search", []) if row.get("title", "").startswith("File:")]
     if not titles:
