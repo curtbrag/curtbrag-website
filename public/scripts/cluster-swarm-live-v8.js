@@ -9,6 +9,7 @@
   const DIAGNOSTIC_WINDOWS_AGENT = '3.3.0';
   const REEL_WINDOWS_AGENT = '3.5.0';
   const EPISODE_WINDOWS_AGENT = '3.7.0';
+  const MEDIA_EPISODE_WINDOWS_AGENT = '3.8.0';
   const EPISODE_SAMPLE = {
     title:'Before a socket rounds a bolt',
     scenes:[
@@ -437,11 +438,16 @@
       <p style="font-size:12px;color:var(--color-muted);margin:0 0 10px">Search Wikimedia Commons in parallel on online phones and Linux PCs. Save a source manifest for original narrated edits; review every file and its license before publishing.</p>
       <label style="display:block;font-size:11px;margin-bottom:5px">Batch settings (JSON)</label>
       <textarea id="cluster-media-settings" rows="3" spellcheck="false" style="width:100%;box-sizing:border-box;background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-border);border-radius:6px;padding:8px;font-family:monospace;font-size:12px">{"query":"machining workshop","kind":"any","per_worker":3,"workers":8}</textarea>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:9px 0"><button id="cluster-media-run" type="button" style="background:var(--color-brand);color:white;border:0;border-radius:6px;padding:8px 14px;cursor:pointer">Search across workers</button><button id="cluster-media-export" type="button" style="background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-border);border-radius:6px;padding:8px 14px;cursor:pointer">Export selected manifest</button><span id="cluster-media-state" style="font-size:11px;color:var(--color-muted)"></span></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:9px 0"><button id="cluster-media-run" type="button" style="background:var(--color-brand);color:white;border:0;border-radius:6px;padding:8px 14px;cursor:pointer">Search across workers</button><button id="cluster-media-export" type="button" style="background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-border);border-radius:6px;padding:8px 14px;cursor:pointer">Export selected manifest</button><button id="cluster-media-draft" type="button" style="background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-border);border-radius:6px;padding:8px 14px;cursor:pointer">Load episode JSON</button><button id="cluster-media-credits" type="button" style="background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-border);border-radius:6px;padding:8px 14px;cursor:pointer">Copy source credits</button><span id="cluster-media-state" style="font-size:11px;color:var(--color-muted)"></span></div>
+      <details style="margin:10px 0"><summary style="cursor:pointer;font-size:12px">Episode batch · up to 5 finished JSON jobs</summary><p style="font-size:11px;color:var(--color-muted)">Write a distinct script for each episode. Add each finished episode from Start Work, then queue the array for RenderRig.</p><textarea id="cluster-episode-batch" rows="4" placeholder="[]" spellcheck="false" style="width:100%;box-sizing:border-box;background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-border);border-radius:6px;padding:8px;font-family:monospace;font-size:11px">[]</textarea><div style="display:flex;gap:8px;margin-top:7px"><button id="cluster-batch-add" type="button">Add form episode</button><button id="cluster-batch-run" type="button">Queue batch on RenderRig</button><span id="cluster-batch-state" style="font-size:11px;color:var(--color-muted)"></span></div></details>
       <div id="cluster-media-results" style="display:grid;gap:6px;font-size:11px"></div>`;
     anchor.insertAdjacentElement('afterend', card);
     card.querySelector('#cluster-media-run').addEventListener('click', dispatchMediaDiscovery);
     card.querySelector('#cluster-media-export').addEventListener('click', exportMediaManifest);
+    card.querySelector('#cluster-media-draft').addEventListener('click', loadMediaEpisodeDraft);
+    card.querySelector('#cluster-media-credits').addEventListener('click', copyMediaCredits);
+    card.querySelector('#cluster-batch-add').addEventListener('click', addEpisodeToBatch);
+    card.querySelector('#cluster-batch-run').addEventListener('click', dispatchEpisodeBatch);
   }
 
   function mediaCommand(query, kind, offset, limit) {
@@ -523,6 +529,96 @@
     const link = document.createElement('a'); link.href = url; link.download = `cluster-media-${Date.now()}.json`;
     link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     notify(`Exported ${mediaSelected.size} media candidates with license credits`);
+  }
+
+  function loadMediaEpisodeDraft() {
+    const assets = [...mediaSelected.values()];
+    if (assets.length < 3 || assets.length > 5) return notify('Select 3–5 distinct images or videos first', 'error');
+    if (assets.some(item => item.license?.startsWith('CC BY') && !item.author)) {
+      return notify('Review author credits on the selected CC BY source pages first', 'error');
+    }
+    const scenes = Array.from({length:5}, (_, index) => {
+      const item = assets[index % assets.length];
+      return {heading:`Beat ${index + 1}`,caption:'REWRITE: your observation',
+        narration:'REWRITE: original narration and insight.',
+        visual:'media',duration:12,
+        media:{url:new URL(item.url).origin + new URL(item.url).pathname,
+          page:item.page,license:item.license,license_url:item.license_url,mime:item.mime,bytes:item.bytes,
+          title:item.title,author:item.author || 'See source page'}};
+    });
+    const spec = {title:'REWRITE: original episode title',scenes};
+    const pretty = JSON.stringify(spec, null, 2);
+    const draft = pretty.length <= 4000 ? pretty : JSON.stringify(spec);
+    if (draft.length > 4000) return notify('Selection makes a job over 4,000 characters; choose shorter source titles', 'error');
+    const type = document.getElementById('swarm-job-type');
+    type.value = 'episode-create'; syncJobInput();
+    document.getElementById('swarm-job-cmd').value = draft;
+    document.getElementById('swarm-job-device').value = 'RenderRig';
+    notify('Episode JSON loaded. Rewrite every beat with original narration, then start the RenderRig job.');
+  }
+
+  async function copyMediaCredits() {
+    if (!mediaSelected.size) return notify('Select media sources first', 'error');
+    const credits = [...mediaSelected.values()].map(item =>
+      `${item.title} — ${item.author || 'author on file page'} — ${item.license}${item.license_url ? ` (${item.license_url})` : ''}\n${item.page}\nEdited, cropped, narrated and captioned for this episode.`);
+    try { await navigator.clipboard.writeText(credits.join('\n\n')); notify(`Copied credits for ${credits.length} source files`); }
+    catch { notify('Clipboard unavailable; export the manifest for credits', 'error'); }
+  }
+
+  function validateEpisodeForBatch(spec) {
+    const cmd = JSON.stringify(spec);
+    if (cmd.length > 4000 || !spec || typeof spec.title !== 'string' || !spec.title.trim() ||
+        /REWRITE/i.test(spec.title) || !Array.isArray(spec.scenes) || spec.scenes.length < 5 || spec.scenes.length > 8) {
+      throw new Error('Each episode needs a distinct title, 5–8 scenes, and at most 4,000 JSON characters.');
+    }
+    const duration = spec.scenes.reduce((sum, s) => sum + Number(s?.duration || 0), 0);
+    if (duration < 60 || duration > 90 || spec.scenes.some(s =>
+      !['heading','caption','narration','visual'].every(k => typeof s?.[k] === 'string' && s[k].trim()) ||
+      /REWRITE/i.test(`${s.heading} ${s.caption} ${s.narration}`) ||
+      (s.visual === 'media' && (!s.media || !['CC0','Public domain','CC BY 3.0','CC BY 4.0'].includes(s.media.license))))) {
+      throw new Error('Each scene needs reviewed media, original narration and 60–90 seconds per episode.');
+    }
+    return cmd;
+  }
+
+  function addEpisodeToBatch() {
+    try {
+      const input = document.getElementById('swarm-job-cmd').value;
+      const episode = JSON.parse(input);
+      validateEpisodeForBatch(episode);
+      const batchInput = document.getElementById('cluster-episode-batch');
+      const batch = JSON.parse(batchInput.value);
+      if (!Array.isArray(batch) || batch.length >= 5) throw new Error('Batch must contain at most 5 episodes.');
+      if (batch.some(item => item.title?.trim().toLowerCase() === episode.title.trim().toLowerCase())) throw new Error('Use a different title for each episode.');
+      batch.push(episode); batchInput.value = JSON.stringify(batch, null, 2);
+      document.getElementById('cluster-batch-state').textContent = `${batch.length}/5 episodes ready`;
+    } catch (error) { notify(`Batch: ${error.message}`, 'error'); }
+  }
+
+  async function dispatchEpisodeBatch() {
+    const button = document.getElementById('cluster-batch-run');
+    const state = document.getElementById('cluster-batch-state');
+    button.disabled = true;
+    try {
+      const batch = JSON.parse(document.getElementById('cluster-episode-batch').value);
+      if (!Array.isArray(batch) || batch.length < 1 || batch.length > 5) throw new Error('Provide 1–5 finished episodes as a JSON array.');
+      const commands = batch.map(validateEpisodeForBatch);
+      if (new Set(batch.map(x => x.title.trim().toLowerCase())).size !== batch.length) throw new Error('Episode titles must differ.');
+      if (new Set(batch.map(x => x.scenes.map(s => s.narration).join('|'))).size !== batch.length) throw new Error('Episode narration must differ.');
+      if (!current) await load();
+      const rig = current.nodes.find(n => n.id === 'RenderRig');
+      if (!rig?.online) throw new Error('RenderRig is offline.');
+      if (batch.some(x => x.scenes.some(s => s.visual === 'media')) && !versionAtLeast(rig.agent_version, MEDIA_EPISODE_WINDOWS_AGENT)) {
+        throw new Error(`RenderRig needs agent ${MEDIA_EPISODE_WINDOWS_AGENT} for sourced media.`);
+      }
+      for (const [index, cmd] of commands.entries()) {
+        await enqueueSwarm('episode-create', cmd, ['RenderRig']);
+        state.textContent = `Queued ${index + 1}/${commands.length} episodes`;
+      }
+      notify(`Queued ${commands.length} original episodes on RenderRig`);
+      await load(true);
+    } catch (error) { state.textContent = error.message; notify(`Episode batch: ${error.message}`, 'error'); }
+    finally { button.disabled = false; }
   }
 
   function updateTargets(nodes) {
@@ -682,6 +778,20 @@
           preview.textContent = 'Preview Episode';
           preview.addEventListener('click', () => openEpisode(item.job_id));
           actions.appendChild(preview);
+          let delivered;
+          try { delivered = JSON.parse(item.stdout || '{}'); } catch { delivered = {}; }
+          if (Array.isArray(delivered.sources) && delivered.sources.length) {
+            const credits = document.createElement('button');
+            credits.type = 'button';
+            credits.textContent = 'Copy episode credits';
+            credits.addEventListener('click', async () => {
+              const text = delivered.sources.map(s =>
+                `${s.title} — ${s.author} — ${s.license}${s.license_url ? ` (${s.license_url})` : ''}\n${s.page}\nEdited, cropped, narrated and captioned for this episode.`).join('\n\n');
+              try { await navigator.clipboard.writeText(text); notify('Source credits copied for the video description'); }
+              catch { notify('Clipboard unavailable; use the exported source manifest', 'error'); }
+            });
+            actions.appendChild(credits);
+          }
         }
         if (item?.cmd?.includes('transcribe.py')) {
           const retry = document.createElement('button');
@@ -1027,6 +1137,15 @@ async function syncPcDesired(type, targets) {
               throw new Error('Episode settings require a title and 5–8 scenes.');
             }
             const total = settings.scenes.reduce((sum, scene) => sum + Number(scene?.duration || 0), 0);
+            const hasMedia = settings.scenes.some(scene => scene?.visual === 'media');
+            if (hasMedia && !versionAtLeast(current?.nodes?.find(n => n.id === 'RenderRig')?.agent_version, MEDIA_EPISODE_WINDOWS_AGENT)) {
+              throw new Error(`Update RenderRig to ${MEDIA_EPISODE_WINDOWS_AGENT} for sourced-media episodes`);
+            }
+            if (hasMedia && settings.scenes.some(scene =>
+              !scene.media || !['CC0','Public domain','CC BY 3.0','CC BY 4.0'].includes(scene.media.license) ||
+              /REWRITE/i.test(`${settings.title} ${scene.heading} ${scene.caption} ${scene.narration}`))) {
+              throw new Error('Review selected source licenses and replace every REWRITE placeholder with original copy.');
+            }
             if (total < 60 || total > 90 || settings.scenes.some((scene) =>
               !['heading','caption','narration','visual'].every((key) => typeof scene?.[key] === 'string' && scene[key].trim()))) {
               throw new Error('Episode scenes need heading, caption, narration, visual, and 60–90 seconds total.');

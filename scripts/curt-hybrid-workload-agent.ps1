@@ -11,7 +11,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$AgentVersion = '3.7.0'
+$AgentVersion = '3.8.0'
 $Root = Join-Path $env:LOCALAPPDATA 'CurtCompute'
 $AgentPath = Join-Path $Root 'curt-hybrid-workload-agent.ps1'
 $ConfigPath = Join-Path $Root 'agent-config.json'
@@ -397,7 +397,7 @@ function Run-Agent {
                         $rendered = $result.stdout | ConvertFrom-Json
                         $master = Upload-Episode $config ([string]$job.id) 'master' ([string]$rendered.master_path)
                         $short = Upload-Episode $config ([string]$job.id) 'short' ([string]$rendered.short_path)
-                        $result.stdout = ([ordered]@{ title=$rendered.title; duration=$rendered.duration; short_duration=$rendered.short_duration; master_bytes=$master.bytes; short_bytes=$short.bytes; local_master=$rendered.master_path; local_short=$rendered.short_path } | ConvertTo-Json -Compress)
+                        $result.stdout = ([ordered]@{ title=$rendered.title; duration=$rendered.duration; short_duration=$rendered.short_duration; master_bytes=$master.bytes; short_bytes=$short.bytes; local_master=$rendered.master_path; local_short=$rendered.short_path; sources=$rendered.sources } | ConvertTo-Json -Depth 8 -Compress)
                     }
                 } catch { $result = [ordered]@{ exit_code=1; stdout=''; stderr=$_.Exception.Message } }
                 finally { if ($saladRecord) { Resume-Salad $saladRecord } }

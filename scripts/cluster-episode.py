@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render an original captioned shop-science episode from dashboard JSON."""
+"""Render a narrated episode with original diagrams or reviewed Commons media."""
 
 import argparse
 import base64
@@ -10,15 +10,112 @@ import shutil
 import subprocess
 import tempfile
 import wave
+from urllib.parse import parse_qsl, unquote, urlsplit
+from urllib.request import Request, build_opener, HTTPRedirectHandler
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 
 W, H, FPS = 540, 960, 20
 NAVY, WHITE, CYAN, ORANGE = (9, 19, 29), (244, 248, 250), (77, 221, 222), (255, 182, 74)
 VISUALS = {"socket", "bolt", "impact", "gear", "circuit", "meter",
-           "rock", "seat", "contact", "align", "force", "stop"}
+           "rock", "seat", "contact", "align", "force", "stop", "media"}
+MEDIA_LICENSES = {"CC0", "Public domain", "CC BY 3.0", "CC BY 4.0"}
+MEDIA_MIMES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
+               "video/webm": ".webm", "video/ogg": ".ogv", "video/mp4": ".mp4"}
+MEDIA_MAX_BYTES = 80 * 1024 * 1024
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, message, headers, newurl):
+        raise ValueError("Media URL redirected outside its reviewed source")
+
+
+def validate_media(media):
+    if not isinstance(media, dict):
+        raise ValueError("Media scenes require source metadata from discovery")
+    for key in ("url", "page", "license", "mime", "title", "author"):
+        if not isinstance(media.get(key), str) or not media[key].strip():
+            raise ValueError(f"Media source needs {key}; review the file page first")
+    source = urlsplit(media["url"])
+    page = urlsplit(media["page"])
+    decoded_path = unquote(source.path)
+    if ((source.scheme, source.hostname, source.port) != ("https", "upload.wikimedia.org", None)
+            or not decoded_path.startswith("/wikipedia/commons/")
+            or any(part in (".", "..") for part in decoded_path.split("/"))
+            or any(key not in {"utm_source", "utm_campaign", "utm_content"} for key, _ in parse_qsl(source.query))
+            or source.fragment):
+        raise ValueError("Only Wikimedia Commons original media URLs are accepted")
+    if (page.scheme, page.hostname, page.port) != ("https", "commons.wikimedia.org", None) or not page.path.startswith("/wiki/File:"):
+        raise ValueError("A Commons file description page is required")
+    if media["license"] not in MEDIA_LICENSES or media["mime"] not in MEDIA_MIMES:
+        raise ValueError("Unsupported license or media type")
+    if type(media.get("bytes")) is not int or not 0 < media["bytes"] <= MEDIA_MAX_BYTES:
+        raise ValueError("Source must be 80 MiB or smaller")
+    if source.username or source.password or page.username or page.password:
+        raise ValueError("Media URLs may not contain credentials")
+    return media
+
+
+def download_media(media, output):
+    validate_media(media)
+    opener = build_opener(NoRedirect())
+    request = Request(media["url"], headers={"User-Agent": "CurtClusterMediaEpisode/1.0 (https://curtbrag.com/cluster/)"})
+    with opener.open(request, timeout=35) as response, output.open("wb") as target:
+        length = response.headers.get("Content-Length")
+        if length and int(length) > MEDIA_MAX_BYTES:
+            raise ValueError("Media source exceeds the 80 MiB download limit")
+        count = 0
+        while chunk := response.read(256 * 1024):
+            count += len(chunk)
+            if count > MEDIA_MAX_BYTES:
+                raise ValueError("Media source exceeds the 80 MiB download limit")
+            target.write(chunk)
+    if count < 100:
+        raise ValueError("Media source is empty or invalid")
+    return output
+
+
+def scene_media(spec, directory):
+    assets = {}
+    for scene in spec["scenes"]:
+        if scene["visual"] != "media":
+            continue
+        media = validate_media(scene["media"])
+        if media["url"] not in assets:
+            path = directory / f"source-{len(assets)}{MEDIA_MIMES[media['mime']]}"
+            assets[media["url"]] = download_media(media, path)
+    return assets
+
+
+def media_frames(path, mime, ffmpeg):
+    if mime.startswith("image/"):
+        with Image.open(path) as original:
+            original.load()
+            still = ImageOps.contain(original.convert("RGB"), (W - 36, 440))
+        while True:
+            yield still
+    else:
+        command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-stream_loop", "-1", "-i", str(path),
+                   "-an", "-vf", f"fps={FPS},scale={W}:440:force_original_aspect_ratio=decrease:flags=fast_bilinear,pad={W}:440:(ow-iw)/2:(oh-ih)/2:color=0x09131d",
+                   "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        try:
+            expected = W * 440 * 3
+            while True:
+                data = bytearray()
+                while len(data) < expected:
+                    chunk = process.stdout.read(expected - len(data))
+                    if not chunk:
+                        raise RuntimeError("Video source stopped decoding before the scene ended")
+                    data.extend(chunk)
+                yield Image.frombytes("RGB", (W, 440), bytes(data))
+        finally:
+            process.stdout.close()
+            process.terminate()
+            try: process.wait(timeout=3)
+            except subprocess.TimeoutExpired: process.kill(); process.wait()
 
 
 def face(size, bold=True):
@@ -67,6 +164,8 @@ def parse_spec(path):
             scene[field] = value.strip()
         if scene.get("visual") not in VISUALS:
             raise ValueError(f"Scene {index + 1}: visual must be one of {', '.join(sorted(VISUALS))}")
+        if scene["visual"] == "media":
+            validate_media(scene.get("media"))
         duration = scene.get("duration")
         if type(duration) not in (int, float) or not 8 <= duration <= 18:
             raise ValueError(f"Scene {index + 1}: duration must be 8–18 seconds")
@@ -195,7 +294,7 @@ def draw_visual(draw, visual, t):
             draw.ellipse((x - 7, cy - 52, x + 7, cy - 38), fill=ORANGE)
 
 
-def frame(scene, local_t, global_t, index, count, duration):
+def frame(scene, local_t, global_t, index, count, duration, media_image=None):
     image = Image.new("RGB", (W, H), NAVY)
     draw = ImageDraw.Draw(image)
     draw.rectangle((0, 0, W, 9), fill=CYAN)
@@ -204,7 +303,16 @@ def frame(scene, local_t, global_t, index, count, duration):
     draw.text((W - 95, 55), f"{index + 1:02d}/{count:02d}", font=FONT_TAG, fill=WHITE)
     for j, line in enumerate(lines(draw, scene["heading"], FONT_TITLE, W - 90, 2)):
         draw.text((43, 141 + j * 48), line, font=FONT_TITLE, fill=WHITE)
-    draw_visual(draw, scene["visual"], local_t)
+    if media_image is None:
+        draw_visual(draw, scene["visual"], local_t)
+    else:
+        left = (W - media_image.width) // 2
+        top = 280 + (440 - media_image.height) // 2
+        image.paste(media_image, (left, top))
+        draw.rectangle((0, 271, W, 277), fill=CYAN)
+        credit = f"MEDIA: {scene['media']['author']} / {scene['media']['license']}"
+        draw.rectangle((0, 697, W, 720), fill=NAVY)
+        draw.text((18, 700), credit[:66], font=face(14), fill=WHITE)
     draw.rounded_rectangle((34, 727, W - 34, 883), radius=20, fill=(24, 47, 60))
     draw.rectangle((34, 727, W - 34, 734), fill=ORANGE)
     for j, line in enumerate(lines(draw, scene["caption"], FONT_BODY, W - 90, 3)):
@@ -271,6 +379,16 @@ def combine_audio(paths, scenes, output):
                 mixed.writeframes(b"\0" * ((target_frames - part.getnframes()) * params.sampwidth))
 
 
+def verify_video(ffmpeg, path):
+    if not path.is_file() or path.stat().st_size < 1024:
+        raise RuntimeError(f"Episode video was not written: {path.name}")
+    check = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-i", str(path),
+                            "-t", "0.1", "-f", "null", os.devnull],
+                           capture_output=True, text=True)
+    if check.returncode != 0:
+        raise RuntimeError(f"Episode video cannot be opened: {path.name}: {check.stderr.strip()[:300]}")
+
+
 def render(spec, duration, output_dir, silent):
     ffmpeg = shutil.which("ffmpeg") or shutil.which("ffmpeg.exe")
     if not ffmpeg:
@@ -278,6 +396,7 @@ def render(spec, duration, output_dir, silent):
     output_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as temporary:
         directory = Path(temporary)
+        assets = scene_media(spec, directory)
         voices = voice_wavs(directory, spec["scenes"], silent, ffmpeg)
         narration = directory / "narration.wav"
         combine_audio(voices, spec["scenes"], narration)
@@ -293,9 +412,15 @@ def render(spec, duration, output_dir, silent):
             elapsed = 0.0
             for index, scene in enumerate(spec["scenes"]):
                 frames = round(scene["duration"] * FPS)
-                for n in range(frames):
-                    process.stdin.write(frame(scene, n / FPS, elapsed + n / FPS, index,
-                                              len(spec["scenes"]), duration).tobytes())
+                provider = (media_frames(assets[scene["media"]["url"]], scene["media"]["mime"], ffmpeg)
+                            if scene["visual"] == "media" else None)
+                try:
+                    for n in range(frames):
+                        image = next(provider) if provider else None
+                        process.stdin.write(frame(scene, n / FPS, elapsed + n / FPS, index,
+                                                  len(spec["scenes"]), duration, image).tobytes())
+                finally:
+                    if provider: provider.close()
                 elapsed += scene["duration"]
         except BrokenPipeError:
             raise RuntimeError("FFmpeg stopped before rendering finished") from None
@@ -303,15 +428,22 @@ def render(spec, duration, output_dir, silent):
             process.stdin.close()
         if process.wait() != 0:
             raise RuntimeError(f"FFmpeg master encode failed ({process.returncode})")
+        verify_video(ffmpeg, master)
         short_duration = sum(scene["duration"] for scene in spec["scenes"][:2])
         subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(master),
                         "-t", str(short_duration), "-c:v", "libx264", "-preset", "veryfast", "-b:v", "850k",
                         "-maxrate", "1000k", "-bufsize", "2000k", "-c:a", "aac", "-b:a", "80k",
                         "-movflags", "+faststart", str(short)], check=True)
+        verify_video(ffmpeg, short)
     if master.stat().st_size > 32 * 1024 * 1024 or short.stat().st_size > 32 * 1024 * 1024:
         raise ValueError("Episode exceeds the 32 MiB dashboard upload limit")
+    sources = list({scene["media"]["page"]: {
+        "title": scene["media"]["title"], "author": scene["media"]["author"],
+        "license": scene["media"]["license"], "page": scene["media"]["page"],
+        "license_url": scene["media"].get("license_url", "")}
+        for scene in spec["scenes"] if scene["visual"] == "media"}.values())
     return {"master_path":str(master), "short_path":str(short), "duration":duration,
-            "short_duration":short_duration, "title":spec["title"]}
+            "short_duration":short_duration, "title":spec["title"], "sources":sources}
 
 
 def main():
