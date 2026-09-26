@@ -3,7 +3,9 @@ param(
     [string]$SwarmUrl = "https://curtbrag.com/api/cluster",
     [string]$WorkerUrl = "https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/node-swarm.sh",
     [string]$ConfigPath = "$env:LOCALAPPDATA\CurtCluster\bridge-config.json",
-    [int]$PollSeconds = 60
+    [int]$PollSeconds = 60,
+    [ValidateSet('all','phones','pcs')]
+    [string]$TargetGroup = 'all'
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,6 +25,8 @@ $Nodes = @(
     [pscustomobject]@{ Name="Nexus"; IP="192.168.1.192"; User="neo"; Port=22; Class="pc" }
     [pscustomobject]@{ Name="SteamDeck"; IP="192.168.1.166"; User="deck"; Port=22; Class="pc" }
 )
+if ($TargetGroup -eq 'phones') { $Nodes = @($Nodes | Where-Object { $_.Name -like 'phone*' }) }
+if ($TargetGroup -eq 'pcs') { $Nodes = @($Nodes | Where-Object { $_.Name -notlike 'phone*' }) }
 
 if (-not (Test-Path $SshKey)) { throw "SSH key missing: $SshKey" }
 $null = Get-Command ssh.exe -ErrorAction Stop
@@ -44,9 +48,11 @@ Write-Host ""
 Write-Host "======================================================================"
 Write-Host " CURT CLUSTER - SWARM V2.2.0 DEPLOY (WINDOWS)"
 Write-Host "======================================================================"
-Write-Host "Nodes     : 11"
-Write-Host "Phones    : 8"
-Write-Host "PCs       : Alina, Nexus, SteamDeck"
+$phoneCount = @($Nodes | Where-Object { $_.Name -like 'phone*' }).Count
+$pcNames = @($Nodes | Where-Object { $_.Name -notlike 'phone*' } | ForEach-Object { $_.Name }) -join ', '
+Write-Host "Nodes     : $($Nodes.Count)"
+Write-Host "Phones    : $phoneCount"
+Write-Host "PCs       : $pcNames"
 Write-Host "Mining    : UNCHANGED"
 Write-Host "Reboots   : NONE"
 Write-Host "API       : $SwarmUrl"
@@ -256,7 +262,7 @@ $results | Format-Table Name,SSH,Copy,Parse,Running,Singleton,PID,Mode -AutoSize
 
 $runningCount = @($results | Where-Object { $_.Running -and $_.Singleton }).Count
 Write-Host ""
-Write-Host "Singleton agents   : $runningCount / 11"
+Write-Host "Singleton agents   : $runningCount / $($Nodes.Count)"
 
 if ($status) {
     Write-Host "API schema         : $($status.schema)"
