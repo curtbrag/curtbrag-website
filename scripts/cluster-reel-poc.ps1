@@ -21,8 +21,12 @@ if (-not $ffmpeg) {
 }
 if (-not (Test-Path -LiteralPath $ffmpeg)) { throw 'FFmpeg is not installed; RenderRig status must show ffmpeg before running this proof of concept.' }
 $env:PATH = "$(Split-Path -Parent $ffmpeg);$env:PATH"
-& $python -c 'import PIL' 2>$null
-if ($LASTEXITCODE -ne 0) {
+$hasPillow = $false
+try {
+    & $python -c 'import PIL' 2>$null
+    $hasPillow = ($LASTEXITCODE -eq 0)
+} catch { $hasPillow = $false }
+if (-not $hasPillow) {
     Write-Host 'Installing Pillow for video graphics...'
     & $python -m pip install --user Pillow
     if ($LASTEXITCODE -ne 0) { throw 'Pillow install failed.' }
