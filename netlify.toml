@@ -11,6 +11,12 @@
   force = true
 
 [[redirects]]
+  from = "/api/reel-media"
+  to = "/.netlify/functions/reel-media"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/cluster-api"
   to = "/.netlify/functions/swarm-core"
   status = 200

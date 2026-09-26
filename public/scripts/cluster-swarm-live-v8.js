@@ -7,6 +7,7 @@
   const REQUIRED_AGENT = '2.1.1';
   const DIAGNOSTIC_LINUX_AGENT = '2.2.0';
   const DIAGNOSTIC_WINDOWS_AGENT = '3.3.0';
+  const REEL_WINDOWS_AGENT = '3.4.0';
   const DIAGNOSTIC_TYPES = new Set(['storage-status','process-snapshot','network-check']);
   const DIAGNOSTIC_FALLBACK = {
     'storage-status':'df -hP "$HOME"',
@@ -30,7 +31,7 @@
   const PC_IDS = new Set(['Alina','Nexus','SteamDeck','viki','RenderRig']);
   const GPU_IDS = new Set(['RenderRig']);
   const TRANSCRIBE_IDS = new Set(['Alina','Nexus']);
-  const GPU_WORK_TYPES = new Set(['gpu-status','salad-status','workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow']);
+  const GPU_WORK_TYPES = new Set(['gpu-status','salad-status','workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow','reel-create']);
   const GPU_SETTINGS_TYPES = new Set(['blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow']);
   const PC_TARGET_THREADS = { Alina:12, Nexus:0, SteamDeck:4, viki:4 };
   const MINER_TYPES = new Set(['mining-status','mining-stop','mining-start','mining-restart']);
@@ -256,6 +257,7 @@
           <button type="button" id="swarm-salad-status">Salad Check</button>
           <button type="button" id="swarm-workstation-test">Workstation Test</button>
           <button type="button" id="swarm-reel-gpu-test" title="GPU encode the Reel created on RenderRig in Videos/impact-bolt-poc.mp4">Reel GPU Test</button>
+          <button type="button" id="swarm-reel-create" title="Create an original Reel and preview it here">Produce Reel</button>
           <button type="button" id="swarm-fleet-storage">Fleet Storage</button>
           <button type="button" id="swarm-fleet-processes">Fleet Processes</button>
           <button type="button" id="swarm-fleet-network">Fleet Network</button>
@@ -288,6 +290,7 @@
       document.getElementById('swarm-gpu-status').addEventListener('click', () => runAction('gpu-status', 'RenderRig'));
       document.getElementById('swarm-salad-status').addEventListener('click', () => runAction('salad-status', 'RenderRig'));
       document.getElementById('swarm-workstation-test').addEventListener('click', () => runAction('workstation-selftest', 'RenderRig'));
+      document.getElementById('swarm-reel-create').addEventListener('click', () => { runAction('reel-create', 'RenderRig').catch(() => {}); });
       document.getElementById('swarm-reel-gpu-test').addEventListener('click', () => {
         const settings = {
           input:'%USERPROFILE%\\Videos\\impact-bolt-poc.mp4',
@@ -334,6 +337,7 @@
           <option value="gpu-status">Check GPUs</option>
           <option value="salad-status">Check Salad</option>
           <option value="workstation-selftest">Run complete workstation test</option>
+          <option value="reel-create">Produce original Reel</option>
           <option value="blender-render">Render Blender project</option>
           <option value="comfyui-workflow">Run ComfyUI workflow</option>
           <option value="ffmpeg-transcode">GPU video transcode</option>
@@ -524,6 +528,13 @@
           notify('Output copied');
         });
         actions.appendChild(copy);
+        if (item?.type === 'reel-create' && Number(item.exit_code) === 0 && item.job_id) {
+          const preview = document.createElement('button');
+          preview.type = 'button';
+          preview.textContent = 'Preview / Download';
+          preview.addEventListener('click', () => openReel(item.job_id));
+          actions.appendChild(preview);
+        }
         if (item?.cmd?.includes('transcribe.py')) {
           const retry = document.createElement('button');
           retry.type = 'button';
@@ -540,6 +551,46 @@
     }
 
     updateTargets(d.nodes);
+  }
+
+  async function openReel(jobId) {
+    try {
+      const response = await fetch(`/api/reel-media?id=${encodeURIComponent(jobId)}`, {
+        headers:{ Authorization:`Bearer ${token()}` }, cache:'no-store',
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `Video unavailable (${response.status})`);
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:#000d;display:flex;align-items:center;justify-content:center;padding:16px';
+      const panel = document.createElement('div');
+      panel.style.cssText = 'background:var(--color-panel);color:var(--color-text);padding:16px;border-radius:10px;width:min(100%,420px);max-height:100%;overflow:auto';
+      const title = document.createElement('h3');
+      title.textContent = 'Your Reel';
+      const video = document.createElement('video');
+      video.src = url;
+      video.controls = true;
+      video.playsInline = true;
+      video.style.cssText = 'display:block;width:100%;max-height:70vh;background:#000';
+      const download = document.createElement('a');
+      download.href = url;
+      download.download = `${jobId}.mp4`;
+      download.textContent = 'Download MP4';
+      download.style.cssText = 'display:inline-block;margin:12px 16px 0 0;color:var(--color-brand)';
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.textContent = 'Close';
+      const dismiss = () => { video.pause(); overlay.remove(); URL.revokeObjectURL(url); document.removeEventListener('keydown', onKey); };
+      const onKey = (event) => { if (event.key === 'Escape') dismiss(); };
+      close.addEventListener('click', dismiss);
+      overlay.addEventListener('click', (event) => { if (event.target === overlay) dismiss(); });
+      document.addEventListener('keydown', onKey);
+      panel.append(title, video, download, close);
+      overlay.append(panel);
+      document.body.append(overlay);
+    } catch (error) { notify(`Reel preview failed: ${error.message}`, 'error'); }
   }
 
   async function load(force=false) {
@@ -724,6 +775,9 @@ async function syncPcDesired(type, targets) {
       if (GPU_WORK_TYPES.has(type)) {
         const targets = swarmTargets(resolvedTarget).filter((id) => GPU_IDS.has(id));
         if (!targets.length) throw new Error('RenderRig must be online for RTX work');
+        if (type === 'reel-create' && !versionAtLeast(current?.nodes?.find((n) => n.id === 'RenderRig')?.agent_version, REEL_WINDOWS_AGENT)) {
+          throw new Error(`Update RenderRig to ${REEL_WINDOWS_AGENT} to create Reels`);
+        }
         if (GPU_SETTINGS_TYPES.has(type)) {
           let settings;
           try { settings = JSON.parse(cmd); } catch { throw new Error('Job settings must be JSON. Use Reel GPU Test for the sample video.'); }
