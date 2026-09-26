@@ -8,7 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$AgentVersion = '3.2.4'
+$AgentVersion = '3.3.0'
 $Root = Join-Path $env:LOCALAPPDATA 'CurtCompute'
 $AgentPath = Join-Path $Root 'curt-hybrid-workload-agent.ps1'
 $ConfigPath = Join-Path $Root 'agent-config.json'
@@ -115,7 +115,7 @@ function Get-Audit {
             nvidia_smi = Get-CommandPath 'nvidia-smi.exe'
         }
         salad = Get-SaladState
-        supported_jobs = @('status','gpu-status','salad-status','workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow')
+        supported_jobs = @('status','storage-status','process-snapshot','network-check','gpu-status','salad-status','workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow')
     }
 }
 
@@ -244,6 +244,30 @@ function Invoke-Workload([string]$Type, [string]$Command) {
     $spec = Parse-JobSpec $Command
     switch ($Type) {
         'status' { return [ordered]@{ exit_code=0; stdout=(Get-Audit | ConvertTo-Json -Depth 8 -Compress); stderr='' } }
+        'storage-status' {
+            $disks = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | ForEach-Object {
+                [ordered]@{ drive=$_.DeviceID; free_gib=[math]::Round($_.FreeSpace / 1GB, 1); total_gib=[math]::Round($_.Size / 1GB, 1) }
+            })
+            return [ordered]@{ exit_code=0; stdout=($disks | ConvertTo-Json -Depth 3 -Compress); stderr='' }
+        }
+        'process-snapshot' {
+            $processes = @(Get-Process | Sort-Object CPU -Descending | Select-Object -First 8 | ForEach-Object {
+                [ordered]@{ name=$_.ProcessName; pid=$_.Id; cpu_seconds=[math]::Round($_.CPU, 1); memory_mib=[math]::Round($_.WorkingSet64 / 1MB, 0) }
+            })
+            return [ordered]@{ exit_code=0; stdout=($processes | ConvertTo-Json -Depth 3 -Compress); stderr='' }
+        }
+        'network-check' {
+            $timer = [Diagnostics.Stopwatch]::StartNew()
+            try {
+                $reply = Invoke-WebRequest -Uri 'https://curtbrag.com/' -Method Head -TimeoutSec 12
+                $timer.Stop()
+                $check = [ordered]@{ site='curtbrag.com'; http=[int]$reply.StatusCode; total_ms=$timer.ElapsedMilliseconds }
+                return [ordered]@{ exit_code=0; stdout=($check | ConvertTo-Json -Compress); stderr='' }
+            } catch {
+                $timer.Stop()
+                return [ordered]@{ exit_code=1; stdout=''; stderr="curtbrag.com check failed after $($timer.ElapsedMilliseconds)ms: $($_.Exception.Message)" }
+            }
+        }
         'gpu-status' { return [ordered]@{ exit_code=0; stdout=(Get-GpuInfo | ConvertTo-Json -Depth 5 -Compress); stderr='' } }
         'salad-status' { return [ordered]@{ exit_code=0; stdout=(Get-SaladState | ConvertTo-Json -Depth 5 -Compress); stderr='' } }
         'workstation-selftest' { return Invoke-WorkstationSelfTest }

@@ -5,6 +5,14 @@
   const SWARM_API = '/api/cluster';
   const CONTROL_API = '/.netlify/functions/cluster-api';
   const REQUIRED_AGENT = '2.1.1';
+  const DIAGNOSTIC_LINUX_AGENT = '2.2.0';
+  const DIAGNOSTIC_WINDOWS_AGENT = '3.3.0';
+  const DIAGNOSTIC_TYPES = new Set(['storage-status','process-snapshot','network-check']);
+  const DIAGNOSTIC_FALLBACK = {
+    'storage-status':'df -hP "$HOME"',
+    'process-snapshot':'(ps -eo pid,comm,%cpu,%mem --sort=-%cpu 2>/dev/null || ps -A) | head -n 9',
+    'network-check':'curl -sS -o /dev/null --max-time 12 -w "site=curtbrag.com http=%{http_code} dns_s=%{time_namelookup} connect_s=%{time_connect} total_s=%{time_total}" https://curtbrag.com/',
+  };
 
   const FLEET = [
     ['phone173','worker'], ['phone174','worker'], ['phone176','worker'], ['phone177','worker'],
@@ -246,6 +254,9 @@
           <button type="button" id="swarm-gpu-status">GPU Check</button>
           <button type="button" id="swarm-salad-status">Salad Check</button>
           <button type="button" id="swarm-workstation-test">Workstation Test</button>
+          <button type="button" id="swarm-fleet-storage">Fleet Storage</button>
+          <button type="button" id="swarm-fleet-processes">Fleet Processes</button>
+          <button type="button" id="swarm-fleet-network">Fleet Network</button>
           <button type="button" id="swarm-sample">Transcription Sample</button>
           <button type="button" id="swarm-copy-latest">Copy Latest Output</button>
           <button type="button" id="swarm-live-toggle">Pause Live Updates</button>
@@ -275,6 +286,9 @@
       document.getElementById('swarm-gpu-status').addEventListener('click', () => runAction('gpu-status', 'RenderRig'));
       document.getElementById('swarm-salad-status').addEventListener('click', () => runAction('salad-status', 'RenderRig'));
       document.getElementById('swarm-workstation-test').addEventListener('click', () => runAction('workstation-selftest', 'RenderRig'));
+      document.getElementById('swarm-fleet-storage').addEventListener('click', () => { runAction('storage-status', '__all__').catch(() => {}); });
+      document.getElementById('swarm-fleet-processes').addEventListener('click', () => { runAction('process-snapshot', '__all__').catch(() => {}); });
+      document.getElementById('swarm-fleet-network').addEventListener('click', () => { runAction('network-check', '__all__').catch(() => {}); });
       document.getElementById('swarm-copy-latest').addEventListener('click', async () => {
         const latest = current?.results?.[0];
         const text = latest?.stdout || latest?.stderr || '';
@@ -319,6 +333,11 @@
         <option value="transcribe">Transcribe audio or video</option>
         <option value="status">Check node status</option>
         </optgroup>
+        <optgroup label="Read-only diagnostics (all workers)">
+          <option value="storage-status">Check storage space</option>
+          <option value="process-snapshot">Show processes</option>
+          <option value="network-check">Check site connection</option>
+        </optgroup>
         <optgroup label="Advanced">
         <option value="shell">Advanced command</option>
         </optgroup>
@@ -341,7 +360,7 @@
     if (dispatchCard && !document.getElementById('swarm-work-note')) {
       dispatchCard.insertAdjacentHTML('afterbegin', `
         <div id="swarm-work-note" style="margin-bottom:12px;color:var(--color-muted);font-size:11px">
-          Check the RTX rig, render Blender scenes, run ComfyUI workflows, transcribe media, or convert video. GPU work pauses Salad and resumes it afterward.
+          Check storage, processes, and connectivity across the fleet. RTX work can render, transcribe, or convert media; those jobs pause Salad and resume it afterward.
         </div>
       `);
       const enqueueButton = Array.from(dispatchCard.querySelectorAll('button'))
@@ -359,7 +378,7 @@
     select.innerHTML = `
       <option value="RenderRig">RenderRig (RTX, hybrid Salad)</option>
       <option value="__pcs__">All online PCs</option>
-      <option value="__all__">All online nodes (status only)</option>
+      <option value="__all__">All online nodes (read-only checks)</option>
       <option disabled>──────────────</option>
     `;
     for (const node of nodes) {
@@ -672,6 +691,25 @@ async function syncPcDesired(type, targets) {
     try {
       if (!current) await load();
       const resolvedTarget = await resolveTarget(target);
+
+      if (DIAGNOSTIC_TYPES.has(type)) {
+        const targets = swarmTargets(resolvedTarget);
+        if (!targets.length) throw new Error('No online workers match that target');
+        const old = targets.filter((id) => {
+          const node = current?.nodes?.find((n) => n.id === id);
+          const required = id === 'RenderRig' ? DIAGNOSTIC_WINDOWS_AGENT : DIAGNOSTIC_LINUX_AGENT;
+          return !node || !versionAtLeast(node.agent_version, required);
+        });
+        const ready = targets.filter((id) => !old.includes(id));
+        const fallback = old.filter((id) => id !== 'RenderRig');
+        const blocked = old.filter((id) => id === 'RenderRig');
+        if (!ready.length && !fallback.length) throw new Error(`Update RenderRig to ${DIAGNOSTIC_WINDOWS_AGENT} before this check`);
+        if (ready.length) await enqueueSwarm(type, '', ready);
+        if (fallback.length) await enqueueSwarm('shell', DIAGNOSTIC_FALLBACK[type], fallback);
+        notify(`${type}: queued on ${ready.length + fallback.length} worker${ready.length + fallback.length === 1 ? '' : 's'}${blocked.length ? ' · update RenderRig for this check' : ''}`);
+        await load();
+        return { ok:true, targets:[...ready, ...fallback], skipped:blocked };
+      }
 
       if (GPU_WORK_TYPES.has(type)) {
         const targets = swarmTargets(resolvedTarget).filter((id) => GPU_IDS.has(id));
