@@ -8,6 +8,8 @@ Health audit, file inventory, SHA-256 checksums, archive creation, incremental r
 
 Jobs expand into one task per selected node. Agents claim only their own task, maintain a five-minute lease, and return progress, output, or a failure. Failed and cancelled jobs can be retried.
 
+The separate Swarm and hybrid workers now default to a 60-second poll to limit hosted API requests. The command bridge polls every 30 seconds when idle and refreshes fleet state every 90 seconds. A queued command may take about a minute to start. Already running agents keep their previous intervals until restarted or redeployed; installed environment overrides such as `POLL_INTERVAL` and `CLUSTER_JOB_POLL` still take precedence.
+
 ## Install agents
 
 Termux/Linux/Steam Deck:

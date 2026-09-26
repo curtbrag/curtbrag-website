@@ -7,7 +7,7 @@ set -u
 
 AGENT_VERSION="2.1.1"
 SWARM_URL="${SWARM_URL:-https://curtbrag.com/api/cluster}"
-POLL_INTERVAL="${POLL_INTERVAL:-10}"
+POLL_INTERVAL="${POLL_INTERVAL:-60}"
 DEVICE_ID="${DEVICE_ID:-}"
 NODE_CLASS="${NODE_CLASS:-unknown}"
 LOG_DIR="${HOME}/cluster/logs"

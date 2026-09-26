@@ -444,17 +444,21 @@ Invoke-ApiPost 'bridge-heartbeat' @{
 Reconcile-Registry
 Write-Log "Windows bridge online. Fleet: $($phones.IP -join ', ')"
 $lastRefresh = [DateTime]::MinValue
+$lastHeartbeat = Get-Date
 
 while ($true) {
     try {
-        Invoke-ApiPost 'bridge-heartbeat' @{
-            hostname = $env:COMPUTERNAME
-            summary = 'Windows live bridge polling current eight-phone fleet'
-        } | Out-Null
+        if ((Get-Date) - $lastHeartbeat -gt [TimeSpan]::FromSeconds(30)) {
+            Invoke-ApiPost 'bridge-heartbeat' @{
+                hostname = $env:COMPUTERNAME
+                summary = 'Windows live bridge polling current eight-phone fleet'
+            } | Out-Null
+            $lastHeartbeat = Get-Date
+        }
 
         $didWork = Process-Command
 
-        if ((Get-Date) - $lastRefresh -gt [TimeSpan]::FromSeconds(30)) {
+        if ((Get-Date) - $lastRefresh -gt [TimeSpan]::FromSeconds(90)) {
             foreach ($p in $phones) {
                 Apply-Desired $p $false
                 Push-PhoneState $p | Out-Null
@@ -462,7 +466,7 @@ while ($true) {
             $lastRefresh = Get-Date
         }
 
-        Start-Sleep -Seconds $(if ($didWork) { 1 } else { 3 })
+        Start-Sleep -Seconds $(if ($didWork) { 5 } else { 30 })
     }
     catch {
         Write-Log "Loop error: $($_.Exception.Message)"

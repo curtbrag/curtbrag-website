@@ -2,7 +2,7 @@ param(
     [string]$SshKey = "$env:USERPROFILE\.ssh\id_ed25519",
     [string]$SwarmUrl = "https://curtbrag.com/api/cluster",
     [string]$ConfigPath = "$env:LOCALAPPDATA\CurtCluster\bridge-config.json",
-    [int]$PollSeconds = 10
+    [int]$PollSeconds = 60
 )
 
 $ErrorActionPreference = "Stop"

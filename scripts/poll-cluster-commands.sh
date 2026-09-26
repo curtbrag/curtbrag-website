@@ -14,7 +14,7 @@ fi
 
 API_URL="https://curtbrag.com/.netlify/functions/cluster-control"
 API_KEY="${CLUSTER_API_KEY:?ERROR: CLUSTER_API_KEY not set. Create ~/.cluster-env with: CLUSTER_API_KEY=your-key}"
-POLL_INTERVAL=5  # seconds
+POLL_INTERVAL=30  # seconds; Netlify charges for every poll
 # SSH port is determined per-node via get_node_ssh_port() from cluster-nodes.conf (phones=8022, PCs=22)
 # Auto-detect our IP so local-exec works even if IP changes
 LOCAL_IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
