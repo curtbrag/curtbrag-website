@@ -60,7 +60,7 @@ if (Test-Path $ConfigPath) {
 
 Write-Host ""
 Write-Host "======================================================================"
-Write-Host " CURT CLUSTER - SWARM V2.2.0 $(if ($BootOnly) { 'BOOT SETUP' } else { 'DEPLOY' }) (WINDOWS)"
+Write-Host " CURT CLUSTER - SWARM V2.2.1 $(if ($BootOnly) { 'BOOT SETUP' } else { 'DEPLOY' }) (WINDOWS)"
 Write-Host "======================================================================"
 $phoneCount = @($Nodes | Where-Object { $_.Name -like 'phone*' }).Count
 $pcNames = @($Nodes | Where-Object { $_.Name -notlike 'phone*' } | ForEach-Object { $_.Name }) -join ', '
@@ -80,8 +80,8 @@ if (-not $BootOnly) {
     if (-not (Test-Path $TempWorker)) { throw "Could not download node-swarm.sh" }
 
     $workerText = Get-Content $TempWorker -Raw
-    if ($workerText -notmatch 'AGENT_VERSION="2\.2\.0"') {
-        throw "Downloaded worker is not Swarm v2.2.0. Stopping."
+    if ($workerText -notmatch 'AGENT_VERSION="2\.2\.1"') {
+        throw "Downloaded worker is not Swarm v2.2.1. Stopping."
     }
     if ($workerText -notmatch 'mining-stop\|miner-stop' -or $workerText -notmatch 'mining-start\|miner-start') {
         throw "Downloaded worker is missing miner controls."
@@ -89,7 +89,7 @@ if (-not $BootOnly) {
     if ($workerText -notmatch 'prune_other_swarm_agents') {
         throw "Downloaded worker is missing singleton ownership protection."
     }
-    Write-Host "    SWARM_WORKER=2.2.0"
+    Write-Host "    SWARM_WORKER=2.2.1"
     Write-Host "    MINER_COMMANDS=PASS"
     Write-Host "    SINGLETON_GUARD=PASS"
 }
@@ -324,7 +324,7 @@ else {
 
 Write-Host ""
 Write-Host "======================================================================"
-Write-Host " SWARM V2.2.0 DEPLOY RESULT"
+Write-Host " SWARM V2.2.1 DEPLOY RESULT"
 Write-Host "======================================================================"
 $results | Format-Table Name,SSH,Copy,Parse,Running,Singleton,PID,Mode -AutoSize
 
