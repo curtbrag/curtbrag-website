@@ -5,7 +5,8 @@ param(
     [string]$ConfigPath = "$env:LOCALAPPDATA\CurtCluster\bridge-config.json",
     [int]$PollSeconds = 60,
     [ValidateSet('all','phones','pcs')]
-    [string]$TargetGroup = 'all'
+    [string]$TargetGroup = 'all',
+    [switch]$EnablePhoneBoot
 )
 
 $ErrorActionPreference = "Stop"
@@ -53,6 +54,7 @@ $pcNames = @($Nodes | Where-Object { $_.Name -notlike 'phone*' } | ForEach-Objec
 Write-Host "Nodes     : $($Nodes.Count)"
 Write-Host "Phones    : $phoneCount"
 Write-Host "PCs       : $pcNames"
+Write-Host "Boot      : $(if ($EnablePhoneBoot) { 'TERMUX BOOT SCRIPT' } else { 'UNCHANGED' })"
 Write-Host "Mining    : UNCHANGED"
 Write-Host "Reboots   : NONE"
 Write-Host "API       : $SwarmUrl"
@@ -106,6 +108,30 @@ function Copy-NodeFile {
     )
     & scp.exe @scpArgs 2>$null
     return ($LASTEXITCODE -eq 0)
+}
+
+function Install-PhoneBoot([pscustomobject]$Node) {
+    # The values are inserted into single-quoted POSIX shell strings below.
+    $quotedUrl = $SwarmUrl.Replace("'", "'\''")
+    $boot = @'
+#!/data/data/com.termux/files/usr/bin/sh
+export HOME=/data/data/com.termux/files/home
+export PREFIX=/data/data/com.termux/files/usr
+export PATH="$PREFIX/bin:$HOME/bin:$PATH"
+mkdir -p "$HOME/cluster/logs" "$HOME/cluster/state"
+if command -v termux-wake-lock >/dev/null 2>&1; then termux-wake-lock >/dev/null 2>&1 || true; fi
+sshd >/dev/null 2>&1 || true
+if [ -f "$HOME/node-swarm.sh" ]; then
+  DEVICE_ID='__DEVICE__' NODE_CLASS='worker' SWARM_URL='__URL__' POLL_INTERVAL='__POLL__' nohup sh "$HOME/node-swarm.sh" >> "$HOME/cluster/logs/swarm-agent.log" 2>&1 </dev/null &
+fi
+'@
+    $boot = $boot.Replace('__DEVICE__', $Node.Name).Replace('__URL__', $quotedUrl).Replace('__POLL__', "$PollSeconds")
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($boot))
+    $remote = 'mkdir -p "$HOME/.termux/boot" && printf %s ' + $encoded + ' | base64 -d > "$HOME/.termux/boot/10-curt-swarm.tmp" && sh -n "$HOME/.termux/boot/10-curt-swarm.tmp" && chmod 700 "$HOME/.termux/boot/10-curt-swarm.tmp" && mv "$HOME/.termux/boot/10-curt-swarm.tmp" "$HOME/.termux/boot/10-curt-swarm" && printf BOOT_READY'
+    $installed = Invoke-NodeSsh $Node $remote
+    if ($installed.ExitCode -ne 0 -or $installed.Output -notmatch 'BOOT_READY') { return $false }
+    $null = Invoke-NodeSsh $Node 'command -v termux-wake-lock >/dev/null 2>&1 && termux-wake-lock >/dev/null 2>&1 || true'
+    return $true
 }
 
 $stopScript = @'
@@ -226,6 +252,11 @@ foreach ($node in $Nodes) {
         Write-Host "    SWARM=FAIL VERIFY=$($verify.Output)" -ForegroundColor Red
         $tail = Invoke-NodeSsh $node 'tail -n 14 "$HOME/cluster/logs/swarm-agent.log" 2>/dev/null || true'
         if ($tail.Output) { Write-Host $tail.Output }
+    }
+
+    if ($running -and $EnablePhoneBoot -and $node.Name -like 'phone*') {
+        if (Install-PhoneBoot $node) { Write-Host '    BOOT=SCRIPT_READY (Termux:Boot app required)' -ForegroundColor Green }
+        else { Write-Host '    BOOT=FAIL (agent remains running)' -ForegroundColor Yellow }
     }
 
     $results += [pscustomobject]@{
