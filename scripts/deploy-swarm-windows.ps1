@@ -4,7 +4,7 @@ param(
     [string]$WorkerUrl = "https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/node-swarm.sh",
     [string]$ConfigPath = "$env:LOCALAPPDATA\CurtCluster\bridge-config.json",
     [int]$PollSeconds = 60,
-    [ValidateSet('all','phones','pcs')]
+    [ValidateSet('all','phones','pcs','viki','recovery')]
     [string]$TargetGroup = 'all',
     [switch]$EnablePhoneBoot
 )
@@ -25,9 +25,12 @@ $Nodes = @(
     [pscustomobject]@{ Name="Alina"; IP="192.168.1.193"; User="neo"; Port=22; Class="pc" }
     [pscustomobject]@{ Name="Nexus"; IP="192.168.1.192"; User="neo"; Port=22; Class="pc" }
     [pscustomobject]@{ Name="SteamDeck"; IP="192.168.1.166"; User="deck"; Port=22; Class="pc" }
+    [pscustomobject]@{ Name="viki"; IP="192.168.1.239"; User="neo"; Port=22; Class="pc" }
 )
 if ($TargetGroup -eq 'phones') { $Nodes = @($Nodes | Where-Object { $_.Name -like 'phone*' }) }
 if ($TargetGroup -eq 'pcs') { $Nodes = @($Nodes | Where-Object { $_.Name -notlike 'phone*' }) }
+if ($TargetGroup -eq 'viki') { $Nodes = @($Nodes | Where-Object { $_.Name -eq 'viki' }) }
+if ($TargetGroup -eq 'recovery') { $Nodes = @($Nodes | Where-Object { $_.Name -like 'phone*' -or $_.Name -eq 'viki' }) }
 
 if (-not (Test-Path $SshKey)) { throw "SSH key missing: $SshKey" }
 $null = Get-Command ssh.exe -ErrorAction Stop
