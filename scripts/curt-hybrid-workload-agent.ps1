@@ -4,11 +4,12 @@ param(
     [string]$Mode = 'Audit',
     [string]$DeviceId = 'RenderRig',
     [string]$SwarmUrl = 'https://curtbrag.com/api/cluster',
-    [int]$PollSeconds = 60
+    [int]$PollSeconds = 60,
+    [string]$ReelScriptUrl = 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/reel-poc.py'
 )
 
 $ErrorActionPreference = 'Stop'
-$AgentVersion = '3.3.0'
+$AgentVersion = '3.4.0'
 $Root = Join-Path $env:LOCALAPPDATA 'CurtCompute'
 $AgentPath = Join-Path $Root 'curt-hybrid-workload-agent.ps1'
 $ConfigPath = Join-Path $Root 'agent-config.json'
@@ -115,7 +116,7 @@ function Get-Audit {
             nvidia_smi = Get-CommandPath 'nvidia-smi.exe'
         }
         salad = Get-SaladState
-        supported_jobs = @('status','storage-status','process-snapshot','network-check','gpu-status','salad-status','workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow')
+        supported_jobs = @('status','storage-status','process-snapshot','network-check','gpu-status','salad-status','workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow','reel-create')
     }
 }
 
@@ -271,6 +272,20 @@ function Invoke-Workload([string]$Type, [string]$Command) {
         'gpu-status' { return [ordered]@{ exit_code=0; stdout=(Get-GpuInfo | ConvertTo-Json -Depth 5 -Compress); stderr='' } }
         'salad-status' { return [ordered]@{ exit_code=0; stdout=(Get-SaladState | ConvertTo-Json -Depth 5 -Compress); stderr='' } }
         'workstation-selftest' { return Invoke-WorkstationSelfTest }
+        'reel-create' {
+            $python = Get-CommandPath 'python.exe'; if (-not $python) { throw 'Python is required to produce a Reel.' }
+            $generator = Join-Path $Root 'reel-poc.py'
+            if (-not (Test-Path -LiteralPath $generator)) { throw 'Reel generator is missing. Reinstall the Windows agent.' }
+            $folder = Join-Path $Root 'reels'
+            New-Item -ItemType Directory -Path $folder -Force | Out-Null
+            $output = Join-Path $folder ('reel-' + [guid]::NewGuid().ToString('N') + '.mp4')
+            $render = Invoke-External $python @($generator,'--output',$output)
+            if ($render.exit_code -ne 0) { throw "Reel render failed: $($render.stderr)" }
+            if (-not (Test-Path -LiteralPath $output)) { throw 'Reel render produced no MP4.' }
+            $bytes = (Get-Item -LiteralPath $output).Length
+            if ($bytes -gt 6MB) { throw 'Reel exceeds the 6 MiB dashboard upload limit.' }
+            return [ordered]@{ exit_code=0; stdout=([ordered]@{local_path=$output;bytes=$bytes} | ConvertTo-Json -Compress); stderr='' }
+        }
         'blender-render' {
             $exe = Get-CommandPath 'blender.exe'; if (-not $exe) { throw 'Blender is not installed or not on PATH.' }
             $input = Resolve-SafePath ([string]$spec.input); $output = Resolve-SafePath ([string]$spec.output) -Output
@@ -310,6 +325,12 @@ function Send-Result($Config, $Job, $Result) {
     $null = Invoke-Swarm -Action 'job-complete' -Method POST -Body $body -Config $Config
 }
 
+function Upload-Reel($Config, [string]$JobId, [string]$Path) {
+    $origin = ([uri]$Config.swarm_url).GetLeftPart([System.UriPartial]::Authority)
+    $uri = "$origin/api/reel-media?id=$([uri]::EscapeDataString($JobId))"
+    Invoke-RestMethod -Uri $uri -Method Post -Headers @{Authorization="Bearer $($Config.password)"} -ContentType 'video/mp4' -InFile $Path -TimeoutSec 90
+}
+
 function Run-Agent {
     $config = Get-Config; Write-AgentLog "Hybrid worker $AgentVersion started as $($config.device_id)"; $lastHeartbeat = [datetime]::MinValue
     while ($true) {
@@ -322,6 +343,12 @@ function Run-Agent {
                     Write-AgentLog "Starting $($job.type) job $($job.id)"
                     if ($job.type -in @('workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow')) { $saladRecord = Suspend-Salad }
                     $result = Invoke-Workload -Type ([string]$job.type) -Command ([string]$(if($job.cmd){$job.cmd}else{$job.command}))
+                    if ($job.type -eq 'reel-create' -and $result.exit_code -eq 0) {
+                        $rendered = $result.stdout | ConvertFrom-Json
+                        $uploaded = Upload-Reel $config ([string]$job.id) ([string]$rendered.local_path)
+                        if (-not $uploaded.ok) { throw 'Reel upload did not succeed.' }
+                        $result.stdout = ([ordered]@{artifact_id=$uploaded.id;local_path=$rendered.local_path;bytes=$uploaded.bytes;sha256=$uploaded.sha256} | ConvertTo-Json -Compress)
+                    }
                 } catch { $result = [ordered]@{ exit_code=1; stdout=''; stderr=$_.Exception.Message } }
                 finally { if ($saladRecord) { Resume-Salad $saladRecord } }
                 Send-Result $config $job $result; Write-AgentLog "Finished $($job.id) exit=$($result.exit_code)"
@@ -336,6 +363,13 @@ function Run-Agent {
 }
 
 function Install-Agent {
+    $python = Get-CommandPath 'python.exe'; if (-not $python) { throw 'Python is required to install the Reel generator.' }
+    New-Item -ItemType Directory -Force -Path $Root | Out-Null
+    $temporaryGenerator = Join-Path $Root 'reel-poc.download.py'
+    Invoke-WebRequest -Uri $ReelScriptUrl -OutFile $temporaryGenerator -TimeoutSec 30
+    $check = Invoke-External $python @('-c','import ast,sys; ast.parse(open(sys.argv[1], encoding="utf-8").read())',$temporaryGenerator)
+    if ($check.exit_code -ne 0) { throw "Reel generator syntax check failed: $($check.stderr)" }
+    Move-Item -LiteralPath $temporaryGenerator -Destination (Join-Path $Root 'reel-poc.py') -Force
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 750
     New-Item -ItemType Directory -Force -Path $Root | Out-Null
