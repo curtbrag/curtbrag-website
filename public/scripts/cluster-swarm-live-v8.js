@@ -286,9 +286,9 @@
       document.getElementById('swarm-gpu-status').addEventListener('click', () => runAction('gpu-status', 'RenderRig'));
       document.getElementById('swarm-salad-status').addEventListener('click', () => runAction('salad-status', 'RenderRig'));
       document.getElementById('swarm-workstation-test').addEventListener('click', () => runAction('workstation-selftest', 'RenderRig'));
-      document.getElementById('swarm-fleet-storage').addEventListener('click', () => runAction('storage-status', '__all__'));
-      document.getElementById('swarm-fleet-processes').addEventListener('click', () => runAction('process-snapshot', '__all__'));
-      document.getElementById('swarm-fleet-network').addEventListener('click', () => runAction('network-check', '__all__'));
+      document.getElementById('swarm-fleet-storage').addEventListener('click', () => { runAction('storage-status', '__all__').catch(() => {}); });
+      document.getElementById('swarm-fleet-processes').addEventListener('click', () => { runAction('process-snapshot', '__all__').catch(() => {}); });
+      document.getElementById('swarm-fleet-network').addEventListener('click', () => { runAction('network-check', '__all__').catch(() => {}); });
       document.getElementById('swarm-copy-latest').addEventListener('click', async () => {
         const latest = current?.results?.[0];
         const text = latest?.stdout || latest?.stderr || '';
