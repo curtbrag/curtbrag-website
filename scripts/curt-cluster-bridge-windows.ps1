@@ -197,6 +197,7 @@ hr=0
 if [ -f "$HOME/xmrig.log" ]; then
   hr="$(grep 'miner    speed' "$HOME/xmrig.log" 2>/dev/null | tail -1 | awk '{for(i=1;i<=NF;i++) if($i ~ /^10s\/60s\/15m$/){v=$(i+2); if(v ~ /^[0-9.]+$/) print v; else print 0; exit}}')"
 fi
+[ -n "$pid" ] || hr=0
 echo "HASHRATE=${hr:-0}"
 if [ -x "$HOME/bin/xmrig" ]; then
   echo "BINHASH=$(sha256sum "$HOME/bin/xmrig" 2>/dev/null | awk '{print $1}')"
@@ -321,8 +322,14 @@ export HOME=/data/data/com.termux/files/home
 export PREFIX=/data/data/com.termux/files/usr
 export PATH="$PREFIX/bin:$HOME/bin:$PATH"
 pkill -9 xmrig 2>/dev/null || true
-sleep 1
-pgrep -x xmrig >/dev/null && echo STILL_RUNNING || echo STOPPED
+attempt=0
+while [ "$attempt" -lt 6 ]; do
+  if ! pgrep -x xmrig >/dev/null 2>&1; then echo STOPPED; exit 0; fi
+  sleep 1
+  attempt=$((attempt + 1))
+done
+echo STILL_RUNNING
+exit 1
 '@
     return Invoke-Phone $p.IP $remote
 }
