@@ -31,6 +31,7 @@
   const GPU_IDS = new Set(['RenderRig']);
   const TRANSCRIBE_IDS = new Set(['Alina','Nexus']);
   const GPU_WORK_TYPES = new Set(['gpu-status','salad-status','workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow']);
+  const GPU_SETTINGS_TYPES = new Set(['blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow']);
   const PC_TARGET_THREADS = { Alina:12, Nexus:0, SteamDeck:4, viki:4 };
   const MINER_TYPES = new Set(['mining-status','mining-stop','mining-start','mining-restart']);
 
@@ -254,6 +255,7 @@
           <button type="button" id="swarm-gpu-status">GPU Check</button>
           <button type="button" id="swarm-salad-status">Salad Check</button>
           <button type="button" id="swarm-workstation-test">Workstation Test</button>
+          <button type="button" id="swarm-reel-gpu-test" title="GPU encode the Reel created on RenderRig in Videos/impact-bolt-poc.mp4">Reel GPU Test</button>
           <button type="button" id="swarm-fleet-storage">Fleet Storage</button>
           <button type="button" id="swarm-fleet-processes">Fleet Processes</button>
           <button type="button" id="swarm-fleet-network">Fleet Network</button>
@@ -286,6 +288,14 @@
       document.getElementById('swarm-gpu-status').addEventListener('click', () => runAction('gpu-status', 'RenderRig'));
       document.getElementById('swarm-salad-status').addEventListener('click', () => runAction('salad-status', 'RenderRig'));
       document.getElementById('swarm-workstation-test').addEventListener('click', () => runAction('workstation-selftest', 'RenderRig'));
+      document.getElementById('swarm-reel-gpu-test').addEventListener('click', () => {
+        const settings = {
+          input:'%USERPROFILE%\\Videos\\impact-bolt-poc.mp4',
+          output:'%USERPROFILE%\\Videos\\impact-bolt-site-test.mp4',
+          preset:'medium',
+        };
+        runAction('ffmpeg-transcode', 'RenderRig', JSON.stringify(settings)).catch(() => {});
+      });
       document.getElementById('swarm-fleet-storage').addEventListener('click', () => { runAction('storage-status', '__all__').catch(() => {}); });
       document.getElementById('swarm-fleet-processes').addEventListener('click', () => { runAction('process-snapshot', '__all__').catch(() => {}); });
       document.getElementById('swarm-fleet-network').addEventListener('click', () => { runAction('network-check', '__all__').catch(() => {}); });
@@ -714,6 +724,13 @@ async function syncPcDesired(type, targets) {
       if (GPU_WORK_TYPES.has(type)) {
         const targets = swarmTargets(resolvedTarget).filter((id) => GPU_IDS.has(id));
         if (!targets.length) throw new Error('RenderRig must be online for RTX work');
+        if (GPU_SETTINGS_TYPES.has(type)) {
+          let settings;
+          try { settings = JSON.parse(cmd); } catch { throw new Error('Job settings must be JSON. Use Reel GPU Test for the sample video.'); }
+          if (!settings || Array.isArray(settings) || typeof settings !== 'object') {
+            throw new Error('Job settings must be a JSON object. Use Reel GPU Test for the sample video.');
+          }
+        }
         const data = await enqueueSwarm(type, cmd, targets);
         notify(`${type}: queued on RenderRig`);
         await load();
