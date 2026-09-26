@@ -17,6 +17,12 @@
   force = true
 
 [[redirects]]
+  from = "/api/episode-media"
+  to = "/.netlify/functions/episode-media"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/cluster-api"
   to = "/.netlify/functions/swarm-core"
   status = 200
@@ -147,4 +153,3 @@
   for = "/*.html"
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
-

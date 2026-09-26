@@ -6,11 +6,12 @@ param(
     [string]$SwarmUrl = 'https://curtbrag.com/api/cluster',
     [int]$PollSeconds = 60,
     [string]$ReelScriptUrl = 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/reel-poc.py',
-    [string]$FootageScriptUrl = 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/reel-from-footage.py'
+    [string]$FootageScriptUrl = 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/reel-from-footage.py',
+    [string]$EpisodeScriptUrl = 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-episode.py'
 )
 
 $ErrorActionPreference = 'Stop'
-$AgentVersion = '3.5.0'
+$AgentVersion = '3.6.0'
 $Root = Join-Path $env:LOCALAPPDATA 'CurtCompute'
 $AgentPath = Join-Path $Root 'curt-hybrid-workload-agent.ps1'
 $ConfigPath = Join-Path $Root 'agent-config.json'
@@ -117,7 +118,7 @@ function Get-Audit {
             nvidia_smi = Get-CommandPath 'nvidia-smi.exe'
         }
         salad = Get-SaladState
-        supported_jobs = @('status','storage-status','process-snapshot','network-check','gpu-status','salad-status','workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow','reel-create')
+        supported_jobs = @('status','storage-status','process-snapshot','network-check','gpu-status','salad-status','workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow','reel-create','episode-create')
     }
 }
 
@@ -292,6 +293,19 @@ function Invoke-Workload([string]$Type, [string]$Command) {
             if ($bytes -gt 4MB) { throw 'Reel exceeds the 4 MiB dashboard upload limit.' }
             return [ordered]@{ exit_code=0; stdout=([ordered]@{local_path=$output;bytes=$bytes} | ConvertTo-Json -Compress); stderr='' }
         }
+        'episode-create' {
+            $python = Get-CommandPath 'python.exe'; if (-not $python) { throw 'Python is required to produce an episode.' }
+            $generator = Join-Path $Root 'cluster-episode.py'
+            if (-not (Test-Path -LiteralPath $generator)) { throw 'Episode renderer is missing. Reinstall the Windows agent.' }
+            if (-not ($spec.scenes -is [array]) -or $spec.scenes.Count -lt 5 -or $spec.scenes.Count -gt 8) { throw 'Episode settings require 5–8 scenes.' }
+            $folder = Join-Path (Join-Path $Root 'episodes') ([guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $folder -Force | Out-Null
+            $specFile = Join-Path $folder 'episode.json'
+            Set-Content -LiteralPath $specFile -Value $Command -Encoding utf8
+            $render = Invoke-External $python @($generator,'--spec',$specFile,'--output-dir',$folder)
+            if ($render.exit_code -ne 0) { throw "Episode render failed: $($render.stderr)" }
+            return $render
+        }
         'blender-render' {
             $exe = Get-CommandPath 'blender.exe'; if (-not $exe) { throw 'Blender is not installed or not on PATH.' }
             $input = Resolve-SafePath ([string]$spec.input); $output = Resolve-SafePath ([string]$spec.output) -Output
@@ -337,6 +351,30 @@ function Upload-Reel($Config, [string]$JobId, [string]$Path) {
     Invoke-RestMethod -Uri $uri -Method Post -Headers @{Authorization="Bearer $($Config.password)"} -ContentType 'video/mp4' -InFile $Path -TimeoutSec 90
 }
 
+function Upload-Episode($Config, [string]$JobId, [string]$Variant, [string]$Path) {
+    if ($Variant -notin @('master','short')) { throw 'Invalid episode variant.' }
+    $origin = ([uri]$Config.swarm_url).GetLeftPart([System.UriPartial]::Authority)
+    $base = "$origin/api/episode-media?id=$([uri]::EscapeDataString($JobId))&variant=$Variant"
+    $chunkSize = 2MB
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $total = [int][math]::Ceiling($stream.Length / $chunkSize)
+        if ($total -lt 1 -or $total -gt 16) { throw 'Episode must be between 1 byte and 32 MiB.' }
+        for ($part = 0; $part -lt $total; $part++) {
+            $length = [int][math]::Min($chunkSize, $stream.Length - $stream.Position)
+            $buffer = [byte[]]::new($length)
+            $read = $stream.Read($buffer, 0, $length)
+            if ($read -ne $length) { throw 'Episode file changed during upload.' }
+            $hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($buffer)).ToLowerInvariant()
+            $reply = Invoke-RestMethod -Uri "$base&part=$part&total=$total" -Method Post -Headers @{Authorization="Bearer $($Config.password)";'x-chunk-sha256'=$hash} -ContentType 'video/mp4' -Body $buffer -TimeoutSec 90
+            if (-not $reply.ok -or $reply.sha256 -ne $hash) { throw "Episode part $part upload failed." }
+        }
+        $manifest = Invoke-RestMethod -Uri "$base&finalize=1&total=$total" -Method Post -Headers @{Authorization="Bearer $($Config.password)"} -TimeoutSec 90
+        if (-not $manifest.ok -or $manifest.bytes -ne $stream.Length) { throw 'Episode manifest verification failed.' }
+        return $manifest
+    } finally { $stream.Dispose() }
+}
+
 function Run-Agent {
     $config = Get-Config; Write-AgentLog "Hybrid worker $AgentVersion started as $($config.device_id)"; $lastHeartbeat = [datetime]::MinValue
     while ($true) {
@@ -347,13 +385,19 @@ function Run-Agent {
                 $saladRecord = $null
                 try {
                     Write-AgentLog "Starting $($job.type) job $($job.id)"
-                    if ($job.type -in @('workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow')) { $saladRecord = Suspend-Salad }
+                    if ($job.type -in @('workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow','episode-create')) { $saladRecord = Suspend-Salad }
                     $result = Invoke-Workload -Type ([string]$job.type) -Command ([string]$(if($job.cmd){$job.cmd}else{$job.command}))
                     if ($job.type -eq 'reel-create' -and $result.exit_code -eq 0) {
                         $rendered = $result.stdout | ConvertFrom-Json
                         $uploaded = Upload-Reel $config ([string]$job.id) ([string]$rendered.local_path)
                         if (-not $uploaded.ok) { throw 'Reel upload did not succeed.' }
                         $result.stdout = ([ordered]@{artifact_id=$uploaded.id;local_path=$rendered.local_path;bytes=$uploaded.bytes;sha256=$uploaded.sha256} | ConvertTo-Json -Compress)
+                    }
+                    if ($job.type -eq 'episode-create' -and $result.exit_code -eq 0) {
+                        $rendered = $result.stdout | ConvertFrom-Json
+                        $master = Upload-Episode $config ([string]$job.id) 'master' ([string]$rendered.master_path)
+                        $short = Upload-Episode $config ([string]$job.id) 'short' ([string]$rendered.short_path)
+                        $result.stdout = ([ordered]@{ title=$rendered.title; duration=$rendered.duration; short_duration=$rendered.short_duration; master_bytes=$master.bytes; short_bytes=$short.bytes; local_master=$rendered.master_path; local_short=$rendered.short_path } | ConvertTo-Json -Compress)
                     }
                 } catch { $result = [ordered]@{ exit_code=1; stdout=''; stderr=$_.Exception.Message } }
                 finally { if ($saladRecord) { Resume-Salad $saladRecord } }
@@ -381,6 +425,11 @@ function Install-Agent {
     $check = Invoke-External $python @('-c','import ast,sys; ast.parse(open(sys.argv[1], encoding="utf-8").read())',$temporaryFootage)
     if ($check.exit_code -ne 0) { throw "Footage generator syntax check failed: $($check.stderr)" }
     Move-Item -LiteralPath $temporaryFootage -Destination (Join-Path $Root 'reel-from-footage.py') -Force
+    $temporaryEpisode = Join-Path $Root 'cluster-episode.download.py'
+    Invoke-WebRequest -Uri $EpisodeScriptUrl -OutFile $temporaryEpisode -TimeoutSec 30
+    $check = Invoke-External $python @('-c','import ast,sys; ast.parse(open(sys.argv[1], encoding="utf-8").read())',$temporaryEpisode)
+    if ($check.exit_code -ne 0) { throw "Episode renderer syntax check failed: $($check.stderr)" }
+    Move-Item -LiteralPath $temporaryEpisode -Destination (Join-Path $Root 'cluster-episode.py') -Force
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 750
     New-Item -ItemType Directory -Force -Path $Root | Out-Null
