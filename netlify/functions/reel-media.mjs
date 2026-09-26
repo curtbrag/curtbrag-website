@@ -1,7 +1,7 @@
 import { getStore } from '@netlify/blobs';
 import crypto from 'node:crypto';
 
-const MAX_BYTES = 6 * 1024 * 1024;
+const MAX_BYTES = 4 * 1024 * 1024;
 const ID_PATTERN = /^web-v8-\d{13}-[a-z0-9]{6}$/;
 const media = () => getStore({ name:'cluster-reels', consistency:'strong' });
 const queue = () => getStore({ name:'swarm-queue', consistency:'strong' });
@@ -45,10 +45,10 @@ export default async function handler(request) {
       return json(415, { ok:false, error:'expected video/mp4' });
     }
     const declared = Number(request.headers.get('content-length') || 0);
-    if (declared > MAX_BYTES) return json(413, { ok:false, error:'Reel exceeds 6 MiB' });
+    if (declared > MAX_BYTES) return json(413, { ok:false, error:'Reel exceeds 4 MiB' });
     const data = await request.arrayBuffer();
     const bytes = new Uint8Array(data);
-    if (!bytes.length || bytes.length > MAX_BYTES) return json(413, { ok:false, error:'Reel must be under 6 MiB' });
+    if (!bytes.length || bytes.length > MAX_BYTES) return json(413, { ok:false, error:'Reel must be under 4 MiB' });
     if (Buffer.from(bytes.slice(4, 8)).toString('ascii') !== 'ftyp') {
       return json(415, { ok:false, error:'invalid MP4 header' });
     }
