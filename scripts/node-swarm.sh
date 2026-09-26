@@ -1,11 +1,11 @@
 #!/bin/sh
-# node-swarm.sh — Curt Cluster Swarm worker agent v2.1.1
+# node-swarm.sh — Curt Cluster Swarm worker agent v2.2.0
 # Polls curtbrag.com Swarm, executes assigned jobs, and reports results.
 # Works on Termux and Linux. Requires curl + sh; jq or python3 recommended.
 
 set -u
 
-AGENT_VERSION="2.1.1"
+AGENT_VERSION="2.2.0"
 SWARM_URL="${SWARM_URL:-https://curtbrag.com/api/cluster}"
 POLL_INTERVAL="${POLL_INTERVAL:-60}"
 DEVICE_ID="${DEVICE_ID:-}"
@@ -429,6 +429,29 @@ execute_job() {
       _mem=$(awk '/MemAvailable:/ {printf "%.0fMB", $2/1024}' /proc/meminfo 2>/dev/null || echo "?")
       stdout="device=$DEVICE_ID platform=$PLATFORM class=$NODE_CLASS uptime=$_uptime load=$_load mem_available=$_mem agent=$AGENT_VERSION pid=$$"
       exit_code=0
+      ;;
+
+    storage-status)
+      stdout=$(df -hP "$HOME" 2>"$err_file")
+      exit_code=$?
+      stderr=$(cat "$err_file" 2>/dev/null || true)
+      ;;
+
+    process-snapshot)
+      stdout=$(ps -eo pid,comm,%cpu,%mem --sort=-%cpu 2>/dev/null | head -n 9)
+      [ -n "$stdout" ] || stdout=$(ps -A 2>"$err_file" | head -n 9)
+      if [ -z "$stdout" ]; then
+        exit_code=1
+        stderr=$(cat "$err_file" 2>/dev/null || echo 'process list unavailable')
+      fi
+      ;;
+
+    network-check)
+      stdout=$(curl -sS -o /dev/null --max-time 12 \
+        -w 'site=curtbrag.com http=%{http_code} dns_s=%{time_namelookup} connect_s=%{time_connect} total_s=%{time_total}' \
+        'https://curtbrag.com/' 2>"$err_file")
+      exit_code=$?
+      stderr=$(cat "$err_file" 2>/dev/null || true)
       ;;
 
     mining-status|miner-status)
