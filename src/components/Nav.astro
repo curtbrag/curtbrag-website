@@ -2,11 +2,9 @@
 const currentPath = Astro.url.pathname;
 
 const navLinks = [
-  { href: '/', label: 'Home' },
+  { href: '/#services', label: 'Tool truck' },
+  { href: '/#projects', label: 'Projects' },
   { href: '/gallery', label: 'Gallery' },
-  { href: '/shop', label: 'Shop' },
-  { href: '/rig', label: 'Rig' },
-  { href: '/cluster', label: 'Cluster' },
   { href: '/contact', label: 'Contact' },
 ];
 
@@ -14,21 +12,22 @@ function isActive(href: string): boolean {
   if (href === '/') {
     return currentPath === '/';
   }
-  return currentPath.startsWith(href);
+  return href.includes('#') ? false : currentPath.startsWith(href);
 }
 ---
 
-<header class="fixed top-0 left-0 right-0 z-50 bg-bg/80 backdrop-blur-xl border-b border-transparent">
+<header class="fixed top-0 left-0 right-0 z-50 bg-[#141414]/95 backdrop-blur-xl border-b border-[#373431]">
   <nav class="max-w-7xl mx-auto px-4 sm:px-6">
     <div class="flex items-center justify-between h-16">
       <!-- Logo -->
-      <a href="/" class="flex-shrink-0">
+      <a href="/" class="flex-shrink-0 flex items-center gap-2" aria-label="CurtBrag home">
         <img
           src="/assets/logo_icon.png"
-          alt="CurtBrag Logo"
+          alt=""
           class="h-10 w-auto"
           loading="eager"
         />
+        <span class="text-white text-sm font-bold tracking-tight">CURT<span class="text-brand">BRAG</span></span>
       </a>
 
       <!-- Desktop Navigation -->
@@ -47,6 +46,7 @@ function isActive(href: string): boolean {
             {link.label}
           </a>
         ))}
+        <a href="https://otis.curtbrag.com/curtschedule" target="_blank" rel="noopener noreferrer" class="ml-3 bg-brand text-white px-4 py-2.5 text-sm font-bold hover:bg-brand-dark transition-colors">Book a stop ↗</a>
       </div>
 
       <!-- Mobile Hamburger Button -->
@@ -131,6 +131,7 @@ function isActive(href: string): boolean {
             {link.label}
           </a>
         ))}
+        <a href="https://otis.curtbrag.com/curtschedule" target="_blank" rel="noopener noreferrer" class="flex items-center px-4 py-3.5 mt-3 bg-brand text-white font-semibold">Book a stop ↗</a>
       </div>
 
       <!-- Mobile Menu Footer -->

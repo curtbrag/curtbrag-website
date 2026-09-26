@@ -1,0 +1,99 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Boston Sports Tracker | Curtis Bragdon" description="Follow Boston teams on Curtis Bragdon’s sports tracker.">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 pt-8"><a class="text-brand text-sm" href="/#projects">← Back to the site</a></div>
+<section class="py-14 md:py-20 reveal">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="flex items-center gap-3 mb-1">
+        <i class="fa-solid fa-trophy text-yellow text-xl" aria-hidden="true"></i>
+        <h2 class="text-2xl font-bold">Boston Sports Tracker</h2>
+      </div>
+      <div class="w-16 h-0.5 bg-gradient-to-r from-yellow to-transparent mb-8"></div>
+
+      <div id="sports-container" class="bg-panel border border-border rounded-2xl p-6 hover:border-border-hover transition-colors duration-300">
+        <div class="divide-y divide-border">
+          <div class="flex justify-between items-center py-3 group hover:bg-surface/50 px-3 -mx-3 rounded-lg transition-colors">
+            <span class="font-semibold flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-red" aria-hidden="true"></span> Red Sox
+            </span>
+            <span id="score-redsox" class="text-text-secondary text-sm">No game scheduled</span>
+          </div>
+          <div class="flex justify-between items-center py-3 group hover:bg-surface/50 px-3 -mx-3 rounded-lg transition-colors">
+            <span class="font-semibold flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-blue" aria-hidden="true"></span> Patriots
+            </span>
+            <span id="score-patriots" class="text-text-secondary text-sm">No game scheduled</span>
+          </div>
+          <div class="flex justify-between items-center py-3 group hover:bg-surface/50 px-3 -mx-3 rounded-lg transition-colors">
+            <span class="font-semibold flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-green" aria-hidden="true"></span> Celtics
+            </span>
+            <span id="score-celtics" class="text-text-secondary text-sm">No game scheduled</span>
+          </div>
+          <div class="flex justify-between items-center py-3 group hover:bg-surface/50 px-3 -mx-3 rounded-lg transition-colors">
+            <span class="font-semibold flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-yellow" aria-hidden="true"></span> Bruins
+            </span>
+            <span id="score-bruins" class="text-text-secondary text-sm">No game scheduled</span>
+          </div>
+          <div class="flex justify-between items-center py-3 group hover:bg-surface/50 px-3 -mx-3 rounded-lg transition-colors">
+            <span class="font-semibold flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-blue" aria-hidden="true"></span> Revolution
+            </span>
+            <span id="score-revolution" class="text-text-secondary text-sm">No game scheduled</span>
+          </div>
+        </div>
+        <p id="sports-status" class="text-muted text-xs mt-4"></p>
+      </div>
+    </div>
+  </section>
+</Layout>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const teamIds = ['redsox', 'patriots', 'celtics', 'bruins', 'revolution'];
+    const statusEl = document.getElementById('sports-status');
+    let loaded = false;
+
+    async function loadSports() {
+      try {
+        const res = await fetch('/.netlify/functions/sports');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+
+        if (data.success && data.teams) {
+          teamIds.forEach((team) => {
+            const el = document.getElementById(`score-${team}`);
+            if (el && data.teams[team]) {
+              el.textContent = data.teams[team];
+            } else if (el) {
+              el.textContent = 'No game scheduled';
+            }
+          });
+          loaded = true;
+          if (statusEl) {
+            const now = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            statusEl.textContent = 'Last checked ' + now;
+          }
+        }
+      } catch {
+        if (!loaded) {
+          teamIds.forEach((team) => {
+            const el = document.getElementById(`score-${team}`);
+            if (el) el.textContent = 'No game scheduled';
+          });
+          if (statusEl) statusEl.textContent = '';
+        }
+      }
+    }
+
+    // Initial load
+    loadSports();
+
+    // Retry after 5 seconds in case the function cold-starts
+    setTimeout(loadSports, 5000);
+
+    // Auto-refresh every 5 minutes
+    setInterval(loadSports, 300000);
+  });
+</script>

@@ -1,0 +1,156 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Alina | Curtis Bragdon" description="Ask Alina about tools, scheduling, warranties and how to reach Curtis Bragdon.">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 pt-8"><a class="text-brand text-sm" href="/#projects">← Back to the site</a></div>
+<section class="py-14 md:py-20 reveal" id="alina">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <!-- Header -->
+      <div class="flex items-center gap-3 mb-1">
+        <img src="/assets/alina_avatar.png" alt="Alina AI assistant avatar" class="w-12 h-12 rounded-xl ring-2 ring-brand/30" loading="lazy" />
+        <h2 class="text-2xl font-bold">Alina &mdash; <span class="gradient-text">AI Command Center</span></h2>
+      </div>
+      <p class="text-text-secondary text-sm mb-3 max-w-2xl">
+        Alina is a GPT-powered assistant that can help you schedule a truck stop, answer questions about tools and services, share current promotions, assist with warranty claims, and provide contact info. Just type a question below.
+      </p>
+      <p class="text-muted text-xs mb-6">
+        7,500+ sessions &bull; Custom automations &bull; Available 24/7
+      </p>
+
+      <!-- Prompt Chips -->
+      <div class="flex flex-wrap gap-2 mb-4" id="prompt-chips">
+        <button data-prompt="Schedule a stop" class="alina-chip rounded-full border border-border bg-surface px-4 py-2 text-sm hover:border-brand hover:bg-brand/10 hover:scale-105 transition-all duration-200 cursor-pointer">Schedule</button>
+        <button data-prompt="What promos are running?" class="alina-chip rounded-full border border-border bg-surface px-4 py-2 text-sm hover:border-brand hover:bg-brand/10 hover:scale-105 transition-all duration-200 cursor-pointer">Promos</button>
+        <button data-prompt="How do I pay?" class="alina-chip rounded-full border border-border bg-surface px-4 py-2 text-sm hover:border-brand hover:bg-brand/10 hover:scale-105 transition-all duration-200 cursor-pointer">Pay</button>
+        <button data-prompt="I need warranty help" class="alina-chip rounded-full border border-border bg-surface px-4 py-2 text-sm hover:border-brand hover:bg-brand/10 hover:scale-105 transition-all duration-200 cursor-pointer">Warranty</button>
+        <button data-prompt="How do I contact Curt?" class="alina-chip rounded-full border border-border bg-surface px-4 py-2 text-sm hover:border-brand hover:bg-brand/10 hover:scale-105 transition-all duration-200 cursor-pointer">Contact</button>
+        <button data-prompt="Tell me a joke" class="alina-chip rounded-full border border-border bg-surface px-4 py-2 text-sm hover:border-brand hover:bg-brand/10 hover:scale-105 transition-all duration-200 cursor-pointer">Joke</button>
+      </div>
+
+      <!-- Chat Widget -->
+      <div class="bg-panel border border-border rounded-2xl p-4 hover:border-border-hover transition-colors duration-300">
+        <div id="chat-log" class="bg-bg rounded-xl border border-border h-60 overflow-y-auto p-4 space-y-3">
+          <!-- System greeting -->
+          <div class="flex justify-start">
+            <div class="max-w-[80%] rounded-xl px-4 py-2 text-sm bg-surface border border-border text-text">
+              Alina here. What do you need?
+            </div>
+          </div>
+        </div>
+
+        <!-- Input Bar -->
+        <div class="flex gap-2 mt-3">
+          <input
+            type="text"
+            id="user-input"
+            placeholder="Ask Alina anything..."
+            class="flex-1 bg-bg border border-border rounded-lg px-4 py-3 text-text placeholder:text-muted focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/30 transition text-sm"
+          />
+          <button
+            id="send-btn"
+            class="btn-brand bg-brand text-white rounded-lg px-5 py-3 font-semibold hover:bg-brand-dark hover:scale-105 transition-all text-sm"
+          >
+            Send
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+</Layout>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const chatLog = document.getElementById('chat-log');
+    const userInput = document.getElementById('user-input') as HTMLInputElement;
+    const sendBtn = document.getElementById('send-btn');
+    const chips = document.querySelectorAll('.alina-chip');
+
+    if (!chatLog || !userInput || !sendBtn) return;
+
+    const conversationHistory: { role: string; content: string }[] = [];
+
+    function appendMsg(who: string, text: string) {
+      const wrapper = document.createElement('div');
+      wrapper.className = who === 'user' ? 'flex justify-end' : 'flex justify-start';
+
+      const bubble = document.createElement('div');
+      bubble.className = who === 'user'
+        ? 'max-w-[80%] rounded-xl px-4 py-2 text-sm bg-green-900/30 border border-green-800/40 text-text'
+        : 'max-w-[80%] rounded-xl px-4 py-2 text-sm bg-surface border border-border text-text';
+      bubble.textContent = text;
+
+      wrapper.appendChild(bubble);
+      chatLog!.appendChild(wrapper);
+      chatLog!.scrollTop = chatLog!.scrollHeight;
+    }
+
+    async function askAlina(text: string): Promise<string> {
+      try {
+        conversationHistory.push({ role: 'user', content: text });
+        const res = await fetch('/.netlify/functions/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, history: conversationHistory.slice(-6) }),
+        });
+        const data = await res.json();
+        const reply = data.reply || data.message || 'No response.';
+        conversationHistory.push({ role: 'assistant', content: reply });
+        return reply;
+      } catch {
+        return 'Alina is offline right now. Try again later.';
+      }
+    }
+
+    function send() {
+      const text = userInput.value.trim();
+      if (!text) return;
+      userInput.value = '';
+
+      // Easter egg: clear chat
+      if (text.toLowerCase() === '!refresh') {
+        chatLog!.innerHTML = '';
+        conversationHistory.length = 0;
+        appendMsg('system', 'Alina here. What do you need?');
+        return;
+      }
+
+      appendMsg('user', text);
+
+      // Show typing indicator
+      const typingId = 'typing-indicator';
+      const typingWrapper = document.createElement('div');
+      typingWrapper.className = 'flex justify-start';
+      typingWrapper.id = typingId;
+      const typingBubble = document.createElement('div');
+      typingBubble.className = 'max-w-[80%] rounded-xl px-4 py-2 text-sm bg-surface border border-border text-muted italic';
+      typingBubble.textContent = 'Alina is thinking...';
+      typingWrapper.appendChild(typingBubble);
+      chatLog!.appendChild(typingWrapper);
+      chatLog!.scrollTop = chatLog!.scrollHeight;
+
+      askAlina(text).then((reply) => {
+        const indicator = document.getElementById(typingId);
+        if (indicator) indicator.remove();
+        appendMsg('system', reply);
+      });
+    }
+
+    sendBtn.addEventListener('click', send);
+
+    userInput.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        send();
+      }
+    });
+
+    chips.forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const prompt = (chip as HTMLElement).getAttribute('data-prompt');
+        if (prompt) {
+          userInput.value = prompt;
+          send();
+        }
+      });
+    });
+  });
+</script>
