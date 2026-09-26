@@ -483,12 +483,13 @@ async function buildSummary(devices, observedMap) {
       unreachable++;
     } else {
       online++;
-      if (obs.xmrig_running) mining++;
+      if (obs.xmrig_running) {
+        mining++;
+        const hr = parseFloat(obs.hashrate_60s || obs.hashrate_10s || 0);
+        totalHashrate += isNaN(hr) ? 0 : hr;
+      }
       if (obs.rogue_pid) rogueDetected++;
       if (obs.interface_type === "wifi") wifiNodes++;
-
-      const hr = parseFloat(obs.hashrate_60s || obs.hashrate_10s || 0);
-      totalHashrate += isNaN(hr) ? 0 : hr;
 
       const temp = parseFloat(obs.temp_peak || 0);
       if (temp > hottestTemp) {
