@@ -433,13 +433,35 @@
         const done = Number(j.completed_count || 0);
         const target = Number(j.target_count || 0);
         const pending = Number(j.pending_count || 0);
+        const waiting = (j.pending_device_ids || []).map((id) => {
+          const node = d.nodes.find((n) => n.id === id);
+          return `${esc(id)}${node?.online ? '' : ' (offline)'}`;
+        });
         const pct = target ? Math.min(100, Math.round(done * 100 / target)) : 0;
         return `<div style="padding:10px;background:var(--color-bg);border-radius:6px;margin:6px 0;border-left:3px solid var(--color-yellow);font-family:monospace;font-size:11px">
           <div style="display:flex;justify-content:space-between;gap:8px"><strong>${esc(j.type || 'job')}</strong><span style="color:var(--color-muted)">${done}/${target || '?'} complete · ${pending} pending</span></div>
           ${j.cmd ? `<div style="color:var(--color-muted);margin-top:4px">$ ${esc(j.cmd)}</div>` : ''}
+          ${waiting.length ? `<div style="color:var(--color-muted);margin-top:5px">Waiting on: ${waiting.join(', ')}</div>` : ''}
           <div style="height:4px;background:var(--color-panel);border-radius:4px;margin-top:6px;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--color-brand)"></div></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px"><span style="color:var(--color-muted);overflow-wrap:anywhere">${esc(j.id)}</span><button type="button" data-cancel-swarm-job="${esc(j.id)}" style="color:var(--color-red);background:transparent;border:1px solid var(--color-red);border-radius:5px;padding:4px 7px;white-space:nowrap;cursor:pointer">Cancel pending</button></div>
         </div>`;
       }).join('') : 'Empty';
+      queue.querySelectorAll('[data-cancel-swarm-job]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const jobId = button.dataset.cancelSwarmJob;
+          const job = current?.jobs.find((entry) => entry.id === jobId);
+          if (!job || !confirm(`Cancel pending assignments for ${job.type} on ${(job.pending_device_ids || []).join(', ') || 'remaining devices'}? Completed results stay in history.`)) return;
+          button.disabled = true;
+          try {
+            const result = await swarmApi('cancel-job', 'POST', { job_id:jobId });
+            notify(`Cancelled ${result.assignments_removed} pending assignment${result.assignments_removed === 1 ? '' : 's'}`);
+            await load(true);
+          } catch (error) {
+            notify(`Cancel failed: ${error.message}`, 'error');
+            button.disabled = false;
+          }
+        });
+      });
     }
 
     const results = document.getElementById('swarm-results');
@@ -496,7 +518,7 @@
     if (requestBusy) return current;
     requestBusy = true;
     try {
-      if (!current) setState('Loading live 12-node cluster state…');
+      if (!current) setState(`Loading live ${FLEET.length}-node cluster state…`);
       const data = await swarmApi('queue-status');
       render(data);
       return current;

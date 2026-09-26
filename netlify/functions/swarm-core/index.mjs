@@ -235,6 +235,7 @@ async function queueSnapshot() {
     return {
       ...job,
       pending_count: pending.length,
+      pending_device_ids: pending.map(a => a.value.device_id),
       completed_count: completed.length,
       progress: `${completed.length}/${job.target_count || (pending.length + completed.length)}`
     };
@@ -288,7 +289,7 @@ export default async (request) => {
   }
 
   const workerActions = new Set(["swarm-poll", "job-complete", "job-update", "heartbeat"]);
-  const operatorActions = new Set(["enqueue", "queue-status", "flush-queue", "clear-results"]);
+  const operatorActions = new Set(["enqueue", "queue-status", "cancel-job", "flush-queue", "clear-results"]);
 
   if (workerActions.has(action) && !(await authorized(request, "worker"))) {
     return jsonResponse(401, { ok: false, error: "unauthorized worker" });
@@ -428,6 +429,29 @@ export default async (request) => {
       schema: AGENT_SCHEMA,
       auth_enforced: true,
       worker_auth_enforced: process.env.SWARM_ENFORCE_AUTH === "1"
+    });
+  }
+
+  if (request.method === "POST" && action === "cancel-job") {
+    const jobId = String(body.job_id || "").trim();
+    if (!jobId) return jsonResponse(400, { ok: false, error: "job_id required" });
+
+    const job = await getJson(keyJob(jobId), null);
+    const assignments = (await listEntries("assignment--"))
+      .filter(a => a.value?.job_id === jobId);
+    if (!job && !assignments.length) {
+      return jsonResponse(404, { ok: false, error: "job not found" });
+    }
+
+    // Completed results remain in history; only unfinished work is cancelled.
+    for (const assignment of assignments) await deleteKey(assignment.key);
+    await deleteKey(keyJob(jobId));
+    return jsonResponse(200, {
+      ok: true,
+      action: "cancel-job",
+      job_id: jobId,
+      assignments_removed: assignments.length,
+      results_preserved: true
     });
   }
 
