@@ -283,7 +283,7 @@ function Invoke-Workload([string]$Type, [string]$Command) {
             if ($render.exit_code -ne 0) { throw "Reel render failed: $($render.stderr)" }
             if (-not (Test-Path -LiteralPath $output)) { throw 'Reel render produced no MP4.' }
             $bytes = (Get-Item -LiteralPath $output).Length
-            if ($bytes -gt 6MB) { throw 'Reel exceeds the 6 MiB dashboard upload limit.' }
+            if ($bytes -gt 4MB) { throw 'Reel exceeds the 4 MiB dashboard upload limit.' }
             return [ordered]@{ exit_code=0; stdout=([ordered]@{local_path=$output;bytes=$bytes} | ConvertTo-Json -Compress); stderr='' }
         }
         'blender-render' {
