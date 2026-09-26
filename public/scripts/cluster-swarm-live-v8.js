@@ -191,9 +191,10 @@
     const tabs = Array.from(document.querySelectorAll('.tab-btn'));
     const workTab = tabs.find((button) => button.dataset.tab === 'swarm');
     const advancedTabs = new Set(['config', 'analytics', 'jobs', 'commands', 'events', 'alerts']);
+    const moreOpen = document.getElementById('cluster-more-tabs')?.dataset.showing === '1';
     if (workTab) workTab.textContent = 'Work';
     tabs.forEach((button) => {
-      if (advancedTabs.has(button.dataset.tab)) button.style.display = 'none';
+      if (advancedTabs.has(button.dataset.tab)) button.style.display = moreOpen ? '' : 'none';
     });
     if (workTab && !document.getElementById('cluster-more-tabs')) {
       const more = document.createElement('button');
