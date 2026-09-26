@@ -1,13 +1,13 @@
 param(
     [string]$SshKey = "$env:USERPROFILE\.ssh\id_ed25519",
     [string]$SwarmUrl = "https://curtbrag.com/api/cluster",
+    [string]$WorkerUrl = "https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/node-swarm.sh",
     [string]$ConfigPath = "$env:LOCALAPPDATA\CurtCluster\bridge-config.json",
     [int]$PollSeconds = 60
 )
 
 $ErrorActionPreference = "Stop"
 
-$WorkerUrl = "https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/node-swarm.sh"
 $TempWorker = Join-Path $env:TEMP "curt-node-swarm.sh"
 
 $Nodes = @(
