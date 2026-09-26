@@ -7,7 +7,7 @@
   const REQUIRED_AGENT = '2.1.1';
   const DIAGNOSTIC_LINUX_AGENT = '2.2.0';
   const DIAGNOSTIC_WINDOWS_AGENT = '3.3.0';
-  const REEL_WINDOWS_AGENT = '3.4.0';
+  const REEL_WINDOWS_AGENT = '3.5.0';
   const DIAGNOSTIC_TYPES = new Set(['storage-status','process-snapshot','network-check']);
   const DIAGNOSTIC_FALLBACK = {
     'storage-status':'df -hP "$HOME"',
@@ -32,7 +32,7 @@
   const GPU_IDS = new Set(['RenderRig']);
   const TRANSCRIBE_IDS = new Set(['Alina','Nexus']);
   const GPU_WORK_TYPES = new Set(['gpu-status','salad-status','workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow','reel-create']);
-  const GPU_SETTINGS_TYPES = new Set(['blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow']);
+  const GPU_SETTINGS_TYPES = new Set(['blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow','reel-create']);
   const PC_TARGET_THREADS = { Alina:12, Nexus:0, SteamDeck:4, viki:4 };
   const MINER_TYPES = new Set(['mining-status','mining-stop','mining-start','mining-restart']);
 
@@ -156,6 +156,7 @@
       'ffmpeg-transcode':'{"input":"C:\\\\Jobs\\\\source.mov","output":"C:\\\\Jobs\\\\output.mp4","preset":"medium"}',
       'whisper-transcribe':'{"input":"C:\\\\Jobs\\\\audio.mp3","output":"C:\\\\Jobs\\\\transcripts","model":"small.en"}',
       'comfyui-workflow':'{"workflow":"C:\\\\Jobs\\\\workflow.json"}',
+      'reel-create':'{"input":"%USERPROFILE%\\\\Videos\\\\shop-clip.mp4","hook":"What I check before a stuck bolt strips","tip":"Seat a 6-point socket fully and keep it square before the first pull.","cta":"Follow @curtbrag for shop tips"}',
     };
     const needsCommand = type === 'shell' || type === 'transcribe' || Object.hasOwn(workloadHelp, type);
     input.disabled = !needsCommand;
@@ -291,7 +292,16 @@
       document.getElementById('swarm-gpu-status').addEventListener('click', () => runAction('gpu-status', 'RenderRig'));
       document.getElementById('swarm-salad-status').addEventListener('click', () => runAction('salad-status', 'RenderRig'));
       document.getElementById('swarm-workstation-test').addEventListener('click', () => runAction('workstation-selftest', 'RenderRig'));
-      document.getElementById('swarm-reel-create').addEventListener('click', () => { runAction('reel-create', 'RenderRig').catch(() => {}); });
+      document.getElementById('swarm-reel-create').addEventListener('click', () => {
+        const type = document.getElementById('swarm-job-type');
+        const target = document.getElementById('swarm-job-device');
+        const input = document.getElementById('swarm-job-cmd');
+        if (type) type.value = 'reel-create';
+        if (target) target.value = 'RenderRig';
+        syncJobInput();
+        input?.focus();
+        notify('Enter your clip path and Reel text as JSON, then press Start.');
+      });
       document.getElementById('swarm-reel-gpu-test').addEventListener('click', () => {
         const settings = {
           input:'%USERPROFILE%\\Videos\\impact-bolt-poc.mp4',
@@ -781,9 +791,12 @@ async function syncPcDesired(type, targets) {
         }
         if (GPU_SETTINGS_TYPES.has(type)) {
           let settings;
-          try { settings = JSON.parse(cmd); } catch { throw new Error('Job settings must be JSON. Use Reel GPU Test for the sample video.'); }
+          try { settings = JSON.parse(cmd); } catch { throw new Error('Job settings must be JSON from the dashboard form.'); }
           if (!settings || Array.isArray(settings) || typeof settings !== 'object') {
-            throw new Error('Job settings must be a JSON object. Use Reel GPU Test for the sample video.');
+            throw new Error('Job settings must be a JSON object from the dashboard form.');
+          }
+          if (type === 'reel-create' && !['input','hook','tip','cta'].every((key) => typeof settings[key] === 'string' && settings[key].trim())) {
+            throw new Error('Reel settings require input, hook, tip, and cta text.');
           }
         }
         const data = await enqueueSwarm(type, cmd, targets);

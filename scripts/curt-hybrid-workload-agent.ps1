@@ -5,11 +5,12 @@ param(
     [string]$DeviceId = 'RenderRig',
     [string]$SwarmUrl = 'https://curtbrag.com/api/cluster',
     [int]$PollSeconds = 60,
-    [string]$ReelScriptUrl = 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/reel-poc.py'
+    [string]$ReelScriptUrl = 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/reel-poc.py',
+    [string]$FootageScriptUrl = 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/reel-from-footage.py'
 )
 
 $ErrorActionPreference = 'Stop'
-$AgentVersion = '3.4.0'
+$AgentVersion = '3.5.0'
 $Root = Join-Path $env:LOCALAPPDATA 'CurtCompute'
 $AgentPath = Join-Path $Root 'curt-hybrid-workload-agent.ps1'
 $ConfigPath = Join-Path $Root 'agent-config.json'
@@ -274,12 +275,17 @@ function Invoke-Workload([string]$Type, [string]$Command) {
         'workstation-selftest' { return Invoke-WorkstationSelfTest }
         'reel-create' {
             $python = Get-CommandPath 'python.exe'; if (-not $python) { throw 'Python is required to produce a Reel.' }
-            $generator = Join-Path $Root 'reel-poc.py'
+            foreach ($key in @('input','hook','tip','cta')) {
+                if (-not ($spec.$key -is [string]) -or [string]::IsNullOrWhiteSpace([string]$spec.$key)) { throw "Reel settings require $key." }
+            }
+            $source = Resolve-SafePath ([string]$spec.input)
+            if ([IO.Path]::GetExtension($source).ToLowerInvariant() -notin @('.mp4','.mov','.m4v')) { throw 'Reel input must be MP4, MOV, or M4V footage.' }
+            $generator = Join-Path $Root 'reel-from-footage.py'
             if (-not (Test-Path -LiteralPath $generator)) { throw 'Reel generator is missing. Reinstall the Windows agent.' }
             $folder = Join-Path $Root 'reels'
             New-Item -ItemType Directory -Path $folder -Force | Out-Null
             $output = Join-Path $folder ('reel-' + [guid]::NewGuid().ToString('N') + '.mp4')
-            $render = Invoke-External $python @($generator,'--output',$output)
+            $render = Invoke-External $python @($generator,'--input',$source,'--output',$output,'--hook',([string]$spec.hook),'--tip',([string]$spec.tip),'--cta',([string]$spec.cta))
             if ($render.exit_code -ne 0) { throw "Reel render failed: $($render.stderr)" }
             if (-not (Test-Path -LiteralPath $output)) { throw 'Reel render produced no MP4.' }
             $bytes = (Get-Item -LiteralPath $output).Length
@@ -370,6 +376,11 @@ function Install-Agent {
     $check = Invoke-External $python @('-c','import ast,sys; ast.parse(open(sys.argv[1], encoding="utf-8").read())',$temporaryGenerator)
     if ($check.exit_code -ne 0) { throw "Reel generator syntax check failed: $($check.stderr)" }
     Move-Item -LiteralPath $temporaryGenerator -Destination (Join-Path $Root 'reel-poc.py') -Force
+    $temporaryFootage = Join-Path $Root 'reel-from-footage.download.py'
+    Invoke-WebRequest -Uri $FootageScriptUrl -OutFile $temporaryFootage -TimeoutSec 30
+    $check = Invoke-External $python @('-c','import ast,sys; ast.parse(open(sys.argv[1], encoding="utf-8").read())',$temporaryFootage)
+    if ($check.exit_code -ne 0) { throw "Footage generator syntax check failed: $($check.stderr)" }
+    Move-Item -LiteralPath $temporaryFootage -Destination (Join-Path $Root 'reel-from-footage.py') -Force
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 750
     New-Item -ItemType Directory -Force -Path $Root | Out-Null
