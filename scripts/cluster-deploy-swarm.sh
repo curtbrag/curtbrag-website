@@ -31,7 +31,7 @@ load_node_config
 SSH_PASS=""
 TARGET_NODES=""
 SWARM_URL="${SWARM_URL:-https://curtbrag.com/api/cluster}"
-POLL_INTERVAL="${POLL_INTERVAL:-10}"
+POLL_INTERVAL="${POLL_INTERVAL:-60}"
 DRY_RUN=0
 PHONES_ONLY=0
 

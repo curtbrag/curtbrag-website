@@ -6,7 +6,7 @@ from pathlib import Path
 API=os.getenv("CLUSTER_JOBS_URL","https://curtbrag.com/api/jobs")
 KEY=os.getenv("CLUSTER_API_KEY","")
 NODE=os.getenv("CLUSTER_NODE",platform.node())
-POLL=max(5,int(os.getenv("CLUSTER_JOB_POLL","10")))
+POLL=max(5,int(os.getenv("CLUSTER_JOB_POLL","60")))
 
 def call(action,data):
     req=urllib.request.Request(API+"?action="+action,data=json.dumps(data).encode(),headers={"Authorization":"Bearer "+KEY,"Content-Type":"application/json"})

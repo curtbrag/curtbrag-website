@@ -14,12 +14,13 @@ PHONE_PORT="${PHONE_PORT:-8022}"
 PHONE_HINT="${PHONE_HINT:-90}"
 PHONES="${PHONES:-173 174 195 176 177 191 253 254}"
 NEXUS_IP="${NEXUS_IP:-192.168.1.192}"
-POLL_INTERVAL="${POLL_INTERVAL:-1}"
-IDLE_INTERVAL="${IDLE_INTERVAL:-3}"
-STATUS_INTERVAL="${STATUS_INTERVAL:-30}"
+POLL_INTERVAL="${POLL_INTERVAL:-5}"
+IDLE_INTERVAL="${IDLE_INTERVAL:-30}"
+STATUS_INTERVAL="${STATUS_INTERVAL:-90}"
 LOG_FILE="${LOG_FILE:-$HOME/curt_cluster_bridge.log}"
 BRIDGE_START_MS="$(date +%s%3N 2>/dev/null || echo 0)"
 LAST_STATUS_SCAN=0
+LAST_HEARTBEAT=0
 
 [ -n "$WEB_PASSWORD" ] || { echo "ERROR: WEB_PASSWORD or CLUSTER_WEB_PASSWORD required" >&2; exit 1; }
 [ -n "$WALLET" ] || { echo "ERROR: WALLET required" >&2; exit 1; }
@@ -392,6 +393,7 @@ apply_desired_one() {
 refresh_fleet() {
   local p
   heartbeat "live fleet scan"
+  LAST_HEARTBEAT="$(date +%s)"
   for p in $PHONES; do
     apply_desired_one "$p" 0
     push_phone_state "$p" >/dev/null 2>&1 || true
@@ -412,7 +414,12 @@ execute_command() {
 }
 
 run_once() {
-  heartbeat "polling website"
+  local now
+  now="$(date +%s)"
+  if [ $((now - LAST_HEARTBEAT)) -ge 30 ]; then
+    heartbeat "polling website"
+    LAST_HEARTBEAT="$now"
+  fi
   local data cmd id target type output
   data="$(api_get commands 2>/dev/null)" || { log "could not fetch command queue"; return 2; }
   cmd="$(printf '%s' "$data" | jq -c '.queue[0] // empty')"

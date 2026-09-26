@@ -4,7 +4,7 @@ param(
     [string]$Mode = 'Audit',
     [string]$DeviceId = 'RenderRig',
     [string]$SwarmUrl = 'https://curtbrag.com/api/cluster',
-    [int]$PollSeconds = 10
+    [int]$PollSeconds = 60
 )
 
 $ErrorActionPreference = 'Stop'
