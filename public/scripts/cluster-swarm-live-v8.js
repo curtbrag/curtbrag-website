@@ -59,6 +59,8 @@
   let livePaused = false;
   let nodeFilter = 'all';
   const SAMPLE_MEDIA = 'https://github.com/ggerganov/whisper.cpp/raw/master/samples/jfk.wav';
+  const MEDIA_SCRIPT_URL = 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-media-discover.py';
+  const mediaSelected = new Map();
 
   const token = () => sessionStorage.getItem('cp_password') || '';
   const esc = (v) => String(v ?? '')
@@ -421,6 +423,106 @@
     }
 
     patchCommandShortcuts();
+    ensureMediaDiscovery();
+  }
+
+  function ensureMediaDiscovery() {
+    if (document.getElementById('cluster-media-discovery')) return;
+    const anchor = document.getElementById('swarm-job-type')?.closest('div[style*="margin-bottom:16px"]');
+    if (!anchor) return;
+    const card = document.createElement('div');
+    card.id = 'cluster-media-discovery';
+    card.style.cssText = 'background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px';
+    card.innerHTML = `<h3 style="margin:0 0 7px">Discover internet media with the swarm</h3>
+      <p style="font-size:12px;color:var(--color-muted);margin:0 0 10px">Search Wikimedia Commons in parallel on online phones and Linux PCs. Save a source manifest for original narrated edits; review every file and its license before publishing.</p>
+      <label style="display:block;font-size:11px;margin-bottom:5px">Batch settings (JSON)</label>
+      <textarea id="cluster-media-settings" rows="3" spellcheck="false" style="width:100%;box-sizing:border-box;background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-border);border-radius:6px;padding:8px;font-family:monospace;font-size:12px">{"query":"machining workshop","kind":"any","per_worker":3,"workers":8}</textarea>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:9px 0"><button id="cluster-media-run" type="button" style="background:var(--color-brand);color:white;border:0;border-radius:6px;padding:8px 14px;cursor:pointer">Search across workers</button><button id="cluster-media-export" type="button" style="background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-border);border-radius:6px;padding:8px 14px;cursor:pointer">Export selected manifest</button><span id="cluster-media-state" style="font-size:11px;color:var(--color-muted)"></span></div>
+      <div id="cluster-media-results" style="display:grid;gap:6px;font-size:11px"></div>`;
+    anchor.insertAdjacentElement('afterend', card);
+    card.querySelector('#cluster-media-run').addEventListener('click', dispatchMediaDiscovery);
+    card.querySelector('#cluster-media-export').addEventListener('click', exportMediaManifest);
+  }
+
+  function mediaCommand(query, kind, offset, limit) {
+    // UTF-8 encoded query remains data; no user-controlled text enters the shell syntax.
+    const bytes = new TextEncoder().encode(query);
+    const encoded = btoa(Array.from(bytes, b => String.fromCharCode(b)).join(''));
+    return `curl -fLsS --max-time 20 '${MEDIA_SCRIPT_URL}' -o "$HOME/cluster-media-discover.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-media-discover.py" --query "$(printf %s '${encoded}' | base64 -d)" --kind '${kind}' --offset ${offset} --limit ${limit}; }`;
+  }
+
+  async function dispatchMediaDiscovery() {
+    const button = document.getElementById('cluster-media-run');
+    const state = document.getElementById('cluster-media-state');
+    button.disabled = true;
+    try {
+      const spec = JSON.parse(document.getElementById('cluster-media-settings').value);
+      if (!spec || Array.isArray(spec) || typeof spec.query !== 'string' || !/^.{2,100}$/.test(spec.query.trim()) ||
+          !['image','video','any'].includes(spec.kind) || !Number.isInteger(spec.per_worker) || spec.per_worker < 1 || spec.per_worker > 4 ||
+          !Number.isInteger(spec.workers) || spec.workers < 1 || spec.workers > 12) {
+        throw new Error('Use JSON with query (2–100 characters), kind (image/video/any), per_worker (1–4), and workers (1–12).');
+      }
+      if (!current) await load();
+      const targets = current.nodes.filter(n => n.online && n.id !== 'RenderRig' && IDS.has(n.id)).slice(0, spec.workers);
+      if (!targets.length) throw new Error('No phone or Linux workers are online.');
+      // Each worker receives a different search page, so workers do real parallel discovery.
+      const batchId = `media-v1-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+      let queued = 0;
+      for (const [i, node] of targets.entries()) {
+        const job = {id:`${batchId}-${i}`, type:'shell', cmd:mediaCommand(spec.query.trim(), spec.kind, i * spec.per_worker * 6, spec.per_worker)};
+        job.command = job.cmd;
+        if (job.cmd.length > 4000) throw new Error('Media query is too long.');
+        await swarmApi('enqueue', 'POST', {job, target_device_ids:[node.id]});
+        queued++;
+        state.textContent = `Queued ${queued}/${targets.length} workers`;
+      }
+      notify(`Media discovery queued on ${queued} workers`);
+      await load(true);
+    } catch (error) {
+      state.textContent = error.message;
+      notify(`Media discovery: ${error.message}`, 'error');
+    } finally { button.disabled = false; }
+  }
+
+  function renderMediaDiscovery(results) {
+    const host = document.getElementById('cluster-media-results');
+    const state = document.getElementById('cluster-media-state');
+    if (!host) return;
+    const byHash = new Map();
+    let failures = 0, completed = 0;
+    for (const result of results) {
+      if (!String(result.job_id || '').startsWith('media-v1-')) continue;
+      completed++;
+      if (Number(result.exit_code) !== 0) { failures++; continue; }
+      try {
+        const batch = JSON.parse(result.stdout);
+        if (batch.source !== 'Wikimedia Commons' || !Array.isArray(batch.items)) continue;
+        for (const item of batch.items) {
+          if (item.sha1 && item.url?.startsWith('https://upload.wikimedia.org/') && item.page?.startsWith('https://commons.wikimedia.org/')) byHash.set(item.sha1, item);
+        }
+      } catch { failures++; }
+    }
+    const items = [...byHash.values()];
+    if (state && completed) state.textContent = `${items.length} unique candidates · ${completed} workers finished${failures ? ` · ${failures} failed` : ''}`;
+    host.innerHTML = items.length ? items.map(item => `<label style="display:flex;gap:8px;align-items:flex-start;background:var(--color-bg);padding:8px;border-radius:5px">
+      <input type="checkbox" data-media-sha="${esc(item.sha1)}" ${mediaSelected.has(item.sha1) ? 'checked' : ''} aria-label="Select ${esc(item.title)}">
+      <span><a href="${esc(item.page)}" target="_blank" rel="noopener noreferrer">${esc(item.title)}</a> · ${esc(item.mime)} · ${esc(item.width)}×${esc(item.height)} · <strong>${esc(item.license)}</strong><br><span style="color:var(--color-muted)">${esc(item.author || 'Author on source page')}</span></span>
+    </label>`).join('') : (completed ? 'No matching files. Try a broader query or change image/video.' : 'Start a search to collect media candidates.');
+    host.querySelectorAll('[data-media-sha]').forEach(box => box.addEventListener('change', () => {
+      const item = byHash.get(box.dataset.mediaSha);
+      if (box.checked && item) mediaSelected.set(item.sha1, item);
+      else mediaSelected.delete(box.dataset.mediaSha);
+    }));
+  }
+
+  function exportMediaManifest() {
+    if (!mediaSelected.size) return notify('Select media candidates first', 'error');
+    const manifest = {schema:1, exported_at:new Date().toISOString(), review_required:true,
+      source:'Wikimedia Commons', items:[...mediaSelected.values()]};
+    const url = URL.createObjectURL(new Blob([JSON.stringify(manifest, null, 2)], {type:'application/json'}));
+    const link = document.createElement('a'); link.href = url; link.download = `cluster-media-${Date.now()}.json`;
+    link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    notify(`Exported ${mediaSelected.size} media candidates with license credits`);
   }
 
   function updateTargets(nodes) {
@@ -448,6 +550,7 @@
     ensureUi();
     current = canonicalize(raw || {});
     const d = current;
+    renderMediaDiscovery(d.results);
     const setText = (id, value) => {
       const el = document.getElementById(id);
       if (el) el.textContent = value;
