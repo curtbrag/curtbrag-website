@@ -31,6 +31,8 @@ catch {
 }
 
 $api = if ($config.api_url) { [string]$config.api_url } else { 'https://curtbrag.com/.netlify/functions/cluster-api' }
+$swarmApi = 'https://curtbrag.com/api/cluster'
+$bridgeVersion = '2.2.0'
 $wallet = [string]$config.wallet
 $poolHost = if ($config.pool_host) { [string]$config.pool_host } else { 'gulf.moneroocean.stream' }
 $poolPort = if ($config.pool_port) { [int]$config.pool_port } else { 10128 }
@@ -351,6 +353,110 @@ tail -25 "$HOME/xmrig.log" 2>/dev/null || true
     return Invoke-Phone $p.IP $remote
 }
 
+function Get-SwarmNodes {
+    $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    $status = Invoke-RestMethod -Uri "$($swarmApi)?action=queue-status&_=$stamp" -Headers $headers -Method Get -TimeoutSec 20
+    if (-not $status.nodes -or @($status.nodes).Count -lt $phones.Count) {
+        throw 'Swarm API did not return the phone roster; recovery was not started.'
+    }
+    return @($status.nodes)
+}
+
+function Recover-PhoneSwarm($p) {
+    # Only the fixed phone roster supplies these replacements. The command queue
+    # cannot provide a URL, script body, or arbitrary shell command.
+    $boot = @'
+#!/data/data/com.termux/files/usr/bin/sh
+export HOME=/data/data/com.termux/files/home
+export PREFIX=/data/data/com.termux/files/usr
+export PATH="$PREFIX/bin:$HOME/bin:$PATH"
+mkdir -p "$HOME/cluster/logs" "$HOME/cluster/state"
+if command -v termux-wake-lock >/dev/null 2>&1; then termux-wake-lock >/dev/null 2>&1 || true; fi
+sshd >/dev/null 2>&1 || true
+if [ -f "$HOME/node-swarm.sh" ]; then
+  for proc in /proc/[0-9]*; do
+    [ -r "$proc/cmdline" ] || continue
+    if tr '\000' '\n' < "$proc/cmdline" | grep -Fqx "$HOME/node-swarm.sh"; then exit 0; fi
+  done
+  DEVICE_ID='__DEVICE__' NODE_CLASS='worker' SWARM_URL='https://curtbrag.com/api/cluster' POLL_INTERVAL='60' nohup sh "$HOME/node-swarm.sh" >> "$HOME/cluster/logs/swarm-agent.log" 2>&1 </dev/null &
+fi
+'@
+    $boot = $boot.Replace('__DEVICE__', $p.Hostname)
+    $encodedBoot = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($boot))
+    $remote = @'
+export HOME=/data/data/com.termux/files/home
+export PREFIX=/data/data/com.termux/files/usr
+export PATH="$PREFIX/bin:$HOME/bin:$PATH"
+SCRIPT="$HOME/node-swarm.sh"
+[ -s "$SCRIPT" ] || { echo WORKER_MISSING; exit 2; }
+sh -n "$SCRIPT" || { echo WORKER_PARSE_FAILED; exit 2; }
+mkdir -p "$HOME/cluster/logs" "$HOME/cluster/state" "$HOME/.termux/boot"
+printf %s '__BOOT__' | base64 -d > "$HOME/.termux/boot/10-curt-swarm.tmp" || exit 2
+sh -n "$HOME/.termux/boot/10-curt-swarm.tmp" || exit 2
+chmod 700 "$HOME/.termux/boot/10-curt-swarm.tmp"
+mv "$HOME/.termux/boot/10-curt-swarm.tmp" "$HOME/.termux/boot/10-curt-swarm" || exit 2
+if command -v termux-wake-lock >/dev/null 2>&1; then termux-wake-lock >/dev/null 2>&1 || true; fi
+worker_pids() {
+  for proc in /proc/[0-9]*; do
+    [ -r "$proc/cmdline" ] || continue
+    if tr '\000' '\n' < "$proc/cmdline" | grep -Fqx "$SCRIPT"; then printf '%s\n' "${proc##*/}"; fi
+  done
+}
+# This phone was offline in the API. Stop only its exact swarm script processes,
+# including duplicates or a worker whose PID file is stale.
+old="$(worker_pids)"
+if [ -n "$old" ]; then
+  for pid in $old; do kill "$pid" 2>/dev/null || true; done
+  tries=0
+  while [ -n "$(worker_pids)" ] && [ "$tries" -lt 8 ]; do sleep 1; tries=$((tries + 1)); done
+  if [ -n "$(worker_pids)" ]; then echo WORKER_STOP_FAILED; exit 1; fi
+fi
+DEVICE_ID='__DEVICE__' NODE_CLASS='worker' SWARM_URL='https://curtbrag.com/api/cluster' POLL_INTERVAL='60' nohup sh "$SCRIPT" >> "$HOME/cluster/logs/swarm-agent.log" 2>&1 </dev/null &
+sleep 3
+active="$(worker_pids)"
+if [ -z "$active" ]; then
+  echo WORKER_START_FAILED
+  tail -n 4 "$HOME/cluster/logs/swarm-agent.log" 2>/dev/null || true
+  exit 1
+fi
+if [ "$(printf '%s\n' "$active" | wc -l)" -ne 1 ]; then echo WORKER_DUPLICATE; exit 1; fi
+printf 'RUNNING PID=%s BOOT_SCRIPT_READY\n' "$active"
+'@
+    return Invoke-Phone $p.IP ($remote.Replace('__BOOT__', $encodedBoot).Replace('__DEVICE__', $p.Hostname))
+}
+
+function Recover-OfflinePhoneSwarm([string]$Target) {
+    $results = New-Object System.Collections.Generic.List[string]
+    $targets = if ($Target -eq 'phones') { @($phones) } else { @($phones | Where-Object Hostname -eq $Target) }
+    if ($targets.Count -eq 0) { return [pscustomobject]@{ Failed=$true; Summary='Invalid phone recovery target'; Output='TARGET_UNAVAILABLE' } }
+    try { $nodes = @(Get-SwarmNodes) }
+    catch { return [pscustomobject]@{ Failed=$true; Summary='Swarm status unavailable'; Output=$_.Exception.Message } }
+
+    $attempted = 0
+    $started = 0
+    $failed = 0
+    foreach ($p in $targets) {
+        $node = $nodes | Where-Object id -eq $p.Hostname | Select-Object -First 1
+        if (-not $node) { $results.Add("$($p.Hostname): missing from Swarm status"); $failed++; continue }
+        if ($node.online -eq $true) { $results.Add("$($p.Hostname): already online; skipped"); continue }
+        try { $latest = @(Get-SwarmNodes) | Where-Object id -eq $p.Hostname | Select-Object -First 1 }
+        catch { $results.Add("$($p.Hostname): could not recheck Swarm status"); $failed++; continue }
+        if (-not $latest) { $results.Add("$($p.Hostname): missing from fresh Swarm status"); $failed++; continue }
+        if ($latest.online -eq $true) { $results.Add("$($p.Hostname): back online; skipped"); continue }
+        $attempted++
+        $r = Recover-PhoneSwarm $p
+        $resultText = (@($r.Output) -join ' ').Trim()
+        $results.Add("$($p.Hostname): exit=$($r.Exit) $resultText")
+        if ($r.Exit -eq 0 -and $resultText -match 'RUNNING|ALREADY_RUNNING') { $started++ }
+        else { $failed++ }
+    }
+    return [pscustomobject]@{
+        Failed = ($failed -gt 0)
+        Summary = "Swarm recovery: $started/$attempted offline phones started; $failed failed. Heartbeats may take 60 seconds."
+        Output = ($results -join "`n")
+    }
+}
+
 function Resolve-Targets([string]$Target) {
     if (-not $Target -or $Target -in @('all','phones')) { return @($phones) }
     if ($Target -match '^phone\d+$') { return @($phones | Where-Object Hostname -eq $Target) }
@@ -396,6 +502,17 @@ function Process-Command {
 
     $cmd = @($c.queue)[0]
     $type = [string]$cmd.type
+    if ($type -eq 'swarm-recover') {
+        $recovery = Recover-OfflinePhoneSwarm ([string]$cmd.target)
+        $completed = Invoke-ApiPost 'bridge-complete' @{
+            id = $cmd.id; target = $cmd.target; type = $type
+            status = if ($recovery.Failed) { 'failed' } else { 'completed' }
+            result_summary = $recovery.Summary; output = $recovery.Output
+        }
+        if (-not $completed) { Write-Log "Could not report swarm recovery $($cmd.id); retry is safe." }
+        else { Write-Log "$($recovery.Summary) Command $($cmd.id)" }
+        return $true
+    }
     $targets = @(Resolve-Targets ([string]$cmd.target))
     $output = New-Object System.Collections.Generic.List[string]
 
@@ -445,6 +562,7 @@ function Process-Command {
 Write-Log "Starting Windows bridge. API=$api"
 Invoke-ApiPost 'bridge-heartbeat' @{
     hostname = $env:COMPUTERNAME
+    bridge_version = $bridgeVersion
     summary = 'Windows live bridge starting'
 } | Out-Null
 
@@ -458,6 +576,7 @@ while ($true) {
         if ((Get-Date) - $lastHeartbeat -gt [TimeSpan]::FromSeconds(30)) {
             Invoke-ApiPost 'bridge-heartbeat' @{
                 hostname = $env:COMPUTERNAME
+                bridge_version = $bridgeVersion
                 summary = 'Windows live bridge polling current eight-phone fleet'
             } | Out-Null
             $lastHeartbeat = Get-Date

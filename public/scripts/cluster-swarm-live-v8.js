@@ -10,6 +10,7 @@
   const REEL_WINDOWS_AGENT = '3.5.0';
   const EPISODE_WINDOWS_AGENT = '3.7.0';
   const MEDIA_EPISODE_WINDOWS_AGENT = '3.8.0';
+  const RECOVERY_BRIDGE = '2.2.0';
   const EPISODE_SAMPLE = {
     title:'Before a socket rounds a bolt',
     scenes:[
@@ -59,6 +60,10 @@
   let started = false;
   let livePaused = false;
   let nodeFilter = 'all';
+  let recoveryLastCheck = 0;
+  let recoveryBusy = false;
+  let recoveryReady = false;
+  let recoveryCommandId = null;
   const SAMPLE_MEDIA = 'https://github.com/ggerganov/whisper.cpp/raw/master/samples/jfk.wav';
   const MEDIA_SCRIPT_URL = 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-media-discover.py';
   const mediaSelected = new Map();
@@ -424,7 +429,72 @@
     }
 
     patchCommandShortcuts();
+    ensurePhoneRecovery();
     ensureMediaDiscovery();
+  }
+
+  function ensurePhoneRecovery() {
+    if (document.getElementById('cluster-phone-recovery')) return;
+    const anchor = document.getElementById('swarm-nodes')?.parentElement;
+    if (!anchor) return;
+    const card = document.createElement('div');
+    card.id = 'cluster-phone-recovery';
+    card.style.cssText = 'background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px';
+    card.innerHTML = `<h3 style="margin:0 0 7px">Phone worker recovery</h3>
+      <p style="font-size:12px;color:var(--color-muted);margin:0 0 10px">Ask the Windows bridge to restart the existing swarm agent on offline phones and refresh their Termux boot script. Online workers, mining, and device power stay untouched.</p>
+      <button id="cluster-phone-recover" type="button" disabled style="background:var(--color-brand);color:white;border:0;border-radius:6px;padding:8px 14px;cursor:pointer">Recover offline phones</button>
+      <span id="cluster-phone-recovery-state" style="font-size:11px;color:var(--color-muted);margin-left:9px">Checking bridge version…</span>
+      <pre id="cluster-phone-recovery-result" style="display:none;white-space:pre-wrap;font-size:11px;color:var(--color-muted);margin:10px 0 0"></pre>`;
+    anchor.insertAdjacentElement('afterend', card);
+    card.querySelector('#cluster-phone-recover').addEventListener('click', recoverOfflinePhones);
+  }
+
+  async function refreshPhoneRecovery(force=false) {
+    const button = document.getElementById('cluster-phone-recover');
+    const state = document.getElementById('cluster-phone-recovery-state');
+    const result = document.getElementById('cluster-phone-recovery-result');
+    if (!button || recoveryBusy || (!force && Date.now() - recoveryLastCheck < 12000)) return;
+    recoveryBusy = true;
+    recoveryLastCheck = Date.now();
+    try {
+      const [bridge, commands] = await Promise.all([controlApi('bridge-status'), controlApi('commands')]);
+      recoveryReady = !!bridge.alive && versionAtLeast(bridge.bridge_version, RECOVERY_BRIDGE);
+      const offline = (current?.nodes || []).filter(n => PHONE_IDS.has(n.id) && !n.online).length;
+      const pending = (commands.queue || []).some(c => c.type === 'swarm-recover');
+      button.disabled = !recoveryReady || !offline || pending;
+      state.textContent = !bridge.alive ? 'Windows bridge offline' :
+        !recoveryReady ? `Windows bridge ${RECOVERY_BRIDGE} required (current ${bridge.bridge_version || 'older'})` :
+        pending ? 'Recovery running; waiting for bridge results' :
+        offline ? `${offline} offline phone worker${offline === 1 ? '' : 's'} · bridge ready` : 'All phone workers online';
+      const history = (commands.history || []).find(c => c.type === 'swarm-recover' &&
+        (recoveryCommandId ? c.id === recoveryCommandId : Date.now() - c.finished_at < 600000));
+      if (history) {
+        result.style.display = 'block';
+        result.textContent = `${history.status === 'failed' ? 'Recovery failed' : 'Recovery completed'}: ${history.result_summary || ''}\n${history.output || ''}`;
+      }
+    } catch (error) {
+      button.disabled = true;
+      state.textContent = `Recovery status unavailable: ${error.message}`;
+    } finally { recoveryBusy = false; }
+  }
+
+  async function recoverOfflinePhones() {
+    const button = document.getElementById('cluster-phone-recover');
+    if (!recoveryReady || button.disabled) return;
+    const offline = (current?.nodes || []).filter(n => PHONE_IDS.has(n.id) && !n.online).map(n => n.id);
+    if (!offline.length) return notify('All phone workers are already online');
+    if (!confirm(`Recover swarm workers on ${offline.join(', ')}? Mining and power controls will not change.`)) return;
+    button.disabled = true;
+    try {
+      const queued = await controlApi('queue-command', 'POST', {target:'phones', type:'swarm-recover'});
+      recoveryCommandId = queued.command_id;
+      document.getElementById('cluster-phone-recovery-state').textContent = `Queued recovery for ${offline.length} phones`;
+      notify('Phone worker recovery queued on the Windows bridge');
+      await refreshPhoneRecovery(true);
+    } catch (error) {
+      notify(`Phone recovery failed: ${error.message}`, 'error');
+      await refreshPhoneRecovery(true);
+    }
   }
 
   function ensureMediaDiscovery() {
@@ -942,6 +1012,7 @@
       if (!current) setState(`Loading live ${FLEET.length}-node cluster state…`);
       const data = await swarmApi('queue-status');
       render(data);
+      void refreshPhoneRecovery();
       return current;
     } catch (error) {
       setState(`Swarm API error: ${error.message}`, 'var(--color-red)');

@@ -223,25 +223,27 @@ async function enqueueCommand(cmd) {
 
     // Dual-write to legacy cluster-control queue so existing poll scripts
     // keep receiving commands during the transition to new agents
-    try {
-      const legacyStore = openStore("cluster-control");
-      const legacyQueue =
-        (await legacyStore.get("queue", { type: "json" })) || [];
-      if (legacyQueue.length < 100) {
-        // Map new command schema to old schema that poll-cluster-commands.sh expects
-        const legacyCmd = {
-          id: cmd.id,
-          target: cmd.target,
-          command: cmd.type,
-          payload: cmd.payload || {},
-          status: "queued",
-          created_at: cmd.created_at,
-        };
-        legacyQueue.push(legacyCmd);
-        await legacyStore.setJSON("queue", legacyQueue);
+    if (cmd.type !== "swarm-recover") {
+      try {
+        const legacyStore = openStore("cluster-control");
+        const legacyQueue =
+          (await legacyStore.get("queue", { type: "json" })) || [];
+        if (legacyQueue.length < 100) {
+          // Map new command schema to old schema that poll-cluster-commands.sh expects
+          const legacyCmd = {
+            id: cmd.id,
+            target: cmd.target,
+            command: cmd.type,
+            payload: cmd.payload || {},
+            status: "queued",
+            created_at: cmd.created_at,
+          };
+          legacyQueue.push(legacyCmd);
+          await legacyStore.setJSON("queue", legacyQueue);
+        }
+      } catch (_) {
+        // Legacy dual-write is best-effort; don't fail the whole enqueue
       }
-    } catch (_) {
-      // Legacy dual-write is best-effort; don't fail the whole enqueue
     }
 
     return true;
@@ -659,6 +661,7 @@ exports.handler = async (event, context) => {
         last_seen_at: lastSeen,
         age_ms: ageMs,
         hostname: hb?.hostname || null,
+        bridge_version: hb?.bridge_version || null,
         summary: hb?.summary || null,
       });
     }
@@ -817,7 +820,7 @@ exports.handler = async (event, context) => {
         "kill-rogue","reconcile","fetch-logs",
         "disable-mining","quarantine","clear-quarantine",
         "run-diagnostic","switch-profile","force-binary-redeploy",
-        "reset-restart-count","fresh-connect",
+        "reset-restart-count","fresh-connect","swarm-recover",
       ];
 
       const target = body.target || "all";
@@ -835,6 +838,21 @@ exports.handler = async (event, context) => {
       if (!VALID_COMMANDS.includes(type))
         return json(400, hdrs, { error: "invalid command" });
 
+      if (type === "swarm-recover") {
+        const phones = new Set(VALID_TARGETS.filter((id) => /^phone\d+$/.test(id)));
+        if (target !== "phones" && !phones.has(target))
+          return json(400, hdrs, { error: "swarm recovery targets phones only" });
+        const bridge = await getBridgeHeartbeat();
+        const version = String(bridge?.bridge_version || "").split(".").map(Number);
+        if (!bridge?.last_seen_at || Date.now() - new Date(bridge.last_seen_at).getTime() >= 60000 ||
+            version.some((part) => !Number.isInteger(part)) || (version[0] || 0) < 2 ||
+            (version[0] === 2 && (version[1] || 0) < 2)) {
+          return json(409, hdrs, { error: "Update the Windows bridge to 2.2.0 before recovering phone workers" });
+        }
+        if ((await getQueue()).some((cmd) => cmd.type === "swarm-recover"))
+          return json(409, hdrs, { error: "Phone swarm recovery is already queued" });
+      }
+
       const cmd = {
         id: genId(),
         target,
@@ -848,7 +866,8 @@ exports.handler = async (event, context) => {
         result_summary: null,
       };
 
-      await enqueueCommand(cmd);
+      if (!(await enqueueCommand(cmd)))
+        return json(503, hdrs, { error: "Could not queue command" });
       return json(200, hdrs, { ok: true, command_id: cmd.id });
     }
 
@@ -856,6 +875,7 @@ exports.handler = async (event, context) => {
       const payload = {
         last_seen_at: new Date().toISOString(),
         hostname: body.hostname || "unknown",
+        bridge_version: body.bridge_version || null,
         summary: body.summary || "",
       };
       await openStore("cp-bridge").setJSON("heartbeat", payload);
@@ -878,7 +898,7 @@ exports.handler = async (event, context) => {
         id,
         target,
         type,
-        status: "completed",
+        status: body.status === "failed" && type === "swarm-recover" ? "failed" : "completed",
         result_summary: result_summary || "",
         output: output || "",
         finished_at: Date.now(),
