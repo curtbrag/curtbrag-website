@@ -440,12 +440,25 @@
     const card = document.createElement('div');
     card.id = 'cluster-phone-recovery';
     card.style.cssText = 'background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px';
-    card.innerHTML = `<h3 style="margin:0 0 7px">Phone worker recovery</h3>
+    card.innerHTML = `<h3 style="margin:0 0 7px">Fleet connections · 13 devices</h3>
+      <p style="font-size:12px;color:var(--color-muted)">8 phones · RenderRig · Alina · Nexus · SteamDeck · viki. The Windows bridge checks SSH ports automatically every 5 minutes.</p>
+      <button id="cluster-fleet-check" type="button" disabled>Check all connections now</button>
+      <pre id="cluster-fleet-check-result" style="white-space:pre-wrap;font-size:12px">Bridge 2.3.0 required for connection checks.</pre>
+      <h3>Phone worker recovery</h3>
       <p style="font-size:12px;color:var(--color-muted);margin:0 0 10px">Ask the Windows bridge to restart the existing swarm agent on offline phones and refresh their Termux boot script. Online workers, mining, and device power stay untouched.</p>
       <button id="cluster-phone-recover" type="button" disabled style="background:var(--color-brand);color:white;border:0;border-radius:6px;padding:8px 14px;cursor:pointer">Recover offline phones</button>
       <span id="cluster-phone-recovery-state" style="font-size:11px;color:var(--color-muted);margin-left:9px">Checking bridge version…</span>
       <pre id="cluster-phone-recovery-result" style="display:none;white-space:pre-wrap;font-size:11px;color:var(--color-muted);margin:10px 0 0"></pre>`;
     anchor.insertAdjacentElement('afterend', card);
+    card.querySelector('#cluster-fleet-check').addEventListener('click', async () => {
+      const button = document.getElementById('cluster-fleet-check');
+      button.disabled = true;
+      try {
+        await controlApi('queue-command', 'POST', {target:'all',type:'fleet-check'});
+        document.getElementById('cluster-fleet-check-result').textContent = 'Checking all devices from the Windows bridge…';
+      } catch (error) { notify(error.message, 'error'); }
+      await refreshPhoneRecovery(true);
+    });
     card.querySelector('#cluster-phone-recover').addEventListener('click', recoverOfflinePhones);
   }
 
@@ -458,6 +471,16 @@
     recoveryLastCheck = Date.now();
     try {
       const [bridge, commands] = await Promise.all([controlApi('bridge-status'), controlApi('commands')]);
+      const fleetButton = document.getElementById('cluster-fleet-check');
+      fleetButton.disabled = !bridge.alive || !versionAtLeast(bridge.bridge_version, '2.3.0') || (commands.queue || []).some(c => c.type === 'fleet-check');
+      const connections = bridge.fleet_connections;
+      if (connections?.devices) {
+        const age = Date.now() - Date.parse(connections.checked_at);
+        document.getElementById('cluster-fleet-check-result').textContent = `Checked ${new Date(connections.checked_at).toLocaleString()}${age > 360000 ? ' · STALE' : ''}\n` + connections.devices.map(d => {
+          const node = (current?.nodes || []).find(n => n.id === d.name);
+          return `${d.name.padEnd(10)} ${d.ip}:${d.port || 'local'} · ${d.port === 0 ? 'local bridge' : d.reachable ? 'SSH port open' : 'SSH unreachable'} · worker ${node?.online ? 'online' : 'offline'}`;
+        }).join('\n');
+      }
       recoveryReady = !!bridge.alive && versionAtLeast(bridge.bridge_version, RECOVERY_BRIDGE);
       const offline = (current?.nodes || []).filter(n => PHONE_IDS.has(n.id) && !n.online).length;
       const pending = (commands.queue || []).some(c => c.type === 'swarm-recover');

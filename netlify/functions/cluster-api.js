@@ -223,7 +223,7 @@ async function enqueueCommand(cmd) {
 
     // Dual-write to legacy cluster-control queue so existing poll scripts
     // keep receiving commands during the transition to new agents
-    if (cmd.type !== "swarm-recover") {
+    if (!["swarm-recover", "fleet-check"].includes(cmd.type)) {
       try {
         const legacyStore = openStore("cluster-control");
         const legacyQueue =
@@ -663,6 +663,7 @@ exports.handler = async (event, context) => {
         hostname: hb?.hostname || null,
         bridge_version: hb?.bridge_version || null,
         summary: hb?.summary || null,
+        fleet_connections: hb?.fleet_connections || null,
       });
     }
 
@@ -820,7 +821,7 @@ exports.handler = async (event, context) => {
         "kill-rogue","reconcile","fetch-logs",
         "disable-mining","quarantine","clear-quarantine",
         "run-diagnostic","switch-profile","force-binary-redeploy",
-        "reset-restart-count","fresh-connect","swarm-recover",
+        "reset-restart-count","fresh-connect","swarm-recover","fleet-check",
       ];
 
       const target = body.target || "all";
@@ -838,6 +839,15 @@ exports.handler = async (event, context) => {
       if (!VALID_COMMANDS.includes(type))
         return json(400, hdrs, { error: "invalid command" });
 
+      if (type === "fleet-check") {
+        const bridge = await getBridgeHeartbeat();
+        const parts = String(bridge?.bridge_version || "").split(".").map(Number);
+        if (target !== "all" || !bridge?.last_seen_at || Date.now() - new Date(bridge.last_seen_at).getTime() >= 60000 ||
+            !parts.every(Number.isInteger) || !(parts[0] > 2 || (parts[0] === 2 && parts[1] >= 3)))
+          return json(409, hdrs, { error: "Fleet check requires online Windows bridge 2.3.0 and target all" });
+        if ((await getQueue()).some(cmd => cmd.type === "fleet-check"))
+          return json(409, hdrs, { error: "Fleet connection check already queued" });
+      }
       if (type === "swarm-recover") {
         const phones = new Set(VALID_TARGETS.filter((id) => /^phone\d+$/.test(id)));
         if (target !== "phones" && !phones.has(target))
@@ -877,6 +887,7 @@ exports.handler = async (event, context) => {
         hostname: body.hostname || "unknown",
         bridge_version: body.bridge_version || null,
         summary: body.summary || "",
+        fleet_connections: body.fleet_connections || null,
       };
       await openStore("cp-bridge").setJSON("heartbeat", payload);
       return json(200, hdrs, { ok: true, bridge: payload });

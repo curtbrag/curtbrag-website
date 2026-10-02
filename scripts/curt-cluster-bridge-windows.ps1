@@ -32,7 +32,7 @@ catch {
 
 $api = if ($config.api_url) { [string]$config.api_url } else { 'https://curtbrag.com/.netlify/functions/cluster-api' }
 $swarmApi = 'https://curtbrag.com/api/cluster'
-$bridgeVersion = '2.2.0'
+$bridgeVersion = '2.3.0'
 $wallet = [string]$config.wallet
 $poolHost = if ($config.pool_host) { [string]$config.pool_host } else { 'gulf.moneroocean.stream' }
 $poolPort = if ($config.pool_port) { [int]$config.pool_port } else { 10128 }
@@ -353,6 +353,31 @@ tail -25 "$HOME/xmrig.log" 2>/dev/null || true
     return Invoke-Phone $p.IP $remote
 }
 
+# All network probes begin together; one unreachable device cannot delay the rest.
+function Get-FleetConnections {
+    $roster = @($phones | ForEach-Object { [pscustomobject]@{Name=$_.Hostname;IP=$_.IP;Port=$phonePort} }) + @(
+        [pscustomobject]@{Name='Alina';IP='192.168.1.193';Port=22},
+        [pscustomobject]@{Name='Nexus';IP='192.168.1.192';Port=22},
+        [pscustomobject]@{Name='SteamDeck';IP='192.168.1.166';Port=22},
+        [pscustomobject]@{Name='viki';IP='192.168.1.239';Port=22}
+    )
+    $probes = @($roster | ForEach-Object {
+        $client = [Net.Sockets.TcpClient]::new()
+        [pscustomobject]@{Node=$_;Client=$client;Pending=$client.BeginConnect($_.IP,$_.Port,$null,$null)}
+    })
+    $deadline = (Get-Date).AddSeconds(4)
+    $rows = @($probes | ForEach-Object {
+        $open = $false
+        try {
+            $remaining = [Math]::Max(0,[int]($deadline-(Get-Date)).TotalMilliseconds)
+            if ($_.Pending.AsyncWaitHandle.WaitOne($remaining)) { $_.Client.EndConnect($_.Pending); $open=$_.Client.Connected }
+        } catch {} finally { $_.Pending.AsyncWaitHandle.Close(); $_.Client.Dispose() }
+        [pscustomobject]@{name=$_.Node.Name;ip=$_.Node.IP;port=$_.Node.Port;reachable=$open}
+    })
+    $rows += [pscustomobject]@{name='RenderRig';ip=$env:COMPUTERNAME;port=0;reachable=$true}
+    return [pscustomobject]@{checked_at=[DateTimeOffset]::UtcNow.ToString('o');devices=$rows}
+}
+
 function Get-SwarmNodes {
     $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     $status = Invoke-RestMethod -Uri "$($swarmApi)?action=queue-status&_=$stamp" -Headers $headers -Method Get -TimeoutSec 20
@@ -502,6 +527,13 @@ function Process-Command {
 
     $cmd = @($c.queue)[0]
     $type = [string]$cmd.type
+    if ($type -eq 'fleet-check') {
+        $script:fleetConnections = Get-FleetConnections
+        $text = ($script:fleetConnections.devices | ForEach-Object { "$($_.name): $($_.ip):$($_.port) " + $(if ($_.port -eq 0) {'LOCAL BRIDGE OK'} elseif ($_.reachable) {'SSH PORT OPEN'} else {'SSH PORT UNREACHABLE'}) }) -join "`n"
+        Invoke-ApiPost 'bridge-complete' @{id=$cmd.id;target=$cmd.target;type=$type;status='completed';result_summary='All 13 devices checked';output=$text} | Out-Null
+        Invoke-ApiPost 'bridge-heartbeat' @{hostname=$env:COMPUTERNAME;bridge_version=$bridgeVersion;fleet_connections=$script:fleetConnections;summary='Fleet connection check completed'} | Out-Null
+        return $true
+    }
     if ($type -eq 'swarm-recover') {
         $recovery = Recover-OfflinePhoneSwarm ([string]$cmd.target)
         $completed = Invoke-ApiPost 'bridge-complete' @{
@@ -571,13 +603,20 @@ Write-Log "Windows bridge online. Fleet: $($phones.IP -join ', ')"
 $lastRefresh = [DateTime]::MinValue
 $lastHeartbeat = Get-Date
 
+$fleetConnections = $null
+$lastFleetCheck = [DateTime]::MinValue
 while ($true) {
     try {
+        if ((Get-Date) - $lastFleetCheck -gt [TimeSpan]::FromMinutes(5)) {
+            $fleetConnections = Get-FleetConnections
+            $lastFleetCheck = Get-Date
+        }
         if ((Get-Date) - $lastHeartbeat -gt [TimeSpan]::FromSeconds(30)) {
             Invoke-ApiPost 'bridge-heartbeat' @{
                 hostname = $env:COMPUTERNAME
                 bridge_version = $bridgeVersion
-                summary = 'Windows live bridge polling current eight-phone fleet'
+                summary = 'Windows live bridge polling 13-device fleet'
+                fleet_connections = $fleetConnections
             } | Out-Null
             $lastHeartbeat = Get-Date
         }
