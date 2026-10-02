@@ -63,10 +63,21 @@ try { $null = Invoke-RestMethod -Uri $summaryUri -Headers $headers -Method Get -
 catch { throw "Dashboard authentication/API check failed: $($_.Exception.Message)" }
 Write-Host 'Dashboard API authentication: OK'
 
+# Retire the duplicate queue consumer so it cannot take newer bridge commands.
+$legacyPattern = 'curt-cluster-command-worker-windows\.ps1'
+Get-ScheduledTask | Where-Object { ($_.Actions.Arguments -join ' ') -match $legacyPattern } |
+    ForEach-Object {
+        Stop-ScheduledTask -InputObject $_ -ErrorAction SilentlyContinue
+        Disable-ScheduledTask -InputObject $_ | Out-Null
+    }
+Get-CimInstance Win32_Process | Where-Object {
+    $_.ProcessId -ne $PID -and $_.Name -in @('powershell.exe','pwsh.exe') -and $_.CommandLine -match $legacyPattern
+} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
 Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue | Stop-ScheduledTask -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
 Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -like '*curt-cluster-bridge-windows.ps1*' } |
+    Where-Object { $_.ProcessId -ne $PID -and $_.Name -in @('powershell.exe','pwsh.exe') -and $_.CommandLine -like '*curt-cluster-bridge-windows.ps1*' } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
 $pwsh = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
