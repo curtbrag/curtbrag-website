@@ -444,12 +444,26 @@
       <p style="font-size:12px;color:var(--color-muted)">8 phones · RenderRig · Alina · Nexus · SteamDeck · viki. The Windows bridge checks SSH ports automatically every 5 minutes.</p>
       <button id="cluster-fleet-check" type="button" disabled>Check all connections now</button>
       <pre id="cluster-fleet-check-result" style="white-space:pre-wrap;font-size:12px">Bridge 2.3.0 required for connection checks.</pre>
+      <button id="cluster-fleet-diagnose" type="button" disabled>Check SSH login + workers</button>
+      <button id="cluster-fleet-discover" type="button" disabled>Find phone IPs</button>
+      <button id="cluster-pc-recover" type="button" disabled>Start missing PC workers</button>
+      <pre id="cluster-fleet-diagnostics" style="white-space:pre-wrap;font-size:12px">Bridge 2.4.0 required for diagnostics and PC recovery.</pre>
       <h3>Phone worker recovery</h3>
       <p style="font-size:12px;color:var(--color-muted);margin:0 0 10px">Ask the Windows bridge to restart the existing swarm agent on offline phones and refresh their Termux boot script. Online workers, mining, and device power stay untouched.</p>
       <button id="cluster-phone-recover" type="button" disabled style="background:var(--color-brand);color:white;border:0;border-radius:6px;padding:8px 14px;cursor:pointer">Recover offline phones</button>
       <span id="cluster-phone-recovery-state" style="font-size:11px;color:var(--color-muted);margin-left:9px">Checking bridge version…</span>
       <pre id="cluster-phone-recovery-result" style="display:none;white-space:pre-wrap;font-size:11px;color:var(--color-muted);margin:10px 0 0"></pre>`;
     anchor.insertAdjacentElement('afterend', card);
+    for (const [id,type] of [['cluster-fleet-diagnose','fleet-diagnose'],['cluster-pc-recover','swarm-recover-pcs'],['cluster-fleet-discover','fleet-discover']]) {
+      card.querySelector(`#${id}`).addEventListener('click',async () => {
+        if (type === 'swarm-recover-pcs' && !confirm('Start missing swarm workers on offline Alina, Nexus, SteamDeck and viki? Existing worker processes are preserved.')) return;
+        try {
+          await controlApi('queue-command','POST',{target:'all',type});
+          document.getElementById('cluster-fleet-diagnostics').textContent='Queued on Windows bridge; waiting for device results…';
+          await refreshPhoneRecovery(true);
+        } catch(error) { notify(error.message,'error'); }
+      });
+    }
     card.querySelector('#cluster-fleet-check').addEventListener('click', async () => {
       const button = document.getElementById('cluster-fleet-check');
       button.disabled = true;
@@ -471,6 +485,10 @@
     recoveryLastCheck = Date.now();
     try {
       const [bridge, commands] = await Promise.all([controlApi('bridge-status'), controlApi('commands')]);
+      const diagnosticPending = (commands.queue || []).some(c => ['fleet-diagnose','swarm-recover-pcs','fleet-discover'].includes(c.type));
+      for (const id of ['cluster-fleet-diagnose','cluster-pc-recover','cluster-fleet-discover']) document.getElementById(id).disabled = !bridge.alive || !versionAtLeast(bridge.bridge_version,'2.4.0') || diagnosticPending;
+      const diagnosticHistory = (commands.history || []).find(c => ['fleet-diagnose','swarm-recover-pcs','fleet-discover'].includes(c.type));
+      if (diagnosticHistory && !diagnosticPending) document.getElementById('cluster-fleet-diagnostics').textContent = `${new Date(diagnosticHistory.finished_at).toLocaleString()} · ${diagnosticHistory.result_summary || ''}\n${diagnosticHistory.output || ''}`;
       const fleetButton = document.getElementById('cluster-fleet-check');
       fleetButton.disabled = !bridge.alive || !versionAtLeast(bridge.bridge_version, '2.3.0') || (commands.queue || []).some(c => c.type === 'fleet-check');
       const connections = bridge.fleet_connections;

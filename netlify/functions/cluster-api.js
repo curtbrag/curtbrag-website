@@ -223,7 +223,7 @@ async function enqueueCommand(cmd) {
 
     // Dual-write to legacy cluster-control queue so existing poll scripts
     // keep receiving commands during the transition to new agents
-    if (!["swarm-recover", "fleet-check"].includes(cmd.type)) {
+    if (!["swarm-recover", "fleet-check", "fleet-diagnose", "swarm-recover-pcs", "fleet-discover"].includes(cmd.type)) {
       try {
         const legacyStore = openStore("cluster-control");
         const legacyQueue =
@@ -821,7 +821,7 @@ exports.handler = async (event, context) => {
         "kill-rogue","reconcile","fetch-logs",
         "disable-mining","quarantine","clear-quarantine",
         "run-diagnostic","switch-profile","force-binary-redeploy",
-        "reset-restart-count","fresh-connect","swarm-recover","fleet-check",
+        "reset-restart-count","fresh-connect","swarm-recover","fleet-check","fleet-diagnose","swarm-recover-pcs","fleet-discover",
       ];
 
       const target = body.target || "all";
@@ -839,6 +839,15 @@ exports.handler = async (event, context) => {
       if (!VALID_COMMANDS.includes(type))
         return json(400, hdrs, { error: "invalid command" });
 
+      if (["fleet-diagnose", "swarm-recover-pcs", "fleet-discover"].includes(type)) {
+        const bridge = await getBridgeHeartbeat();
+        const v = String(bridge?.bridge_version || "").split(".").map(Number);
+        if (target !== "all" || !bridge?.last_seen_at || Date.now() - new Date(bridge.last_seen_at).getTime() >= 60000 ||
+            !v.every(Number.isInteger) || !(v[0] > 2 || (v[0] === 2 && v[1] >= 4)))
+          return json(409, hdrs, { error: "Online bridge 2.4.0 required" });
+        if ((await getQueue()).some(c => ["fleet-diagnose","swarm-recover-pcs","fleet-discover"].includes(c.type)))
+          return json(409, hdrs, { error: "Fleet diagnostics or PC recovery already running" });
+      }
       if (type === "fleet-check") {
         const bridge = await getBridgeHeartbeat();
         const parts = String(bridge?.bridge_version || "").split(".").map(Number);
@@ -909,7 +918,7 @@ exports.handler = async (event, context) => {
         id,
         target,
         type,
-        status: body.status === "failed" && type === "swarm-recover" ? "failed" : "completed",
+        status: body.status === "failed" && ["swarm-recover","fleet-diagnose","swarm-recover-pcs","fleet-discover"].includes(type) ? "failed" : "completed",
         result_summary: result_summary || "",
         output: output || "",
         finished_at: Date.now(),

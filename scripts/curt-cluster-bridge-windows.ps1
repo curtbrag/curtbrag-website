@@ -32,7 +32,7 @@ catch {
 
 $api = if ($config.api_url) { [string]$config.api_url } else { 'https://curtbrag.com/.netlify/functions/cluster-api' }
 $swarmApi = 'https://curtbrag.com/api/cluster'
-$bridgeVersion = '2.3.0'
+$bridgeVersion = '2.4.0'
 $wallet = [string]$config.wallet
 $poolHost = if ($config.pool_host) { [string]$config.pool_host } else { 'gulf.moneroocean.stream' }
 $poolPort = if ($config.pool_port) { [int]$config.pool_port } else { 10128 }
@@ -94,9 +94,9 @@ function Invoke-ApiPost([string]$Action, $Body) {
     }
 }
 
-function Invoke-Phone([string]$IP, [string]$Remote) {
+function Invoke-Phone([string]$IP, [string]$Remote, [string]$User=$phoneUser, [int]$Port=$phonePort) {
     $args = @(
-        '-n', '-p', "$phonePort",
+        '-n', '-p', "$Port",
         '-i', $key,
         '-o', 'BatchMode=yes',
         '-o', 'IdentitiesOnly=yes',
@@ -107,7 +107,7 @@ function Invoke-Phone([string]$IP, [string]$Remote) {
         '-o', 'StrictHostKeyChecking=no',
         '-o', 'UserKnownHostsFile=NUL',
         '-o', 'LogLevel=ERROR',
-        "$phoneUser@$IP",
+        "$User@$IP",
         $Remote
     )
     try {
@@ -378,6 +378,99 @@ function Get-FleetConnections {
     return [pscustomobject]@{checked_at=[DateTimeOffset]::UtcNow.ToString('o');devices=$rows}
 }
 
+$pcWorkers = @(
+    [pscustomobject]@{Hostname='Alina';IP='192.168.1.193';User='neo';Port=22},
+    [pscustomobject]@{Hostname='Nexus';IP='192.168.1.192';User='neo';Port=22},
+    [pscustomobject]@{Hostname='SteamDeck';IP='192.168.1.166';User='deck';Port=22},
+    [pscustomobject]@{Hostname='viki';IP='192.168.1.239';User='neo';Port=22}
+)
+function Discover-PhoneAddresses {
+    $found = @()
+    # Scan only the configured home subnet and Termux SSH port. Candidates do
+    # not replace roster addresses until device identity can be verified.
+    for ($base=1; $base -le 254; $base+=32) {
+        $probes = @($base..([Math]::Min(254,$base+31)) | ForEach-Object {
+            $ip="192.168.1.$_"; $client=[Net.Sockets.TcpClient]::new()
+            [pscustomobject]@{IP=$ip;Client=$client;Pending=$client.BeginConnect($ip,$phonePort,$null,$null)}
+        })
+        $deadline=(Get-Date).AddSeconds(2)
+        foreach ($probe in $probes) {
+            try {
+                $remaining=[Math]::Max(0,[int]($deadline-(Get-Date)).TotalMilliseconds)
+                if ($probe.Pending.AsyncWaitHandle.WaitOne($remaining)) {
+                    $probe.Client.EndConnect($probe.Pending)
+                    if ($probe.Client.Connected) { $found += $probe.IP }
+                }
+            } catch {} finally { $probe.Pending.AsyncWaitHandle.Close(); $probe.Client.Dispose() }
+        }
+    }
+    $output=@('Termux SSH candidates on 192.168.1.0/24; identity must be verified before updating addresses.')
+    foreach ($ip in $found) {
+        $known=$phones | Where-Object IP -eq $ip | Select-Object -First 1
+        $output += "$($ip):$phonePort " + $(if($known){"configured $($known.Hostname)"}else{'unmapped candidate'})
+    }
+    if (-not $found.Count) { $output += 'No open Termux SSH ports found.' }
+    return $output -join "`n"
+}
+function Diagnose-FleetWorkers {
+    $remote = @'
+printf 'SSH_AUTH=OK HOST=%s USER=%s\n' "$(hostname)" "$(whoami)"
+SCRIPT="$HOME/node-swarm.sh"
+if [ -s "$SCRIPT" ]; then sh -n "$SCRIPT" && echo WORKER_SCRIPT=OK; else echo WORKER_SCRIPT=MISSING; fi
+count=0
+for proc in /proc/[0-9]*; do
+  [ -r "$proc/cmdline" ] || continue
+  if tr '\000' '\n' < "$proc/cmdline" | grep -Fqx "$SCRIPT"; then echo "WORKER_PID=${proc##*/}"; count=$((count+1)); fi
+done
+printf 'WORKER_COUNT=%s\n' "$count"
+if [ -f "$HOME/cluster/state/pending-result.json" ]; then printf 'PENDING_RESULT_BYTES='; wc -c < "$HOME/cluster/state/pending-result.json"; fi
+tail -n 4 "$HOME/cluster/logs/swarm-agent.log" 2>/dev/null || true
+'@
+    $output = @()
+    foreach ($p in $phones) {
+        $result = Invoke-Phone $p.IP $remote
+        $output += "=== $($p.Hostname) exit=$($result.Exit) ===`n$(@($result.Output) -join "`n")"
+    }
+    foreach ($p in $pcWorkers) {
+        $result = Invoke-Phone $p.IP $remote $p.User $p.Port
+        $output += "=== $($p.Hostname) exit=$($result.Exit) ===`n$(@($result.Output) -join "`n")"
+    }
+    $output += '=== RenderRig === Local bridge running; GPU worker heartbeat shown in dashboard.'
+    return $output -join "`n"
+}
+function Recover-OfflinePcWorkers {
+    $nodes = @(Get-SwarmNodes)
+    $output = @()
+    $failed = 0
+    foreach ($p in $pcWorkers) {
+        $node = $nodes | Where-Object id -eq $p.Hostname | Select-Object -First 1
+        if (-not $node) { $output += "$($p.Hostname): missing roster entry; skipped"; $failed++; continue }
+        if ($node.online -eq $true) { $output += "$($p.Hostname): online; skipped"; continue }
+        $remote = @'
+SCRIPT="$HOME/node-swarm.sh"
+[ -s "$SCRIPT" ] || { echo WORKER_MISSING; exit 2; }
+sh -n "$SCRIPT" || exit 2
+for proc in /proc/[0-9]*; do
+  [ -r "$proc/cmdline" ] || continue
+  if tr '\000' '\n' < "$proc/cmdline" | grep -Fqx "$SCRIPT"; then echo "EXISTING_WORKER_PID=${proc##*/}; run diagnostics for stalled heartbeat"; exit 3; fi
+done
+mkdir -p "$HOME/cluster/logs" "$HOME/cluster/state"
+DEVICE_ID='__DEVICE__' NODE_CLASS='pc' SWARM_URL='https://curtbrag.com/api/cluster' POLL_INTERVAL='60' nohup sh "$SCRIPT" >> "$HOME/cluster/logs/swarm-agent.log" 2>&1 </dev/null &
+sleep 3
+for proc in /proc/[0-9]*; do
+  [ -r "$proc/cmdline" ] || continue
+  if tr '\000' '\n' < "$proc/cmdline" | grep -Fqx "$SCRIPT"; then echo "STARTED_PID=${proc##*/}"; exit 0; fi
+done
+echo START_FAILED
+exit 1
+'@
+        $result = Invoke-Phone $p.IP ($remote.Replace('__DEVICE__',$p.Hostname)) $p.User $p.Port
+        if ($result.Exit -ne 0) { $failed++ }
+        $output += "$($p.Hostname): exit=$($result.Exit) $(@($result.Output) -join ' ')"
+    }
+    return [pscustomobject]@{Failed=($failed -gt 0);Output=($output -join "`n");Summary="PC recovery completed; $failed failures. Allow 60 seconds for heartbeats."}
+}
+
 function Get-SwarmNodes {
     $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     $status = Invoke-RestMethod -Uri "$($swarmApi)?action=queue-status&_=$stamp" -Headers $headers -Method Get -TimeoutSec 20
@@ -527,6 +620,15 @@ function Process-Command {
 
     $cmd = @($c.queue)[0]
     $type = [string]$cmd.type
+    if ($type -in @('fleet-diagnose','swarm-recover-pcs','fleet-discover')) {
+        try {
+            if ($type -eq 'fleet-discover') { $output=Discover-PhoneAddresses; $failed=$false; $summary='Phone SSH address discovery completed' }
+            elseif ($type -eq 'fleet-diagnose') { $output = Diagnose-FleetWorkers; $failed=$false; $summary='SSH and worker diagnostics for all 13 devices' }
+            else { $r=Recover-OfflinePcWorkers; $output=$r.Output; $failed=$r.Failed; $summary=$r.Summary }
+        } catch { $output=$_.Exception.Message; $failed=$true; $summary='Fleet operation failed' }
+        Invoke-ApiPost 'bridge-complete' @{id=$cmd.id;target=$cmd.target;type=$type;status=$(if($failed){'failed'}else{'completed'});result_summary=$summary;output=$output} | Out-Null
+        return $true
+    }
     if ($type -eq 'fleet-check') {
         $script:fleetConnections = Get-FleetConnections
         $text = ($script:fleetConnections.devices | ForEach-Object { "$($_.name): $($_.ip):$($_.port) " + $(if ($_.port -eq 0) {'LOCAL BRIDGE OK'} elseif ($_.reachable) {'SSH PORT OPEN'} else {'SSH PORT UNREACHABLE'}) }) -join "`n"
