@@ -87,9 +87,16 @@ async function listEntries(prefix) {
   try {
     const listing = await store().list({ prefix });
     const out = [];
-    for (const entry of listing.blobs || []) {
-      const value = await getJson(entry.key, null);
-      if (value) out.push({ key: entry.key, value });
+    // Fleet status includes result history. Serial blob reads can exceed the
+    // Windows bridge's 20-second timeout as that history grows. Limit parallel
+    // reads to avoid an unbounded burst while retaining listing order.
+    const entries = listing.blobs || [];
+    for (let offset = 0; offset < entries.length; offset += 16) {
+      const batch = await Promise.all(entries.slice(offset, offset + 16).map(async entry => {
+        const value = await getJson(entry.key, null);
+        return value ? { key: entry.key, value } : null;
+      }));
+      out.push(...batch.filter(Boolean));
     }
     return out;
   } catch {
