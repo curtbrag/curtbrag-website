@@ -431,6 +431,7 @@
     patchCommandShortcuts();
     ensurePhoneRecovery();
     ensureMediaDiscovery();
+    ensureWebsiteAudit();
   }
 
   function ensurePhoneRecovery() {
@@ -559,6 +560,56 @@
     card.querySelector('#cluster-media-credits').addEventListener('click', copyMediaCredits);
     card.querySelector('#cluster-batch-add').addEventListener('click', addEpisodeToBatch);
     card.querySelector('#cluster-batch-run').addEventListener('click', dispatchEpisodeBatch);
+  }
+
+  let auditBatch = null;
+  function ensureWebsiteAudit() {
+    if (document.getElementById('cluster-web-audit')) return;
+    const anchor = document.getElementById('cluster-phone-recovery');
+    if (!anchor) return;
+    const card = document.createElement('div'); card.id='cluster-web-audit';
+    card.style.cssText='background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px';
+    card.innerHTML=`<h3>Website audit swarm</h3><p>Split public curtbrag.com pages across online phone and Linux workers. Check HTTP responses, internal links, titles, descriptions, H1 headings, image alt attributes and mobile viewport metadata.</p><label for="cluster-audit-settings">Audit settings (JSON)</label><textarea id="cluster-audit-settings" rows="4" style="width:100%">{"paths":["/","/shop/","/gallery/","/rig/","/cluster/","/contact/"],"workers":6}</textarea><button id="cluster-audit-run" type="button">Audit website across workers</button> <button id="cluster-audit-export" type="button">Export audit report</button><p id="cluster-audit-state">HTTP/HTML checks only; visual layouts and form submissions are not tested.</p><div id="cluster-audit-report"></div>`;
+    anchor.insertAdjacentElement('afterend',card);
+    card.querySelector('#cluster-audit-run').addEventListener('click',dispatchWebsiteAudit);
+    card.querySelector('#cluster-audit-export').addEventListener('click',()=>{
+      const reports=auditReports(current?.results || []);
+      if (!reports.length) return notify('No audit results available','error');
+      const url=URL.createObjectURL(new Blob([JSON.stringify({scope:'curtbrag.com HTTP/HTML audit',reports},null,2)],{type:'application/json'}));
+      const a=document.createElement('a');a.href=url;a.download='curt-website-audit.json';a.click();URL.revokeObjectURL(url);
+    });
+  }
+  function auditReports(results) {
+    return results.filter(r=>String(r.job_id || '').startsWith('audit-v1-') && (!auditBatch || r.job_id.startsWith(auditBatch))).map(r=>{
+      try { const data=JSON.parse(r.stdout || ''); if(data.kind==='website-audit') return {...data.page,worker:r.device_id}; } catch {}
+      return {worker:r.device_id,url:r.cmd || '',issues:[`Worker failed or returned invalid report: ${r.stderr || r.exit_code}`]};
+    });
+  }
+  function renderWebsiteAudit(results) {
+    const host=document.getElementById('cluster-audit-report'); if(!host)return;
+    const reports=auditReports(results);
+    host.innerHTML=reports.map(r=>`<article style="border-top:1px solid var(--color-border);padding:10px 0"><strong>${esc(r.url)}</strong> · ${esc(r.worker)} · HTTP ${esc(r.status ?? '?')} · ${esc(r.ms ?? '?')} ms<p>${esc(r.title || '')}</p><ul>${(r.issues.length?r.issues:['No issues in the completed checks']).map(i=>`<li>${esc(i)}</li>`).join('')}</ul><small>${esc(r.links_checked || 0)} internal links checked. HTTP fetch time is not browser load performance.</small></article>`).join('');
+    if(reports.length)document.getElementById('cluster-audit-state').textContent=`${reports.length} page reports · ${reports.reduce((n,r)=>n+r.issues.length,0)} findings · HTTP/HTML checks only`;
+  }
+  async function dispatchWebsiteAudit() {
+    const button=document.getElementById('cluster-audit-run');button.disabled=true;
+    const state=document.getElementById('cluster-audit-state');
+    try {
+      const spec=JSON.parse(document.getElementById('cluster-audit-settings').value);
+      if(!Array.isArray(spec.paths)||spec.paths.length<1||spec.paths.length>12||!Number.isInteger(spec.workers)||spec.workers<1||spec.workers>12||spec.paths.some(p=>typeof p!=='string'||!/^\/(?!\/)[A-Za-z0-9/_-]*$/.test(p)))throw new Error('Use 1–12 site paths starting with / and workers from 1–12.');
+      await load();
+      const nodes=current.nodes.filter(n=>n.online&&n.id!=='RenderRig'&&IDS.has(n.id)).slice(0,spec.workers);
+      if(!nodes.length)throw new Error('No online phone or Linux workers');
+      auditBatch=`audit-v1-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+      let queued=0;
+      for(const [i,path] of [...new Set(spec.paths)].entries()) {
+        const node=nodes[i%nodes.length];
+        const cmd=`curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-web-audit.py' -o "$HOME/cluster-web-audit.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-web-audit.py" --path '${path}'; }`;
+        await swarmApi('enqueue','POST',{job:{id:`${auditBatch}-${i}`,type:'shell',cmd,command:cmd},target_device_ids:[node.id]});
+        state.textContent=`Queued ${++queued} pages across ${nodes.length} workers`;
+      }
+      await load(true);
+    } catch(error){state.textContent=error.message;notify(error.message,'error');}finally{button.disabled=false;}
   }
 
   function mediaCommand(query, kind, offset, limit) {
@@ -758,6 +809,7 @@
     current = canonicalize(raw || {});
     const d = current;
     renderMediaDiscovery(d.results);
+    renderWebsiteAudit(d.results);
     const setText = (id, value) => {
       const el = document.getElementById(id);
       if (el) el.textContent = value;
