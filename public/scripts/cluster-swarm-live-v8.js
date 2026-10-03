@@ -1215,6 +1215,13 @@
     return blob;
   }
 
+  async function downloadEpisodeFile(jobId,variant) {
+    const response=await fetch(`/api/episode-media?id=${encodeURIComponent(jobId)}&variant=${variant}&download-ticket=1`,{method:'POST',headers:{Authorization:`Bearer ${token()}`},cache:'no-store'});
+    const data=await response.json();
+    if(!response.ok||!data.ok)throw new Error(data.error||'Download could not be prepared');
+    const a=document.createElement('a');a.href=data.path;a.download=`${jobId}-${variant}.mp4`;a.referrerPolicy='no-referrer';document.body.append(a);a.click();a.remove();
+  }
+
   async function openEpisode(jobId) {
     try {
       notify('Loading episode preview…');
@@ -1232,7 +1239,8 @@
       video.playsInline = true;
       video.style.cssText = 'display:block;width:100%;max-height:65vh;background:#000';
       const shortDownload = document.createElement('a');
-      shortDownload.href = shortUrl;
+      shortDownload.href = '#';
+      shortDownload.addEventListener('click',async event=>{event.preventDefault();try{await downloadEpisodeFile(jobId,'short');}catch(error){notify(error.message,'error');}});
       shortDownload.download = `${jobId}-short.mp4`;
       shortDownload.textContent = 'Download short';
       shortDownload.style.cssText = 'display:inline-block;margin:12px 12px 0 0;color:var(--color-brand)';
@@ -1248,7 +1256,8 @@
           video.src = masterUrl;
           title.textContent = 'Episode · full video';
           const download = document.createElement('a');
-          download.href = masterUrl;
+          download.href = '#';
+          download.addEventListener('click',async event=>{event.preventDefault();try{await downloadEpisodeFile(jobId,'master');}catch(error){notify(error.message,'error');}});
           download.download = `${jobId}-master.mp4`;
           download.textContent = 'Download full episode';
           download.style.cssText = shortDownload.style.cssText;
