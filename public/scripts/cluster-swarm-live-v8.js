@@ -746,6 +746,10 @@
     if(draft?.status==='succeeded')host.innerHTML+=`<h4>${esc(draft.output.draft.title)}</h4><p>AI draft · ${esc(draft.output.model)} · human review required. Selected source excerpts only; references are not proof that each claim is correct.</p>${draft.output.draft.points.map(p=>`<p>${esc(p.text)} <strong>[${esc(p.sources.join(', '))}]</strong></p>`).join('')}<p><strong>Needs verification:</strong> ${esc(draft.output.draft.verification)}</p>${draft.sources.map(s=>`<p>${esc(s.id)}: ${esc(s.title)} · ${esc(s.url)}</p>`).join('')}`;
     document.getElementById('workspace-episode-load').disabled=workspaceBusy||workspace?.draft?.status!=='succeeded';
     document.getElementById('workspace-publish-package').disabled=workspaceBusy||workspace?.draft?.status!=='succeeded';
+    const publishingHost=document.getElementById('workspace-publish-report');
+    if(workspace?.publishing?.source_job_id===draft?.job_id&&draft?.status==='succeeded'){
+      if(publishingHost.dataset.jobId!==draft.job_id)try{renderPublishingPackage(researchPublishingPackage(draft));}catch{publishingHost.replaceChildren();delete publishingHost.dataset.jobId;}
+    }else{publishingHost.replaceChildren();delete publishingHost.dataset.jobId;}
     for(const id of ['workspace-ai-prepare','workspace-ai-draft'])document.getElementById(id).disabled=workspaceBusy||!workspace;
   }
   function exportWorkspace(){
@@ -801,21 +805,27 @@
       hashtags,sources,verification:draft.verification||'',
       media_note:'Original narrated diagram video; links credit research sources. No third-party footage is included.'};
   }
+  function renderPublishingPackage(pack){
+    const host=document.getElementById('workspace-publish-report');
+    host.replaceChildren();host.dataset.jobId=pack.source_job_id;
+    const heading=document.createElement('h4');heading.textContent='Publishing package';host.append(heading);
+    const note=document.createElement('p');note.textContent='Review the video and claims, then copy a caption. Topic hashtags are included. Saved with your combined report.';host.append(note);
+    const names={youtube:'YouTube',tiktok:'TikTok',instagram:'Instagram',facebook:'Facebook'};
+    for(const [name,value] of Object.entries(pack.platforms)){
+      const label=document.createElement('label');label.textContent=names[name]||name;label.htmlFor='publish-'+name;
+      const field=document.createElement('textarea');field.id=label.htmlFor;field.readOnly=true;field.rows=5;field.style.width='100%';field.value=Object.values(value).join('\n\n');
+      const button=document.createElement('button');button.type='button';button.textContent='Copy '+label.textContent;button.style.cssText='padding:8px 12px;margin:6px 0;border:1px solid var(--color-border);border-radius:5px;cursor:pointer';
+      button.onclick=async()=>{try{await navigator.clipboard.writeText(field.value);notify(label.textContent+' caption copied.');}catch{field.focus();field.select();notify('Select and copy the caption manually; clipboard access is unavailable.','error');}};
+      host.append(label,field,button);
+    }
+    const label=document.createElement('label');label.textContent='Publishing package JSON';label.htmlFor='publish-json';
+    const field=document.createElement('textarea');field.id='publish-json';field.readOnly=true;field.rows=8;field.style.width='100%';field.value=JSON.stringify(pack,null,2);
+    host.append(label,field);
+  }
   function showPublishingPackage(){
     try{
       const pack=researchPublishingPackage(workspace?.draft);
-      const host=document.getElementById('workspace-publish-report');
-      host.replaceChildren();
-      const heading=document.createElement('h4');heading.textContent='Publishing package';host.append(heading);
-      const note=document.createElement('p');note.textContent='Copy the captions after reviewing the video and claims. Hashtags describe the topic; they are not trend or revenue predictions. This package does not publish to your accounts.';host.append(note);
-      for(const [name,value] of Object.entries(pack.platforms)){
-        const label=document.createElement('label');label.textContent=name[0].toUpperCase()+name.slice(1);label.htmlFor='publish-'+name;
-        const field=document.createElement('textarea');field.id=label.htmlFor;field.readOnly=true;field.rows=5;field.style.width='100%';field.value=Object.values(value).join('\n\n');
-        host.append(label,field);
-      }
-      const label=document.createElement('label');label.textContent='Publishing package JSON';label.htmlFor='publish-json';
-      const field=document.createElement('textarea');field.id='publish-json';field.readOnly=true;field.rows=8;field.style.width='100%';field.value=JSON.stringify(pack,null,2);
-      host.append(label,field);
+      renderPublishingPackage(pack);
       workspace.publishing=pack;saveWorkspace();notify('Publishing package ready with source credits.');
     }catch(error){notify(error.message,'error');}
   }
