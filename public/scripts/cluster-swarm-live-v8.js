@@ -764,14 +764,14 @@
     if(record?.status!=='succeeded'||!draft||!Array.isArray(draft.points)||draft.points.length<1||draft.points.length>3)throw new Error('Complete an AI draft first');
     if(typeof draft.title!=='string'||!draft.title.trim()||draft.title.length>75||/[\x00-\x1f]/.test(draft.title))throw new Error('Episode title must fit 75 characters on one line; revise the draft');
     const ids=new Set((record.sources||[]).map(s=>s.id));
-    const scenes=[{heading:'Research notes',caption:'Source-based draft · review before publishing',narration:`This research draft is titled ${draft.title}. Here are the notes collected from the supplied sources.`,visual:'circuit'},
-      {heading:'What supports this?',caption:'Read the full articles before using these claims',narration:'These notes use short source excerpts. The source list and verification notes are saved with the combined report.',visual:'meter'}];
+    const scenes=[{heading:'Research notes',caption:'Source-based draft · review before publishing',narration:`This research draft is titled ${draft.title}. Here are the notes collected from the supplied sources.`,visual:'circuit'}];
     for(const [index,point] of draft.points.entries()){
       if(typeof point.text!=='string'||!point.text.trim()||point.text.length>180||/[\x00-\x1f]/.test(point.text))throw new Error('Each draft point must fit 180 characters on one line; request a shorter draft');
       if(!Array.isArray(point.sources)||!point.sources.length||point.sources.some(id=>!ids.has(id)))throw new Error('Draft contains an unknown source reference');
       scenes.push({heading:`Research point ${index+1}`,caption:`Sources: ${point.sources.join(', ')} · see combined report`,narration:point.text,visual:'circuit'});
     }
-    scenes.push({heading:'Check the gaps',caption:'Short excerpts do not establish every detail',narration:'Read the verification notes in the combined report. Check the full sources before treating this draft as finished reporting.',visual:'meter'},
+    scenes.push({heading:'What supports this?',caption:'Read the full articles before using these claims',narration:'These notes use short source excerpts. The source list and verification notes are saved with the combined report.',visual:'meter'},
+      {heading:'Check the gaps',caption:'Short excerpts do not establish every detail',narration:'Read the verification notes in the combined report. Check the full sources before treating this draft as finished reporting.',visual:'meter'},
       {heading:'Keep the sources',caption:'Review the draft, sources and final edit together',narration:'The combined report preserves the source links and draft. Review the claims and finished video before publishing.',visual:'circuit'});
     const duration=scenes.length===5?12:10;
     const spec={title:draft.title,scenes:scenes.map(scene=>({...scene,duration}))};
