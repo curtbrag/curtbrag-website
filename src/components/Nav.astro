@@ -75,6 +75,7 @@ function isActive(href: string): boolean {
 <!-- Mobile Menu Overlay -->
 <div
   id="mobile-menu"
+  hidden
   class="fixed inset-0 z-[60] overflow-hidden pointer-events-none opacity-0 transition-opacity duration-300 md:hidden"
   aria-hidden="true"
   role="dialog"
@@ -197,6 +198,7 @@ function isActive(href: string): boolean {
     if (!menu || !panel || !backdrop || !openBtn || !closeBtn) return;
 
     function openMenu() {
+      menu!.hidden = false;
       menu!.classList.remove('pointer-events-none', 'opacity-0');
       menu!.classList.add('pointer-events-auto', 'opacity-100');
       menu!.setAttribute('aria-hidden', 'false');
@@ -207,6 +209,7 @@ function isActive(href: string): boolean {
     }
 
     function closeMenu() {
+      menu!.hidden = true;
       panel!.classList.remove('translate-x-0');
       panel!.classList.add('translate-x-full');
       menu!.classList.remove('pointer-events-auto', 'opacity-100');
