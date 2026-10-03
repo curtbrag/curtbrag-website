@@ -5,6 +5,29 @@ import Layout from '../../layouts/Layout.astro';
 <Layout title="Cluster Control — Curtis Bragdon" description="Cluster control plane.">
 <section class="py-8">
 <div class="max-w-7xl mx-auto px-4">
+<script is:inline>
+(async()=>{
+ try{
+  if(window.top===window.self)return;
+  const parentPage=window.parent;
+  if(parentPage.location.pathname!=='/cluster/display.html')return;
+  const unit=parentPage.document.getElementById('name')?.value?.trim();
+  if(!/^phone(173|174|176|177|191|195|253|254)$/.test(unit||''))return;
+  // Phone frames show their unit status and never ask for operator credentials.
+  const style=document.createElement('style');style.textContent='#loginGate,#panel{display:none!important}';document.head.append(style);
+  const status=document.createElement('p');status.textContent='Connecting this phone’s activity display…';document.body.prepend(status);
+  let desired=null;
+  try{
+   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);
+   try{const response=await fetch('/.netlify/functions/phone-display?phone='+encodeURIComponent(unit)+'&activity=1',{cache:'no-store',signal:controller.signal});if(response.ok)desired=await response.json();}
+   finally{clearTimeout(timer);}
+  }catch{}
+  const target='/cluster/display.html?name='+encodeURIComponent(unit)+'&mode=activity&immersive=1&v=55';
+  if(desired?.mode==='activity')window.top.location.replace(target);
+  else window.location.replace(target+'&embedded=1');
+ }catch{}
+})();
+</script>
 <div id="loginGate" class="max-w-sm mx-auto mt-20">
 <div class="text-center mb-6">
 <div class="text-4xl mb-3"><i class="fa-solid fa-lock" style="color:var(--color-brand)"></i></div>
@@ -1125,19 +1148,4 @@ if (password) {
 <script is:inline src="/scripts/cluster-jobs-v1.js?v=1"></script>
 
 
-<script is:inline>
-// Upgrade an existing display through its supported dashboard frame mode.
-(async()=>{
- try{
-  if(window.top===window.self)return;
-  const parentPage=window.parent;
-  if(parentPage.location.pathname!=='/cluster/display.html')return;
-  const unit=parentPage.document.getElementById('name')?.value?.trim();
-  if(!/^phone(173|174|176|177|191|195|253|254)$/.test(unit||''))return;
-  const response=await fetch('/.netlify/functions/phone-display?phone='+encodeURIComponent(unit)+'&activity=1',{cache:'no-store'});
-  if(!response.ok)return;
-  const desired=await response.json();
-  if(desired.mode==='activity')window.top.location.replace('/cluster/display.html?name='+encodeURIComponent(unit)+'&mode=activity&immersive=1&v=54');
- }catch{}
-})();
-</script>
+
