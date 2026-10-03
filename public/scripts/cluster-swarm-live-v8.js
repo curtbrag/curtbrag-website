@@ -725,7 +725,10 @@
     });
   }
   function auditReports(results) {
-    return results.filter(r=>{const id=String(r.job_id||'');return id.startsWith('audit-v1-')&&(!auditBatch||id.startsWith(auditBatch))||id.startsWith('browser-audit-v1-')&&(!browserAuditBatch||id.startsWith(browserAuditBatch));}).map(r=>{
+    const inBatch=(id,batch)=>!batch||id.startsWith(batch+'-')&&/^\d+$/.test(id.slice(batch.length+1));
+    const matches=id=>id.startsWith('audit-v1-')&&inBatch(id,auditBatch)||id.startsWith('browser-audit-v1-')&&inBatch(id,browserAuditBatch);
+    const selected=results.filter(r=>matches(String(r.job_id||'')));
+    const live=selected.map(r=>{
       const browser=String(r.job_id).startsWith('browser-audit-v1-');
       try { const data=JSON.parse(r.stdout || '');
         if(Number(r.exit_code)===0&&data.kind==='website-audit'&&Array.isArray(data.page?.issues))return {...data.page,worker:r.device_id,mode:'HTTP/HTML'};
@@ -733,7 +736,18 @@
         if(data.error)throw new Error(data.error);
       } catch(error){return {worker:r.device_id,mode:browser?'Chromium':'HTTP/HTML',url:'Incomplete check',issues:[String(error.message).slice(0,600)]};}
       return {worker:r.device_id,mode:browser?'Chromium':'HTTP/HTML',url:'Incomplete check',issues:[`Worker failed or returned invalid report: ${String(r.stderr || r.exit_code).slice(0,600)}`]};
-    });
+    }).map((report,index)=>({...report,job_id:selected[index].job_id}));
+    const combined=new Map();
+    for(const report of auditRecord?.reports||[])if(matches(String(report.job_id||'')))combined.set(report.job_id+'|'+report.worker,report);
+    // Queue results are newest first. Keep only the latest result for each assignment.
+    const seen=new Set();
+    for(const report of live){const key=report.job_id+'|'+report.worker;if(!seen.has(key)){combined.set(key,report);seen.add(key);}}
+    const reports=[...combined.values()];
+    if(auditRecord&&JSON.stringify(auditRecord.reports||[])!==JSON.stringify(reports)){
+      auditRecord.reports=reports;
+      saveAuditRecord();
+    }
+    return reports;
   }
   function auditFixPlan(reports,record){
     const expected=(record?.settings?.paths?.length||0)*(record?.settings?.browser_workers?.length?2:1);
@@ -780,7 +794,7 @@
   function auditUnsent(record,state){
     return (record?.tasks||[]).filter(t=>t.status!=='queued'&&!state.jobs.some(j=>j.id===t.job_id)&&!state.results.some(r=>r.job_id===t.job_id&&r.device_id===t.worker));
   }
-  function saveAuditRecord(){localStorage.setItem(AUDIT_KEY,JSON.stringify(auditRecord));}
+  function saveAuditRecord(){try{localStorage.setItem(AUDIT_KEY,JSON.stringify(auditRecord));}catch{notify('Browser storage unavailable; export the audit report before closing this page.','error');}}
   async function submitAuditTasks(){
     const fresh=await swarmApi('queue-status');
     for(const task of auditRecord.tasks){
@@ -1969,4 +1983,3 @@ window.queueCmd = async (deviceId, type) => {
     if (!started && token()) start();
   }, 1000);
 })();
-
