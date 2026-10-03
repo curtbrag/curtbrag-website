@@ -23,17 +23,30 @@ async function operatorPassword() {
 }
 
 export default async function handler(request) {
-  const password = await operatorPassword();
-  const authorization = request.headers.get('authorization') || '';
-  if (!authorization.startsWith('Bearer ') || !equal(authorization.slice(7).trim(), password)) {
-    return json(401, { ok:false, error:'unauthorized operator' });
-  }
   const params = new URL(request.url).searchParams;
   const id = params.get('id') || '';
   const variant = params.get('variant') || '';
   if (!ID.test(id) || !['master','short'].includes(variant)) return json(400, { ok:false, error:'invalid episode or variant' });
+  const password = await operatorPassword();
+  const authorization = request.headers.get('authorization') || '';
+  const authorized = authorization.startsWith('Bearer ') && equal(authorization.slice(7).trim(), password);
+  const ticket = params.get('ticket') || '';
+  const [expires, signature] = ticket.split('.');
+  const signed = password && /^\d{13}\.[A-Za-z0-9_-]{43}$/.test(ticket) && Number(expires) >= Date.now() && Number(expires) <= Date.now()+120000 && equal(signature, crypto.createHmac('sha256', password).update(`${id}|${variant}|${expires}`).digest('base64url'));
+  if (!authorized && !(request.method === 'GET' && params.get('download') === '1' && signed)) {
+    return json(401, { ok:false, error:'unauthorized operator' });
+  }
   const store = media();
   const manifestKey = key(id, variant, 'manifest');
+
+  if (request.method === 'POST' && params.get('download-ticket') === '1') {
+    const manifest = await store.get(manifestKey, {type:'json'});
+    if (!manifest) return json(404, {ok:false,error:'episode not available'});
+    if (!Number.isInteger(manifest.bytes) || manifest.bytes > 20*1024*1024) return json(413,{ok:false,error:'Use the chunked preview for files larger than 20 MiB'});
+    const expires = String(Date.now()+120000);
+    const signature = crypto.createHmac('sha256',password).update(`${id}|${variant}|${expires}`).digest('base64url');
+    return json(200,{ok:true,path:`/api/episode-media?id=${id}&variant=${variant}&download=1&ticket=${expires}.${signature}`});
+  }
 
   if (request.method === 'POST') {
     const pending = await queue().get(`job--${id}`, { type:'json' });
@@ -78,6 +91,20 @@ export default async function handler(request) {
   if (request.method === 'GET') {
     const manifest = await store.get(manifestKey, { type:'json' });
     if (!manifest) return json(404, { ok:false, error:'episode not available' });
+    if (params.get('download') === '1') {
+      if (!Number.isInteger(manifest.parts) || manifest.parts<1 || manifest.parts>MAX_PARTS || !Number.isInteger(manifest.bytes) || manifest.bytes>20*1024*1024) return json(413,{ok:false,error:'Invalid or oversized download'});
+      const chunks=[];const hash=crypto.createHash('sha256');let bytes=0;
+      for(let i=0;i<manifest.parts;i++){
+        const part=await store.get(key(id,variant,i),{type:'arrayBuffer'});
+        if(!part)return json(409,{ok:false,error:'Missing episode part'});
+        const chunk=Buffer.from(part);bytes+=chunk.length;
+        if(bytes>20*1024*1024)return json(413,{ok:false,error:'Download exceeds 20 MiB'});
+        hash.update(chunk);chunks.push(chunk);
+      }
+      if(bytes!==manifest.bytes||hash.digest('hex')!==manifest.sha256)return json(422,{ok:false,error:'Episode integrity check failed'});
+      const stream=new ReadableStream({start(controller){for(const chunk of chunks)controller.enqueue(chunk);controller.close();}});
+      return new Response(stream,{status:200,headers:{'content-type':'video/mp4','content-disposition':`attachment; filename="${id}-${variant}.mp4"`,'content-length':String(bytes),'cache-control':'private, no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff'}});
+    }
     if (params.get('manifest') === '1') return json(200, manifest);
     const part = Number(params.get('part'));
     if (!Number.isInteger(part) || part < 0 || part >= manifest.parts) return json(400, { ok:false, error:'invalid part' });
