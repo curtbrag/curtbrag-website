@@ -9,20 +9,44 @@
 <section id="home" class="panel"><span class="label" data-label>Cluster screen</span><h2>Give every screen a purpose</h2><div class="grid"><div class="metric"><strong>Cluster dashboard</strong><p>Worker activity, assignments and results. Sign in on this screen to view your cluster.</p></div><div class="metric"><strong>Animations & clock</strong><p>Ambient visuals for phone racks and a large clock for the room.</p></div><div class="metric"><strong>Screen test</strong><p>Check orientation, dimensions, color bars, contrast and scaling.</p></div></div><p>Display choices and the screen name are saved in this browser. Physical cable connections, brightness and system resolution require device access.</p></section>
 <section id="dashboard" class="panel frame" hidden><iframe title="Cluster dashboard" data-src="/cluster/dashboard/"></iframe><p style="padding:12px">If the dashboard cannot sign in here, <a href="/cluster/dashboard/" target="_blank" rel="noopener">open the dashboard directly</a>.</p></section>
 <section id="visuals" class="panel" hidden><label>Animation <select id="animation"><option value="">Cycle all</option><option>constellation</option><option>matrix</option><option>plasma</option><option>rings</option><option>warp</option><option>fire</option><option>helix</option></select></label><iframe title="Cluster animations"></iframe></section>
-<section id="clock" class="panel clock" hidden><span class="label" data-label>Cluster screen</span><time id="time"></time><p id="date"></p></section>
+<section id="clock" class="panel clock" hidden><span class="label" data-label>Cluster screen</span><time id="time"></time><p id="date"></p><p id="screen-state" role="status" aria-live="polite"></p></section>
 <section id="test" class="panel" hidden><h2>Screen test</h2><div id="metrics" class="grid"></div><p>These readings describe this browser and its current screen; they do not detect cables or other monitors.</p><label>Test pattern <select id="pattern"><option value="">Color bars</option><option value="checker">Checkerboard</option><option value="gray">Grayscale</option></select></label><div class="pattern" id="test-pattern" style="margin-top:16px"></div></section>
 </main><footer id="message" role="status" aria-live="polite">Ready</footer><script>
-const $=id=>document.getElementById(id),modes=['home','dashboard','visuals','clock','test'];let mode='home',lock=null,wantsAwake=false;
-function save(){try{localStorage.setItem('curt-display-v1',JSON.stringify({mode,name:$('name').value,animation:$('animation').value}));}catch{$('message').textContent='Browser storage unavailable; settings apply for this session.';}}
+const $=id=>document.getElementById(id),modes=['home','dashboard','visuals','clock','test'];let mode='home',lock=null,wantsAwake=false,wakeRequestPending=false;
+function save(){try{localStorage.setItem('curt-display-v1',JSON.stringify({mode,name:$('name').value,animation:$('animation').value,keepAwake:wantsAwake}));}catch{$('message').textContent='Browser storage unavailable; settings apply for this session.';}}
 function show(value){mode=modes.includes(value)?value:'home';for(const id of modes)$(id).hidden=id!==mode;document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)));const dash=$('dashboard').querySelector('iframe'),visual=$('visuals').querySelector('iframe');if(mode==='dashboard'){if(!dash.hasAttribute('src'))dash.src=dash.dataset.src;}else dash.removeAttribute('src');if(mode==='visuals')visual.src='/cluster/eyecandy.html#'+($('animation').value?$('animation').value+'+lock':'');else visual.removeAttribute('src');save();}
 function labels(){document.querySelectorAll('[data-label]').forEach(el=>el.textContent=$('name').value.trim()||'Cluster screen');save();}
 function tick(){const now=new Date();$('time').textContent=now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});$('time').dateTime=now.toISOString();$('date').textContent=now.toLocaleDateString([], {weekday:'long',year:'numeric',month:'long',day:'numeric'});const values=[['Browser area',innerWidth+' × '+innerHeight],['Screen',screen.width+' × '+screen.height],['Pixel ratio',String(devicePixelRatio)],['Orientation',screen.orientation?.type||(innerWidth>innerHeight?'landscape':'portrait')]];$('metrics').replaceChildren(...values.map(([label,value])=>{const d=document.createElement('div');d.className='metric';const s=document.createElement('strong');s.textContent=value;d.append(s,document.createTextNode(label));return d;}));}
-async function awake(){if(!wantsAwake||document.hidden)return;try{if(!navigator.wakeLock)throw Error('unsupported');lock=await navigator.wakeLock.request('screen');lock.addEventListener('release',()=>{$('awake').setAttribute('aria-pressed','false');$('message').textContent='Wake lock released by the device.';});$('awake').setAttribute('aria-pressed','true');$('message').textContent='Screen will stay awake while this page is visible.';}catch{$('awake').setAttribute('aria-pressed','false');$('message').textContent='Keep awake is unavailable. Check this device’s sleep settings.';}}
-$('awake').onclick=async()=>{wantsAwake=!wantsAwake;if(wantsAwake)await awake();else{if(lock)await lock.release();lock=null;$('awake').setAttribute('aria-pressed','false');$('message').textContent='Normal screen sleep restored.';}};
+function wakeStatus(text){$('screen-state').textContent=text;}
+async function awake(){
+ if(!wantsAwake||document.hidden||wakeRequestPending||(lock&&!lock.released))return;
+ wakeRequestPending=true;
+ try{
+  if(!navigator.wakeLock)throw Error('unsupported');
+  const next=await navigator.wakeLock.request('screen');
+  if(!wantsAwake||document.hidden){await next.release();return;}
+  lock=next;
+  next.addEventListener('release',()=>{
+   if(lock!==next)return;
+   lock=null;$('awake').setAttribute('aria-pressed','false');
+   wakeStatus(wantsAwake?'Screen sleep protection released; retrying when visible.':'Normal screen sleep enabled.');
+  });
+  $('awake').setAttribute('aria-pressed','true');
+  wakeStatus('Keeping screen on');
+ }catch{
+  $('awake').setAttribute('aria-pressed','false');
+  wakeStatus('Screen sleep protection unavailable in this browser.');
+ }finally{wakeRequestPending=false;}
+}
+$('awake').onclick=async()=>{
+ wantsAwake=!wantsAwake;save();
+ if(wantsAwake)await awake();
+ else{const previous=lock;lock=null;if(previous)await previous.release();$('awake').setAttribute('aria-pressed','false');wakeStatus('Normal screen sleep enabled.');}
+};
 $('full').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch{$('message').textContent='Fullscreen unavailable; use your browser’s fullscreen control.';}};document.addEventListener('fullscreenchange',()=>{$('full').textContent=document.fullscreenElement?'Exit fullscreen':'Fullscreen';});
 $('focus').onclick=()=>document.body.classList.add('immersive');$('exit').onclick=()=>document.body.classList.remove('immersive');document.addEventListener('keydown',e=>{if(e.key==='Escape')document.body.classList.remove('immersive');});document.addEventListener('visibilitychange',()=>{if(!document.hidden)awake();});
 document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>show(b.dataset.mode));$('name').oninput=()=>{labels();displayRevision=null;syncDisplay();};$('animation').onchange=()=>show('visuals');$('pattern').onchange=()=>$('test-pattern').className='pattern '+$('pattern').value;
-try{const saved=JSON.parse(localStorage.getItem('curt-display-v1')||'{}');$('name').value=String(saved.name||'').slice(0,60);if([...$('animation').options].some(o=>o.value===saved.animation))$('animation').value=saved.animation;mode=saved.mode||'home';}catch{}const params=new URLSearchParams(location.search);if(modes.includes(params.get('mode')))mode=params.get('mode');if(params.has('name'))$('name').value=params.get('name').slice(0,60);if(params.get('immersive')==='1')document.body.classList.add('immersive');labels();show(mode);tick();setInterval(tick,1000);
+try{const saved=JSON.parse(localStorage.getItem('curt-display-v1')||'{}');$('name').value=String(saved.name||'').slice(0,60);if([...$('animation').options].some(o=>o.value===saved.animation))$('animation').value=saved.animation;mode=saved.mode||'home';if(typeof saved.keepAwake==='boolean')wantsAwake=saved.keepAwake;else wantsAwake=Boolean(saved.name);}catch{}const params=new URLSearchParams(location.search);if(modes.includes(params.get('mode')))mode=params.get('mode');if(params.has('name')){$('name').value=params.get('name').slice(0,60);wantsAwake=true;}if(params.get('immersive')==='1')document.body.classList.add('immersive');labels();show(mode);tick();awake();setInterval(awake,30000);setInterval(tick,1000);
 
 let displayRevision=null,displayPolling=false;async function syncDisplay(){const phone=$('name').value.trim();if(!/^phone(173|174|176|177|191|195|253|254)$/.test(phone||'')||displayPolling||document.hidden)return;displayPolling=true;try{const r=await fetch('/.netlify/functions/phone-display?phone='+encodeURIComponent(phone),{cache:'no-store'});if(!r.ok)throw Error();const d=await r.json();if(d.revision&&d.revision!==displayRevision&&modes.includes(d.mode)){displayRevision=d.revision;show(d.mode);$('message').textContent='Remote display updated';}}catch{$('message').textContent='Display connection unavailable; keeping current mode';}finally{displayPolling=false;}}syncDisplay();setInterval(syncDisplay,10000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncDisplay();});
 </script></body></html>
