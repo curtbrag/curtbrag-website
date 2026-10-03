@@ -432,6 +432,7 @@
     ensurePhoneRecovery();
     ensureMediaDiscovery();
     ensureWebsiteAudit();
+    ensureWorkspace();
   }
 
   function ensurePhoneRecovery() {
@@ -610,6 +611,80 @@
       }
       await load(true);
     } catch(error){state.textContent=error.message;notify(error.message,'error');}finally{button.disabled=false;}
+  }
+
+  const WORKSPACE_KEY='curt-swarm-workspace-v1';
+  let workspace=null, workspaceBusy=false;
+  try { workspace=JSON.parse(localStorage.getItem(WORKSPACE_KEY)||'null'); if(!Array.isArray(workspace?.tasks))workspace=null; } catch {}
+  function saveWorkspace(){ try {localStorage.setItem(WORKSPACE_KEY,JSON.stringify(workspace));}catch{notify('Browser storage unavailable; keep this page open to retain your report','error');} }
+  function ensureWorkspace(){
+    if(document.getElementById('cluster-workspace'))return;
+    const anchor=document.getElementById('cluster-web-audit');if(!anchor)return;
+    const card=document.createElement('section');card.id='cluster-workspace';
+    card.style.cssText='background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px';
+    card.innerHTML=`<h3>Swarm workspace</h3><p>One research brief, separate worker tasks, one collected source report. Uses online phones and Linux PCs to retrieve Wikipedia sources. This is source gathering; AI synthesis and automatic publishing are not included.</p><label for="workspace-json">Brief and tasks (JSON)</label><textarea id="workspace-json" rows="7" style="width:100%">{"brief":"Research electric vehicles for a factual content series","tasks":["Electric vehicle battery recycling","Electric vehicle charging infrastructure","Electric vehicle energy efficiency"],"workers":3}</textarea><button id="workspace-run" type="button">Start research swarm</button> <button id="workspace-retry" type="button">Retry failed / unsent tasks</button> <button id="workspace-cancel" type="button">Cancel unfinished assignments</button> <button id="workspace-export" type="button">Export combined report</button><p>Latest batch is saved in this browser. Keep the dashboard open to collect results before server history expires. Cancelling assignments does not stop commands already running.</p><p id="workspace-state"></p><div id="workspace-report"></div>`;
+    anchor.insertAdjacentElement('afterend',card);
+    card.querySelector('#workspace-run').onclick=()=>dispatchWorkspace(false);
+    card.querySelector('#workspace-retry').onclick=()=>dispatchWorkspace(true);
+    card.querySelector('#workspace-cancel').onclick=cancelWorkspace;
+    card.querySelector('#workspace-export').onclick=()=>{
+      if(!workspace)return notify('No batch to export','error');
+      const a=document.createElement('a');const url=URL.createObjectURL(new Blob([JSON.stringify(workspace,null,2)],{type:'application/json'}));
+      a.href=url;a.download='curt-swarm-research.json';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    };
+    renderWorkspace([]);
+  }
+  function renderWorkspace(results){
+    const host=document.getElementById('workspace-report');if(!host)return;
+    if(!workspace){document.getElementById('workspace-state').textContent='Ready for a research brief';return;}
+    let changed=false;
+    for(const task of workspace.tasks){
+      const result=results.find(r=>r.job_id===task.job_id&&r.device_id===task.worker);
+      if(!result){
+        if(['submitting','unconfirmed'].includes(task.status)&&current?.jobs.some(j=>j.id===task.job_id)){task.status='queued';changed=true;}
+        continue;
+      }
+      if(task.status==='succeeded'||task.status==='failed')continue;
+      let data;try{data=JSON.parse(result.stdout||'');}catch{}
+      task.status=Number(result.exit_code)===0&&data?.kind==='research-sources'&&Array.isArray(data.sources)&&data.sources.length?'succeeded':'failed';
+      task.report=task.status==='succeeded'?data:null;task.error=task.status==='failed'?String(data?.error||result.stderr||'Worker returned an invalid report').slice(0,500):null;changed=true;
+    }
+    if(changed)saveWorkspace();
+    document.getElementById('workspace-state').textContent=`${workspace.brief} — ${workspace.tasks.filter(t=>t.status==='succeeded').length}/${workspace.tasks.length} completed · ${workspace.tasks.filter(t=>t.status==='failed').length} failed`;
+    host.innerHTML=workspace.tasks.map(t=>`<article style="border-top:1px solid var(--color-border);padding:10px 0"><strong>${esc(t.query)}</strong><p>${esc(t.worker||'unassigned')} · ${esc(t.status)} · attempt ${esc(t.attempts)}${t.error?' · '+esc(t.error):''}</p>${(t.report?.sources||[]).map(s=>`<p><strong>${esc(s.title)}</strong><br>${esc(s.excerpt)}<br>${/^https:\/\/en\.wikipedia\.org\/wiki\//.test(s.url)?`<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">Source</a>`:'Invalid source URL'}</p>`).join('')}</article>`).join('');
+    for(const id of ['workspace-run','workspace-retry','workspace-cancel'])document.getElementById(id).disabled=workspaceBusy;
+  }
+  async function dispatchWorkspace(retry){
+    if(workspaceBusy)return;
+    if(!retry&&workspace?.tasks.some(t=>['submitting','queued'].includes(t.status)))return notify('Finish or cancel the current batch before starting another','error');
+    workspaceBusy=true;
+    try{
+      await load(true);
+      const spec=retry?null:JSON.parse(document.getElementById('workspace-json').value);
+      if(!retry&&(!spec||typeof spec.brief!=='string'||!spec.brief.trim()||spec.brief.length>500||!Array.isArray(spec.tasks)||!spec.tasks.length||spec.tasks.length>12||spec.tasks.some(q=>typeof q!=='string'||!q.trim()||q.length>240)||!Number.isInteger(spec.workers)||spec.workers<1||spec.workers>12))throw new Error('Use a brief, 1–12 task queries (up to 240 characters), and workers from 1–12');
+      const nodes=current.nodes.filter(n=>n.online&&!n.busy&&n.id!=='RenderRig').slice(0,retry?workspace?.workers:spec.workers);
+      if(!nodes.length)throw new Error('No idle online phone or Linux workers');
+      if(!retry)workspace={id:`research-v1-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,brief:spec.brief,workers:spec.workers,created_at:new Date().toISOString(),tasks:spec.tasks.map(query=>({query,status:'ready',attempts:0}))};
+      if(!workspace)throw new Error('No batch to retry');
+      saveWorkspace();
+      const tasks=workspace.tasks.filter(t=>retry?['failed','ready'].includes(t.status):t.status==='ready');
+      for(const [i,task] of tasks.entries()){
+        if(task.attempts>=3)continue;
+        task.worker=nodes[i%nodes.length].id;task.attempts++;task.job_id=`${workspace.id}-${workspace.tasks.indexOf(task)}-${task.attempts}`;task.status='submitting';task.error=null;saveWorkspace();renderWorkspace([]);
+        const encoded=btoa(Array.from(new TextEncoder().encode(task.query),b=>String.fromCharCode(b)).join(''));
+        const cmd=`curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-research.py' -o "$HOME/cluster-research.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-research.py" --query "$(printf %s '${encoded}' | base64 -d)"; }`;
+        try{await swarmApi('enqueue','POST',{job:{id:task.job_id,type:'shell',cmd,command:cmd},target_device_ids:[task.worker]});task.status='queued';}
+        catch(error){task.status='unconfirmed';task.error='Submission outcome uncertain. Refresh and check the queue before cancelling this assignment: '+error.message;saveWorkspace();throw error;}
+        saveWorkspace();
+      }
+      await load(true);
+    }catch(error){notify(error.message,'error');}finally{workspaceBusy=false;renderWorkspace(current?.results||[]);}
+  }
+  async function cancelWorkspace(){
+    if(!workspace||workspaceBusy)return;workspaceBusy=true;
+    try{for(const task of workspace.tasks.filter(t=>['queued','submitting','unconfirmed'].includes(t.status))){
+      try{await swarmApi('cancel-job','POST',{job_id:task.job_id});task.status='cancelled';saveWorkspace();}catch(error){task.error=error.message;saveWorkspace();}
+    }}finally{workspaceBusy=false;renderWorkspace(current?.results||[]);}
   }
 
   function mediaCommand(query, kind, offset, limit) {
@@ -810,6 +885,7 @@
     const d = current;
     renderMediaDiscovery(d.results);
     renderWebsiteAudit(d.results);
+    renderWorkspace(d.results);
     const setText = (id, value) => {
       const el = document.getElementById(id);
       if (el) el.textContent = value;
