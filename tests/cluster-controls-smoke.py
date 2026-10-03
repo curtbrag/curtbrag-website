@@ -3,6 +3,7 @@
 No real dashboard credentials or API writes are used.
 """
 import json
+import os
 from urllib.parse import urlsplit
 from playwright.sync_api import sync_playwright, expect
 
@@ -21,15 +22,15 @@ def isolated_api(route):
 
 checks=[]
 with sync_playwright() as p:
-    browser=p.chromium.launch(headless=True,chromium_sandbox=True)
+    browser=p.chromium.launch(headless=True,chromium_sandbox=True,channel=os.environ.get('BROWSER_CHANNEL'))
     for width,height in [(1366,900),(390,844)]:
         context=browser.new_context(viewport={'width':width,'height':height},service_workers='block')
         context.route('**/*',isolated_api)
-        context.add_init_script("sessionStorage.setItem('cp_password','ui-fixture-only');")
+        context.add_init_script("if(window===window.top)sessionStorage.setItem('cp_password','ui-fixture-only');")
         page=context.new_page()
         errors=[]
         page.on('pageerror',lambda error:errors.append(str(error)))
-        page.goto('https://curtbrag.com/cluster/dashboard/',wait_until='load')
+        page.goto(os.environ.get('DASHBOARD_URL','https://curtbrag.com/cluster/dashboard/'),wait_until='load')
         page.locator('#cluster-work-navigation').wait_for(state='visible',timeout=15000)
         assert page.locator('#swarm-nodes-online').inner_text()=='13 / 13'
         for name in ['fleet','audit','research','media','results']:
@@ -72,6 +73,23 @@ with sync_playwright() as p:
         page.reload(wait_until='load')
         page.locator('#cluster-work-navigation').wait_for(state='visible')
         assert page.locator('#cluster-view-tab-results').get_attribute('aria-selected')=='true'
+        batch={'http_batch':'audit-v1-fixture','browser_batch':'browser-audit-v1-fixture','settings':{'paths':['/'],'browser_workers':[]},'tasks':[{'job_id':'audit-v1-fixture-0','worker':'phone173','status':'queued'}]}
+        DATA['results']=[{'job_id':'audit-v1-fixture-0','device_id':'phone173','exit_code':0,'stdout':json.dumps({'kind':'website-audit','page':{'url':'https://curtbrag.com/','title':'Saved evidence fixture','issues':[]}})}]
+        page.evaluate('(batch)=>localStorage.setItem("curt-website-audit-batch-v1",JSON.stringify(batch))',batch)
+        page.reload(wait_until='load')
+        page.locator('#cluster-view-tab-audit').click()
+        expect(page.locator('#cluster-audit-state')).to_contain_text('1 / 1 page reports')
+        assert len(page.evaluate('JSON.parse(localStorage.getItem("curt-website-audit-batch-v1")).reports'))==1
+        DATA['results']=[]
+        page.reload(wait_until='load')
+        expect(page.locator('#cluster-audit-state')).to_contain_text('1 / 1 page reports')
+        page.get_by_role('button',name='Build fix plan',exact=True).click()
+        expect(page.locator('#cluster-audit-plan')).to_contain_text('no-detected-fixes')
+        page.locator('#cluster-audit-export').click()
+        exported=json.loads(page.locator('#cluster-audit-export-panel textarea').input_value())
+        assert exported['reports'][0]['title']=='Saved evidence fixture'
+        if width==390:
+            page.screenshot(path=os.environ.get('AUDIT_SCREENSHOT','audit-evidence-test.png'),full_page=True)
         assert not errors,errors
         context.close()
     browser.close()
