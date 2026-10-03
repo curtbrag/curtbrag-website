@@ -258,14 +258,14 @@
     else work.click();
   }
   function displayLaunchCommand(mode,phone){
-    if(!['visuals','clock','test','dashboard','home'].includes(mode)||!PHONE_IDS.has(phone))throw new Error('Invalid display selection');
+    if(!['activity','visuals','clock','test','dashboard','home'].includes(mode)||!PHONE_IDS.has(phone))throw new Error('Invalid display selection');
     const url='https://curtbrag.com/cluster/display.html?mode='+mode+'&name='+phone+'&immersive=1';
     return `url='${url}'; if ! command -v timeout >/dev/null 2>&1; then echo 'Display launch requires timeout utility' >&2; exit 2; fi; out=$(timeout 20 am start --user 0 -a android.intent.action.VIEW -d "$url" 2>&1); code=$?; printf '%s\\n' "$out"; if [ "$code" -ne 0 ]; then echo 'Android launch failed or timed out; unlock the phone and check browser permissions' >&2; exit 2; fi; if printf '%s' "$out" | grep -Eiq 'error|exception|denied|background activity.*(blocked|abort)'; then echo 'Android rejected the display launch' >&2; exit 2; fi; if ! printf '%s' "$out" | grep -q 'Starting: Intent'; then echo 'Termux did not report an activity launch request; physical display unverified' >&2; exit 2; fi; echo 'Termux submitted a browser intent; Android may still block background launches. Unlock the phone and open Termux, then retry.'`;
   }
   function ensureDisplayControls(){
     const panel=document.getElementById('cluster-view-fleet');if(!panel||document.getElementById('cluster-display-control'))return;
     const card=document.createElement('section');card.id='cluster-display-control';card.className='cluster-control-card';
-    card.innerHTML='<h3>Phone screens</h3><p>Change the page already open on each phone. Open the display hub once with its phone name; it checks for changes every 10 seconds.</p><label for="display-target">Phone</label><select id="display-target"><option value="all">All phones</option>'+Array.from(PHONE_IDS).map(p=>'<option>'+p+'</option>').join('')+'</select> <label for="display-mode">Display</label><select id="display-mode"><option value="visuals">Animations</option><option value="clock">Clock</option><option value="test">Screen test</option><option value="dashboard">Cluster dashboard (sign-in required)</option><option value="home">Display overview</option></select><div class="cluster-action-row"><button id="display-send" type="button" class="cluster-primary-action">Apply to phone screens</button><a id="display-open" href="/cluster/display.html" target="_blank" rel="noopener">Open display hub</a><button id="display-results" type="button">View launch results</button></div><p id="display-state" role="status"></p>';
+    card.innerHTML='<h3>Phone screens</h3><p>Change the page already open on each phone. Open the display hub once with its phone name; it checks for changes every 10 seconds.</p><label for="display-target">Phone</label><select id="display-target"><option value="all">All phones</option>'+Array.from(PHONE_IDS).map(p=>'<option>'+p+'</option>').join('')+'</select> <label for="display-mode">Display</label><select id="display-mode"><option value="activity">This unit’s activity</option><option value="visuals">Animations</option><option value="clock">Clock</option><option value="test">Screen test</option><option value="dashboard">Cluster dashboard (sign-in required)</option><option value="home">Display overview</option></select><div class="cluster-action-row"><button id="display-send" type="button" class="cluster-primary-action">Apply to phone screens</button><a id="display-open" href="/cluster/display.html" target="_blank" rel="noopener">Open display hub</a><button id="display-results" type="button">View launch results</button></div><p id="display-state" role="status"></p>';
     panel.insertBefore(card,panel.children[1]);
     const updateDisplayLink=()=>{const phone=document.getElementById('display-target').value,mode=document.getElementById('display-mode').value;document.getElementById('display-open').href='/cluster/display.html?mode='+encodeURIComponent(mode)+(PHONE_IDS.has(phone)?'&name='+encodeURIComponent(phone):'');};
     document.getElementById('display-target').onchange=updateDisplayLink;document.getElementById('display-mode').onchange=updateDisplayLink;updateDisplayLink();
@@ -2086,5 +2086,3 @@ window.queueCmd = async (deviceId, type) => {
     if (!started && token()) start();
   }, 1000);
 })();
-
-
