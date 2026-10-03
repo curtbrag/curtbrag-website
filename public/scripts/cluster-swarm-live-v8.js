@@ -568,6 +568,7 @@
   const AUDIT_KEY='curt-website-audit-batch-v1';
   let auditRecord=null;
   try{auditRecord=JSON.parse(localStorage.getItem(AUDIT_KEY)||'null');auditBatch=auditRecord?.http_batch||null;browserAuditBatch=auditRecord?.browser_batch||null;}catch{}
+  let auditSubmitting=false;
   const BROWSER_SCRIPT='https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-browser-audit.py';
   const BROWSER_PCS=new Set(['Alina','Nexus','viki','SteamDeck']);
   function browserWorkers(spec){
@@ -606,6 +607,8 @@
     const note=document.createElement('p');note.textContent='Optional browser_workers run Chromium desktop/mobile checks. Prepare installs an isolated Playwright runtime and Chromium on those PCs. Reports include evidence and proposed fixes; no form submissions or code changes.';prepare.insertAdjacentElement('beforebegin',note);
     const runtime=document.createElement('p');runtime.id='cluster-browser-runtime';prepare.insertAdjacentElement('afterend',runtime);
     card.querySelector('#cluster-audit-run').addEventListener('click',dispatchWebsiteAudit);
+    const retry=document.createElement('button');retry.id='cluster-audit-retry';retry.type='button';retry.textContent='Retry unsent audit tasks';retry.onclick=retryAuditTasks;card.querySelector('#cluster-audit-run').insertAdjacentElement('afterend',retry);
+    const delivery=document.createElement('p');delivery.id='cluster-audit-delivery';retry.insertAdjacentElement('afterend',delivery);
     const planButton=document.createElement('button');planButton.type='button';planButton.textContent='Build fix plan';planButton.onclick=showAuditFixPlan;card.querySelector('#cluster-audit-export').insertAdjacentElement('afterend',planButton);
     card.querySelector('#cluster-audit-export').addEventListener('click',()=>{
       const reports=auditReports(current?.results || []);
@@ -663,6 +666,9 @@
   function renderWebsiteAudit(results) {
     const host=document.getElementById('cluster-audit-report'); if(!host)return;
     const reports=auditReports(results);
+    const unsent=auditUnsent(auditRecord,current||{jobs:[],results:[]}).length;
+    document.getElementById('cluster-audit-delivery').textContent=auditRecord?.tasks?`${auditRecord.tasks.length} saved assignments · ${unsent} unsent or unconfirmed. Retry keeps the same batch and skips known jobs/results.`:'Older batch: start a new audit to enable saved assignments.';
+    document.getElementById('cluster-audit-retry').disabled=auditSubmitting||!unsent;
     host.innerHTML=reports.map(r=>`<article style="border-top:1px solid var(--color-border);padding:10px 0"><strong>${esc(r.url)}</strong> · ${esc(r.worker)} · ${esc(r.mode)}${r.mode==='HTTP/HTML'?` · HTTP ${esc(r.status??'?')} · ${esc(r.ms??'?')} ms`:''}<p>${esc(r.title || '')}</p><ul>${(r.issues.length?r.issues:['No issues in the completed checks']).map(i=>`<li>${esc(i)}</li>`).join('')}</ul>${(r.proposals||[]).map(f=>`<p><strong>Proposed fix (${esc(f.viewport)}):</strong> ${esc(f.proposal)}</p>`).join('')}${(r.viewports||[]).map(v=>`<p>${esc(v.viewport)} ${esc(v.width)}×${esc(v.height)} · overflow ${esc(v.overflow_px??'?')}px · DOM ready ${esc(v.timings?.dom_content_loaded_ms??'?')} ms · load ${esc(v.timings?.load_ms??'?')} ms${v.pending_images?` · ${esc(v.pending_images)} images still pending`:''}${v.blocked_resource_hosts?.length?` · excluded hosts: ${esc(v.blocked_resource_hosts.join(', '))}`:''}</p>`).join('')}<small>${r.mode==='HTTP/HTML'?`${esc(r.links_checked||0)} internal links checked. HTTP fetch time is not browser load performance.`:'Single-run Chromium checks; forms, interactive flows and Core Web Vitals are not tested.'}</small></article>`).join('');
     const expected=auditRecord?.settings?.paths?.length*(auditRecord?.settings?.browser_workers?.length?2:1);
     if(reports.length||expected)document.getElementById('cluster-audit-state').textContent=`${reports.length}${expected?' / '+expected:''} page reports · ${reports.reduce((n,r)=>n+r.issues.length,0)} findings · HTTP/HTML + optional Chromium checks${expected&&reports.length<expected?' · incomplete; keep collecting results':''}`;
@@ -670,7 +676,37 @@
     const latest=new Map();for(const r of runtime)if(!latest.has(r.device_id))latest.set(r.device_id,r);
     document.getElementById('cluster-browser-runtime').textContent=[...latest.values()].map(r=>{try{const d=JSON.parse(r.stdout||'');return `${r.device_id}: ${Number(r.exit_code)===0&&d.ready?'browser ready':d.error||'setup failed'}`;}catch{return `${r.device_id}: setup failed`;}}).join(' · ');
   }
+  function auditUnsent(record,state){
+    return (record?.tasks||[]).filter(t=>t.status!=='queued'&&!state.jobs.some(j=>j.id===t.job_id)&&!state.results.some(r=>r.job_id===t.job_id&&r.device_id===t.worker));
+  }
+  function saveAuditRecord(){localStorage.setItem(AUDIT_KEY,JSON.stringify(auditRecord));}
+  async function submitAuditTasks(){
+    const fresh=await swarmApi('queue-status');
+    for(const task of auditRecord.tasks){
+      if(fresh.jobs.some(j=>j.id===task.job_id)||fresh.results.some(r=>r.job_id===task.job_id&&r.device_id===task.worker))task.status='queued';
+    }
+    saveAuditRecord();
+    for(const task of auditUnsent(auditRecord,fresh)){
+      if(!fresh.nodes.some(n=>n.id===task.worker&&n.online))continue;
+      task.status='submitting';saveAuditRecord();
+      try{
+        await swarmApi('enqueue','POST',{job:{id:task.job_id,type:'shell',cmd:task.cmd,command:task.cmd},target_device_ids:[task.worker]});
+        task.status='queued';delete task.error;saveAuditRecord();
+      }catch(error){task.status='unconfirmed';task.error=String(error.message).slice(0,200);saveAuditRecord();throw error;}
+    }
+    await load(true);
+  }
+  async function retryAuditTasks(){
+    if(auditSubmitting)return;
+    if(!auditRecord?.tasks?.length)return notify('This older batch has no saved assignments. Start a new audit.','error');
+    auditSubmitting=true;
+    try{await submitAuditTasks();notify('Unsent audit assignments checked; queued or completed work was skipped.');}
+    catch(error){notify('Audit retry: '+error.message,'error');}
+    finally{auditSubmitting=false;}
+  }
   async function dispatchWebsiteAudit() {
+    if(auditSubmitting)return;
+    auditSubmitting=true;
     const button=document.getElementById('cluster-audit-run');button.disabled=true;
     const state=document.getElementById('cluster-audit-state');
     try {
@@ -678,28 +714,26 @@
       if(!Array.isArray(spec.paths)||spec.paths.length<1||spec.paths.length>12||!Number.isInteger(spec.workers)||spec.workers<1||spec.workers>12||spec.paths.some(p=>typeof p!=='string'||!/^\/(?!\/)[A-Za-z0-9/_-]*$/.test(p)))throw new Error('Use 1–12 site paths starting with / and workers from 1–12.');
       const browserIds=browserWorkers(spec);
       await load();
+      if(!current)throw new Error('Live worker state is not available yet; retry once loaded');
       if(browserIds.some(id=>!current.nodes.some(n=>n.id===id&&n.online&&!n.busy)))throw new Error('All browser_workers must be online and idle');
       const nodes=current.nodes.filter(n=>n.online&&n.id!=='RenderRig'&&IDS.has(n.id)).slice(0,spec.workers);
       if(!nodes.length)throw new Error('No online phone or Linux workers');
       document.getElementById('cluster-audit-plan')?.remove();
       auditBatch=`audit-v1-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
       browserAuditBatch=`browser-audit-v1-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
-      auditRecord={http_batch:auditBatch,browser_batch:browserAuditBatch,created_at:new Date().toISOString(),settings:{...spec,paths:[...new Set(spec.paths)],browser_workers:browserIds}};
-      try{localStorage.setItem(AUDIT_KEY,JSON.stringify(auditRecord));}catch{notify('Audit history cannot be saved in this browser; export the report before closing.','error');}
-      let queued=0;
+      auditRecord={http_batch:auditBatch,browser_batch:browserAuditBatch,created_at:new Date().toISOString(),settings:{...spec,paths:[...new Set(spec.paths)],browser_workers:browserIds},tasks:[]};
       for(const [i,path] of [...new Set(spec.paths)].entries()) {
         const node=nodes[i%nodes.length];
         const cmd=`curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-web-audit.py' -o "$HOME/cluster-web-audit.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-web-audit.py" --path '${path}'; }`;
-        await swarmApi('enqueue','POST',{job:{id:`${auditBatch}-${i}`,type:'shell',cmd,command:cmd},target_device_ids:[node.id]});
-        state.textContent=`Queued ${++queued} pages across ${nodes.length} workers`;
+        auditRecord.tasks.push({job_id:`${auditBatch}-${i}`,worker:node.id,path,mode:'HTTP/HTML',cmd,status:'unsent'});
       }
       for(const [i,path] of browserIds.length?[...new Set(spec.paths)].entries():[]){
         const cmd=browserCommand(path),id=browserIds[i%browserIds.length];
-        await swarmApi('enqueue','POST',{job:{id:`${browserAuditBatch}-${i}`,type:'shell',cmd,command:cmd},target_device_ids:[id]});
-        state.textContent=`Queued ${queued} HTTP pages + ${i+1} browser pages`;
+        auditRecord.tasks.push({job_id:`${browserAuditBatch}-${i}`,worker:id,path,mode:'Chromium',cmd,status:'unsent'});
       }
-      await load(true);
-    } catch(error){state.textContent=error.message;notify(error.message,'error');}finally{button.disabled=false;}
+      saveAuditRecord();
+      await submitAuditTasks();
+    } catch(error){state.textContent=error.message;notify(error.message,'error');}finally{auditSubmitting=false;button.disabled=false;}
   }
 
   const WORKSPACE_KEY='curt-swarm-workspace-v1';
