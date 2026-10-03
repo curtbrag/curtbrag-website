@@ -208,37 +208,111 @@
     });
   }
 
+  const CONTROL_VIEWS=[['fleet','Fleet','Availability, diagnostics and recovery'],['audit','Website audits','Run checks and review evidence'],['research','Research','Brief, sources and reviewed drafts'],['media','Media jobs','Find assets and produce media'],['results','Queue & results','Track assignments and inspect output']];
+  function setControlView(name,focus=false){
+    if(!CONTROL_VIEWS.some(([id])=>id===name))name='fleet';
+    for(const [id] of CONTROL_VIEWS){
+      const panel=document.getElementById('cluster-view-'+id),button=document.getElementById('cluster-view-tab-'+id);
+      if(panel)panel.hidden=id!==name;
+      if(button){button.setAttribute('aria-selected',String(id===name));button.tabIndex=id===name?0:-1;}
+    }
+    try{localStorage.setItem('curt-control-view-v1',name);}catch{}
+    if(focus)document.getElementById('cluster-view-tab-'+name)?.focus();
+  }
+  function ensureAdminNavigation(){
+    if(document.getElementById('cluster-administration'))return;
+    const work=document.querySelector('[data-tab="swarm"]');if(!work)return;
+    const bar=work.parentElement;bar.classList.add('cluster-top-navigation');
+    const admin=document.createElement('details');admin.id='cluster-administration';
+    const summary=document.createElement('summary');summary.textContent='Administration';admin.append(summary);
+    const content=document.createElement('div');content.className='cluster-admin-content';admin.append(content);
+    for(const button of Array.from(bar.querySelectorAll('.tab-btn'))){
+      button.removeAttribute('style');
+      if(button!==work)content.append(button);
+    }
+    work.textContent='Workspace';bar.append(work,admin);
+    const legacy=document.getElementById('stat-total')?.parentElement?.parentElement;
+    if(legacy){
+      const details=document.createElement('details');details.className='cluster-legacy-telemetry';
+      details.innerHTML='<summary>Bridge registry telemetry</summary><p>These records belong to the older device registry. Workspace status uses the current 13-worker roster.</p>';
+      details.append(legacy);content.append(details);
+    }
+    queueMicrotask(()=>work.click());
+  }
+  function ensureControlLayout(){
+    if(document.getElementById('cluster-work-navigation'))return;
+    const workers=document.getElementById('swarm-nodes')?.parentElement;
+    const job=document.getElementById('swarm-job-type')?.closest('div[style*="margin-bottom:16px"]');
+    const queue=document.getElementById('swarm-queue-list')?.parentElement;
+    const results=document.getElementById('swarm-results')?.parentElement;
+    if(!workers||!job||!queue||!results||!document.getElementById('cluster-workspace'))return;
+    tab.classList.add('cluster-workspace-ui');
+    const stats=tab.firstElementChild;stats.classList.add('cluster-work-stats');
+    document.getElementById('swarm-queued').parentElement.hidden=true;
+    for(const [id,label] of [['swarm-nodes-online','Workers online'],['swarm-busy','Running'],['swarm-assignments','Waiting assignments'],['swarm-total','Completed jobs']]){
+      const value=document.getElementById(id);value.previousElementSibling.textContent=label;stats.append(value.parentElement);
+    }
+    const nav=document.createElement('nav');nav.id='cluster-work-navigation';nav.setAttribute('role','tablist');nav.setAttribute('aria-label','Cluster workflows');
+    const panels={};
+    for(const [id,title,description] of CONTROL_VIEWS){
+      const button=document.createElement('button');button.id='cluster-view-tab-'+id;button.type='button';button.setAttribute('role','tab');button.setAttribute('aria-controls','cluster-view-'+id);button.textContent=title;button.onclick=()=>setControlView(id);
+      button.onkeydown=event=>{const index=CONTROL_VIEWS.findIndex(([key])=>key===id);let next;
+        if(event.key==='ArrowRight')next=(index+1)%CONTROL_VIEWS.length;
+        if(event.key==='ArrowLeft')next=(index+CONTROL_VIEWS.length-1)%CONTROL_VIEWS.length;
+        if(event.key==='Home')next=0;if(event.key==='End')next=CONTROL_VIEWS.length-1;
+        if(next!==undefined){event.preventDefault();setControlView(CONTROL_VIEWS[next][0],true);}
+      };nav.append(button);
+      const panel=document.createElement('section');panel.id='cluster-view-'+id;panel.className='cluster-work-view';panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby',button.id);
+      const intro=document.createElement('p');intro.className='cluster-view-intro';intro.textContent=description;panel.append(intro);panels[id]=panel;
+    }
+    stats.insertAdjacentElement('afterend',nav);
+    for(const panel of Object.values(panels))tab.append(panel);
+    panels.fleet.append(workers,document.getElementById('cluster-phone-recovery'));
+    panels.audit.append(document.getElementById('cluster-web-audit'));
+    panels.research.append(document.getElementById('cluster-workspace'));
+    panels.media.append(job,document.getElementById('cluster-media-discovery'));
+    panels.results.append(queue,results);
+    for(const panel of Object.values(panels))for(const card of Array.from(panel.children).filter(e=>e.tagName!=='P'))card.classList.add('cluster-control-card');
+    const toolbar=document.getElementById('swarm-useful-tools');toolbar.className='cluster-action-row';toolbar.removeAttribute('style');
+    const diagnostics=document.createElement('details');diagnostics.className='cluster-control-details';diagnostics.innerHTML='<summary>Worker diagnostics</summary>';
+    const diagnosticActions=document.createElement('div');diagnosticActions.className='cluster-action-row';diagnostics.append(diagnosticActions);
+    for(const id of ['swarm-fleet-storage','swarm-fleet-processes','swarm-fleet-network','swarm-gpu-status','swarm-salad-status','swarm-workstation-test'])diagnosticActions.append(document.getElementById(id));
+    toolbar.insertAdjacentElement('afterend',diagnostics);
+    const mediaActions=document.createElement('div');mediaActions.className='cluster-action-row';
+    for(const id of ['swarm-reel-create','swarm-episode-create'])mediaActions.append(document.getElementById(id));
+    job.insertBefore(mediaActions,job.firstChild);
+    const examples=document.createElement('details');examples.className='cluster-control-details';examples.innerHTML='<summary>Test jobs and examples</summary><div class="cluster-action-row"></div>';
+    for(const id of ['swarm-reel-gpu-test','swarm-sample'])examples.lastChild.append(document.getElementById(id));job.append(examples);
+    results.querySelector('h3').insertAdjacentElement('afterend',document.getElementById('swarm-copy-latest'));
+    const recovery=document.getElementById('cluster-phone-recovery');
+    const logs=document.createElement('details');logs.className='cluster-control-details';logs.innerHTML='<summary>Connection and recovery logs</summary>';
+    for(const id of ['cluster-fleet-check-result','cluster-fleet-diagnostics','cluster-phone-recovery-result'])logs.append(document.getElementById(id));recovery.append(logs);
+    const audit=document.getElementById('cluster-web-audit');
+    const settings=document.createElement('details');settings.className='cluster-control-details';settings.innerHTML='<summary>Audit settings · JSON</summary>';
+    settings.append(audit.querySelector('label[for="cluster-audit-settings"]'),document.getElementById('cluster-audit-settings'));
+    const setup=document.createElement('details');setup.className='cluster-control-details';setup.innerHTML='<summary>Browser worker setup</summary>';
+    const prepare=document.getElementById('cluster-browser-prepare'),setupNote=prepare.previousElementSibling;
+    if(setupNote?.tagName==='P')setup.append(setupNote);setup.append(prepare,document.getElementById('cluster-browser-runtime'));
+    const actions=document.createElement('div');actions.className='cluster-action-row';
+    actions.append(document.getElementById('cluster-audit-run'),document.getElementById('cluster-audit-retry'));
+    const review=document.createElement('div');review.className='cluster-action-row';
+    const plan=Array.from(audit.querySelectorAll('button')).find(b=>b.textContent==='Build fix plan');if(plan)review.append(plan);review.append(document.getElementById('cluster-audit-export'));
+    const evidence=document.createElement('details');evidence.className='cluster-control-details';evidence.innerHTML='<summary>Page-by-page evidence</summary>';evidence.append(document.getElementById('cluster-audit-report'));
+    audit.append(actions,document.getElementById('cluster-audit-state'),document.getElementById('cluster-audit-delivery'),settings,setup,review,evidence);
+    for(const id of ['cluster-audit-run','workspace-run','cluster-media-run'])document.getElementById(id).classList.add('cluster-primary-action');
+    job.querySelector('button[onclick="submitSwarmJob()"]')?.classList.add('cluster-primary-action');
+    const cleanup=document.createElement('details');cleanup.className='cluster-control-details';cleanup.innerHTML='<summary>Queue cleanup</summary><p>These actions affect the shared queue or saved result history.</p><div class="cluster-action-row"></div>';
+    for(const selector of ['button[onclick="flushSwarmQueue()"]','button[onclick="clearSwarmResults()"]']){const b=tab.querySelector(selector);if(b)cleanup.lastChild.append(b);}panels.results.append(cleanup);
+    for(const id of ['cluster-audit-state','workspace-state','cluster-media-state'])document.getElementById(id)?.setAttribute('aria-live','polite');
+    document.getElementById('swarm-job-type').setAttribute('aria-label','Job type');document.getElementById('swarm-job-device').setAttribute('aria-label','Target worker');document.getElementById('swarm-job-cmd').setAttribute('aria-label','Job settings or command');
+    for(const id of ['workspace-episode-load','cluster-media-draft'])document.getElementById(id)?.addEventListener('click',()=>setControlView('media'));
+    let saved='fleet';try{saved=localStorage.getItem('curt-control-view-v1')||saved;}catch{}setControlView(saved);
+  }
+
   function ensureUi() {
     document.querySelectorAll('[onclick="seedFleet()"]').forEach((button) => button.remove());
 
-    const tabs = Array.from(document.querySelectorAll('.tab-btn'));
-    const workTab = tabs.find((button) => button.dataset.tab === 'swarm');
-    const advancedTabs = new Set(['config', 'analytics', 'jobs', 'commands', 'events', 'alerts']);
-    const moreOpen = document.getElementById('cluster-more-tabs')?.dataset.showing === '1';
-    if (workTab) workTab.textContent = 'Work';
-    tabs.forEach((button) => {
-      if (advancedTabs.has(button.dataset.tab)) button.style.display = moreOpen ? '' : 'none';
-    });
-    if (workTab && !document.getElementById('cluster-more-tabs')) {
-      const more = document.createElement('button');
-      more.id = 'cluster-more-tabs';
-      more.type = 'button';
-      more.className = 'tab-btn';
-      more.textContent = 'More';
-      more.addEventListener('click', () => {
-        const showing = more.dataset.showing === '1';
-        tabs.forEach((button) => {
-          if (advancedTabs.has(button.dataset.tab)) button.style.display = showing ? 'none' : '';
-        });
-        more.dataset.showing = showing ? '0' : '1';
-        more.textContent = showing ? 'More' : 'Less';
-      });
-      workTab.parentElement?.appendChild(more);
-    }
-    if (workTab && document.documentElement.dataset.clusterSimpleView !== '1') {
-      document.documentElement.dataset.clusterSimpleView = '1';
-      setTimeout(() => workTab.click(), 700);
-    }
+    ensureAdminNavigation();
 
     const simpleLabels = new Map([
       ['Swarm Nodes', 'Workers'],
@@ -433,6 +507,7 @@
     ensureMediaDiscovery();
     ensureWebsiteAudit();
     ensureWorkspace();
+    ensureControlLayout();
   }
 
   function ensurePhoneRecovery() {
@@ -1220,7 +1295,7 @@
     let note = offline.length
       ? `Canonical fleet: ${FLEET.length - offline.length}/${FLEET.length} online · offline: ${offline.join(', ')}`
       : `Canonical fleet: ${FLEET.length}/${FLEET.length} online`;
-    note += ' · phone start/stop: Windows ADB thermal authority';
+    note += ' · mining disabled by policy';
     if (oldAgents.length) note += ` · upgrade agents: ${oldAgents.join(', ')}`;
     if (ghostCount) note += ` · ${ghostCount} stale record${ghostCount === 1 ? '' : 's'} hidden`;
     setState(note, offline.length || oldAgents.length ? 'var(--color-yellow)' : 'var(--color-green)');
@@ -1238,8 +1313,8 @@
         const label = n.busy ? 'BUSY' : n.online ? 'ONLINE' : 'OFFLINE';
         const active = (n.active_jobs || []).map(esc).join(', ');
         const ctl = PHONE_IDS.has(n.id)
-          ? 'phone ctl: ADB thermal'
-          : n.online && versionAtLeast(n.agent_version, REQUIRED_AGENT) ? 'miner ctl ✓' : 'miner ctl —';
+          ? 'Android / Termux'
+          : n.online && versionAtLeast(n.agent_version, REQUIRED_AGENT) ? 'worker ready' : 'agent update needed';
         return `<div style="background:var(--color-bg);border-radius:6px;padding:10px;border-left:3px solid ${color}">
           <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:4px">
             <div style="font-weight:600;font-size:12px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px"></span>${esc(n.id)}</div>
@@ -1842,3 +1917,4 @@ window.queueCmd = async (deviceId, type) => {
     if (!started && token()) start();
   }, 1000);
 })();
+
