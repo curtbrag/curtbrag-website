@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Retrieve bounded Wikipedia source excerpts for one swarm research task."""
 import argparse
+import html
 import json
 import re
 from urllib.parse import urlencode, quote
@@ -25,11 +26,18 @@ def research(query, fetcher=fetch):
         title = str(row.get('title', ''))[:160]
         if not title:
             continue
-        excerpt = re.sub(r'<[^>]*>', '', str(row.get('snippet', '')))
+        excerpt = html.unescape(re.sub(r'<[^>]*>', '', str(row.get('snippet', ''))))
         sources.append({'title': title, 'url': 'https://en.wikipedia.org/wiki/' +
                         quote(title.replace(' ', '_'), safe=''), 'excerpt': excerpt[:450]})
-    return {'kind': 'research-sources', 'query': query, 'sources': sources,
-            'scope': 'Wikipedia search excerpts; verify sources before publication'}
+    result = {'kind': 'research-sources', 'query': query, 'sources': sources,
+              'scope': 'Wikipedia search excerpts; verify sources before publication'}
+    while len(json.dumps(result, ensure_ascii=False).encode('utf-8')) > 3800:
+        longest = max(sources, key=lambda source: len(source['excerpt']))
+        if longest['excerpt']:
+            longest['excerpt'] = longest['excerpt'][:len(longest['excerpt']) // 2]
+        else:
+            sources.pop()
+    return result
 
 
 if __name__ == '__main__':
