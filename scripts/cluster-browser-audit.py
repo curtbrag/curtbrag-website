@@ -62,11 +62,12 @@ SCROLL_IMAGES = """async () => {
  for(;steps<20;steps++){
   const bottom=Math.max(0,document.documentElement.scrollHeight-innerHeight);
   if(scrollY>=bottom)break;
-  scrollTo(0,Math.min(bottom,scrollY+Math.max(200,innerHeight*0.8)));
+  scrollTo({top:Math.min(bottom,scrollY+Math.max(200,innerHeight*0.8)),behavior:'instant'});
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
  }
  const complete=scrollY>=Math.max(0,document.documentElement.scrollHeight-innerHeight)-2;
- scrollTo(0,0);
+ scrollTo({top:0,behavior:'instant'});
+ await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
  return {scroll_steps:steps,scroll_complete:complete};
 }"""
 
@@ -109,6 +110,7 @@ def audit(path):
                         page.wait_for_function('() => Array.from(document.images).every(e => e.complete || e.getBoundingClientRect().width === 0)', timeout=5000)
                     except Exception:
                         pass  # Pending image counts remain explicit evidence, not a clean pass.
+                    page.wait_for_function("() => document.getAnimations().every(a => a.playState !== 'running' || a.effect.getTiming().iterations === Infinity)", timeout=5000)
                     metrics = page.evaluate(DOM_CHECKS)
                     item.update(metrics)
                     item['findings'] = suggestions(metrics, errors)
