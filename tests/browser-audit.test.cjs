@@ -1,6 +1,6 @@
 const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
 const src=fs.readFileSync('public/scripts/cluster-swarm-live-v8.js','utf8');
-const context={};vm.createContext(context);
+const context={localStorage:{getItem:()=>null}};vm.createContext(context);
 vm.runInContext(src.slice(src.indexOf('  let auditBatch ='),src.indexOf("  const WORKSPACE_KEY=")),context);
 assert.deepEqual(Array.from(context.browserWorkers({browser_workers:['Alina','Alina','Nexus']})),['Alina','Nexus']);
 assert.throws(()=>context.browserWorkers({browser_workers:['RenderRig']}),/browser_workers/);
@@ -14,3 +14,8 @@ assert.equal(context.auditReports([{job_id:'browser-audit-v1-2',exit_code:1,stdo
 vm.runInContext("auditBatch='audit-v1-current';browserAuditBatch='browser-audit-v1-current'",context);
 assert.equal(context.auditReports([{job_id:'audit-v1-old'},{job_id:'browser-audit-v1-old'}]).length,0);
 console.log('Browser audit commands, worker selection, incomplete results and combined findings validated');
+const restored={localStorage:{getItem:()=>JSON.stringify({http_batch:'audit-v1-saved',browser_batch:'browser-audit-v1-saved'})}};vm.createContext(restored);
+vm.runInContext(src.slice(src.indexOf('  let auditBatch ='),src.indexOf("  const WORKSPACE_KEY=")),restored);
+assert.equal(restored.auditReports([{job_id:'audit-v1-old'}]).length,0);
+assert.equal(restored.auditReports([{job_id:'browser-audit-v1-saved-0',exit_code:0,stdout:JSON.stringify({kind:'website-browser-audit',page})}]).length,1);
+console.log('Latest batch filtering survives browser storage restoration');
