@@ -22,9 +22,9 @@ import Layout from '../../layouts/Layout.astro';
 
 <div id="panel" style="display:none">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px">
-<div><h1 style="font-size:24px;font-weight:bold"><i class="fa-solid fa-sliders" style="color:var(--color-brand);margin-right:8px"></i>Control Plane</h1><div id="bridgeStatus" style="font-size:12px;color:var(--color-muted);margin-top:4px">Bridge: checking...</div></div>
+<div><h1 style="font-size:24px;font-weight:bold"><i class="fa-solid fa-sliders" style="color:var(--color-brand);margin-right:8px"></i>Cluster workspace</h1><div id="bridgeStatus" style="font-size:12px;color:var(--color-muted);margin-top:4px">Bridge: checking...</div></div>
 <div style="display:flex;gap:8px">
-<a href="/cluster" style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:8px 12px;text-decoration:none;color:var(--color-text);font-size:12px;cursor:pointer"><i class="fa-solid fa-arrow-left"></i> Dashboard</a>
+<a href="/cluster" style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:8px 12px;text-decoration:none;color:var(--color-text);font-size:12px;cursor:pointer"><i class="fa-solid fa-arrow-left"></i> Public overview</a>
 <button id="logoutBtn" style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:8px 12px;color:var(--color-red);cursor:pointer;font-size:12px"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
 </div>
 </div>
@@ -310,7 +310,7 @@ Observed hashes from online devices:
 
 </div>
 
-<div id="detail" style="position:fixed;right:-400px;top:0;width:400px;height:100vh;background:var(--color-panel);border-left:1px solid var(--color-border);overflow-y:auto;transition:right 0.3s;z-index:1000;padding:20px">
+<div id="detail" hidden style="position:fixed;right:-400px;top:0;width:min(400px,100vw);height:100vh;background:var(--color-panel);border-left:1px solid var(--color-border);overflow-y:auto;transition:right 0.3s;z-index:1000;padding:20px">
 <button id="closeDetail" style="position:absolute;top:16px;right:16px;background:transparent;border:none;color:var(--color-muted);font-size:20px;cursor:pointer">&times;</button>
 <div id="detailContent" style="max-height:calc(100vh-80px);overflow-y:auto"></div>
 </div>
@@ -719,6 +719,7 @@ async function deleteDevice(deviceId) {
   try {
     await callApi('delete-device', 'POST', { device_id: deviceId });
     document.getElementById('detail').style.right = '-400px';
+    document.getElementById('detail').hidden = true;
     toast('Device deleted');
     setTimeout(fetchAll, 1000);
   } catch (e) { toast(`Error: ${e.message}`, 'error'); }
@@ -854,6 +855,7 @@ async function showDetail(deviceId) {
       <h3 style="margin-top:20px;margin-bottom:8px">Recent Events</h3>
       <div id="deviceEvents" style="font-size:12px;max-height:200px;overflow-y:auto">Loading...</div>
     `;
+    detail.hidden = false;
     detail.style.right = '0';
     loadDeviceEvents(deviceId);
   } catch (e) { toast(`Error: ${e.message}`, 'error'); }
@@ -1077,7 +1079,7 @@ function timeAgo(ts) {
 
 document.getElementById('loginBtn').onclick = login;
 document.getElementById('logoutBtn').onclick = logout;
-document.getElementById('closeDetail').onclick = () => document.getElementById('detail').style.right = '-400px';
+document.getElementById('closeDetail').onclick = () => { document.getElementById('detail').style.right = '-400px'; document.getElementById('detail').hidden = true; };
 document.querySelectorAll('.tab-btn').forEach(btn => btn.onclick = () => {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
@@ -1096,3 +1098,4 @@ if (password) {
 // Swarm tab behavior is owned by /scripts/cluster-swarm-live-v8.js.
 </script>
 <script is:inline src="/scripts/cluster-jobs-v1.js?v=1"></script>
+
