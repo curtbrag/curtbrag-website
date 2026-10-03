@@ -28,3 +28,26 @@ assert.equal(clean.status,'no-detected-fixes');assert.equal(clean.tasks.length,0
 assert.equal(context.auditFixPlan([],{settings:{paths:['/']}}).status,'incomplete');
 assert.equal(context.auditFixPlan([{url:'Incomplete check',worker:'Alina',issues:['failed']}],{settings:{paths:['/']}}).status,'incomplete');
 console.log('Evidence, validation, clean checks and incomplete coverage validated');
+
+const delivery={tasks:[{job_id:'a',worker:'Alina',status:'queued'},{job_id:'b',worker:'Nexus',status:'submitting'},{job_id:'c',worker:'Alina',status:'unsent'},{job_id:'d',worker:'Nexus',status:'unsent'}]};
+assert.deepEqual(Array.from(context.auditUnsent(delivery,{jobs:[{id:'b'}],results:[{job_id:'c',device_id:'Alina'}]}),t=>t.job_id),['d']);
+assert.equal(context.auditUnsent(null,{jobs:[],results:[]}).length,0);
+console.log('Submission recovery skips acknowledged, queued and completed assignments');
+(async()=>{
+ let saved, calls=[], fail=true;
+ const server={jobs:[],results:[],nodes:[{id:'Alina',online:true}]};
+ const ctx={localStorage:{getItem:()=>saved||null,setItem:(k,v)=>{saved=v;}},load:async()=>{},swarmApi:async(action,method,body)=>{
+  if(action==='queue-status')return server;
+  calls.push(body.job.id);
+  if(body.job.id==='two'&&fail)throw new Error('connection interrupted');
+  server.jobs.push({id:body.job.id});return {};
+ }};
+ vm.createContext(ctx);vm.runInContext(src.slice(src.indexOf('  let auditBatch ='),src.indexOf('  const WORKSPACE_KEY=')),ctx);
+ vm.runInContext(`auditRecord={tasks:[{job_id:'one',worker:'Alina',cmd:'safe',status:'unsent'},{job_id:'two',worker:'Alina',cmd:'safe',status:'unsent'}]}`,ctx);
+ await assert.rejects(ctx.submitAuditTasks(),/interrupted/);
+ assert.equal(JSON.parse(saved).tasks[0].status,'queued');assert.equal(JSON.parse(saved).tasks[1].status,'unconfirmed');
+ fail=false;calls=[];
+ const afterReload={...ctx};vm.createContext(afterReload);vm.runInContext(src.slice(src.indexOf('  let auditBatch ='),src.indexOf('  const WORKSPACE_KEY=')),afterReload);
+ await afterReload.submitAuditTasks();assert.deepEqual(calls,['two']);
+ console.log('Interrupted submission survives reload and retries only the remaining assignment');
+})().catch(error=>{console.error(error);process.exitCode=1;});
