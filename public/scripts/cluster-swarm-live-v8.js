@@ -632,6 +632,12 @@
     card.querySelector('#workspace-ai-draft').onclick=()=>submitAI('draft');
     card.querySelector('#workspace-episode-load').onclick=loadResearchEpisode;
     card.querySelector('#workspace-publish-package').onclick=showPublishingPackage;
+    const review=document.createElement('div');review.id='workspace-review-panel';review.hidden=true;
+    review.innerHTML='<label for="workspace-review-json">Draft review (JSON)</label><textarea id="workspace-review-json" rows="12" style="width:100%"></textarea><p>Edit the title, points and verification notes. Keep source IDs from the collected report. Saving clears older caption and video settings; it does not change completed videos.</p><button id="workspace-review-save" type="button">Save reviewed draft</button> <button id="workspace-review-close" type="button">Close draft review</button><p id="workspace-review-error" role="status"></p>';
+    document.getElementById('workspace-ai-report').insertAdjacentElement('afterend',review);
+    const edit=document.createElement('button');edit.id='workspace-review-open';edit.type='button';edit.textContent='Edit draft JSON';review.insertAdjacentElement('beforebegin',edit);
+    edit.onclick=openDraftReview;review.querySelector('#workspace-review-save').onclick=saveDraftReview;
+    review.querySelector('#workspace-review-close').onclick=()=>{review.hidden=true;};
     for(const button of card.querySelectorAll('button'))button.style.cssText='padding:8px 12px;margin:6px 4px 6px 0;border:1px solid var(--color-border);border-radius:5px;cursor:pointer';
     renderWorkspace([]);
   }
@@ -746,6 +752,8 @@
     if(draft?.status==='succeeded')host.innerHTML+=`<h4>${esc(draft.output.draft.title)}</h4><p>AI draft · ${esc(draft.output.model)} · human review required. Selected source excerpts only; references are not proof that each claim is correct.</p>${draft.output.draft.points.map(p=>`<p>${esc(p.text)} <strong>[${esc(p.sources.join(', '))}]</strong></p>`).join('')}<p><strong>Needs verification:</strong> ${esc(draft.output.draft.verification)}</p>${draft.sources.map(s=>`<p>${esc(s.id)}: ${esc(s.title)} · ${esc(s.url)}</p>`).join('')}`;
     document.getElementById('workspace-episode-load').disabled=workspaceBusy||workspace?.draft?.status!=='succeeded';
     document.getElementById('workspace-publish-package').disabled=workspaceBusy||workspace?.draft?.status!=='succeeded';
+    document.getElementById('workspace-review-open').disabled=workspaceBusy||draft?.status!=='succeeded';
+    if(draft?.reviewed_at)host.innerHTML+=`<p>Review edits saved: ${esc(draft.reviewed_at)} · revision ${esc(draft.review_revision||1)}. Check the final video before publishing.</p>`;
     const publishingHost=document.getElementById('workspace-publish-report');
     if(workspace?.publishing?.source_job_id===draft?.job_id&&draft?.status==='succeeded'){
       if(publishingHost.dataset.jobId!==draft.job_id)try{renderPublishingPackage(researchPublishingPackage(draft));}catch{publishingHost.replaceChildren();delete publishingHost.dataset.jobId;}
@@ -763,6 +771,38 @@
     panel.querySelector('button').onclick=()=>{URL.revokeObjectURL(url);panel.remove();};
     document.getElementById('cluster-workspace').append(panel);
     panel.querySelector('textarea').focus();panel.querySelector('textarea').select();
+  }
+
+  function reviewedDraftRecord(record,value){
+    if(record?.status!=='succeeded')throw new Error('Complete an AI draft first');
+    if(!value||Array.isArray(value)||typeof value!=='object')throw new Error('Draft review must be a JSON object');
+    if(typeof value.verification!=='string'||value.verification.length>1000||/[\x00-\x1f]/.test(value.verification))throw new Error('Verification notes must fit 1,000 characters on one line');
+    const draft={title:value.title,points:value.points,verification:value.verification};
+    const next=JSON.parse(JSON.stringify({...record,output:{...record.output,draft}}));
+    researchEpisodeSpec(next);
+    return next;
+  }
+  function openDraftReview(){
+    if(workspace?.draft?.status!=='succeeded')return;
+    const panel=document.getElementById('workspace-review-panel');panel.dataset.jobId=workspace.draft.job_id;panel.hidden=false;
+    document.getElementById('workspace-review-json').value=JSON.stringify(workspace.draft.output.draft,null,2);
+    document.getElementById('workspace-review-error').textContent='';
+    document.getElementById('workspace-review-json').focus();
+  }
+  function saveDraftReview(){
+    try{
+      if(workspaceBusy)throw new Error('Wait for the current workspace action');
+      const panel=document.getElementById('workspace-review-panel'),record=workspace?.draft;
+      if(panel.dataset.jobId!==record?.job_id)throw new Error('The draft changed. Reopen draft review before saving');
+      const next=reviewedDraftRecord(record,JSON.parse(document.getElementById('workspace-review-json').value));
+      next.original_draft=record.original_draft||record.output.draft;
+      next.reviewed_at=new Date().toISOString();next.review_revision=(record.review_revision||0)+1;
+      const input=document.getElementById('swarm-job-cmd');
+      if(workspace.episode&&input.value===JSON.stringify(workspace.episode.spec))input.value='';
+      workspace.draft=next;delete workspace.publishing;delete workspace.episode;saveWorkspace();
+      panel.hidden=true;document.getElementById('workspace-episode-state').textContent='Draft edits saved. Rebuild captions or reload video JSON to use this revision.';
+      renderAI(current?.results||[]);notify('Draft edits saved; older captions and video settings cleared.');
+    }catch(error){document.getElementById('workspace-review-error').textContent=error instanceof SyntaxError?'Enter valid draft JSON.':error.message;}
   }
 
   function researchEpisodeSpec(record){
