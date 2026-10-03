@@ -387,3 +387,9 @@ img[loading="lazy"] {
 .stagger-children > *:nth-child(6) { transition-delay: 0.3s; }
 .stagger-children > *:nth-child(7) { transition-delay: 0.35s; }
 .stagger-children > *:nth-child(8) { transition-delay: 0.4s; }
+
+/* Keep icon controls clickable when the icon font is unavailable. */
+button[aria-label]:has(> i:only-child) {
+  min-width: 44px;
+  min-height: 44px;
+}
