@@ -30,7 +30,7 @@ async function handle(event){
    const phone=event.queryStringParameters?.phone;if(!units.has(phone))return response(400,{error:'Invalid unit'});
    const desired=await store('phone-display').get(phone,{type:'json'});
    const view=event.queryStringParameters?.activity==='1'?await activity(phone):undefined;
-   return response(200,{mode:desired?.mode||null,revision:desired?.revision||null,...(view?{activity:view}:{})});
+   return response(200,{mode:desired?.mode==='activity'&&event.queryStringParameters?.activity!=='1'?'dashboard':desired?.mode||null,revision:desired?.revision||null,...(view?{activity:view}:{})});
   }
   if(event.httpMethod!=='POST')return response(405,{error:'Method not allowed'});
   const auth=event.headers?.authorization||event.headers?.Authorization||'';
