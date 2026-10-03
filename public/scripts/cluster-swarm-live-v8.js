@@ -255,7 +255,7 @@
   function ensureDisplayControls(){
     const panel=document.getElementById('cluster-view-fleet');if(!panel||document.getElementById('cluster-display-control'))return;
     const card=document.createElement('section');card.id='cluster-display-control';card.className='cluster-control-card';
-    card.innerHTML='<h3>Phone screens</h3><p>Open a display on one phone or all online phones. Phones must be unlocked and allow the worker to launch a browser. A successful launch request does not confirm visible screen content.</p><label for="display-target">Phone</label><select id="display-target"><option value="all">All online phones</option>'+Array.from(PHONE_IDS).map(p=>'<option>'+p+'</option>').join('')+'</select> <label for="display-mode">Display</label><select id="display-mode"><option value="visuals">Animations</option><option value="clock">Clock</option><option value="test">Screen test</option><option value="dashboard">Cluster dashboard (sign-in required)</option><option value="home">Display overview</option></select><div class="cluster-action-row"><button id="display-send" type="button" class="cluster-primary-action">Apply to phone screens</button><a href="/cluster/display.html" target="_blank" rel="noopener">Open display hub</a><button id="display-results" type="button">View launch results</button></div><p id="display-state" role="status"></p>';
+    card.innerHTML='<h3>Phone screens</h3><p>Change the page already open on each phone. Open the display hub once with its phone name; it checks for changes every 10 seconds.</p><label for="display-target">Phone</label><select id="display-target"><option value="all">All online phones</option>'+Array.from(PHONE_IDS).map(p=>'<option>'+p+'</option>').join('')+'</select> <label for="display-mode">Display</label><select id="display-mode"><option value="visuals">Animations</option><option value="clock">Clock</option><option value="test">Screen test</option><option value="dashboard">Cluster dashboard (sign-in required)</option><option value="home">Display overview</option></select><div class="cluster-action-row"><button id="display-send" type="button" class="cluster-primary-action">Apply to phone screens</button><a href="/cluster/display.html" target="_blank" rel="noopener">Open display hub</a><button id="display-results" type="button">View launch results</button></div><p id="display-state" role="status"></p>';
     panel.insertBefore(card,panel.children[1]);
     document.getElementById('display-results').onclick=()=>setControlView('results',true);
     document.getElementById('display-send').onclick=async()=>{
@@ -264,8 +264,8 @@
         await load(true);const selected=document.getElementById('display-target').value,mode=document.getElementById('display-mode').value;
         const phones=(current?.nodes||[]).filter(n=>n.online&&PHONE_IDS.has(n.id)&&(selected==='all'||selected===n.id)).map(n=>n.id);
         if(!phones.length)throw new Error('No selected phones are online');
-        for(const phone of phones){state.textContent='Sending to '+phone+'…';await enqueueSwarm('shell',displayLaunchCommand(mode,phone),[phone]);sent.push(phone);}
-        state.textContent='Launch queued for '+sent.join(', ')+'. Check launch results, then confirm the physical screens.';await load(true);
+        for(const phone of phones){state.textContent='Sending to '+phone+'…';const response=await fetch('/.netlify/functions/phone-display',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:JSON.stringify({phone,mode})});if(!response.ok)throw new Error('Could not save display mode for '+phone);sent.push(phone);}
+        state.textContent='Display mode saved for '+sent.join(', ')+'. Open display hub once on each phone; connected pages update within 10 seconds.';await load(true);
       }catch(e){state.textContent=(sent.length?'Already queued: '+sent.join(', ')+'. ':'')+e.message;}finally{button.disabled=false;}
     };
   }
