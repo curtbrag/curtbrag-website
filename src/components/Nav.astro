@@ -188,7 +188,7 @@ function isActive(href: string): boolean {
 </div>
 
 <script>
-  document.addEventListener('astro:page-load', () => {
+  function initializeMobileMenu() {
     const menu = document.getElementById('mobile-menu') as HTMLElement | null;
     const panel = document.getElementById('mobile-menu-panel') as HTMLElement | null;
     const backdrop = document.getElementById('mobile-menu-backdrop') as HTMLElement | null;
@@ -196,6 +196,9 @@ function isActive(href: string): boolean {
     const closeBtn = document.getElementById('mobile-menu-close') as HTMLButtonElement | null;
 
     if (!menu || !panel || !backdrop || !openBtn || !closeBtn) return;
+
+    if (openBtn.dataset.menuReady === '1') return;
+    openBtn.dataset.menuReady = '1';
 
     function openMenu() {
       menu!.hidden = false;
@@ -235,5 +238,8 @@ function isActive(href: string): boolean {
     menuLinks.forEach((link) => {
       link.addEventListener('click', closeMenu);
     });
-  });
+  }
+  document.addEventListener('astro:page-load', initializeMobileMenu);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeMobileMenu, { once: true });
+  else initializeMobileMenu();
 </script>
