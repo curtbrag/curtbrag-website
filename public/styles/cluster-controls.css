@@ -52,3 +52,11 @@
  #tab-swarm #swarm-job-device,#tab-swarm #swarm-job-type { width:100% !important; }
  #tab-swarm .cluster-action-row > button { flex:1 1 160px; }
 }
+
+#tab-swarm .cluster-worker-heading { display:flex !important; flex-wrap:wrap; gap:10px; align-items:center !important; }
+#tab-swarm .cluster-worker-heading > h3 { margin:0 !important; }
+#tab-swarm .cluster-worker-heading > #swarm-live-state { flex:1 1 260px; }
+#tab-swarm .cluster-worker-heading > .cluster-control-details { flex-basis:100%; order:5; margin:0; padding:6px 0; }
+#tab-swarm #swarm-results { max-height:70vh; overflow:auto; padding-right:8px; }
+#tab-swarm #swarm-nodes > div > div { font-size:11px !important; }
+@media(max-width:700px){#tab-swarm .cluster-worker-heading > #swarm-live-state { flex-basis:100%; } #tab-swarm .cluster-worker-heading > #swarm-useful-tools { flex:1 1 100%; }}
