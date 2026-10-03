@@ -606,6 +606,7 @@
     const note=document.createElement('p');note.textContent='Optional browser_workers run Chromium desktop/mobile checks. Prepare installs an isolated Playwright runtime and Chromium on those PCs. Reports include evidence and proposed fixes; no form submissions or code changes.';prepare.insertAdjacentElement('beforebegin',note);
     const runtime=document.createElement('p');runtime.id='cluster-browser-runtime';prepare.insertAdjacentElement('afterend',runtime);
     card.querySelector('#cluster-audit-run').addEventListener('click',dispatchWebsiteAudit);
+    const planButton=document.createElement('button');planButton.type='button';planButton.textContent='Build fix plan';planButton.onclick=showAuditFixPlan;card.querySelector('#cluster-audit-export').insertAdjacentElement('afterend',planButton);
     card.querySelector('#cluster-audit-export').addEventListener('click',()=>{
       const reports=auditReports(current?.results || []);
       if (!reports.length) return notify('No audit results available','error');
@@ -630,6 +631,35 @@
       return {worker:r.device_id,mode:browser?'Chromium':'HTTP/HTML',url:'Incomplete check',issues:[`Worker failed or returned invalid report: ${String(r.stderr || r.exit_code).slice(0,600)}`]};
     });
   }
+  function auditFixPlan(reports,record){
+    const expected=(record?.settings?.paths?.length||0)*(record?.settings?.browser_workers?.length?2:1);
+    const incomplete=reports.filter(r=>r.url==='Incomplete check');
+    const tasks=[];
+    for(const r of reports){
+      if(r.url==='Incomplete check')continue;
+      if(r.mode==='Chromium')for(const f of r.proposals||[])tasks.push({page:r.url,worker:r.worker,check:f.check,viewport:f.viewport,evidence:f.evidence,proposal:f.proposal,validation:`Rerun Chromium on ${r.url} at ${f.viewport}; confirm the finding disappears and desktop/mobile layouts remain usable.`});
+      else for(const issue of r.issues||[])tasks.push({page:r.url,worker:r.worker,check:'HTTP/HTML',evidence:issue,proposal:'Inspect the affected page source and correct the reported response, link or markup.',validation:`Rerun the HTTP/HTML audit on ${r.url}; confirm this finding disappears.`});
+    }
+    const gaps=['Forms and interactive flows have not been tested.','Single-run timings do not establish Core Web Vitals.'];
+    if(expected>reports.length)gaps.push(`${expected-reports.length} expected page reports are missing.`);
+    for(const r of incomplete)gaps.push(`${r.worker}: ${r.issues.join('; ')}`);
+    for(const r of reports)for(const v of r.viewports||[]){
+      if(v.pending_images)gaps.push(`${r.url} (${v.viewport}): ${v.pending_images} images were still pending; scroll and verify them.`);
+      if(v.blocked_resource_hosts?.length)gaps.push(`${r.url} (${v.viewport}): excluded resources from ${v.blocked_resource_hosts.join(', ')} require separate review.`);
+    }
+    return {kind:'website-fix-plan',batch:record,report_count:reports.length,expected_reports:expected,status:incomplete.length||expected>reports.length?'incomplete':tasks.length?'review-required':'no-detected-fixes',tasks,coverage_gaps:[...new Set(gaps)]};
+  }
+  function showAuditFixPlan(){
+    const reports=auditReports(current?.results||[]);
+    if(!reports.length)return notify('Collect audit results before building a fix plan','error');
+    const plan=auditFixPlan(reports,auditRecord);
+    document.getElementById('cluster-audit-plan')?.remove();
+    const panel=document.createElement('section');panel.id='cluster-audit-plan';
+    panel.innerHTML=`<h4>Reviewable website fix plan</h4><p>${esc(plan.status)} · ${plan.report_count} / ${plan.expected_reports||'?'} reports · ${plan.tasks.length} proposed fixes</p>${plan.tasks.length?plan.tasks.map(t=>`<article><strong>${esc(t.page)} · ${esc(t.check)} ${esc(t.viewport||'')}</strong><p>Evidence (${esc(t.worker)}): ${esc(t.evidence)}</p><p>Proposed change: ${esc(t.proposal)}</p><p>Validation: ${esc(t.validation)}</p></article>`).join(''):'<p>No patches proposed from the completed checks.</p>'}<h4>Coverage to complete</h4><ul>${plan.coverage_gaps.map(g=>`<li>${esc(g)}</li>`).join('')}</ul><p>This is a review plan. Code patches and preview validation are separate steps.</p><label for="cluster-audit-plan-json">Website fix plan JSON</label><textarea id="cluster-audit-plan-json" readonly rows="8" style="width:100%"></textarea>`;
+    panel.querySelector('textarea').value=JSON.stringify(plan,null,2);
+    document.getElementById('cluster-web-audit').append(panel);
+    panel.querySelector('textarea').focus();
+  }
   function renderWebsiteAudit(results) {
     const host=document.getElementById('cluster-audit-report'); if(!host)return;
     const reports=auditReports(results);
@@ -651,6 +681,7 @@
       if(browserIds.some(id=>!current.nodes.some(n=>n.id===id&&n.online&&!n.busy)))throw new Error('All browser_workers must be online and idle');
       const nodes=current.nodes.filter(n=>n.online&&n.id!=='RenderRig'&&IDS.has(n.id)).slice(0,spec.workers);
       if(!nodes.length)throw new Error('No online phone or Linux workers');
+      document.getElementById('cluster-audit-plan')?.remove();
       auditBatch=`audit-v1-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
       browserAuditBatch=`browser-audit-v1-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
       auditRecord={http_batch:auditBatch,browser_batch:browserAuditBatch,created_at:new Date().toISOString(),settings:{...spec,paths:[...new Set(spec.paths)],browser_workers:browserIds}};
