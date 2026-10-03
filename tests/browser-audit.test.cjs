@@ -1,0 +1,16 @@
+const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
+const src=fs.readFileSync('public/scripts/cluster-swarm-live-v8.js','utf8');
+const context={};vm.createContext(context);
+vm.runInContext(src.slice(src.indexOf('  let auditBatch ='),src.indexOf("  const WORKSPACE_KEY=")),context);
+assert.deepEqual(Array.from(context.browserWorkers({browser_workers:['Alina','Alina','Nexus']})),['Alina','Nexus']);
+assert.throws(()=>context.browserWorkers({browser_workers:['RenderRig']}),/browser_workers/);
+assert.throws(()=>context.browserCommand('/; touch /tmp/test'),/Invalid/);
+assert(context.browserCommand('/shop/').includes("--path '/shop/'"));
+assert(context.browserCommand(null,true).includes('python3'));
+const page={url:'https://curtbrag.com/',viewports:[{viewport:'mobile',findings:[{check:'horizontal-overflow',evidence:'10px',proposal:'Constrain the element.'}]}]};
+const reports=context.auditReports([{job_id:'browser-audit-v1-1',device_id:'Alina',exit_code:0,stdout:JSON.stringify({kind:'website-browser-audit',page})},{job_id:'audit-v1-1',device_id:'phone173',exit_code:0,stdout:JSON.stringify({kind:'website-audit',page:{url:'https://curtbrag.com/',issues:[]}})}]);
+assert.equal(reports.length,2);assert.equal(reports[0].mode,'Chromium');assert.equal(reports[0].proposals[0].proposal,'Constrain the element.');
+assert.equal(context.auditReports([{job_id:'browser-audit-v1-2',exit_code:1,stdout:JSON.stringify({kind:'website-browser-audit',page})}])[0].url,'Incomplete check');
+vm.runInContext("auditBatch='audit-v1-current';browserAuditBatch='browser-audit-v1-current'",context);
+assert.equal(context.auditReports([{job_id:'audit-v1-old'},{job_id:'browser-audit-v1-old'}]).length,0);
+console.log('Browser audit commands, worker selection, incomplete results and combined findings validated');
