@@ -104,20 +104,30 @@
   async function request(base, action, method='GET', body=null) {
     const pw = token();
     if (!pw) throw new Error('dashboard session is not authenticated');
-    const response = await fetch(`${base}?action=${encodeURIComponent(action)}&_=${Date.now()}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${pw}`,
-        'Content-Type': 'application/json',
-      },
-      body: body == null ? undefined : JSON.stringify(body),
-      cache: 'no-store',
-      credentials: 'same-origin',
-    });
-    let data = {};
-    try { data = await response.json(); } catch {}
-    if (!response.ok || data.ok === false) throw new Error(data.error || `HTTP ${response.status}`);
-    return data;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch(`${base}?action=${encodeURIComponent(action)}&_=${Date.now()}`, {
+        method,
+        headers: { Authorization: `Bearer ${pw}`, 'Content-Type': 'application/json' },
+        body: body == null ? undefined : JSON.stringify(body),
+        cache: 'no-store',
+        credentials: 'same-origin',
+        signal: controller.signal,
+      });
+      let data = {};
+      try { data = await response.json(); } catch (error) { if (controller.signal.aborted) throw error; }
+      if (response.status === 401) {
+        sessionStorage.removeItem('cp_password');
+        window.location.replace('/cluster/dashboard/?signedout=1');
+        throw new Error('Session expired. Sign in again.');
+      }
+      if (!response.ok || data.ok === false) throw new Error(data.error || `HTTP ${response.status}`);
+      return data;
+    } catch (error) {
+      if (controller.signal.aborted) throw new Error('Connection timed out. Please retry.');
+      throw error;
+    } finally { clearTimeout(timer); }
   }
 
   const swarmApi = (action, method='GET', body=null) => request(SWARM_API, action, method, body);
@@ -1705,6 +1715,7 @@
   }
 
   async function load(force=false) {
+    if (!token()) return current;
     if (livePaused && !force) return current;
     if (requestBusy) return current;
     requestBusy = true;
@@ -1726,6 +1737,7 @@
   }
 
   function start() {
+    if (!token()) return;
     started = true;
     load();
     if (!pollTimer) pollTimer = setInterval(load, 5000);
@@ -2069,6 +2081,7 @@ window.queueCmd = async (deviceId, type) => {
 
   if (token()) setTimeout(start, 50);
   setInterval(() => {
+    if (!token()) return;
     ensureUi();
     if (!started && token()) start();
   }, 1000);
