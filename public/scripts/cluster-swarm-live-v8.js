@@ -734,8 +734,8 @@
       const record=workspace?.[mode];if(!record)continue;
       const r=results.find(r=>r.job_id===record.job_id&&r.device_id===record.worker);
       if(!r){if(['submitting','unconfirmed'].includes(record.status)&&current?.jobs.some(j=>j.id===record.job_id)){record.status='queued';saveWorkspace();}continue;}
-      if(['succeeded','failed'].includes(record.status))continue;
-      let data;try{data=JSON.parse((r.stdout||'').trim().split('\n').at(-1));}catch{}
+      if(record.status==='succeeded')continue;
+      let data;const raw=(r.stdout||'').trim();try{data=JSON.parse(raw);}catch{const start=raw.lastIndexOf('{"kind":');if(start>=0)try{data=JSON.parse(raw.slice(start));}catch{}}
       const valid=mode==='runtime'?data?.kind==='ai-runtime'&&data.ready:data?.kind==='ai-research-draft'&&Array.isArray(data.draft?.points);
       record.status=Number(r.exit_code)===0&&valid?'succeeded':'failed';record.output=valid?data:null;record.error=valid?null:String(data?.error||r.stderr||r.stdout||'Invalid AI response').slice(0,500);saveWorkspace();
     }
