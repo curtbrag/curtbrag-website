@@ -13,6 +13,13 @@ class AuditTests(unittest.TestCase):
         self.assertFalse(audit.allowed_request('https://curtbrag.com/api/contact','POST'))
         self.assertFalse(audit.allowed_request('https://fonts.googleapis.com/a','GET',True))
         self.assertTrue(audit.allowed_request('https://curtbrag.com/shop/','GET',True))
+    def test_navigation_evidence(self):
+        metrics={'overflow_px':0,'overflow_elements':[],'broken_images':[], 'missing_fragments':['#missing']}
+        finding=audit.suggestions(metrics,[])[0]
+        self.assertEqual(finding['check'],'missing-fragment-target')
+        self.assertEqual(finding['evidence'],'#missing')
+        self.assertIn('target IDs',finding['proposal'])
+
     def test_evidence_and_proposals(self):
         metrics={'overflow_px':20,'overflow_elements':['div#wide'],'broken_images':['/missing.png']}
         results=audit.suggestions(metrics,['ReferenceError: missing'])
