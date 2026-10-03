@@ -262,8 +262,8 @@
       const button=document.getElementById('display-send'),state=document.getElementById('display-state');button.disabled=true;
       const sent=[];try{
         await load(true);const selected=document.getElementById('display-target').value,mode=document.getElementById('display-mode').value;
-        const phones=(current?.nodes||[]).filter(n=>n.online&&PHONE_IDS.has(n.id)&&(selected==='all'||selected===n.id)).map(n=>n.id);
-        if(!phones.length)throw new Error('No selected phones are online');
+        const phones=selected==='all'?Array.from(PHONE_IDS):PHONE_IDS.has(selected)?[selected]:[];
+        if(!phones.length)throw new Error('Select a canonical phone');
         for(const phone of phones){state.textContent='Sending to '+phone+'…';const response=await fetch('/.netlify/functions/phone-display',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:JSON.stringify({phone,mode})});if(!response.ok)throw new Error('Could not save display mode for '+phone);sent.push(phone);}
         state.textContent='Display mode saved for '+sent.join(', ')+'. Open display hub once on each phone; connected pages update within 10 seconds.';await load(true);
       }catch(e){state.textContent=(sent.length?'Already queued: '+sent.join(', ')+'. ':'')+e.message;}finally{button.disabled=false;}
