@@ -1,0 +1,37 @@
+const fs = require('fs');
+const vm = require('vm');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync('public/scripts/cluster-swarm-live-v8.js', 'utf8');
+const nodes = Object.fromEntries(['type','cmd','device','submit','feedback','status','show-queue'].map(id => ['swarm-job-'+id, {value:'', hidden:true, disabled:false, dataset:{}, textContent:''}]));
+nodes['swarm-job-type'].value='shell';
+nodes['swarm-job-cmd'].value='echo form-test';
+nodes['swarm-job-device'].value='Alina';
+let calls=0, settle, fail;
+const context={window:{},document:{getElementById:id=>nodes[id]},runAction:()=>{
+  calls++;
+  return new Promise((resolve,reject)=>{settle=resolve;fail=reject;});
+}};
+vm.createContext(context);
+vm.runInContext('let jobSubmitting=false;\n'+source.slice(source.indexOf('  window.submitSwarmJob ='),source.indexOf('  window.flushSwarmQueue =')),context);
+(async()=>{
+  const pending=context.window.submitSwarmJob();
+  assert.equal(nodes['swarm-job-submit'].disabled,true);
+  assert.equal(nodes['swarm-job-feedback'].dataset.state,'pending');
+  await context.window.submitSwarmJob();
+  assert.equal(calls,1,'Repeated clicks must not enqueue a second request');
+  settle({ok:true,targets:['Alina']}); await pending;
+  assert.equal(nodes['swarm-job-submit'].disabled,false);
+  assert.equal(nodes['swarm-job-feedback'].dataset.state,'success');
+  assert.match(nodes['swarm-job-status'].textContent,/Submitted shell to Alina/);
+  assert.equal(nodes['swarm-job-show-queue'].hidden,false);
+  const rejected=context.window.submitSwarmJob();
+  fail(new Error('Worker unavailable')); await rejected;
+  assert.equal(nodes['swarm-job-feedback'].dataset.state,'error');
+  assert.equal(nodes['swarm-job-status'].textContent,'Worker unavailable');
+  assert.equal(nodes['swarm-job-cmd'].value,'echo form-test');
+  assert.equal(nodes['swarm-job-submit'].disabled,false);
+  const retry=context.window.submitSwarmJob();
+  assert.equal(calls,3,'Failure must release the pending guard');
+  settle({ok:true,targets:['Alina']}); await retry;
+  console.log('Job form: duplicate-click guard, persistent feedback, preserved input and retry recovery passed');
+})().catch(error=>{console.error(error);process.exitCode=1;});
