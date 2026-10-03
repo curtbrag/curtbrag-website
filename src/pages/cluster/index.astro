@@ -186,7 +186,7 @@ import Layout from '../../layouts/Layout.astro';
             <div class="text-muted text-[0.65rem] uppercase tracking-wide mt-0.5">Total Hashrate</div>
           </div>
           <div class="bg-bg border border-border rounded-lg p-3 text-center">
-            <div class="font-mono text-lg font-bold" id="miningWorkers">--</div>
+            <div class="font-mono text-lg font-bold min-w-0 break-all" id="miningWorkers">--</div>
             <div class="text-muted text-[0.65rem] uppercase tracking-wide mt-0.5">Active Miners</div>
           </div>
           <div class="bg-bg border border-border rounded-lg p-3 text-center">
@@ -664,7 +664,8 @@ import Layout from '../../layouts/Layout.astro';
       }
 
       setText('miningHashrate', mining.totalHashrate || '--');
-      setText('miningWorkers', `${mining.minersRunning}/${mining.minersTotal}`);
+      const minerCount = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? String(value) : '—';
+      setText('miningWorkers', `${minerCount(mining.minersRunning)}/${minerCount(mining.minersTotal)}`);
       setText('miningDaily', mining.estimatedDaily || '--');
       setText('miningMonthly', mining.estimatedMonthly || '--');
 
