@@ -34,6 +34,9 @@ def suggestions(metrics, errors):
     if metrics['broken_images']:
         findings.append({'check': 'broken-images', 'evidence': ', '.join(metrics['broken_images']),
                          'proposal': 'Verify the image paths and files; replace or repair missing assets.'})
+    if metrics.get('missing_fragments'):
+        findings.append({'check': 'missing-fragment-target', 'evidence': ', '.join(metrics['missing_fragments']),
+                         'proposal': 'Correct these in-page navigation links or add the intended target IDs.'})
     for error in errors[:2]:
         findings.append({'check': 'javascript-error', 'evidence': error[:140],
                          'proposal': 'Reproduce this exception and guard the failing initialization or event handler.'})
@@ -43,11 +46,28 @@ DOM_CHECKS = """() => {
  const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none';};
  const tag=e=>e.tagName.toLowerCase()+(e.id?'#'+e.id:'')+(typeof e.className==='string'?'.'+e.className.trim().split(/\\s+/).slice(0,2).join('.'):'');
  const n=performance.getEntriesByType('navigation')[0];
+ const links=Array.from(document.querySelectorAll('a[href]')).filter(visible);
+ const fragments=links.map(e=>new URL(e.href,location.href)).filter(u=>u.origin===location.origin&&u.pathname===location.pathname&&u.search===location.search&&u.hash.length>1);
+ const missing=fragments.filter(u=>{let id;try{id=decodeURIComponent(u.hash.slice(1));}catch{return true;}return !document.getElementById(id)&&!Array.from(document.getElementsByName(id)).length;}).map(u=>u.hash);
  return {title:document.title.slice(0,150),overflow_px:Math.max(0,document.documentElement.scrollWidth-innerWidth),
  overflow_elements:Array.from(document.querySelectorAll('body *')).filter(e=>visible(e)&&e.getBoundingClientRect().right>innerWidth+2).slice(0,3).map(tag),
  broken_images:Array.from(document.images).filter(e=>visible(e)&&e.complete&&e.naturalWidth===0).slice(0,3).map(e=>new URL(e.currentSrc||e.src).pathname.slice(0,100)),
+ navigation_links_checked:links.length,missing_fragments:[...new Set(missing)].slice(0,5),
  pending_images:Array.from(document.images).filter(e=>visible(e)&&!e.complete).length,
  timings:n?{dom_content_loaded_ms:Math.round(n.domContentLoadedEventEnd),load_ms:Math.round(n.loadEventEnd)}:null};
+}"""
+
+SCROLL_IMAGES = """async () => {
+ let steps=0;
+ for(;steps<20;steps++){
+  const bottom=Math.max(0,document.documentElement.scrollHeight-innerHeight);
+  if(scrollY>=bottom)break;
+  scrollTo(0,Math.min(bottom,scrollY+Math.max(200,innerHeight*0.8)));
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+ }
+ const complete=scrollY>=Math.max(0,document.documentElement.scrollHeight-innerHeight)-2;
+ scrollTo(0,0);
+ return {scroll_steps:steps,scroll_complete:complete};
 }"""
 
 def prepare():
@@ -84,6 +104,11 @@ def audit(path):
                 try:
                     response = page.goto(url, wait_until='load', timeout=25000)
                     item['status'] = response.status if response else 0
+                    item.update(page.evaluate(SCROLL_IMAGES))
+                    try:
+                        page.wait_for_function('() => Array.from(document.images).every(e => e.complete || e.getBoundingClientRect().width === 0)', timeout=5000)
+                    except Exception:
+                        pass  # Pending image counts remain explicit evidence, not a clean pass.
                     metrics = page.evaluate(DOM_CHECKS)
                     item.update(metrics)
                     item['findings'] = suggestions(metrics, errors)
@@ -98,7 +123,7 @@ def audit(path):
         finally:
             browser.close()
     return {'v': 1, 'kind': 'website-browser-audit', 'page': {'url': url, 'viewports': reports,
-            'scope': 'Public Chromium desktop/mobile checks; no clicks, login or form submissions. Timings are single-run observations, not Core Web Vitals.'}}
+            'scope': 'Public Chromium desktop/mobile checks, bounded lazy-image scrolling and in-page navigation targets; no clicks, login or form submissions. Timings are single-run observations, not Core Web Vitals.'}}
 
 def main():
     parser = argparse.ArgumentParser()
