@@ -14,9 +14,9 @@ import Layout from '../../layouts/Layout.astro';
 <div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:12px;padding:24px">
 <div style="display:flex;gap:8px">
 <input type="password" id="pwInput" placeholder="Password" style="flex:1;background:var(--color-bg);border:1px solid var(--color-border);border-radius:8px;padding:10px;font-family:monospace;font-size:14px;color:var(--color-text)"/>
-<button id="loginBtn" style="background:var(--color-brand);color:white;border:none;border-radius:8px;padding:10px 16px;cursor:pointer;font-weight:600"><i class="fa-solid fa-right-to-bracket"></i></button>
+<button id="loginBtn" aria-label="Sign in" style="background:var(--color-brand);color:white;border:none;border-radius:8px;padding:10px 16px;cursor:pointer;font-weight:600"><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i> Sign in</button>
 </div>
-<div id="loginErr" style="display:none;color:var(--color-red);font-size:12px;margin-top:8px"><i class="fa-solid fa-circle-exclamation"></i> Invalid password</div>
+<div id="loginErr" role="alert" style="display:none;color:var(--color-red);font-size:12px;margin-top:8px"></div>
 </div>
 </div>
 
@@ -354,6 +354,20 @@ function toast(msg, type = 'ok') {
   setTimeout(() => el.style.display = 'none', 3000);
 }
 
+async function fetchDashboardApi(url, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    let data = {};
+    try { data = await response.json(); } catch (error) { if (controller.signal.aborted) throw error; }
+    return { ok: response.ok, status: response.status, data };
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('Connection timed out. Please retry.');
+    throw error;
+  } finally { clearTimeout(timer); }
+}
+
 async function callApi(action, method = 'GET', body = null, queryParams = '') {
   const url = `${API}?action=${action}${queryParams ? '&' + queryParams : ''}`;
   const opts = {
@@ -362,33 +376,39 @@ async function callApi(action, method = 'GET', body = null, queryParams = '') {
   };
   if (body) opts.body = JSON.stringify(body);
 
-  const r = await fetch(url, opts);
-  if (r.status === 401) { logout(); throw new Error('Unauthorized'); }
+  const r = await fetchDashboardApi(url, opts);
+  if (r.status === 401) { sessionStorage.removeItem('cp_password'); window.location.replace('/cluster/dashboard/?signedout=1'); throw new Error('Session expired. Sign in again.'); }
   if (!r.ok) throw new Error(`API error: ${r.status}`);
-  return r.json();
+  return r.data;
 }
 
 async function login() {
+  const button = document.getElementById('loginBtn');
+  const error = document.getElementById('loginErr');
+  if (button.disabled) return;
   const pw = document.getElementById('pwInput').value;
-  if (!pw) return;
-
+  error.style.display = 'none';
+  if (!pw) { error.textContent = 'Enter your password to sign in.'; error.style.display = 'block'; return; }
+  button.disabled = true;
+  button.textContent = 'Signing in…';
   try {
-    const r = await fetch(`${API}?action=auth-check`, {
+    const r = await fetchDashboardApi(`${API}?action=auth-check`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: pw }),
     });
-    if (r.ok) {
-      password = pw;
-      sessionStorage.setItem('cp_password', pw);
-      document.getElementById('loginGate').style.display = 'none';
-      document.getElementById('panel').style.display = 'block';
-      fetchAll();
-      setInterval(fetchAll, 15000);
-    } else {
-      document.getElementById('loginErr').style.display = 'block';
-    }
-  } catch (e) { toast(`Login failed: ${e.message}`, 'error'); }
+    if (!r.ok) throw new Error(r.status === 401 ? 'Password rejected. Please try again.' : `Sign-in service returned ${r.status}. Please retry.`);
+    password = pw;
+    sessionStorage.setItem('cp_password', pw);
+    document.getElementById('pwInput').value = '';
+    document.getElementById('loginGate').style.display = 'none';
+    document.getElementById('panel').style.display = 'block';
+    fetchAll();
+    setInterval(fetchAll, 15000);
+  } catch (e) {
+    error.textContent = e.message || 'Unable to sign in. Please retry.';
+    error.style.display = 'block';
+  } finally { button.disabled = false; button.textContent = 'Sign in'; }
 }
 
 function logout() {
@@ -397,6 +417,7 @@ function logout() {
 }
 
 async function fetchAll() {
+  if (!sessionStorage.getItem('cp_password')) return;
   try {
     const [s, d, a, c, e, b] = await Promise.all([
       callApi('summary'),
@@ -1088,6 +1109,10 @@ document.querySelectorAll('.tab-btn').forEach(btn => btn.onclick = () => {
 });
 document.getElementById('pwInput').onkeypress = (e) => e.key === 'Enter' && login();
 
+if (new URLSearchParams(location.search).has('signedout')) {
+  document.getElementById('loginErr').textContent = 'Your session expired. Sign in again to use the dashboard.';
+  document.getElementById('loginErr').style.display = 'block';
+}
 if (password) {
   document.getElementById('loginGate').style.display = 'none';
   document.getElementById('panel').style.display = 'block';
