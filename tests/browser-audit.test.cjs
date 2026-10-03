@@ -14,7 +14,7 @@ assert.equal(context.auditReports([{job_id:'browser-audit-v1-2',exit_code:1,stdo
 vm.runInContext("auditBatch='audit-v1-current';browserAuditBatch='browser-audit-v1-current'",context);
 assert.equal(context.auditReports([{job_id:'audit-v1-old'},{job_id:'browser-audit-v1-old'}]).length,0);
 console.log('Browser audit commands, worker selection, incomplete results and combined findings validated');
-const restored={localStorage:{getItem:()=>JSON.stringify({http_batch:'audit-v1-saved',browser_batch:'browser-audit-v1-saved'})}};vm.createContext(restored);
+const restored={localStorage:{getItem:()=>JSON.stringify({http_batch:'audit-v1-saved',browser_batch:'browser-audit-v1-saved'}),setItem:()=>{}}};vm.createContext(restored);
 vm.runInContext(src.slice(src.indexOf('  let auditBatch ='),src.indexOf("  const WORKSPACE_KEY=")),restored);
 assert.equal(restored.auditReports([{job_id:'audit-v1-old'}]).length,0);
 assert.equal(restored.auditReports([{job_id:'browser-audit-v1-saved-0',exit_code:0,stdout:JSON.stringify({kind:'website-browser-audit',page})}]).length,1);
@@ -33,6 +33,24 @@ const delivery={tasks:[{job_id:'a',worker:'Alina',status:'queued'},{job_id:'b',w
 assert.deepEqual(Array.from(context.auditUnsent(delivery,{jobs:[{id:'b'}],results:[{job_id:'c',device_id:'Alina'}]}),t=>t.job_id),['d']);
 assert.equal(context.auditUnsent(null,{jobs:[],results:[]}).length,0);
 console.log('Submission recovery skips acknowledged, queued and completed assignments');
+// Evidence must outlive the server's bounded result history and remain isolated by batch.
+let evidenceSaved;
+const evidenceContext={localStorage:{getItem:()=>evidenceSaved||null,setItem:(k,v)=>{evidenceSaved=v;}}};
+vm.createContext(evidenceContext);
+const auditSource=src.slice(src.indexOf('  let auditBatch ='),src.indexOf('  const WORKSPACE_KEY='));
+vm.runInContext(auditSource,evidenceContext);
+vm.runInContext("auditBatch='audit-v1-saved';auditRecord={http_batch:auditBatch,tasks:[]}",evidenceContext);
+const result={job_id:'audit-v1-saved-0',device_id:'phone173',exit_code:0,stdout:JSON.stringify({kind:'website-audit',page:{url:'https://curtbrag.com/',issues:[]}})};
+assert.equal(evidenceContext.auditReports([result,result]).length,1);
+assert.equal(evidenceContext.auditReports([]).length,1);
+const evidenceReload={localStorage:evidenceContext.localStorage};vm.createContext(evidenceReload);vm.runInContext(auditSource,evidenceReload);
+assert.equal(evidenceReload.auditReports([])[0].url,'https://curtbrag.com/');
+assert.equal(evidenceReload.auditReports([{...result,job_id:'audit-v1-saved-other-0'}]).length,1);
+const failed={...result,exit_code:1,stdout:'',stderr:'failed'};
+assert.equal(evidenceReload.auditReports([result,failed])[0].url,'https://curtbrag.com/');
+vm.runInContext("auditBatch='audit-v1-new';auditRecord={http_batch:auditBatch,tasks:[]}",evidenceReload);
+assert.equal(evidenceReload.auditReports([]).length,0);
+console.log('Audit evidence survives expiration and reload, deduplicates results, and stays within its batch');
 (async()=>{
  let saved, calls=[], fail=true;
  const server={jobs:[],results:[],nodes:[{id:'Alina',online:true}]};
