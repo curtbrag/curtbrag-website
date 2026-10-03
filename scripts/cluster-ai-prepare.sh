@@ -28,5 +28,5 @@ if ! curl -fsS --max-time 5 http://127.0.0.1:11434/api/tags >/dev/null 2>&1; the
   [ "$READY" = 1 ] || { echo 'Model service failed to start; check server.log'; exit 1; }
 fi
 curl -fsS --max-time 1200 http://127.0.0.1:11434/api/pull \
-  -H 'Content-Type: application/json' -d '{"model":"qwen3:4b","stream":false}'
-printf '\n'
+  -H 'Content-Type: application/json' -d '{"model":"qwen3:4b","stream":false}' -o "$AI_DIR/pull-result.json"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d.get("status")=="success", d.get("error", "Model download did not finish")' "$AI_DIR/pull-result.json"
