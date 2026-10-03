@@ -250,7 +250,7 @@
   function displayLaunchCommand(mode,phone){
     if(!['visuals','clock','test','dashboard','home'].includes(mode)||!PHONE_IDS.has(phone))throw new Error('Invalid display selection');
     const url='https://curtbrag.com/cluster/display.html?mode='+mode+'&name='+phone+'&immersive=1';
-    return `url='${url}'; if command -v termux-open-url >/dev/null 2>&1; then termux-open-url "$url"; elif command -v am >/dev/null 2>&1; then am start -a android.intent.action.VIEW -d "$url"; else echo 'No Android browser launcher available' >&2; exit 2; fi`;
+    return `url='${url}'; if ! command -v timeout >/dev/null 2>&1; then echo 'Display launch requires timeout utility' >&2; exit 2; fi; out=$(timeout 20 /system/bin/am start --user 0 -W -a android.intent.action.VIEW -d "$url" 2>&1); code=$?; printf '%s\\n' "$out"; if [ "$code" -ne 0 ]; then echo 'Android launch failed or timed out; unlock the phone and check browser permissions' >&2; exit 2; fi; if printf '%s' "$out" | grep -Eiq 'error|exception|denied|background activity.*(blocked|abort)'; then echo 'Android rejected the display launch' >&2; exit 2; fi; if ! printf '%s' "$out" | grep -q 'Status: ok'; then echo 'Android did not confirm activity startup; physical display unverified' >&2; exit 2; fi; echo 'Android activity startup acknowledged; physical screen still requires confirmation'`;
   }
   function ensureDisplayControls(){
     const panel=document.getElementById('cluster-view-fleet');if(!panel||document.getElementById('cluster-display-control'))return;
