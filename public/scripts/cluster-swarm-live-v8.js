@@ -247,6 +247,29 @@
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>work.click(),{once:true});
     else work.click();
   }
+  function displayLaunchCommand(mode,phone){
+    if(!['visuals','clock','test','dashboard','home'].includes(mode)||!PHONE_IDS.has(phone))throw new Error('Invalid display selection');
+    const url='https://curtbrag.com/cluster/display.html?mode='+mode+'&name='+phone+'&immersive=1';
+    return `url='${url}'; if command -v termux-open-url >/dev/null 2>&1; then termux-open-url "$url"; elif command -v am >/dev/null 2>&1; then am start -a android.intent.action.VIEW -d "$url"; else echo 'No Android browser launcher available' >&2; exit 2; fi`;
+  }
+  function ensureDisplayControls(){
+    const panel=document.getElementById('cluster-view-fleet');if(!panel||document.getElementById('cluster-display-control'))return;
+    const card=document.createElement('section');card.id='cluster-display-control';card.className='cluster-control-card';
+    card.innerHTML='<h3>Phone screens</h3><p>Open a display on one phone or all online phones. Phones must be unlocked and allow the worker to launch a browser. A successful launch request does not confirm visible screen content.</p><label for="display-target">Phone</label><select id="display-target"><option value="all">All online phones</option>'+Array.from(PHONE_IDS).map(p=>'<option>'+p+'</option>').join('')+'</select> <label for="display-mode">Display</label><select id="display-mode"><option value="visuals">Animations</option><option value="clock">Clock</option><option value="test">Screen test</option><option value="dashboard">Cluster dashboard (sign-in required)</option><option value="home">Display overview</option></select><div class="cluster-action-row"><button id="display-send" type="button" class="cluster-primary-action">Apply to phone screens</button><a href="/cluster/display.html" target="_blank" rel="noopener">Open display hub</a><button id="display-results" type="button">View launch results</button></div><p id="display-state" role="status"></p>';
+    panel.insertBefore(card,panel.children[1]);
+    document.getElementById('display-results').onclick=()=>setControlView('results',true);
+    document.getElementById('display-send').onclick=async()=>{
+      const button=document.getElementById('display-send'),state=document.getElementById('display-state');button.disabled=true;
+      const sent=[];try{
+        await load(true);const selected=document.getElementById('display-target').value,mode=document.getElementById('display-mode').value;
+        const phones=(current?.nodes||[]).filter(n=>n.online&&PHONE_IDS.has(n.id)&&(selected==='all'||selected===n.id)).map(n=>n.id);
+        if(!phones.length)throw new Error('No selected phones are online');
+        for(const phone of phones){state.textContent='Sending to '+phone+'…';await enqueueSwarm('shell',displayLaunchCommand(mode,phone),[phone]);sent.push(phone);}
+        state.textContent='Launch queued for '+sent.join(', ')+'. Check launch results, then confirm the physical screens.';await load(true);
+      }catch(e){state.textContent=(sent.length?'Already queued: '+sent.join(', ')+'. ':'')+e.message;}finally{button.disabled=false;}
+    };
+  }
+
   function ensureControlLayout(){
     if(document.getElementById('cluster-work-navigation'))return;
     const workers=document.getElementById('swarm-nodes')?.parentElement;
@@ -327,6 +350,7 @@
     submit.parentElement.insertAdjacentElement('afterend',feedback);
     feedback.querySelector('button').onclick=()=>setControlView('results',true);
     syncJobInput();
+    ensureDisplayControls();
     const cleanup=document.createElement('details');cleanup.className='cluster-control-details';cleanup.innerHTML='<summary>Queue cleanup</summary><p>These actions affect the shared queue or saved result history.</p><div class="cluster-action-row"></div>';
     for(const selector of ['button[onclick="flushSwarmQueue()"]','button[onclick="clearSwarmResults()"]']){const b=tab.querySelector(selector);if(b)cleanup.lastChild.append(b);}panels.results.append(cleanup);
     for(const id of ['cluster-audit-state','workspace-state','cluster-media-state'])document.getElementById(id)?.setAttribute('aria-live','polite');
@@ -409,6 +433,7 @@
         if (target) target.value = '__pcs__';
         if (input) input.value = SAMPLE_MEDIA;
         syncJobInput();
+    ensureDisplayControls();
         input?.focus();
         notify('Sample loaded. Press Start when ready.');
       });
@@ -422,6 +447,7 @@
         if (type) type.value = 'reel-create';
         if (target) target.value = 'RenderRig';
         syncJobInput();
+    ensureDisplayControls();
         input?.focus();
         notify('Enter your clip path and Reel text as JSON, then press Start.');
       });
@@ -432,6 +458,7 @@
         if (type) type.value = 'episode-create';
         if (target) target.value = 'RenderRig';
         syncJobInput();
+    ensureDisplayControls();
         if (input) input.value = JSON.stringify(EPISODE_SAMPLE, null, 2);
         input?.focus();
         notify('Review the original episode script, then press Start.');
@@ -509,9 +536,11 @@
           if (target && Array.from(target.options || []).some((o) => o.value === 'RenderRig' && !o.disabled)) target.value = 'RenderRig';
         }
         syncJobInput();
+    ensureDisplayControls();
       });
     }
     syncJobInput();
+    ensureDisplayControls();
 
     const dispatchHeading = Array.from(tab.querySelectorAll('h3'))
       .find((h) => ['Dispatch Swarm Job', 'Start Work', 'Run Work'].includes(h.textContent?.trim()));
@@ -1168,6 +1197,7 @@
     try{
       const spec=researchEpisodeSpec(workspace?.draft);
       document.getElementById('swarm-job-type').value='episode-create';syncJobInput();
+    ensureDisplayControls();
       document.getElementById('swarm-job-cmd').value=JSON.stringify(spec);
       document.getElementById('swarm-job-device').value='RenderRig';
       workspace.episode={spec,source_job_id:workspace.draft.job_id,sources:workspace.draft.sources,created_at:new Date().toISOString(),review_required:true};saveWorkspace();
@@ -1278,6 +1308,7 @@
     if (draft.length > 4000) return notify('Selection makes a job over 4,000 characters; choose shorter source titles', 'error');
     const type = document.getElementById('swarm-job-type');
     type.value = 'episode-create'; syncJobInput();
+    ensureDisplayControls();
     document.getElementById('swarm-job-cmd').value = draft;
     document.getElementById('swarm-job-device').value = 'RenderRig';
     notify('Episode JSON loaded. Rewrite every beat with original narration, then start the RenderRig job.');
@@ -2040,3 +2071,5 @@ window.queueCmd = async (deviceId, type) => {
     if (!started && token()) start();
   }, 1000);
 })();
+
+
