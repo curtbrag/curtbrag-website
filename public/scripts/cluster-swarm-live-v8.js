@@ -237,7 +237,8 @@
       details.innerHTML='<summary>Bridge registry telemetry</summary><p>These records belong to the older device registry. Workspace status uses the current 13-worker roster.</p>';
       details.append(legacy);content.append(details);
     }
-    queueMicrotask(()=>work.click());
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>work.click(),{once:true});
+    else work.click();
   }
   function ensureControlLayout(){
     if(document.getElementById('cluster-work-navigation'))return;
@@ -267,6 +268,7 @@
     }
     stats.insertAdjacentElement('afterend',nav);
     for(const panel of Object.values(panels))tab.append(panel);
+    workers.firstElementChild.classList.add('cluster-worker-heading');
     panels.fleet.append(workers,document.getElementById('cluster-phone-recovery'));
     panels.audit.append(document.getElementById('cluster-web-audit'));
     panels.research.append(document.getElementById('cluster-workspace'));
@@ -299,6 +301,14 @@
     const plan=Array.from(audit.querySelectorAll('button')).find(b=>b.textContent==='Build fix plan');if(plan)review.append(plan);review.append(document.getElementById('cluster-audit-export'));
     const evidence=document.createElement('details');evidence.className='cluster-control-details';evidence.innerHTML='<summary>Page-by-page evidence</summary>';evidence.append(document.getElementById('cluster-audit-report'));
     audit.append(actions,document.getElementById('cluster-audit-state'),document.getElementById('cluster-audit-delivery'),settings,setup,review,evidence);
+    const research=document.getElementById('cluster-workspace');
+    const sources=document.createElement('details');sources.className='cluster-control-details';sources.innerHTML='<summary>Collected source evidence</summary>';
+    const sourceReport=document.getElementById('workspace-report');sourceReport.insertAdjacentElement('beforebegin',sources);sources.append(sourceReport);
+    const aiSetup=document.createElement('details');aiSetup.className='cluster-control-details';aiSetup.innerHTML='<summary>Local AI setup</summary>';
+    const aiPrepare=document.getElementById('workspace-ai-prepare'),aiNote=aiPrepare.previousElementSibling;
+    aiPrepare.insertAdjacentElement('beforebegin',aiSetup);if(aiNote?.tagName==='P')aiSetup.append(aiNote);aiSetup.append(aiPrepare);
+    const researchManage=document.createElement('details');researchManage.className='cluster-control-details';researchManage.innerHTML='<summary>Manage unfinished research</summary>';
+    researchManage.append(document.getElementById('workspace-cancel'));research.append(researchManage);
     for(const id of ['cluster-audit-run','workspace-run','cluster-media-run'])document.getElementById(id).classList.add('cluster-primary-action');
     job.querySelector('button[onclick="submitSwarmJob()"]')?.classList.add('cluster-primary-action');
     const cleanup=document.createElement('details');cleanup.className='cluster-control-details';cleanup.innerHTML='<summary>Queue cleanup</summary><p>These actions affect the shared queue or saved result history.</p><div class="cluster-action-row"></div>';
