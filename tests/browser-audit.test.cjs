@@ -19,3 +19,12 @@ vm.runInContext(src.slice(src.indexOf('  let auditBatch ='),src.indexOf("  const
 assert.equal(restored.auditReports([{job_id:'audit-v1-old'}]).length,0);
 assert.equal(restored.auditReports([{job_id:'browser-audit-v1-saved-0',exit_code:0,stdout:JSON.stringify({kind:'website-browser-audit',page})}]).length,1);
 console.log('Latest batch filtering survives browser storage restoration');
+
+const plan=context.auditFixPlan(reports,{settings:{paths:['/'],browser_workers:['Alina']}});
+assert.equal(plan.status,'review-required');assert.equal(plan.tasks.length,1);
+assert.equal(plan.tasks[0].evidence,'10px');assert(plan.tasks[0].validation.includes('mobile'));
+const clean=context.auditFixPlan([{url:'https://curtbrag.com/',mode:'Chromium',issues:[],viewports:[{viewport:'mobile',pending_images:2,blocked_resource_hosts:['example.com']}]}],{settings:{paths:['/']}});
+assert.equal(clean.status,'no-detected-fixes');assert.equal(clean.tasks.length,0);assert(clean.coverage_gaps.some(g=>g.includes('2 images')));
+assert.equal(context.auditFixPlan([],{settings:{paths:['/']}}).status,'incomplete');
+assert.equal(context.auditFixPlan([{url:'Incomplete check',worker:'Alina',issues:['failed']}],{settings:{paths:['/']}}).status,'incomplete');
+console.log('Evidence, validation, clean checks and incomplete coverage validated');
