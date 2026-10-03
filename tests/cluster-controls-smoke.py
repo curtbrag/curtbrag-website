@@ -13,7 +13,9 @@ DATA={'ok':True,'nodes':[{'id':n,'online':True,'busy':False,'agent_version':'3.7
 
 def isolated_api(route):
     path=urlsplit(route.request.url).path
-    if path.startswith('/api/cluster') or path.startswith('/.netlify/functions/'):
+    if path=='/scripts/cluster-swarm-live-v8.js' and os.environ.get('LOCAL_DASHBOARD_SCRIPT'):
+        route.fulfill(path=os.environ['LOCAL_DASHBOARD_SCRIPT'],content_type='application/javascript')
+    elif path.startswith('/api/cluster') or path.startswith('/.netlify/functions/'):
         route.fulfill(status=200,content_type='application/json',body=json.dumps(DATA))
     elif route.request.method in ['GET','HEAD']:
         route.continue_()
@@ -73,6 +75,26 @@ with sync_playwright() as p:
         page.reload(wait_until='load')
         page.locator('#cluster-work-navigation').wait_for(state='visible')
         assert page.locator('#cluster-view-tab-results').get_attribute('aria-selected')=='true'
+        page.locator('#cluster-view-tab-research').click()
+        page.locator('#workspace-brief').fill('Compare repair tools')
+        page.locator('#workspace-questions').fill('Socket designs\n\nTorque wrench calibration')
+        page.locator('#workspace-workers').select_option('2')
+        spec=json.loads(page.locator('#workspace-json').input_value())
+        assert spec=={'brief':'Compare repair tools','tasks':['Socket designs','Torque wrench calibration'],'workers':2}
+        page.reload(wait_until='load')
+        expect(page.locator('#workspace-brief')).to_have_value('Compare repair tools')
+        page.get_by_text('Advanced research settings · JSON',exact=True).click()
+        page.locator('#workspace-json').fill('{bad')
+        page.locator('#workspace-run').click()
+        expect(page.locator('#workspace-form-error')).not_to_have_text('')
+        page.locator('#workspace-json').fill(json.dumps(spec))
+        expect(page.locator('#workspace-questions')).to_have_value('Socket designs\nTorque wrench calibration')
+        page.locator('#workspace-run').click()
+        expect(page.locator('#workspace-state')).to_contain_text('Compare repair tools')
+        research=page.evaluate('JSON.parse(localStorage.getItem("curt-swarm-workspace-v1"))')
+        assert len(research['tasks'])==2 and all(t['status']=='queued' for t in research['tasks'])
+        if width==390:
+            page.screenshot(path=os.environ.get('RESEARCH_SCREENSHOT','research-form-test.png'),full_page=True)
         batch={'http_batch':'audit-v1-fixture','browser_batch':'browser-audit-v1-fixture','settings':{'paths':['/'],'browser_workers':[]},'tasks':[{'job_id':'audit-v1-fixture-0','worker':'phone173','status':'queued'}]}
         DATA['results']=[{'job_id':'audit-v1-fixture-0','device_id':'phone173','exit_code':0,'stdout':json.dumps({'kind':'website-audit','page':{'url':'https://curtbrag.com/','title':'Saved evidence fixture','issues':[]}})}]
         page.evaluate('(batch)=>localStorage.setItem("curt-website-audit-batch-v1",JSON.stringify(batch))',batch)

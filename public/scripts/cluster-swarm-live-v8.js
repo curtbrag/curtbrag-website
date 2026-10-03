@@ -855,6 +855,25 @@
   let workspace=null, workspaceBusy=false;
   try { workspace=JSON.parse(localStorage.getItem(WORKSPACE_KEY)||'null'); if(!Array.isArray(workspace?.tasks))workspace=null; } catch {}
   function saveWorkspace(){ try {localStorage.setItem(WORKSPACE_KEY,JSON.stringify(workspace));}catch{notify('Browser storage unavailable; keep this page open to retain your report','error');} }
+  function ensureResearchBrief(card){
+    const json=document.getElementById('workspace-json');
+    const fields=document.createElement('div');fields.id='workspace-brief-form';
+    fields.innerHTML='<label for="workspace-brief">Research brief</label><textarea id="workspace-brief" rows="3" maxlength="500" placeholder="What should the finished report explain?"></textarea><label for="workspace-questions">Research questions</label><textarea id="workspace-questions" rows="5" placeholder="One question per line"></textarea><p>Each question becomes a separate worker assignment. This version gathers Wikipedia search excerpts for review.</p><label for="workspace-workers">Maximum workers</label><select id="workspace-workers"></select><p id="workspace-form-error" role="status" aria-live="polite"></p>';
+    json.previousElementSibling.insertAdjacentElement('beforebegin',fields);
+    const advanced=document.createElement('details');advanced.className='cluster-control-details';advanced.innerHTML='<summary>Advanced research settings · JSON</summary>';
+    json.previousElementSibling.insertAdjacentElement('beforebegin',advanced);
+    advanced.append(json.previousElementSibling,json);
+    const brief=fields.querySelector('#workspace-brief'),questions=fields.querySelector('#workspace-questions'),workers=fields.querySelector('#workspace-workers'),error=fields.querySelector('#workspace-form-error');
+    for(let n=1;n<=12;n++)workers.add(new Option(String(n),String(n)));
+    const draftKey='curt-research-brief-draft-v1';
+    const persist=()=>{try{localStorage.setItem(draftKey,json.value);}catch{error.textContent='Draft cannot be saved in this browser. Keep this page open.';}};
+    const showFields=spec=>{brief.value=typeof spec.brief==='string'?spec.brief:'';questions.value=Array.isArray(spec.tasks)?spec.tasks.join('\n'):'';workers.value=String(spec.workers||3);};
+    try{const draft=localStorage.getItem(draftKey);if(draft!==null)json.value=draft;else if(workspace)json.value=JSON.stringify({brief:workspace.brief,tasks:workspace.tasks.map(t=>t.query),workers:workspace.workers});showFields(JSON.parse(json.value));}catch{error.textContent='Saved settings contain invalid JSON. Correct Advanced research settings or enter a new brief.';advanced.open=true;}
+    const update=()=>{error.textContent='';json.value=JSON.stringify({brief:brief.value,tasks:questions.value.split(/\r?\n/).map(q=>q.trim()).filter(Boolean),workers:Number(workers.value)},null,2);persist();};
+    brief.addEventListener('input',update);questions.addEventListener('input',update);workers.addEventListener('change',update);
+    json.addEventListener('input',()=>{persist();try{showFields(JSON.parse(json.value));error.textContent='';}catch{error.textContent='Settings must be valid JSON before starting research.';}});
+    card.querySelector('h3').textContent='Research swarm';
+  }
   function ensureWorkspace(){
     if(document.getElementById('cluster-workspace'))return;
     const anchor=document.getElementById('cluster-web-audit');if(!anchor)return;
@@ -862,6 +881,7 @@
     card.style.cssText='background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px';
     card.innerHTML=`<h3>Swarm workspace</h3><p>One research brief, separate worker tasks, one collected source report. Uses online phones and Linux PCs to retrieve Wikipedia sources. Gather sources, then create a cited draft on a Linux PC using a local model.</p><label for="workspace-json">Brief and tasks (JSON)</label><textarea id="workspace-json" rows="7" style="width:100%">{"brief":"Research electric vehicles for a factual content series","tasks":["Electric vehicle battery recycling","Electric vehicle charging infrastructure","Electric vehicle energy efficiency"],"workers":3}</textarea><button id="workspace-run" type="button">Start research swarm</button> <button id="workspace-retry" type="button">Retry failed / unsent tasks</button> <button id="workspace-cancel" type="button">Cancel unfinished assignments</button> <button id="workspace-export" type="button">Export combined report</button><p>Latest batch is saved in this browser. Keep the dashboard open to collect results before server history expires. Cancelling assignments does not stop commands already running.</p><p id="workspace-state"></p><div id="workspace-report"></div><h4>Local AI draft</h4><label for="workspace-ai-worker">Drafting PC</label><select id="workspace-ai-worker"><option value="viki">viki</option><option value="Alina">Alina</option><option value="Nexus">Nexus</option><option value="SteamDeck">SteamDeck</option></select><p>Prepare downloads Ollama from its official source and Qwen3 4B (about 2.5 GB plus runtime). Stored on the selected PC; model service binds to loopback. After a restart, Prepare restarts the service and reuses downloaded files.</p><button type="button" id="workspace-ai-prepare">Prepare local AI</button> <button type="button" id="workspace-ai-draft">Draft from collected sources</button><div id="workspace-ai-report"></div><button id="workspace-episode-load" type="button">Load research video JSON</button><button id="workspace-publish-package" type="button">Build publishing package</button><div id="workspace-publish-report"></div><p id="workspace-episode-state">Creates a narrated diagram preview from the completed draft. Source links remain in the combined report.</p>`;
     anchor.insertAdjacentElement('afterend',card);
+    ensureResearchBrief(card);
     card.querySelector('#workspace-run').onclick=()=>dispatchWorkspace(false);
     card.querySelector('#workspace-retry').onclick=()=>dispatchWorkspace(true);
     card.querySelector('#workspace-cancel').onclick=cancelWorkspace;
@@ -904,6 +924,7 @@
     if(workspaceBusy)return;
     if(!retry&&workspace?.tasks.some(t=>['submitting','queued','unconfirmed'].includes(t.status)))return notify('Finish or cancel the current batch before starting another','error');
     workspaceBusy=true;
+    document.getElementById('workspace-form-error').textContent='';
     try{
       await load(true);
       const spec=retry?null:JSON.parse(document.getElementById('workspace-json').value);
@@ -925,7 +946,7 @@
         saveWorkspace();
       }
       await load(true);
-    }catch(error){notify(error.message,'error');}finally{workspaceBusy=false;renderWorkspace(current?.results||[]);}
+    }catch(error){document.getElementById('workspace-form-error').textContent=error.message;notify(error.message,'error');}finally{workspaceBusy=false;renderWorkspace(current?.results||[]);}
   }
   async function cancelWorkspace(){
     if(!workspace||workspaceBusy)return;workspaceBusy=true;
