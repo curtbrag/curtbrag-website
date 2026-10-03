@@ -4,7 +4,7 @@ No real dashboard credentials or API writes are used.
 """
 import json
 from urllib.parse import urlsplit
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 
 NAMES=['phone173','phone174','phone176','phone177','phone191','phone195','phone253','phone254','Alina','Nexus','SteamDeck','viki','RenderRig']
 DATA={'ok':True,'nodes':[{'id':n,'online':True,'busy':False,'agent_version':'3.7.0','last_seen':1790997000000} for n in NAMES],
@@ -46,6 +46,22 @@ with sync_playwright() as p:
         assert page.locator('#cluster-audit-run').is_enabled()
         assert not page.locator('#cluster-audit-state').inner_text().startswith('12 /')
         page.locator('#cluster-view-tab-media').click()
+        page.locator('#swarm-job-type').select_option('episode-create')
+        page.locator('#swarm-job-device').select_option('RenderRig')
+        page.locator('#swarm-job-cmd').fill('{bad')
+        page.locator('#swarm-job-submit').click()
+        expect(page.locator('#swarm-job-feedback')).to_have_attribute('data-state','error')
+        expect(page.locator('#swarm-job-status')).to_contain_text('Job settings must be JSON')
+        assert page.locator('#swarm-job-cmd').input_value()=='{bad'
+        assert page.locator('#swarm-job-submit').is_enabled()
+        page.locator('#swarm-job-type').select_option('status')
+        assert not page.locator('#swarm-settings-field').is_visible()
+        page.locator('#swarm-job-submit').click()
+        expect(page.locator('#swarm-job-feedback')).to_have_attribute('data-state','success')
+        expect(page.locator('#swarm-job-status')).to_contain_text('RenderRig')
+        page.locator('#swarm-job-show-queue').click()
+        assert page.locator('#cluster-view-results').is_visible()
+        page.locator('#cluster-view-tab-media').click()
         page.locator('#swarm-job-type').select_option('shell')
         page.locator('#swarm-job-cmd').fill('echo ui-fixture-only')
         page.locator('#cluster-view-tab-fleet').click()
@@ -59,4 +75,4 @@ with sync_playwright() as p:
         assert not errors,errors
         context.close()
     browser.close()
-print(json.dumps({'kind':'dashboard-controls-smoke','fixture_api':True,'passed':True,'checks':checks,'form_preserved':True,'keyboard_tabs':True,'reload_restored_view':True}))
+print(json.dumps({'kind':'dashboard-controls-smoke','fixture_api':True,'passed':True,'checks':checks,'form_feedback':True,'queue_shortcut':True,'form_preserved':True,'keyboard_tabs':True,'reload_restored_view':True}))
