@@ -60,3 +60,9 @@
 #tab-swarm #swarm-results { max-height:70vh; overflow:auto; padding-right:8px; }
 #tab-swarm #swarm-nodes > div > div { font-size:11px !important; }
 @media(max-width:700px){#tab-swarm .cluster-worker-heading > #swarm-live-state { flex-basis:100%; } #tab-swarm .cluster-worker-heading > #swarm-useful-tools { flex:1 1 100%; }}
+
+#tab-swarm #swarm-job-feedback { padding:12px 16px; margin:14px 0; border:1px solid #6485aa; border-radius:8px; background:#111b27; }
+#tab-swarm #swarm-job-feedback[data-state="error"] { border-color:#dc6670; background:#281419; }
+#tab-swarm #swarm-job-feedback[data-state="success"] { border-color:#477e60; background:#122018; }
+#tab-swarm #swarm-job-status { margin:0 0 8px; color:var(--color-text); overflow-wrap:anywhere; }
+#tab-swarm #swarm-job-help { margin:6px 0 0; font-size:12px; }
