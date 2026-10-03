@@ -565,6 +565,9 @@
 
   let auditBatch = null;
   let browserAuditBatch = null;
+  const AUDIT_KEY='curt-website-audit-batch-v1';
+  let auditRecord=null;
+  try{auditRecord=JSON.parse(localStorage.getItem(AUDIT_KEY)||'null');auditBatch=auditRecord?.http_batch||null;browserAuditBatch=auditRecord?.browser_batch||null;}catch{}
   const BROWSER_SCRIPT='https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-browser-audit.py';
   const BROWSER_PCS=new Set(['Alina','Nexus','viki','SteamDeck']);
   function browserWorkers(spec){
@@ -597,7 +600,7 @@
     card.style.cssText='background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px';
     card.innerHTML=`<h3>Website audit swarm</h3><p>Split public curtbrag.com pages across online phone and Linux workers. Check HTTP responses, internal links, titles, descriptions, H1 headings, image alt attributes and mobile viewport metadata.</p><label for="cluster-audit-settings">Audit settings (JSON)</label><textarea id="cluster-audit-settings" rows="4" style="width:100%">{"paths":["/","/shop/","/gallery/","/rig/","/cluster/","/contact/"],"workers":6}</textarea><button id="cluster-audit-run" type="button">Audit website across workers</button> <button id="cluster-audit-export" type="button">Export audit report</button><p id="cluster-audit-state">HTTP/HTML checks only; visual layouts and form submissions are not tested.</p><div id="cluster-audit-report"></div>`;
     anchor.insertAdjacentElement('afterend',card);
-    card.querySelector('#cluster-audit-settings').value=JSON.stringify({paths:['/','/shop/','/gallery/','/rig/','/cluster/','/contact/'],workers:6,browser_workers:['Alina','Nexus']});
+    card.querySelector('#cluster-audit-settings').value=JSON.stringify(auditRecord?.settings||{paths:['/','/shop/','/gallery/','/rig/','/cluster/','/contact/'],workers:6,browser_workers:['Alina','Nexus']});
     const prepare=document.createElement('button');prepare.id='cluster-browser-prepare';prepare.type='button';prepare.textContent='Prepare browser testing';prepare.onclick=prepareBrowserAudit;
     card.querySelector('#cluster-audit-run').insertAdjacentElement('beforebegin',prepare);
     const note=document.createElement('p');note.textContent='Optional browser_workers run Chromium desktop/mobile checks. Prepare installs an isolated Playwright runtime and Chromium on those PCs. Reports include evidence and proposed fixes; no form submissions or code changes.';prepare.insertAdjacentElement('beforebegin',note);
@@ -606,8 +609,14 @@
     card.querySelector('#cluster-audit-export').addEventListener('click',()=>{
       const reports=auditReports(current?.results || []);
       if (!reports.length) return notify('No audit results available','error');
-      const url=URL.createObjectURL(new Blob([JSON.stringify({scope:'curtbrag.com HTTP/HTML and Chromium audit; proposals require review',reports},null,2)],{type:'application/json'}));
-      const a=document.createElement('a');a.href=url;a.download='curt-website-audit.json';a.click();URL.revokeObjectURL(url);
+      const json=JSON.stringify({scope:'curtbrag.com HTTP/HTML and Chromium audit; proposals require review',batch:auditRecord,reports},null,2);
+      document.getElementById('cluster-audit-export-panel')?.remove();
+      const panel=document.createElement('div');panel.id='cluster-audit-export-panel';
+      panel.innerHTML='<h4>Combined website audit JSON</h4><p>Copy this report or download it. Keep an export before server result history expires.</p><textarea aria-label="Combined website audit JSON" readonly rows="10" style="width:100%"></textarea><a download="curt-website-audit.json">Download audit JSON</a> <button type="button">Close audit export</button>';
+      panel.querySelector('textarea').value=json;
+      const url=URL.createObjectURL(new Blob([json],{type:'application/json'}));panel.querySelector('a').href=url;
+      panel.querySelector('button').onclick=()=>{URL.revokeObjectURL(url);panel.remove();};
+      card.append(panel);panel.querySelector('textarea').focus();panel.querySelector('textarea').select();
     });
   }
   function auditReports(results) {
@@ -625,7 +634,8 @@
     const host=document.getElementById('cluster-audit-report'); if(!host)return;
     const reports=auditReports(results);
     host.innerHTML=reports.map(r=>`<article style="border-top:1px solid var(--color-border);padding:10px 0"><strong>${esc(r.url)}</strong> · ${esc(r.worker)} · ${esc(r.mode)}${r.mode==='HTTP/HTML'?` · HTTP ${esc(r.status??'?')} · ${esc(r.ms??'?')} ms`:''}<p>${esc(r.title || '')}</p><ul>${(r.issues.length?r.issues:['No issues in the completed checks']).map(i=>`<li>${esc(i)}</li>`).join('')}</ul>${(r.proposals||[]).map(f=>`<p><strong>Proposed fix (${esc(f.viewport)}):</strong> ${esc(f.proposal)}</p>`).join('')}${(r.viewports||[]).map(v=>`<p>${esc(v.viewport)} ${esc(v.width)}×${esc(v.height)} · overflow ${esc(v.overflow_px??'?')}px · DOM ready ${esc(v.timings?.dom_content_loaded_ms??'?')} ms · load ${esc(v.timings?.load_ms??'?')} ms${v.pending_images?` · ${esc(v.pending_images)} images still pending`:''}${v.blocked_resource_hosts?.length?` · excluded hosts: ${esc(v.blocked_resource_hosts.join(', '))}`:''}</p>`).join('')}<small>${r.mode==='HTTP/HTML'?`${esc(r.links_checked||0)} internal links checked. HTTP fetch time is not browser load performance.`:'Single-run Chromium checks; forms, interactive flows and Core Web Vitals are not tested.'}</small></article>`).join('');
-    if(reports.length)document.getElementById('cluster-audit-state').textContent=`${reports.length} page reports · ${reports.reduce((n,r)=>n+r.issues.length,0)} findings · HTTP/HTML + optional Chromium checks`;
+    const expected=auditRecord?.settings?.paths?.length*(auditRecord?.settings?.browser_workers?.length?2:1);
+    if(reports.length||expected)document.getElementById('cluster-audit-state').textContent=`${reports.length}${expected?' / '+expected:''} page reports · ${reports.reduce((n,r)=>n+r.issues.length,0)} findings · HTTP/HTML + optional Chromium checks${expected&&reports.length<expected?' · incomplete; keep collecting results':''}`;
     const runtime=results.filter(r=>String(r.job_id||'').startsWith('browser-runtime-'));
     const latest=new Map();for(const r of runtime)if(!latest.has(r.device_id))latest.set(r.device_id,r);
     document.getElementById('cluster-browser-runtime').textContent=[...latest.values()].map(r=>{try{const d=JSON.parse(r.stdout||'');return `${r.device_id}: ${Number(r.exit_code)===0&&d.ready?'browser ready':d.error||'setup failed'}`;}catch{return `${r.device_id}: setup failed`;}}).join(' · ');
@@ -643,6 +653,8 @@
       if(!nodes.length)throw new Error('No online phone or Linux workers');
       auditBatch=`audit-v1-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
       browserAuditBatch=`browser-audit-v1-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+      auditRecord={http_batch:auditBatch,browser_batch:browserAuditBatch,created_at:new Date().toISOString(),settings:{...spec,paths:[...new Set(spec.paths)],browser_workers:browserIds}};
+      try{localStorage.setItem(AUDIT_KEY,JSON.stringify(auditRecord));}catch{notify('Audit history cannot be saved in this browser; export the report before closing.','error');}
       let queued=0;
       for(const [i,path] of [...new Set(spec.paths)].entries()) {
         const node=nodes[i%nodes.length];
