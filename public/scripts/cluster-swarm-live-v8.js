@@ -622,7 +622,7 @@
     const anchor=document.getElementById('cluster-web-audit');if(!anchor)return;
     const card=document.createElement('section');card.id='cluster-workspace';
     card.style.cssText='background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px';
-    card.innerHTML=`<h3>Swarm workspace</h3><p>One research brief, separate worker tasks, one collected source report. Uses online phones and Linux PCs to retrieve Wikipedia sources. Gather sources, then create a cited draft on a Linux PC using a local model.</p><label for="workspace-json">Brief and tasks (JSON)</label><textarea id="workspace-json" rows="7" style="width:100%">{"brief":"Research electric vehicles for a factual content series","tasks":["Electric vehicle battery recycling","Electric vehicle charging infrastructure","Electric vehicle energy efficiency"],"workers":3}</textarea><button id="workspace-run" type="button">Start research swarm</button> <button id="workspace-retry" type="button">Retry failed / unsent tasks</button> <button id="workspace-cancel" type="button">Cancel unfinished assignments</button> <button id="workspace-export" type="button">Export combined report</button><p>Latest batch is saved in this browser. Keep the dashboard open to collect results before server history expires. Cancelling assignments does not stop commands already running.</p><p id="workspace-state"></p><div id="workspace-report"></div><h4>Local AI draft</h4><label for="workspace-ai-worker">Drafting PC</label><select id="workspace-ai-worker"><option value="viki">viki</option><option value="Alina">Alina</option><option value="Nexus">Nexus</option><option value="SteamDeck">SteamDeck</option></select><p>Prepare downloads Ollama from its official source and Qwen3 4B (about 2.5 GB plus runtime). Stored on the selected PC; model service binds to loopback. After a restart, Prepare restarts the service and reuses downloaded files.</p><button type="button" id="workspace-ai-prepare">Prepare local AI</button> <button type="button" id="workspace-ai-draft">Draft from collected sources</button><div id="workspace-ai-report"></div><button id="workspace-episode-load" type="button">Load research video JSON</button><p id="workspace-episode-state">Creates a narrated diagram preview from the completed draft. Source links remain in the combined report.</p>`;
+    card.innerHTML=`<h3>Swarm workspace</h3><p>One research brief, separate worker tasks, one collected source report. Uses online phones and Linux PCs to retrieve Wikipedia sources. Gather sources, then create a cited draft on a Linux PC using a local model.</p><label for="workspace-json">Brief and tasks (JSON)</label><textarea id="workspace-json" rows="7" style="width:100%">{"brief":"Research electric vehicles for a factual content series","tasks":["Electric vehicle battery recycling","Electric vehicle charging infrastructure","Electric vehicle energy efficiency"],"workers":3}</textarea><button id="workspace-run" type="button">Start research swarm</button> <button id="workspace-retry" type="button">Retry failed / unsent tasks</button> <button id="workspace-cancel" type="button">Cancel unfinished assignments</button> <button id="workspace-export" type="button">Export combined report</button><p>Latest batch is saved in this browser. Keep the dashboard open to collect results before server history expires. Cancelling assignments does not stop commands already running.</p><p id="workspace-state"></p><div id="workspace-report"></div><h4>Local AI draft</h4><label for="workspace-ai-worker">Drafting PC</label><select id="workspace-ai-worker"><option value="viki">viki</option><option value="Alina">Alina</option><option value="Nexus">Nexus</option><option value="SteamDeck">SteamDeck</option></select><p>Prepare downloads Ollama from its official source and Qwen3 4B (about 2.5 GB plus runtime). Stored on the selected PC; model service binds to loopback. After a restart, Prepare restarts the service and reuses downloaded files.</p><button type="button" id="workspace-ai-prepare">Prepare local AI</button> <button type="button" id="workspace-ai-draft">Draft from collected sources</button><div id="workspace-ai-report"></div><button id="workspace-episode-load" type="button">Load research video JSON</button><button id="workspace-publish-package" type="button">Build publishing package</button><div id="workspace-publish-report"></div><p id="workspace-episode-state">Creates a narrated diagram preview from the completed draft. Source links remain in the combined report.</p>`;
     anchor.insertAdjacentElement('afterend',card);
     card.querySelector('#workspace-run').onclick=()=>dispatchWorkspace(false);
     card.querySelector('#workspace-retry').onclick=()=>dispatchWorkspace(true);
@@ -631,6 +631,7 @@
     card.querySelector('#workspace-ai-prepare').onclick=()=>submitAI('runtime');
     card.querySelector('#workspace-ai-draft').onclick=()=>submitAI('draft');
     card.querySelector('#workspace-episode-load').onclick=loadResearchEpisode;
+    card.querySelector('#workspace-publish-package').onclick=showPublishingPackage;
     for(const button of card.querySelectorAll('button'))button.style.cssText='padding:8px 12px;margin:6px 4px 6px 0;border:1px solid var(--color-border);border-radius:5px;cursor:pointer';
     renderWorkspace([]);
   }
@@ -744,6 +745,7 @@
     host.innerHTML=`<p>Model preparation: ${esc(runtime?.status||'not requested')}${runtime?.error?' · '+esc(runtime.error):''}</p><p>Draft: ${esc(draft?.status||'not requested')}${draft?.worker?' · '+esc(draft.worker):''}${draft?.error?' · '+esc(draft.error):''}</p>`;
     if(draft?.status==='succeeded')host.innerHTML+=`<h4>${esc(draft.output.draft.title)}</h4><p>AI draft · ${esc(draft.output.model)} · human review required. Selected source excerpts only; references are not proof that each claim is correct.</p>${draft.output.draft.points.map(p=>`<p>${esc(p.text)} <strong>[${esc(p.sources.join(', '))}]</strong></p>`).join('')}<p><strong>Needs verification:</strong> ${esc(draft.output.draft.verification)}</p>${draft.sources.map(s=>`<p>${esc(s.id)}: ${esc(s.title)} · ${esc(s.url)}</p>`).join('')}`;
     document.getElementById('workspace-episode-load').disabled=workspaceBusy||workspace?.draft?.status!=='succeeded';
+    document.getElementById('workspace-publish-package').disabled=workspaceBusy||workspace?.draft?.status!=='succeeded';
     for(const id of ['workspace-ai-prepare','workspace-ai-draft'])document.getElementById(id).disabled=workspaceBusy||!workspace;
   }
   function exportWorkspace(){
@@ -778,6 +780,44 @@
     if(spec.scenes.some(scene=>['heading','caption','narration'].some(k=>scene[k].length>180)))throw new Error('Scene text exceeds renderer limits');
     if(JSON.stringify(spec).length>4000)throw new Error('Episode settings exceed the queue limit');
     return spec;
+  }
+  function researchPublishingPackage(record){
+    const spec=researchEpisodeSpec(record),draft=record.output.draft;
+    const used=new Set(draft.points.flatMap(point=>point.sources));
+    const sources=(record.sources||[]).filter(source=>used.has(source.id));
+    if(sources.some(source=>typeof source.title!=='string'||!/^https:\/\/en\.wikipedia\.org\/wiki\/[^\s]+$/.test(source.url)))throw new Error('Publishing sources must have valid Wikipedia links');
+    const tags=[...new Set(draft.title.match(/[A-Za-z][A-Za-z0-9]{3,}/g)||[])].slice(0,3).map(word=>'#'+word);
+    const hashtags=[...new Set([...tags,'#Explained','#Research'])].join(' ');
+    const credits=sources.map(source=>`${source.id}: ${source.title} — ${source.url}`).join('\n');
+    const disclosure='AI-assisted source research and narration. Draft: review claims before publishing.';
+    const description=`${draft.points.map(point=>point.text).join('\n\n')}\n\n${disclosure}\n\nSources:\n${credits}`;
+    return {title:spec.title,source_job_id:record.job_id,review_required:true,
+      duration_seconds:spec.scenes.reduce((total,scene)=>total+scene.duration,0),
+      platforms:{
+        youtube:{title:spec.title,description:description+'\n\n'+hashtags},
+        tiktok:{caption:`${spec.title}\n${draft.points[0].text}\n\n${disclosure}\n\n${hashtags}`},
+        instagram:{caption:description+'\n\n'+hashtags},
+        facebook:{caption:description+'\n\n'+hashtags}},
+      hashtags,sources,verification:draft.verification||'',
+      media_note:'Original narrated diagram video; links credit research sources. No third-party footage is included.'};
+  }
+  function showPublishingPackage(){
+    try{
+      const pack=researchPublishingPackage(workspace?.draft);
+      const host=document.getElementById('workspace-publish-report');
+      host.replaceChildren();
+      const heading=document.createElement('h4');heading.textContent='Publishing package';host.append(heading);
+      const note=document.createElement('p');note.textContent='Copy the captions after reviewing the video and claims. Hashtags describe the topic; they are not trend or revenue predictions. This package does not publish to your accounts.';host.append(note);
+      for(const [name,value] of Object.entries(pack.platforms)){
+        const label=document.createElement('label');label.textContent=name[0].toUpperCase()+name.slice(1);label.htmlFor='publish-'+name;
+        const field=document.createElement('textarea');field.id=label.htmlFor;field.readOnly=true;field.rows=5;field.style.width='100%';field.value=Object.values(value).join('\n\n');
+        host.append(label,field);
+      }
+      const label=document.createElement('label');label.textContent='Publishing package JSON';label.htmlFor='publish-json';
+      const field=document.createElement('textarea');field.id='publish-json';field.readOnly=true;field.rows=8;field.style.width='100%';field.value=JSON.stringify(pack,null,2);
+      host.append(label,field);
+      workspace.publishing=pack;saveWorkspace();notify('Publishing package ready with source credits.');
+    }catch(error){notify(error.message,'error');}
   }
   function loadResearchEpisode(){
     try{

@@ -1,0 +1,14 @@
+const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
+const src=fs.readFileSync('public/scripts/cluster-swarm-live-v8.js','utf8');
+const code=src.slice(src.indexOf('  function researchEpisodeSpec('),src.indexOf('  function showPublishingPackage('));
+const context={};vm.createContext(context);vm.runInContext(code,context);
+const record={status:'succeeded',job_id:'draft-1',sources:[{id:'S1',title:'Electric vehicle',url:'https://en.wikipedia.org/wiki/Electric_vehicle'},{id:'S2',title:'Unused',url:'https://en.wikipedia.org/wiki/Unused'}],output:{draft:{title:'Electric Vehicle Research',points:[{text:'A battery stores energy.',sources:['S1']}],verification:'Check full source.'}}};
+const pack=context.researchPublishingPackage(record);
+assert.equal(pack.sources.length,1);assert.equal(pack.source_job_id,'draft-1');assert.equal(pack.review_required,true);
+assert(pack.platforms.youtube.description.includes(record.output.draft.points[0].text));
+assert(pack.platforms.instagram.caption.includes(record.sources[0].url));
+assert(!pack.platforms.instagram.caption.includes(record.sources[1].url));
+assert.equal(Object.keys(pack.platforms).join(','),'youtube,tiktok,instagram,facebook');
+record.sources[0].url='javascript:alert(1)';assert.throws(()=>context.researchPublishingPackage(record),/valid Wikipedia/);
+record.sources[0].url='https://en.wikipedia.org/wiki/Electric_vehicle';record.output.draft.points[0].sources=['S99'];assert.throws(()=>context.researchPublishingPackage(record),/unknown source/);
+console.log('Publishing package preserves narration, scopes credits, supports four platforms and rejects invalid references');
