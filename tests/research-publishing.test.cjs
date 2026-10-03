@@ -1,6 +1,6 @@
 const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
 const src=fs.readFileSync('public/scripts/cluster-swarm-live-v8.js','utf8');
-const code=src.slice(src.indexOf('  function researchEpisodeSpec('),src.indexOf('  function showPublishingPackage('));
+const code=src.slice(src.indexOf('  function researchEpisodeSpec('),src.indexOf('  function renderPublishingPackage('));
 const context={};vm.createContext(context);vm.runInContext(code,context);
 const record={status:'succeeded',job_id:'draft-1',sources:[{id:'S1',title:'Electric vehicle',url:'https://en.wikipedia.org/wiki/Electric_vehicle'},{id:'S2',title:'Unused',url:'https://en.wikipedia.org/wiki/Unused'}],output:{draft:{title:'Electric Vehicle Research',points:[{text:'A battery stores energy.',sources:['S1']}],verification:'Check full source.'}}};
 const pack=context.researchPublishingPackage(record);
