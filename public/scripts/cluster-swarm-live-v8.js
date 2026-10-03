@@ -1073,7 +1073,10 @@
     for(const [index,point] of draft.points.entries()){
       if(typeof point.text!=='string'||!point.text.trim()||point.text.length>180||/[\x00-\x1f]/.test(point.text))throw new Error('Each draft point must fit 180 characters on one line; request a shorter draft');
       if(!Array.isArray(point.sources)||!point.sources.length||point.sources.some(id=>!ids.has(id)))throw new Error('Draft contains an unknown source reference');
-      scenes.push({heading:`Research point ${index+1}`,caption:`Sources: ${point.sources.join(', ')} · see combined report`,narration:point.text,visual:'circuit'});
+      const visual=/\b(torque|calibrat\w*|measure\w*)\b/i.test(point.text)?'meter':/\b(socket|wrench)\b/i.test(point.text)?'socket':/\b(gear|transmission)\b/i.test(point.text)?'gear':'circuit';
+      const sentence=point.text.match(/^.*?[.!?](?:\s|$)/)?.[0].trim()||point.text;
+      const caption=sentence.length<=90?sentence:sentence.slice(0,87).replace(/\s+\S*$/,'')+'…';
+      scenes.push({heading:`Research point ${index+1} · ${[...new Set(point.sources)].join(', ')}`,caption,narration:point.text,visual});
     }
     scenes.push({heading:'What supports this?',caption:'Read the full articles before using these claims',narration:'These notes use short source excerpts. The source list and verification notes are saved with the combined report.',visual:'meter'},
       {heading:'Check the gaps',caption:'Short excerpts do not establish every detail',narration:'Read the verification notes in the combined report. Check the full sources before treating this draft as finished reporting.',visual:'meter'},
