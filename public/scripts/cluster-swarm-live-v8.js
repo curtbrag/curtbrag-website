@@ -1449,12 +1449,12 @@
         return true;
       });
       grid.innerHTML = visibleNodes.map((n) => {
-        const color = n.busy ? 'var(--color-yellow)' : n.online ? 'var(--color-green)' : 'var(--color-red)';
-        const label = n.busy ? 'BUSY' : n.online ? 'ONLINE' : 'OFFLINE';
+        const color = !n.online ? 'var(--color-red)' : n.busy ? 'var(--color-yellow)' : 'var(--color-green)';
+        const label = !n.online ? 'OFFLINE' : n.busy ? 'BUSY' : 'ONLINE';
         const active = (n.active_jobs || []).map(esc).join(', ');
-        const ctl = PHONE_IDS.has(n.id)
-          ? 'Android / Termux'
-          : n.online && versionAtLeast(n.agent_version, REQUIRED_AGENT) ? 'worker ready' : 'agent update needed';
+        const ctl = !n.online ? 'No worker heartbeat; check power, Wi-Fi and SSH'
+          : PHONE_IDS.has(n.id) ? 'Android / Termux'
+          : versionAtLeast(n.agent_version, REQUIRED_AGENT) ? 'worker ready' : 'agent update needed';
         return `<div style="background:var(--color-bg);border-radius:6px;padding:10px;border-left:3px solid ${color}">
           <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:4px">
             <div style="font-weight:600;font-size:12px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px"></span>${esc(n.id)}</div>

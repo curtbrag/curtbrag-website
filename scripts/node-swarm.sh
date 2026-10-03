@@ -202,6 +202,29 @@ PY
       return 1
     fi
   fi
+  # Recover legacy result files containing raw tabs or carriage returns.
+  # Preserve the original output before normalizing only JSON control characters.
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$PENDING_RESULT_FILE" <<'PY_REPAIR' >/dev/null 2>&1 || true
+import json, os, pathlib, shutil, sys, tempfile
+path = pathlib.Path(sys.argv[1])
+raw = path.read_bytes().decode("utf-8")
+try:
+    json.loads(raw)
+except json.JSONDecodeError:
+    try:
+        data = json.loads(raw, strict=False)
+    except json.JSONDecodeError:
+        sys.exit(0)
+    backup = path.with_name(path.name + ".before-json-repair")
+    if not backup.exists():
+        shutil.copy2(path, backup)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as f:
+        json.dump(data, f, ensure_ascii=True)
+        temporary = f.name
+    os.replace(temporary, path)
+PY_REPAIR
+  fi
   _pending=$(cat "$PENDING_RESULT_FILE" 2>/dev/null || true)
   [ -n "$_pending" ] || return 0
   if http_post "${SWARM_URL}?action=job-complete" "$_pending" >/dev/null 2>&1; then
