@@ -622,16 +622,15 @@
     const anchor=document.getElementById('cluster-web-audit');if(!anchor)return;
     const card=document.createElement('section');card.id='cluster-workspace';
     card.style.cssText='background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px';
-    card.innerHTML=`<h3>Swarm workspace</h3><p>One research brief, separate worker tasks, one collected source report. Uses online phones and Linux PCs to retrieve Wikipedia sources. This is source gathering; AI synthesis and automatic publishing are not included.</p><label for="workspace-json">Brief and tasks (JSON)</label><textarea id="workspace-json" rows="7" style="width:100%">{"brief":"Research electric vehicles for a factual content series","tasks":["Electric vehicle battery recycling","Electric vehicle charging infrastructure","Electric vehicle energy efficiency"],"workers":3}</textarea><button id="workspace-run" type="button">Start research swarm</button> <button id="workspace-retry" type="button">Retry failed / unsent tasks</button> <button id="workspace-cancel" type="button">Cancel unfinished assignments</button> <button id="workspace-export" type="button">Export combined report</button><p>Latest batch is saved in this browser. Keep the dashboard open to collect results before server history expires. Cancelling assignments does not stop commands already running.</p><p id="workspace-state"></p><div id="workspace-report"></div>`;
+    card.innerHTML=`<h3>Swarm workspace</h3><p>One research brief, separate worker tasks, one collected source report. Uses online phones and Linux PCs to retrieve Wikipedia sources. Gather sources, then create a cited draft on a Linux PC using a local model.</p><label for="workspace-json">Brief and tasks (JSON)</label><textarea id="workspace-json" rows="7" style="width:100%">{"brief":"Research electric vehicles for a factual content series","tasks":["Electric vehicle battery recycling","Electric vehicle charging infrastructure","Electric vehicle energy efficiency"],"workers":3}</textarea><button id="workspace-run" type="button">Start research swarm</button> <button id="workspace-retry" type="button">Retry failed / unsent tasks</button> <button id="workspace-cancel" type="button">Cancel unfinished assignments</button> <button id="workspace-export" type="button">Export combined report</button><p>Latest batch is saved in this browser. Keep the dashboard open to collect results before server history expires. Cancelling assignments does not stop commands already running.</p><p id="workspace-state"></p><div id="workspace-report"></div><h4>Local AI draft</h4><label for="workspace-ai-worker">Drafting PC</label><select id="workspace-ai-worker"><option value="viki">viki</option><option value="Alina">Alina</option><option value="Nexus">Nexus</option><option value="SteamDeck">SteamDeck</option></select><p>Prepare downloads Ollama from its official source and Qwen3 4B (about 2.5 GB plus runtime). Stored on the selected PC; model service binds to loopback. After a restart, Prepare restarts the service and reuses downloaded files.</p><button type="button" id="workspace-ai-prepare">Prepare local AI</button> <button type="button" id="workspace-ai-draft">Draft from collected sources</button><div id="workspace-ai-report"></div>`;
     anchor.insertAdjacentElement('afterend',card);
     card.querySelector('#workspace-run').onclick=()=>dispatchWorkspace(false);
     card.querySelector('#workspace-retry').onclick=()=>dispatchWorkspace(true);
     card.querySelector('#workspace-cancel').onclick=cancelWorkspace;
-    card.querySelector('#workspace-export').onclick=()=>{
-      if(!workspace)return notify('No batch to export','error');
-      const a=document.createElement('a');const url=URL.createObjectURL(new Blob([JSON.stringify(workspace,null,2)],{type:'application/json'}));
-      a.href=url;a.download='curt-swarm-research.json';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
-    };
+    card.querySelector('#workspace-export').onclick=exportWorkspace;
+    card.querySelector('#workspace-ai-prepare').onclick=()=>submitAI('runtime');
+    card.querySelector('#workspace-ai-draft').onclick=()=>submitAI('draft');
+    for(const button of card.querySelectorAll('button'))button.style.cssText='padding:8px 12px;margin:6px 4px 6px 0;border:1px solid var(--color-border);border-radius:5px;cursor:pointer';
     renderWorkspace([]);
   }
   function renderWorkspace(results){
@@ -652,11 +651,12 @@
     if(changed)saveWorkspace();
     document.getElementById('workspace-state').textContent=`${workspace.brief} — ${workspace.tasks.filter(t=>t.status==='succeeded').length}/${workspace.tasks.length} completed · ${workspace.tasks.filter(t=>t.status==='failed').length} failed`;
     host.innerHTML=workspace.tasks.map(t=>`<article style="border-top:1px solid var(--color-border);padding:10px 0"><strong>${esc(t.query)}</strong><p>${esc(t.worker||'unassigned')} · ${esc(t.status)} · attempt ${esc(t.attempts)}${t.error?' · '+esc(t.error):''}</p>${(t.report?.sources||[]).map(s=>`<p><strong>${esc(s.title)}</strong><br>${esc(s.excerpt)}<br>${/^https:\/\/en\.wikipedia\.org\/wiki\//.test(s.url)?`<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">Source</a>`:'Invalid source URL'}</p>`).join('')}</article>`).join('');
+    renderAI(results);
     for(const id of ['workspace-run','workspace-retry','workspace-cancel'])document.getElementById(id).disabled=workspaceBusy;
   }
   async function dispatchWorkspace(retry){
     if(workspaceBusy)return;
-    if(!retry&&workspace?.tasks.some(t=>['submitting','queued'].includes(t.status)))return notify('Finish or cancel the current batch before starting another','error');
+    if(!retry&&workspace?.tasks.some(t=>['submitting','queued','unconfirmed'].includes(t.status)))return notify('Finish or cancel the current batch before starting another','error');
     workspaceBusy=true;
     try{
       await load(true);
@@ -664,6 +664,7 @@
       if(!retry&&(!spec||typeof spec.brief!=='string'||!spec.brief.trim()||spec.brief.length>500||!Array.isArray(spec.tasks)||!spec.tasks.length||spec.tasks.length>12||spec.tasks.some(q=>typeof q!=='string'||!q.trim()||q.length>240)||!Number.isInteger(spec.workers)||spec.workers<1||spec.workers>12))throw new Error('Use a brief, 1–12 task queries (up to 240 characters), and workers from 1–12');
       const nodes=current.nodes.filter(n=>n.online&&!n.busy&&n.id!=='RenderRig').slice(0,retry?workspace?.workers:spec.workers);
       if(!nodes.length)throw new Error('No idle online phone or Linux workers');
+      if(!retry&&['runtime','draft'].some(mode=>workspace?.[mode]&&['queued','submitting','unconfirmed'].includes(workspace[mode].status)))throw new Error('Finish or cancel the pending AI stage before replacing this batch');
       if(!retry)workspace={id:`research-v1-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,brief:spec.brief,workers:spec.workers,created_at:new Date().toISOString(),tasks:spec.tasks.map(query=>({query,status:'ready',attempts:0}))};
       if(!workspace)throw new Error('No batch to retry');
       saveWorkspace();
@@ -682,9 +683,78 @@
   }
   async function cancelWorkspace(){
     if(!workspace||workspaceBusy)return;workspaceBusy=true;
-    try{for(const task of workspace.tasks.filter(t=>['queued','submitting','unconfirmed'].includes(t.status))){
+    try{for(const task of [...workspace.tasks,workspace.runtime,workspace.draft].filter(t=>t&&['queued','submitting','unconfirmed'].includes(t.status))){
       try{await swarmApi('cancel-job','POST',{job_id:task.job_id});task.status='cancelled';saveWorkspace();}catch(error){task.error=error.message;saveWorkspace();}
     }}finally{workspaceBusy=false;renderWorkspace(current?.results||[]);}
+  }
+
+  function aiCommand(args){return `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-ai-draft.py' -o "$HOME/cluster-ai-draft.py" && python3 "$HOME/cluster-ai-draft.py" ${args}`;}
+  async function submitAI(mode){
+    if(workspaceBusy||!workspace)return;
+    workspaceBusy=true;
+    try{
+      await load(true);
+      const worker=document.getElementById('workspace-ai-worker').value;
+      if(!['viki','Alina','Nexus','SteamDeck'].includes(worker)||!current.nodes.some(n=>n.id===worker&&n.online&&!n.busy))throw new Error('Choose an idle online Linux PC');
+      const previous=workspace[mode];
+      if(previous&&['queued','submitting','unconfirmed'].includes(previous.status))throw new Error('This stage is already pending; check its status before resubmitting');
+      let cmd, sources=[];
+      if(mode==='runtime')cmd=`curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-ai-prepare.sh' -o "$HOME/cluster-ai-prepare.sh" && sh "$HOME/cluster-ai-prepare.sh" && ${aiCommand('--status')}`;
+      else{
+        if(workspace.tasks.some(t=>['ready','queued','submitting','unconfirmed'].includes(t.status)))throw new Error('Finish or cancel research tasks before drafting');
+        const seen=new Set();
+        // One source per completed task first, then fill remaining slots.
+        const reports=workspace.tasks.filter(t=>t.status==='succeeded').map(t=>t.report.sources);
+        for(let offset=0;offset<3;offset++)for(const rows of reports){const s=rows[offset];if(s&&!seen.has(s.url)&&sources.length<6){seen.add(s.url);sources.push({id:`S${sources.length+1}`,title:s.title.slice(0,160),url:s.url,excerpt:s.excerpt.slice(0,300)});}}
+        if(!sources.length)throw new Error('No completed sources to draft from');
+        const spec={brief:workspace.brief,sources};
+        let json=JSON.stringify(spec);
+        while(new TextEncoder().encode(json).length>2200){
+          const longest=[...sources].sort((a,b)=>b.excerpt.length-a.excerpt.length)[0];
+          if(longest.excerpt.length>60)longest.excerpt=longest.excerpt.slice(0,Math.floor(longest.excerpt.length/2));
+          else if(sources.length>1)sources.pop();
+          else throw new Error('Brief and source URL are too large; use a shorter brief');
+          json=JSON.stringify(spec);
+        }
+        const encoded=btoa(Array.from(new TextEncoder().encode(json),b=>String.fromCharCode(b)).join(''));
+        cmd=aiCommand(`--spec-base64 '${encoded}'`);
+      }
+      if(cmd.length>4000)throw new Error('Command exceeds queue limit');
+      const record={worker,job_id:`${workspace.id}-${mode}-${Date.now()}`,status:'submitting',sources};
+      workspace[mode]=record;saveWorkspace();renderWorkspace([]);
+      try{await swarmApi('enqueue','POST',{job:{id:record.job_id,type:'shell',cmd,command:cmd},target_device_ids:[worker]});record.status='queued';}
+      catch(error){record.status='unconfirmed';record.error='Submission outcome uncertain: '+error.message;throw error;}
+      finally{saveWorkspace();}
+      await load(true);
+    }catch(error){notify(error.message,'error');}finally{workspaceBusy=false;renderWorkspace(current?.results||[]);}
+  }
+  function renderAI(results){
+    const host=document.getElementById('workspace-ai-report');if(!host)return;
+    for(const mode of ['runtime','draft']){
+      const record=workspace?.[mode];if(!record)continue;
+      const r=results.find(r=>r.job_id===record.job_id&&r.device_id===record.worker);
+      if(!r){if(['submitting','unconfirmed'].includes(record.status)&&current?.jobs.some(j=>j.id===record.job_id)){record.status='queued';saveWorkspace();}continue;}
+      if(['succeeded','failed'].includes(record.status))continue;
+      let data;try{data=JSON.parse((r.stdout||'').trim().split('\n').at(-1));}catch{}
+      const valid=mode==='runtime'?data?.kind==='ai-runtime'&&data.ready:data?.kind==='ai-research-draft'&&Array.isArray(data.draft?.points);
+      record.status=Number(r.exit_code)===0&&valid?'succeeded':'failed';record.output=valid?data:null;record.error=valid?null:String(data?.error||r.stderr||r.stdout||'Invalid AI response').slice(0,500);saveWorkspace();
+    }
+    const runtime=workspace?.runtime,draft=workspace?.draft;
+    host.innerHTML=`<p>Model preparation: ${esc(runtime?.status||'not requested')}${runtime?.error?' · '+esc(runtime.error):''}</p><p>Draft: ${esc(draft?.status||'not requested')}${draft?.worker?' · '+esc(draft.worker):''}${draft?.error?' · '+esc(draft.error):''}</p>`;
+    if(draft?.status==='succeeded')host.innerHTML+=`<h4>${esc(draft.output.draft.title)}</h4><p>AI draft · ${esc(draft.output.model)} · human review required. Selected source excerpts only; references are not proof that each claim is correct.</p>${draft.output.draft.points.map(p=>`<p>${esc(p.text)} <strong>[${esc(p.sources.join(', '))}]</strong></p>`).join('')}<p><strong>Needs verification:</strong> ${esc(draft.output.draft.verification)}</p>${draft.sources.map(s=>`<p>${esc(s.id)}: ${esc(s.title)} · ${esc(s.url)}</p>`).join('')}`;
+    for(const id of ['workspace-ai-prepare','workspace-ai-draft'])document.getElementById(id).disabled=workspaceBusy||!workspace;
+  }
+  function exportWorkspace(){
+    if(!workspace)return notify('No batch to export','error');
+    const json=JSON.stringify(workspace,null,2);
+    const existing=document.getElementById('workspace-export-panel');existing?.remove();
+    const panel=document.createElement('div');panel.id='workspace-export-panel';
+    panel.innerHTML='<h4>Combined report JSON</h4><p>Copy this complete report if your browser blocks downloads.</p><textarea aria-label="Combined report JSON" readonly rows="10" style="width:100%"></textarea><a download="curt-swarm-research.json">Download JSON</a> <button type="button">Close report</button>';
+    panel.querySelector('textarea').value=json;
+    const url=URL.createObjectURL(new Blob([json],{type:'application/json'}));panel.querySelector('a').href=url;
+    panel.querySelector('button').onclick=()=>{URL.revokeObjectURL(url);panel.remove();};
+    document.getElementById('cluster-workspace').append(panel);
+    panel.querySelector('textarea').focus();panel.querySelector('textarea').select();
   }
 
   function mediaCommand(query, kind, offset, limit) {
