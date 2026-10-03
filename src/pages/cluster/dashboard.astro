@@ -1124,3 +1124,20 @@ if (password) {
 </script>
 <script is:inline src="/scripts/cluster-jobs-v1.js?v=1"></script>
 
+
+<script is:inline>
+// Upgrade an existing display through its supported dashboard frame mode.
+(async()=>{
+ try{
+  if(window.top===window.self)return;
+  const parentPage=window.parent;
+  if(parentPage.location.pathname!=='/cluster/display.html')return;
+  const unit=parentPage.document.getElementById('name')?.value?.trim();
+  if(!/^phone(173|174|176|177|191|195|253|254)$/.test(unit||''))return;
+  const response=await fetch('/.netlify/functions/phone-display?phone='+encodeURIComponent(unit)+'&activity=1',{cache:'no-store'});
+  if(!response.ok)return;
+  const desired=await response.json();
+  if(desired.mode==='activity')window.top.location.replace('/cluster/display.html?name='+encodeURIComponent(unit)+'&mode=activity&immersive=1&v=54');
+ }catch{}
+})();
+</script>
