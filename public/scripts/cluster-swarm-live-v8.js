@@ -59,6 +59,7 @@
   let requestBusy = false;
   let started = false;
   let livePaused = false;
+  let jobSubmitting = false;
   let nodeFilter = 'all';
   let recoveryLastCheck = 0;
   let recoveryBusy = false;
@@ -190,6 +191,12 @@
         ? 'Phones use Windows ADB thermal authority; PCs use Swarm'
         : 'No command text needed');
     if (!needsCommand) input.value = '';
+    const label=document.getElementById('swarm-settings-label');
+    if(label)label.textContent=GPU_SETTINGS_TYPES.has(type)?'Job settings (JSON)':type==='shell'?'Shell command':type==='transcribe'?'Media URL or worker file path':'Settings';
+    const help=document.getElementById('swarm-job-help');
+    if(help)help.textContent=GPU_SETTINGS_TYPES.has(type)?'Enter a JSON object. Paths must exist on RenderRig.':type==='shell'?'Runs on the selected online worker or group.':type==='transcribe'?'Transcription is available on Alina and Nexus.':'No settings required for this check.';
+    const field=document.getElementById('swarm-settings-field');
+    if(field)field.hidden=!needsCommand;
   }
 
   function patchCommandShortcuts() {
@@ -310,7 +317,16 @@
     const researchManage=document.createElement('details');researchManage.className='cluster-control-details';researchManage.innerHTML='<summary>Manage unfinished research</summary>';
     researchManage.append(document.getElementById('workspace-cancel'));research.append(researchManage);
     for(const id of ['cluster-audit-run','workspace-run','cluster-media-run'])document.getElementById(id).classList.add('cluster-primary-action');
-    job.querySelector('button[onclick="submitSwarmJob()"]')?.classList.add('cluster-primary-action');
+    const submit=job.querySelector('button[onclick="submitSwarmJob()"]');
+    submit?.classList.add('cluster-primary-action');if(submit)submit.id='swarm-job-submit';
+    const input=document.getElementById('swarm-job-cmd');input.parentElement.id='swarm-settings-field';input.previousElementSibling.id='swarm-settings-label';
+    document.getElementById('swarm-job-device').previousElementSibling.textContent='Target worker or group';
+    const help=document.createElement('p');help.id='swarm-job-help';input.insertAdjacentElement('afterend',help);
+    const feedback=document.createElement('div');feedback.id='swarm-job-feedback';feedback.hidden=true;
+    feedback.innerHTML='<p id="swarm-job-status" role="status" aria-live="polite"></p><button id="swarm-job-show-queue" type="button" hidden>View queue & results</button>';
+    submit.parentElement.insertAdjacentElement('afterend',feedback);
+    feedback.querySelector('button').onclick=()=>setControlView('results',true);
+    syncJobInput();
     const cleanup=document.createElement('details');cleanup.className='cluster-control-details';cleanup.innerHTML='<summary>Queue cleanup</summary><p>These actions affect the shared queue or saved result history.</p><div class="cluster-action-row"></div>';
     for(const selector of ['button[onclick="flushSwarmQueue()"]','button[onclick="clearSwarmResults()"]']){const b=tab.querySelector(selector);if(b)cleanup.lastChild.append(b);}panels.results.append(cleanup);
     for(const id of ['cluster-audit-state','workspace-state','cluster-media-state'])document.getElementById(id)?.setAttribute('aria-live','polite');
@@ -1267,7 +1283,7 @@
     select.innerHTML = `
       <option value="RenderRig">RenderRig (RTX, hybrid Salad)</option>
       <option value="__pcs__">All online PCs</option>
-      <option value="__all__">All online nodes (read-only checks)</option>
+      <option value="__all__">All online workers</option>
       <option disabled>──────────────</option>
     `;
     for (const node of nodes) {
@@ -1691,7 +1707,8 @@ async function syncPcDesired(type, targets) {
       cmd:cmd || '',
       command:cmd || '',
     };
-    return swarmApi('enqueue', 'POST', { job, target_device_ids:targets });
+    const data = await swarmApi('enqueue', 'POST', { job, target_device_ids:targets });
+    return { ...data, targets };
   }
 
   async function controlPhoneAction(type, targets) {
@@ -1866,10 +1883,35 @@ async function syncPcDesired(type, targets) {
   window.onSwarmTabClick = start;
 
   window.submitSwarmJob = async () => {
-    const type = document.getElementById('swarm-job-type')?.value || 'transcribe';
-    const cmd = document.getElementById('swarm-job-cmd')?.value?.trim() || '';
-    const target = document.getElementById('swarm-job-device')?.value || '__pcs__';
-    try { return await runAction(type, target, cmd); } catch { return null; }
+    if(jobSubmitting)return null;
+    const type=document.getElementById('swarm-job-type')?.value||'transcribe';
+    const cmd=document.getElementById('swarm-job-cmd')?.value?.trim()||'';
+    const target=document.getElementById('swarm-job-device')?.value||'__pcs__';
+    const button=document.getElementById('swarm-job-submit');
+    const feedback=document.getElementById('swarm-job-feedback');
+    const status=document.getElementById('swarm-job-status');
+    const queue=document.getElementById('swarm-job-show-queue');
+    jobSubmitting=true;
+    if(button){button.disabled=true;button.textContent='Submitting…';}
+    if(feedback){feedback.hidden=false;feedback.dataset.state='pending';}
+    if(status)status.textContent='Submitting '+type+'…';
+    if(queue)queue.hidden=true;
+    try{
+      const data=await runAction(type,target,cmd);
+      if(feedback)feedback.dataset.state='success';
+      const destination=data?.targets?.length?data.targets.join(', '):target==='__all__'?'matching online workers':target==='__pcs__'?'matching online PCs':target;
+      if(status)status.textContent=`Submitted ${type} to ${destination}. Track completion in Queue & results.`;
+      if(queue)queue.hidden=false;
+      return data;
+    }catch(error){
+      if(feedback)feedback.dataset.state='error';
+      if(status)status.textContent=String(error.message||'Submission failed. Check the queue before retrying.');
+      if(queue)queue.hidden=false;
+      return null;
+    }finally{
+      jobSubmitting=false;
+      if(button){button.disabled=false;button.textContent='Start';}
+    }
   };
 
   window.flushSwarmQueue = async () => {
