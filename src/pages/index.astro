@@ -238,10 +238,10 @@ import Layout from '../layouts/Layout.astro';
   <!-- ═══════════════════════════════════ PHONE CLUSTER WIDGET ═══════════════════════════════════ -->
   <section class="py-14 md:py-20 reveal">
     <div class="max-w-6xl mx-auto px-4 sm:px-6">
-      <h2 class="text-2xl font-bold mb-1">Phone Cluster</h2>
+      <h2 class="text-2xl font-bold mb-1">Compute Cluster</h2>
       <div class="w-16 h-0.5 bg-gradient-to-r from-brand to-transparent mb-8"></div>
 
-      <a href="/cluster" class="block card-glow p-6 group">
+      <a href="/cluster/dashboard/" class="block card-glow p-6 group">
         <div class="flex flex-col md:flex-row md:items-center gap-6">
 
           <!-- Left: Icon + Title -->
@@ -250,8 +250,8 @@ import Layout from '../layouts/Layout.astro';
               <i class="fa-solid fa-mobile-screen-button"></i>
             </div>
             <div>
-              <h3 class="text-lg font-semibold group-hover:text-brand transition">10-Node Phone Cluster</h3>
-              <p class="text-text-secondary text-sm">OnePlus 6T &bull; postmarketOS &bull; K3s &bull; XMR Mining</p>
+              <h3 class="text-lg font-semibold group-hover:text-brand transition">13-Device Compute Cluster</h3>
+              <p class="text-text-secondary text-sm">8 Android phones &bull; 4 Linux systems &bull; 1 Windows workstation</p>
             </div>
           </div>
 
@@ -454,6 +454,18 @@ import Layout from '../layouts/Layout.astro';
         const summary = data.summary || {};
         const nodes = data.nodes || [];
         const isDemo = data.isDemo || data.demo;
+        if (isDemo || data.stale || !data.lastUpdate) {
+          ['cluster-widget-nodes','cluster-widget-health','cluster-widget-hash'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) { el.textContent = '—'; el.style.color = ''; }
+          });
+          const status = document.getElementById('cluster-widget-status');
+          if (status) status.textContent = 'Current status is available in the work dashboard';
+          const dots = document.getElementById('cluster-widget-dots');
+          if (dots) dots.innerHTML = '';
+          return;
+        }
+
 
         // Update stats
         const nodesEl = document.getElementById('cluster-widget-nodes');
