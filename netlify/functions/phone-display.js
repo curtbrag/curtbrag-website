@@ -1,5 +1,5 @@
-const {connectLambda,getStore}=require('@netlify/blobs');
-const crypto=require('crypto');
+import {getStore} from '@netlify/blobs';
+import crypto from 'node:crypto';
 const phones=new Set(['phone173','phone174','phone176','phone177','phone191','phone195','phone253','phone254']);
 const units=new Set([...phones,'Alina','Nexus','SteamDeck','viki','RenderRig']);
 const modes=new Set(['home','clock','visuals','test','dashboard','activity']);
@@ -21,11 +21,11 @@ async function activity(unit){
  }
  return {unit,state:!online?'offline':tasks.length?'assigned':'idle',tasks,lastSeen:seen,lastResult,checkedAt:Date.now()};
 }
-function store(name){const siteID=process.env.NETLIFY_BLOBS_SITE_ID||process.env.SITE_ID;const token=process.env.NETLIFY_BLOBS_TOKEN||process.env.NETLIFY_ACCESS_TOKEN||process.env.NETLIFY_TOKEN;return siteID&&token?getStore(name,{siteID,token}):getStore(name);}
-exports.handler=async event=>{
+function store(name){const siteID=process.env.NETLIFY_BLOBS_SITE_ID||process.env.SITE_ID;const token=process.env.NETLIFY_BLOBS_TOKEN||process.env.NETLIFY_ACCESS_TOKEN||process.env.NETLIFY_TOKEN;return siteID&&token?getStore({name,siteID,token}):getStore(name);}
+async function handle(event){
  const response=(statusCode,data)=>({statusCode,headers:{'Content-Type':'application/json','Cache-Control':'no-store'},body:JSON.stringify(data)});
  try{
-  connectLambda(event);
+
   if(event.httpMethod==='GET'){
    const phone=event.queryStringParameters?.phone;if(!units.has(phone))return response(400,{error:'Invalid unit'});
    const desired=await store('phone-display').get(phone,{type:'json'});
@@ -43,4 +43,8 @@ exports.handler=async event=>{
   const value={mode:body.mode,revision:crypto.randomUUID()};await store('phone-display').setJSON(body.phone,value);
   return response(200,{ok:true,...value});
  }catch{return response(503,{error:'Display service unavailable'});}
+};
+export default async request=>{
+ const event={httpMethod:request.method,headers:Object.fromEntries(request.headers),queryStringParameters:Object.fromEntries(new URL(request.url).searchParams),body:request.method==='POST'?await request.text():''};
+ const r=await handle(event);return new Response(r.body,{status:r.statusCode,headers:r.headers});
 };
