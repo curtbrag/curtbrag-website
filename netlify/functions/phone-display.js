@@ -9,7 +9,10 @@ async function activity(unit){
  const queue=store('swarm-queue');
  const node=await queue.get('node--'+unit,{type:'json',consistency:'strong'});
  if(!node)return {unit,state:'unknown',tasks:[],lastSeen:null,lastResult:null,checkedAt:Date.now()};
- const listing=await queue.list({prefix:'assignment--'});
+ let listing;
+ // If uncached listing is unsupported, retain the currently working cached read.
+ try{listing=await store('swarm-queue','strong').list({prefix:'assignment--'});}
+ catch{listing=await queue.list({prefix:'assignment--'});}
  const own=(listing.blobs||[]).filter(b=>b.key.endsWith('--'+unit));
  const assignments=await Promise.all(own.map(b=>queue.get(b.key,{type:'json',consistency:'strong'})));
  const tasks=assignments.filter(a=>a?.device_id===unit).map(a=>({label:taskName(a.job?.type)}));
@@ -21,7 +24,7 @@ async function activity(unit){
  }
  return {unit,state:!online?'offline':tasks.length?'assigned':'idle',tasks,lastSeen:seen,lastResult,checkedAt:Date.now()};
 }
-function store(name){const siteID=process.env.NETLIFY_BLOBS_SITE_ID||process.env.SITE_ID;const token=process.env.NETLIFY_BLOBS_TOKEN||process.env.NETLIFY_ACCESS_TOKEN||process.env.NETLIFY_TOKEN;return siteID&&token?getStore({name,siteID,token}):getStore(name);}
+function store(name,consistency='eventual'){const siteID=process.env.NETLIFY_BLOBS_SITE_ID||process.env.SITE_ID;const token=process.env.NETLIFY_BLOBS_TOKEN||process.env.NETLIFY_ACCESS_TOKEN||process.env.NETLIFY_TOKEN;return siteID&&token?getStore({name,siteID,token,consistency}):getStore({name,consistency});}
 async function handle(event){
  const response=(statusCode,data)=>({statusCode,headers:{'Content-Type':'application/json','Cache-Control':'no-store'},body:JSON.stringify(data)});
  try{
