@@ -8,3 +8,12 @@ let r=record(3);r.output.draft.points[0].text='x'.repeat(181);assert.throws(()=>
 r=record(3);r.output.draft.points[0].sources=['S9'];assert.throws(()=>context.researchEpisodeSpec(r),/unknown source/);
 r=record(3);r.status='queued';assert.throws(()=>context.researchEpisodeSpec(r),/Complete/);
 console.log('Episode duration, faithful narration, queue bounds, long text and source-reference validation passed');
+for(const [text,visual] of [['A socket wrench uses a closed socket format.','socket'],['A torque wrench applies a specified torque.','meter'],['Norbar makes calibration tools.','meter'],['A gear transmits motion.','gear'],['A battery stores energy.','circuit']]){
+  const sample=record(1);sample.output.draft.points[0].text=text;
+  const scene=context.researchEpisodeSpec(sample).scenes[1];
+  assert.equal(scene.caption,text);assert.equal(scene.narration,text);assert.equal(scene.visual,visual);assert(scene.heading.includes('S1'));
+}
+const maximum=record(1);maximum.output.draft.points[0].text='x'.repeat(180);
+assert(context.researchEpisodeSpec(maximum).scenes[1].caption.length<=90);
+assert.equal(context.researchEpisodeSpec(maximum).scenes[1].narration.length,180);
+console.log('Visible claims, retained citations, relevant diagrams and caption bounds passed');
