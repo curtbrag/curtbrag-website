@@ -93,6 +93,35 @@ with sync_playwright() as p:
         expect(page.locator('#workspace-state')).to_contain_text('Compare repair tools')
         research=page.evaluate('JSON.parse(localStorage.getItem("curt-swarm-workspace-v1"))')
         assert len(research['tasks'])==2 and all(t['status']=='queued' for t in research['tasks'])
+        first,second=research['tasks']
+        source={'title':'Socket wrench','url':'https://en.wikipedia.org/wiki/Socket_wrench','excerpt':'A socket wrench uses replaceable sockets.'}
+        DATA['results']=[{'job_id':first['job_id'],'device_id':first['worker'],'exit_code':0,'stdout':json.dumps({'kind':'research-sources','query':first['query'],'sources':[source]})},{'job_id':second['job_id'],'device_id':second['worker'],'exit_code':1,'stdout':json.dumps({'kind':'research-error','error':'Fixture source service unavailable'})}]
+        page.reload(wait_until='load')
+        expect(page.locator('#workspace-state')).to_contain_text('1/2 completed · 1 failed')
+        page.get_by_text('Collected source evidence',exact=True).click()
+        expect(page.locator('#workspace-report')).to_contain_text('Socket wrench')
+        expect(page.locator('#workspace-report')).to_contain_text('Fixture source service unavailable')
+        assert page.locator('#workspace-report a').get_attribute('href')==source['url']
+        page.locator('#research-coverage-0').select_option('partial')
+        page.locator('#research-notes-0').fill('Definition supported; design comparison still unanswered.')
+        page.get_by_role('button',name='Save coverage review',exact=True).first.click()
+        DATA['results']=[]
+        page.reload(wait_until='load')
+        expect(page.locator('#workspace-state')).to_contain_text('1/2 completed · 1 failed')
+        page.locator('#workspace-export').click()
+        collected=json.loads(page.get_by_role('textbox',name='Combined report JSON',exact=True).input_value())
+        report_text=page.get_by_role('textbox',name='Research report',exact=True).input_value()
+        assert 'Coverage: unreviewed' in report_text and 'Coverage: partial' in report_text
+        assert 'design comparison still unanswered' in report_text
+        assert collected['tasks'][0]['report']['sources'][0]==source
+        assert collected['tasks'][1]['status']=='failed'
+        page.locator('#workspace-retry').click()
+        expect(page.locator('#workspace-report')).to_contain_text('queued · attempt 2')
+        retried=page.evaluate('JSON.parse(localStorage.getItem("curt-swarm-workspace-v1"))')
+        assert retried['tasks'][0]['job_id']==first['job_id']
+        assert retried['tasks'][1]['attempts']==2 and retried['tasks'][1]['status']=='queued'
+        assert retried['tasks'][1]['job_id']!=second['job_id']
+        page.get_by_text('Collected source evidence',exact=True).click()
         if width==390:
             page.screenshot(path=os.environ.get('RESEARCH_SCREENSHOT','research-form-test.png'),full_page=True)
         batch={'http_batch':'audit-v1-fixture','browser_batch':'browser-audit-v1-fixture','settings':{'paths':['/'],'browser_workers':[]},'tasks':[{'job_id':'audit-v1-fixture-0','worker':'phone173','status':'queued'}]}

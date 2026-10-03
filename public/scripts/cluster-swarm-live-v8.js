@@ -873,6 +873,8 @@
     brief.addEventListener('input',update);questions.addEventListener('input',update);workers.addEventListener('change',update);
     json.addEventListener('input',()=>{persist();try{showFields(JSON.parse(json.value));error.textContent='';}catch{error.textContent='Settings must be valid JSON before starting research.';}});
     card.querySelector('h3').textContent='Research swarm';
+    card.querySelector('h3').nextElementSibling.textContent='Separate worker assignments collect Wikipedia article introductions with dates and revision IDs. Review each question’s coverage, then export the evidence report. The local AI creates a short draft from a bounded subset for media; it does not replace the evidence report.';
+    fields.querySelector('p').textContent='One question per line. Successful retrieval collects evidence; it does not mean the question is answered.';
   }
   function ensureWorkspace(){
     if(document.getElementById('cluster-workspace'))return;
@@ -915,9 +917,25 @@
       task.report=task.status==='succeeded'?data:null;task.error=task.status==='failed'?String(data?.error||result.stderr||'Worker returned an invalid report').slice(0,500):null;changed=true;
     }
     if(changed)saveWorkspace();
-    document.getElementById('workspace-state').textContent=`${workspace.brief} — ${workspace.tasks.filter(t=>t.status==='succeeded').length}/${workspace.tasks.length} completed · ${workspace.tasks.filter(t=>t.status==='failed').length} failed`;
+    if(host.contains(document.activeElement)&&/^research-(notes|coverage)-/.test(document.activeElement.id)){renderAI(results);return;}
+    document.getElementById('workspace-state').textContent=`${workspace.brief} — ${workspace.tasks.filter(t=>t.status==='succeeded').length}/${workspace.tasks.length} completed · ${workspace.tasks.filter(t=>t.status==='failed').length} failed · ${workspace.tasks.filter(t=>t.coverage==='answered').length}/${workspace.tasks.length} questions reviewed as answered`;
     host.innerHTML=workspace.tasks.map(t=>`<article style="border-top:1px solid var(--color-border);padding:10px 0"><strong>${esc(t.query)}</strong><p>${esc(t.worker||'unassigned')} · ${esc(t.status)} · attempt ${esc(t.attempts)}${t.error?' · '+esc(t.error):''}</p>${(t.report?.sources||[]).map(s=>`<p><strong>${esc(s.title)}</strong><br>${esc(s.excerpt)}<br>${/^https:\/\/en\.wikipedia\.org\/wiki\//.test(s.url)?`<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">Source</a>`:'Invalid source URL'}</p>`).join('')}</article>`).join('');
     renderAI(results);
+    host.querySelectorAll('article').forEach((article,index)=>{
+      const task=workspace.tasks[index];
+      const review=document.createElement('div');
+      const label=document.createElement('label');label.textContent='Question coverage';label.htmlFor='research-coverage-'+index;
+      const select=document.createElement('select');select.id=label.htmlFor;
+      for(const [value,text] of [['unreviewed','Unreviewed'],['unanswered','Unanswered'],['partial','Partially answered'],['answered','Answered']])select.add(new Option(text,value));
+      select.value=task.coverage||'unreviewed';
+      const notesLabel=document.createElement('label');notesLabel.textContent='Answer and evidence gaps';notesLabel.htmlFor='research-notes-'+index;
+      const notes=document.createElement('textarea');notes.id=notesLabel.htmlFor;notes.rows=3;notes.maxLength=5000;notes.value=task.review_notes||'';
+      const save=document.createElement('button');save.textContent='Save coverage review';save.type='button';save.onclick=()=>{task.coverage=select.value;task.review_notes=notes.value;saveWorkspace();save.textContent='Review saved';};
+      review.append(label,select,notesLabel,notes,save);
+      for(const source of task.report?.sources||[]){const metadata=document.createElement('p');metadata.textContent=`${source.title}: ${source.evidence_type||'Legacy search snippet'} · retrieved ${source.retrieved_at||'date not recorded'} · revision ${source.revision_id??'not recorded'}`;review.append(metadata);}
+      for(const gap of task.report?.gaps||[]){const note=document.createElement('p');note.textContent='Evidence gap: '+gap;review.append(note);}
+      article.append(review);
+    });
     for(const id of ['workspace-run','workspace-retry','workspace-cancel'])document.getElementById(id).disabled=workspaceBusy;
   }
   async function dispatchWorkspace(retry){
@@ -1026,10 +1044,25 @@
     const panel=document.createElement('div');panel.id='workspace-export-panel';
     panel.innerHTML='<h4>Combined report JSON</h4><p>Copy this complete report if your browser blocks downloads.</p><textarea aria-label="Combined report JSON" readonly rows="10" style="width:100%"></textarea><a download="curt-swarm-research.json">Download JSON</a> <button type="button">Close report</button>';
     panel.querySelector('textarea').value=json;
+    const report=document.createElement('textarea');report.readOnly=true;report.rows=14;report.setAttribute('aria-label','Research report');report.value=researchReportText(workspace);
+    const heading=document.createElement('h4');heading.textContent='Research report and question coverage';panel.append(heading,report);
+    const download=document.createElement('a');download.download='curt-research-report.txt';download.textContent='Download research report';const reportUrl=URL.createObjectURL(new Blob([report.value],{type:'text/plain;charset=utf-8'}));download.href=reportUrl;panel.append(download);
     const url=URL.createObjectURL(new Blob([json],{type:'application/json'}));panel.querySelector('a').href=url;
-    panel.querySelector('button').onclick=()=>{URL.revokeObjectURL(url);panel.remove();};
+    panel.querySelector('button').onclick=()=>{URL.revokeObjectURL(url);URL.revokeObjectURL(reportUrl);panel.remove();};
     document.getElementById('cluster-workspace').append(panel);
     panel.querySelector('textarea').focus();panel.querySelector('textarea').select();
+  }
+
+  function researchReportText(record){
+    const lines=[record.brief,'','Question coverage requires review; successful retrieval does not establish an answer.',''];
+    for(const task of record.tasks){
+      lines.push('Question: '+task.query,'Worker status: '+task.status,'Coverage: '+(task.coverage||'unreviewed'),'Answer and gaps: '+(task.review_notes||'No review recorded.'),'');
+      for(const source of task.report?.sources||[])lines.push(source.title,source.url,'Evidence: '+(source.evidence_type||'Legacy search snippet'),'Retrieved: '+(source.retrieved_at||'not recorded')+' | Revision: '+(source.revision_id??'not recorded'),source.excerpt,'');
+      for(const gap of task.report?.gaps||[])lines.push('Retrieval gap: '+gap);
+      if(task.error)lines.push('Worker error: '+task.error);
+    }
+    lines.push('This report retains collected evidence separately from the short video draft. Wikipedia introductions are secondary sources; check primary documentation for technical procedures.');
+    return lines.join('\n');
   }
 
   function reviewedDraftRecord(record,value){
