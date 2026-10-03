@@ -2,7 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 ---
 
-<Layout title="Compute Cluster - Curtis Bragdon" description="Live status dashboard for Curtis Bragdon's 11-device hybrid compute cluster: eight Android/Termux phones and three Linux systems.">
+<Layout title="Compute Cluster - Curtis Bragdon" description="Live status dashboard for Curtis Bragdon's 13-device hybrid compute cluster: eight Android/Termux phones, four Linux systems and one Windows workstation.">
 
   <!-- ═══════════════════════════════════ HERO ═══════════════════════════════════ -->
   <section class="relative py-14 md:py-20 overflow-hidden" style="contain:paint">
@@ -19,20 +19,20 @@ import Layout from '../../layouts/Layout.astro';
         <span class="gradient-text">Compute Cluster</span>
       </h1>
       <p class="text-text-secondary max-w-2xl mx-auto mb-6 text-base">
-        11-device hybrid fleet &bull; 8 Android/Termux phones &bull; 3 Linux systems
+        13-device hybrid fleet &bull; 8 Android/Termux phones &bull; 4 Linux systems &bull; 1 Windows workstation
       </p>
       <div class="flex flex-wrap justify-center gap-3 text-sm">
         <span class="inline-flex items-center gap-2 bg-panel border border-border rounded-lg px-4 py-2">
           <i class="fa-brands fa-android text-green"></i> Android / Termux
         </span>
         <span class="inline-flex items-center gap-2 bg-panel border border-border rounded-lg px-4 py-2">
-          <i class="fa-solid fa-layer-group" style="color:#326ce5"></i> K3s / Swarm
+          <i class="fa-solid fa-layer-group" style="color:#326ce5"></i> Swarm workloads
         </span>
         <span class="inline-flex items-center gap-2 bg-panel border border-border rounded-lg px-4 py-2">
           <i class="fa-solid fa-microchip text-blue"></i> ARM64 / aarch64
         </span>
         <span class="inline-flex items-center gap-2 bg-panel border border-border rounded-lg px-4 py-2">
-          <i class="fa-solid fa-coins text-yellow"></i> Monero (XMR)
+          <i class="fa-solid fa-ban text-muted"></i> Mining disabled
         </span>
       </div>
     </div>
@@ -44,7 +44,7 @@ import Layout from '../../layouts/Layout.astro';
   <section class="py-8 md:py-12">
     <div class="max-w-6xl mx-auto px-4 sm:px-6">
 
-      <!-- Connection Status -->
+      <p class="text-sm text-muted mb-4">This overview uses legacy telemetry, which may be stale or incomplete. Use the <a href="/cluster/dashboard/" class="text-brand underline">work dashboard</a> for current worker availability, assignments and collected reports.</p>\n\n      <!-- Connection Status -->
       <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div class="flex items-center gap-3">
           <span class="cluster-dot" id="clusterDot"></span>
@@ -160,7 +160,7 @@ import Layout from '../../layouts/Layout.astro';
       <div class="mb-8 reveal">
         <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
           <i class="fa-solid fa-server text-brand"></i> Nodes
-          <span class="bg-panel border border-border rounded-full px-2.5 py-0.5 text-xs font-mono text-muted" id="nodeCountBadge">0/10</span>
+          <span class="bg-panel border border-border rounded-full px-2.5 py-0.5 text-xs font-mono text-muted" id="nodeCountBadge">—/13</span>
         </h2>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3" id="nodeGrid">
           <!-- Nodes injected by JS -->
@@ -287,33 +287,33 @@ import Layout from '../../layouts/Layout.astro';
           <i class="fa-solid fa-circle-info text-brand"></i> About This Cluster
         </h2>
         <p class="text-text-secondary text-sm leading-relaxed mb-4">
-          This cluster is built from <strong class="text-text">10 OnePlus 6T smartphones</strong> running
-          <strong class="text-text">postmarketOS</strong> (Alpine Linux). They're connected over WiFi and orchestrated
-          with <strong class="text-text">K3s</strong> (lightweight Kubernetes). The phones also mine
-          <strong class="text-text">Monero (XMR)</strong> using XMRig in their spare cycles. The whole setup is
-          managed from a Steam Deck acting as the control station.
+          The fleet has <strong class="text-text">eight Android phones running Termux</strong>,
+          two Linux laptops (Alina and Nexus), a Steam Deck, the viki mini PC and the RenderRig Windows workstation.
+          Phone workers handle lightweight retrieval and website checks. Linux PCs run browser audits and local AI;
+          RenderRig handles media production. The dashboard assigns work and collects combined reports.
+          <strong class="text-text">Mining is disabled by operating policy.</strong>
         </p>
         <div class="flex flex-wrap gap-2">
           <span class="inline-flex items-center gap-1.5 bg-bg border border-border rounded-lg px-3 py-1.5 text-xs text-muted">
-            <i class="fa-solid fa-dharmachakra" style="color:#326ce5"></i> Kubernetes / K3s
+            <i class="fa-solid fa-dharmachakra" style="color:#326ce5"></i> Coordinated swarm
           </span>
           <span class="inline-flex items-center gap-1.5 bg-bg border border-border rounded-lg px-3 py-1.5 text-xs text-muted">
-            <i class="fa-brands fa-linux text-yellow"></i> postmarketOS / Alpine
+            <i class="fa-brands fa-linux text-yellow"></i> Android / Linux / Windows
           </span>
           <span class="inline-flex items-center gap-1.5 bg-bg border border-border rounded-lg px-3 py-1.5 text-xs text-muted">
             <i class="fa-solid fa-microchip text-blue"></i> ARM64 / aarch64
           </span>
           <span class="inline-flex items-center gap-1.5 bg-bg border border-border rounded-lg px-3 py-1.5 text-xs text-muted">
-            <i class="fa-solid fa-mobile-screen text-brand"></i> OnePlus 6T (x10)
+            <i class="fa-solid fa-mobile-screen text-brand"></i> 8 Android phones
           </span>
           <span class="inline-flex items-center gap-1.5 bg-bg border border-border rounded-lg px-3 py-1.5 text-xs text-muted">
-            <i class="fa-solid fa-coins text-yellow"></i> XMRig / Monero
+            <i class="fa-solid fa-coins text-yellow"></i> Mining disabled
           </span>
           <span class="inline-flex items-center gap-1.5 bg-bg border border-border rounded-lg px-3 py-1.5 text-xs text-muted">
-            <i class="fa-solid fa-wifi text-green"></i> WiFi Mesh
+            <i class="fa-solid fa-wifi text-green"></i> Local network
           </span>
           <span class="inline-flex items-center gap-1.5 bg-bg border border-border rounded-lg px-3 py-1.5 text-xs text-muted">
-            <i class="fa-solid fa-gamepad text-purple-400"></i> Steam Deck Control
+            <i class="fa-solid fa-gamepad text-purple-400"></i> 13-device fleet
           </span>
         </div>
       </div>
