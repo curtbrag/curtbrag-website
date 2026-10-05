@@ -1,847 +1,96 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+
+const fleet = [
+  { count: '08', title: 'Android phones', icon: 'fa-brands fa-android', detail: 'Termux workers for lightweight retrieval and website checks.', names: 'Eight phone workers', color: 'text-green' },
+  { count: '04', title: 'Linux systems', icon: 'fa-brands fa-linux', detail: 'Browser audits, local AI and coordination across the network.', names: 'Alina · Nexus · Steam Deck · viki', color: 'text-blue' },
+  { count: '01', title: 'Windows workstation', icon: 'fa-brands fa-windows', detail: 'Media production on the RenderRig workstation.', names: 'RenderRig', color: 'text-brand' },
+];
+const workloads = [
+  { icon: 'fa-solid fa-magnifying-glass', title: 'Research & retrieval', text: 'Phone workers gather information and run lightweight website checks.' },
+  { icon: 'fa-solid fa-window-maximize', title: 'Browser audits & local AI', text: 'Linux systems handle browser work and local AI workloads.' },
+  { icon: 'fa-solid fa-photo-film', title: 'Media production', text: 'RenderRig handles media tasks while the dashboard collects worker reports.' },
+];
 ---
 
-<Layout title="Compute Cluster - Curtis Bragdon" description="Live status dashboard for Curtis Bragdon's 13-device hybrid compute cluster: eight Android/Termux phones, four Linux systems and one Windows workstation.">
-
-  <!-- ═══════════════════════════════════ HERO ═══════════════════════════════════ -->
-  <section class="relative py-14 md:py-20 overflow-hidden" style="contain:paint">
-    <div class="absolute inset-0 pointer-events-none" aria-hidden="true">
-      <div class="absolute inset-0 bg-gradient-to-b from-brand/5 via-transparent to-transparent"></div>
-      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] max-w-full h-[600px] rounded-full bg-brand/8 blur-[120px]"></div>
-    </div>
-
-    <div class="relative max-w-6xl mx-auto px-4 sm:px-6 text-center">
-      <div class="text-5xl mb-4">
-        <i class="fa-solid fa-network-wired text-brand"></i>
+<Layout title="Compute Cluster - Curtis Bragdon" description="Explore Curtis Bragdon's 13-device compute fleet: eight Android phones, four Linux systems and one Windows workstation working together on research, browser audits and media production.">
+  <section class="cluster-hero">
+    <div class="cluster-wrap hero-grid">
+      <div>
+        <p class="eyebrow"><i class="fa-solid fa-network-wired" aria-hidden="true"></i> THE COMPUTE FLEET</p>
+        <h1>Small devices.<br /><span class="gradient-text">Shared ambition.</span></h1>
+        <p class="hero-copy">Thirteen devices working together on research, website checks, local AI and media production. One dashboard to coordinate the work.</p>
+        <div class="hero-actions">
+          <a class="primary-link" href="/cluster/dashboard/">Open work dashboard <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+          <a class="secondary-link" href="#fleet">Explore the fleet <i class="fa-solid fa-arrow-down" aria-hidden="true"></i></a>
+        </div>
+        <p class="dashboard-note"><i class="fa-solid fa-lock" aria-hidden="true"></i> Dashboard sign-in required for worker status, assignments and reports.</p>
       </div>
-      <h1 class="text-3xl md:text-5xl font-bold mb-3">
-        <span class="gradient-text">Compute Cluster</span>
-      </h1>
-      <p class="text-text-secondary max-w-2xl mx-auto mb-6 text-base">
-        13-device hybrid fleet &bull; 8 Android/Termux phones &bull; 4 Linux systems &bull; 1 Windows workstation
-      </p>
-      <div class="flex flex-wrap justify-center gap-3 text-sm">
-        <span class="inline-flex items-center gap-2 bg-panel border border-border rounded-lg px-4 py-2">
-          <i class="fa-brands fa-android text-green"></i> Android / Termux
-        </span>
-        <span class="inline-flex items-center gap-2 bg-panel border border-border rounded-lg px-4 py-2">
-          <i class="fa-solid fa-layer-group" style="color:#326ce5"></i> Swarm workloads
-        </span>
-        <span class="inline-flex items-center gap-2 bg-panel border border-border rounded-lg px-4 py-2">
-          <i class="fa-solid fa-microchip text-blue"></i> ARM64 / aarch64
-        </span>
-        <span class="inline-flex items-center gap-2 bg-panel border border-border rounded-lg px-4 py-2">
-          <i class="fa-solid fa-ban text-muted"></i> Mining disabled
-        </span>
+      <div class="fleet-visual" aria-label="Fleet composition: eight Android phones, four Linux systems and one Windows workstation">
+        <div class="visual-header"><span>FLEET COMPOSITION</span><span class="visual-tag">13 DEVICES</span></div>
+        <div class="device-matrix" aria-hidden="true">
+          {Array.from({ length: 13 }, (_, i) => <div class:list={['device-tile', i < 8 ? 'phone' : i < 12 ? 'linux' : 'windows']}><i class={i < 8 ? 'fa-solid fa-mobile-screen-button' : i < 12 ? 'fa-solid fa-laptop' : 'fa-solid fa-desktop'}></i></div>)}
+        </div>
+        <div class="visual-legend"><span><b class="text-green">8</b> Android</span><span><b class="text-blue">4</b> Linux</span><span><b class="text-brand">1</b> Windows</span></div>
+        <p class="visual-footnote">Device inventory · live availability is in the dashboard</p>
       </div>
     </div>
   </section>
 
-  <div class="section-divider mx-4"></div>
-
-  <!-- ═══════════════════════════ STATUS BAR ═══════════════════════════ -->
-  <section class="py-8 md:py-12">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6">
-
-      <p class="text-sm text-muted mb-4">This overview uses legacy telemetry, which may be stale or incomplete. Use the <a href="/cluster/dashboard/" class="text-brand underline">work dashboard</a> for current worker availability, assignments and collected reports.</p>
-
-      <!-- Connection Status -->
-      <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <div class="flex items-center gap-3">
-          <span class="cluster-dot" id="clusterDot"></span>
-          <span class="text-sm font-medium" id="clusterStatusText">Connecting...</span>
-          <span class="text-muted text-xs" id="clusterLastUpdate"></span>
-        </div>
-        <div class="flex items-center gap-3">
-          <span class="text-muted text-xs font-mono" id="refreshCountdown"></span>
-          <button id="refreshBtn" class="inline-flex items-center gap-2 bg-panel border border-border rounded-lg px-3 py-1.5 text-sm hover:border-brand transition" aria-label="Refresh">
-            <i class="fa-solid fa-arrows-rotate text-xs" id="refreshIcon"></i> Refresh
-          </button>
-          <a href="/cluster/dashboard" class="inline-flex items-center gap-2 bg-panel border border-border rounded-lg px-3 py-1.5 text-sm hover:border-brand transition">
-            <i class="fa-solid fa-sliders text-xs"></i> Advanced
-          </a>
-        </div>
-      </div>
-
-      <!-- Demo Banner -->
-      <div id="demoBanner" class="hidden items-center gap-3 bg-muted/10 border border-border rounded-xl px-4 py-3 mb-6 text-sm text-muted">
-        <i class="fa-solid fa-circle-info"></i>
-        <span>No live data received yet — showing demo data. Run the push script on node1 to connect.</span>
-      </div>
-
-      <!-- Stale Banner -->
-      <div id="staleBanner" class="hidden items-center gap-3 border rounded-xl px-4 py-3 mb-6 text-sm">
-        <i class="fa-solid fa-triangle-exclamation"></i>
-        <span id="staleBannerText"></span>
-      </div>
-
-      <!-- K3s Down Banner -->
-      <div id="k3sBanner" class="hidden items-center gap-3 bg-purple-500/10 border border-purple-500/30 rounded-xl px-4 py-3 mb-6 text-sm text-purple-400">
-        <i class="fa-solid fa-triangle-exclamation"></i>
-        <span>K3s Offline — Node status synthesized from metrics. Pods and services unavailable.</span>
-      </div>
-
-      <!-- ═══════════════════ SUMMARY CARDS ═══════════════════ -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 reveal stagger-children">
-        <!-- Nodes -->
-        <div class="card-glow p-5 text-center">
-          <div class="text-2xl mb-2 text-green card-icon"><i class="fa-solid fa-server"></i></div>
-          <div class="text-3xl font-bold font-mono" id="nodesReady">--</div>
-          <div class="text-muted text-xs uppercase tracking-wide mt-1">Nodes Online</div>
-        </div>
-        <!-- Health -->
-        <div class="card-glow p-5 text-center">
-          <div class="text-2xl mb-2 text-brand card-icon"><i class="fa-solid fa-heart-pulse"></i></div>
-          <div class="text-3xl font-bold font-mono" id="healthScore">--%</div>
-          <div class="text-muted text-xs uppercase tracking-wide mt-1">Health Score</div>
-        </div>
-        <!-- Pods -->
-        <div class="card-glow p-5 text-center">
-          <div class="text-2xl mb-2 text-blue card-icon"><i class="fa-solid fa-cubes"></i></div>
-          <div class="text-3xl font-bold font-mono" id="podsRunning">--</div>
-          <div class="text-muted text-xs uppercase tracking-wide mt-1">Pods Running</div>
-        </div>
-        <!-- Mining -->
-        <div class="card-glow p-5 text-center">
-          <div class="text-2xl mb-2 text-yellow card-icon"><i class="fa-solid fa-coins"></i></div>
-          <div class="text-3xl font-bold font-mono" id="totalHashrate">--</div>
-          <div class="text-muted text-xs uppercase tracking-wide mt-1">Hashrate</div>
-        </div>
-      </div>
-
-      <!-- ═══════════════════ HEALTH BAR ═══════════════════ -->
-      <div class="flex items-center gap-4 bg-panel border border-border rounded-xl px-4 py-3 mb-8 reveal">
-        <span class="text-sm font-semibold flex items-center gap-2 whitespace-nowrap">
-          <i class="fa-solid fa-heart-pulse text-brand"></i> Cluster Health
-        </span>
-        <div class="flex-1 h-3 bg-bg rounded-full overflow-hidden">
-          <div class="h-full rounded-full transition-all duration-700" id="healthBar" style="width: 0%; background: linear-gradient(90deg, #22c55e, #4ade80);"></div>
-        </div>
-        <span class="font-mono text-sm font-bold min-w-[3rem] text-right" id="healthBarPct">--%</span>
-      </div>
-
-      <!-- ═══════════════════ RESOURCE USAGE ═══════════════════ -->
-      <div class="bg-panel border border-border rounded-xl p-5 mb-8 reveal" id="resourcePanel" style="display:none">
-        <h2 class="text-sm font-semibold mb-4 flex items-center gap-2">
-          <i class="fa-solid fa-chart-pie text-brand"></i> Resource Usage
-        </h2>
-        <div class="grid gap-3">
-          <div class="flex items-center gap-3">
-            <span class="text-xs font-semibold text-muted w-12">CPU</span>
-            <span class="font-mono text-sm font-bold w-10 text-right" id="totalCpu">--%</span>
-            <div class="flex-1 h-2.5 bg-bg rounded-full overflow-hidden">
-              <div class="h-full rounded-full bg-green transition-all duration-700" id="totalCpuBar" style="width:0%"></div>
-            </div>
-          </div>
-          <div class="flex items-center gap-3">
-            <span class="text-xs font-semibold text-muted w-12">RAM</span>
-            <span class="font-mono text-sm font-bold w-10 text-right" id="totalRam">--%</span>
-            <div class="flex-1 h-2.5 bg-bg rounded-full overflow-hidden">
-              <div class="h-full rounded-full bg-blue transition-all duration-700" id="totalRamBar" style="width:0%"></div>
-            </div>
-          </div>
-          <div class="flex items-center gap-3">
-            <span class="text-xs font-semibold text-muted w-12">Disk</span>
-            <span class="font-mono text-sm font-bold w-10 text-right" id="totalDisk">--%</span>
-            <div class="flex-1 h-2.5 bg-bg rounded-full overflow-hidden">
-              <div class="h-full rounded-full bg-yellow transition-all duration-700" id="totalDiskBar" style="width:0%"></div>
-            </div>
-          </div>
-          <div class="flex items-center gap-3">
-            <span class="text-xs font-semibold text-muted w-12">Battery</span>
-            <span class="font-mono text-sm font-bold w-10 text-right" id="avgBatt">--%</span>
-            <div class="flex-1 h-2.5 bg-bg rounded-full overflow-hidden">
-              <div class="h-full rounded-full bg-green transition-all duration-700" id="avgBattBar" style="width:0%"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ═══════════════════ NODE GRID ═══════════════════ -->
-      <div class="mb-8 reveal">
-        <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
-          <i class="fa-solid fa-server text-brand"></i> Nodes
-          <span class="bg-panel border border-border rounded-full px-2.5 py-0.5 text-xs font-mono text-muted" id="nodeCountBadge">—/13</span>
-        </h2>
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3" id="nodeGrid">
-          <!-- Nodes injected by JS -->
-        </div>
-      </div>
-
-      <div class="section-divider mx-0 mb-8"></div>
-
-      <!-- ═══════════════════ MINING SECTION ═══════════════════ -->
-      <div class="bg-panel border border-border rounded-xl p-5 mb-8 reveal" id="miningPanel" style="display:none">
-        <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
-          <h2 class="text-sm font-semibold flex items-center gap-2">
-            <i class="fa-solid fa-coins text-yellow"></i> Mining (XMR)
-          </h2>
-          <span class="inline-flex items-center gap-1.5 text-xs rounded-full px-3 py-1" id="miningStatusBadge">
-            <span class="w-2 h-2 rounded-full" id="miningDot"></span>
-            <span id="miningStatusText">--</span>
-          </span>
-        </div>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-          <div class="bg-bg border border-border rounded-lg p-3 text-center">
-            <div class="font-mono text-lg font-bold text-yellow" id="miningHashrate">--</div>
-            <div class="text-muted text-[0.65rem] uppercase tracking-wide mt-0.5">Total Hashrate</div>
-          </div>
-          <div class="bg-bg border border-border rounded-lg p-3 text-center">
-            <div class="font-mono text-lg font-bold min-w-0 break-all" id="miningWorkers">--</div>
-            <div class="text-muted text-[0.65rem] uppercase tracking-wide mt-0.5">Active Miners</div>
-          </div>
-          <div class="bg-bg border border-border rounded-lg p-3 text-center">
-            <div class="font-mono text-lg font-bold text-green" id="miningDaily">--</div>
-            <div class="text-muted text-[0.65rem] uppercase tracking-wide mt-0.5">Est. Daily</div>
-          </div>
-          <div class="bg-bg border border-border rounded-lg p-3 text-center">
-            <div class="font-mono text-lg font-bold text-green" id="miningMonthly">--</div>
-            <div class="text-muted text-[0.65rem] uppercase tracking-wide mt-0.5">Est. Monthly</div>
-          </div>
-        </div>
-        <!-- Worker chips -->
-        <div class="flex flex-wrap gap-2" id="miningWorkerChips"></div>
-        <div class="text-muted text-xs mt-3 pt-3 border-t border-border" id="miningPoolInfo"></div>
-        <div id="miningProxyWarning" class="hidden mt-2 text-xs font-mono px-3 py-2 rounded-lg border" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3);color:#ef4444"></div>
-        <!-- Hashrate history sparkline -->
-        <div id="miningHistoryPanel" class="hidden mt-3 pt-3 border-t border-border">
-          <div class="text-xs text-muted mb-1 flex items-center justify-between">
-            <span><i class="fa-solid fa-chart-line text-yellow"></i> 24h Hashrate</span>
-            <span id="miningHistoryRange" class="font-mono text-[0.65rem]"></span>
-          </div>
-          <svg id="miningSparkline" width="100%" height="48" preserveAspectRatio="none" viewBox="0 0 400 48">
-            <path id="miningSparklinePath" fill="none" stroke="#eab308" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-            <path id="miningSparklineFill" fill="rgba(234,179,8,0.1)" stroke="none" />
-          </svg>
-        </div>
-      </div>
-
-      <!-- ═══════════════════ BATTERY GRID ═══════════════════ -->
-      <div class="mb-8 reveal" id="batterySection" style="display:none">
-        <h2 class="text-sm font-semibold mb-4 flex items-center gap-2">
-          <i class="fa-solid fa-battery-three-quarters text-green"></i> Battery Status
-          <span class="text-muted text-xs font-normal" id="batterySummary"></span>
-        </h2>
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3" id="batteryGrid"></div>
-      </div>
-
-      <!-- ═══════════════════ PODS TABLE ═══════════════════ -->
-      <div class="mb-8 reveal" id="podsSection" style="display:none">
-        <h2 class="text-sm font-semibold mb-4 flex items-center gap-2">
-          <i class="fa-solid fa-cubes text-blue"></i> Pods
-          <span class="bg-panel border border-border rounded-full px-2.5 py-0.5 text-xs font-mono text-muted" id="podCountBadge">0</span>
-        </h2>
-        <div class="bg-panel border border-border rounded-xl overflow-hidden">
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-xs text-muted uppercase tracking-wide bg-bg-elevated">
-                  <th class="px-4 py-3 border-b border-border">Name</th>
-                  <th class="px-4 py-3 border-b border-border">Namespace</th>
-                  <th class="px-4 py-3 border-b border-border">Status</th>
-                  <th class="px-4 py-3 border-b border-border">Node</th>
-                  <th class="px-4 py-3 border-b border-border">Ready</th>
-                  <th class="px-4 py-3 border-b border-border">Restarts</th>
-                </tr>
-              </thead>
-              <tbody id="podsTableBody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- ═══════════════════ SERVICES TABLE ═══════════════════ -->
-      <div class="mb-8 reveal" id="servicesSection" style="display:none">
-        <h2 class="text-sm font-semibold mb-4 flex items-center gap-2">
-          <i class="fa-solid fa-network-wired text-blue"></i> Services
-          <span class="bg-panel border border-border rounded-full px-2.5 py-0.5 text-xs font-mono text-muted" id="serviceCountBadge">0</span>
-        </h2>
-        <div class="bg-panel border border-border rounded-xl overflow-hidden">
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-xs text-muted uppercase tracking-wide bg-bg-elevated">
-                  <th class="px-4 py-3 border-b border-border">Name</th>
-                  <th class="px-4 py-3 border-b border-border">Namespace</th>
-                  <th class="px-4 py-3 border-b border-border">Type</th>
-                  <th class="px-4 py-3 border-b border-border">Cluster IP</th>
-                  <th class="px-4 py-3 border-b border-border">Ports</th>
-                </tr>
-              </thead>
-              <tbody id="servicesTableBody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- ═══════════════════ EVENTS ═══════════════════ -->
-      <div class="mb-8 reveal" id="eventsSection" style="display:none">
-        <h2 class="text-sm font-semibold mb-4 flex items-center gap-2">
-          <i class="fa-solid fa-bell text-brand"></i> Recent Events
-        </h2>
-        <div class="space-y-2" id="eventsList"></div>
-      </div>
-
-      <!-- ═══════════════════ ABOUT ═══════════════════ -->
-      <div class="bg-panel border border-border rounded-xl p-6 reveal">
-        <h2 class="text-base font-semibold mb-3 flex items-center gap-2">
-          <i class="fa-solid fa-circle-info text-brand"></i> About This Cluster
-        </h2>
-        <p class="text-text-secondary text-sm leading-relaxed mb-4">
-          The fleet has <strong class="text-text">eight Android phones running Termux</strong>,
-          two Linux laptops (Alina and Nexus), a Steam Deck, the viki mini PC and the RenderRig Windows workstation.
-          Phone workers handle lightweight retrieval and website checks. Linux PCs run browser audits and local AI;
-          RenderRig handles media production. The dashboard assigns work and collects combined reports.
-          <strong class="text-text">Mining is disabled by operating policy.</strong>
-        </p>
-        <div class="flex flex-wrap gap-2">
-          <span class="inline-flex items-center gap-1.5 bg-bg border border-border rounded-lg px-3 py-1.5 text-xs text-muted">
-            <i class="fa-solid fa-dharmachakra" style="color:#326ce5"></i> Coordinated swarm
-          </span>
-          <span class="inline-flex items-center gap-1.5 bg-bg border border-border rounded-lg px-3 py-1.5 text-xs text-muted">
-            <i class="fa-brands fa-linux text-yellow"></i> Android / Linux / Windows
-          </span>
-          <span class="inline-flex items-center gap-1.5 bg-bg border border-border rounded-lg px-3 py-1.5 text-xs text-muted">
-            <i class="fa-solid fa-microchip text-blue"></i> ARM64 / aarch64
-          </span>
-          <span class="inline-flex items-center gap-1.5 bg-bg border border-border rounded-lg px-3 py-1.5 text-xs text-muted">
-            <i class="fa-solid fa-mobile-screen text-brand"></i> 8 Android phones
-          </span>
-          <span class="inline-flex items-center gap-1.5 bg-bg border border-border rounded-lg px-3 py-1.5 text-xs text-muted">
-            <i class="fa-solid fa-coins text-yellow"></i> Mining disabled
-          </span>
-          <span class="inline-flex items-center gap-1.5 bg-bg border border-border rounded-lg px-3 py-1.5 text-xs text-muted">
-            <i class="fa-solid fa-wifi text-green"></i> Local network
-          </span>
-          <span class="inline-flex items-center gap-1.5 bg-bg border border-border rounded-lg px-3 py-1.5 text-xs text-muted">
-            <i class="fa-solid fa-gamepad text-purple-400"></i> 13-device fleet
-          </span>
-        </div>
-      </div>
-
+  <section id="fleet" class="cluster-section cluster-wrap">
+    <div class="section-heading"><p class="eyebrow">BUILT TO WORK TOGETHER</p><h2>Meet the fleet</h2><p>A hybrid setup, with each device group contributing its strengths.</p></div>
+    <div class="three-grid">
+      {fleet.map(group => <article class="fleet-card"><div class="card-top"><i class={`${group.icon} ${group.color}`} aria-hidden="true"></i><span class="device-count">{group.count}</span></div><h3>{group.title}</h3><p>{group.detail}</p><div class="device-names">{group.names}</div></article>)}
     </div>
   </section>
 
+  <section class="cluster-section cluster-wrap">
+    <div class="section-heading"><p class="eyebrow">PURPOSEFUL WORKLOADS</p><h2>What the cluster does</h2></div>
+    <div class="three-grid">
+      {workloads.map(work => <article class="work-card"><i class={`${work.icon} text-brand`} aria-hidden="true"></i><h3>{work.title}</h3><p>{work.text}</p></article>)}
+    </div>
+    <div class="policy-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><p>Mining is disabled by operating policy. The fleet is focused on coordinated compute workloads.</p></div>
+  </section>
+
+  <section class="cluster-wrap cluster-section">
+    <div class="dashboard-callout"><div><p class="eyebrow">THE CONTROL CENTER</p><h2>See the work in progress.</h2><p>Check current worker availability, assign work and review collected reports in the password-protected dashboard.</p></div><a class="primary-link" href="/cluster/dashboard/">Open work dashboard <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></div>
+  </section>
 </Layout>
 
-<!-- ═══════════════════════════════════ CLUSTER PAGE STYLES ═══════════════════════════════════ -->
 <style>
-  .cluster-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--color-muted);
-    flex-shrink: 0;
-  }
-  .cluster-dot.live {
-    background: var(--color-green);
-    box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
-    animation: dot-pulse 2s infinite;
-  }
-  .cluster-dot.demo { background: var(--color-muted); }
-  .cluster-dot.offline { background: var(--color-red); }
-
-  @keyframes dot-pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.7; transform: scale(0.85); }
-  }
-
-  .node-card {
-    background: var(--color-panel);
-    border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 0.875rem;
-    position: relative;
-    transition: all 0.2s;
-    overflow: hidden;
-  }
-  .node-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  }
-  .node-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    border-radius: 0.75rem 0.75rem 0 0;
-  }
-  .node-card.ready::before { background: var(--color-green); }
-  .node-card.ready:hover { border-color: var(--color-green); }
-  .node-card.notready::before { background: var(--color-red); }
-  .node-card.notready:hover { border-color: var(--color-red); }
-  .node-card.control-plane::before { background: linear-gradient(90deg, var(--color-brand), #a855f7); }
-  .node-card.control-plane:hover { border-color: var(--color-brand); }
-
-  .batt-cell {
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    padding: 0.625rem;
-    text-align: center;
-    transition: border-color 0.2s;
-  }
-  .batt-cell:hover { border-color: var(--color-border-hover); }
-
-  .spinning { animation: spin 1s linear infinite; }
-  @keyframes spin { 100% { transform: rotate(360deg); } }
-
-  /* Pod status badges */
-  .pod-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.15rem 0.5rem;
-    border-radius: 0.375rem;
-    font-size: 0.7rem;
-    font-weight: 600;
-  }
-  .pod-badge.running { background: rgba(34, 197, 94, 0.12); color: var(--color-green); }
-  .pod-badge.pending { background: rgba(234, 179, 8, 0.12); color: var(--color-yellow); }
-  .pod-badge.failed { background: rgba(239, 68, 68, 0.12); color: var(--color-red); }
-  .pod-badge.succeeded { background: rgba(59, 130, 246, 0.12); color: var(--color-blue); }
-  .pod-badge.unknown, .pod-badge.terminating { background: rgba(161, 161, 170, 0.12); color: var(--color-muted); }
+  .cluster-wrap{max-width:1152px;margin:0 auto;padding-left:24px;padding-right:24px}
+  .cluster-hero{padding:88px 0 72px;background:radial-gradient(ellipse at 85% 35%,rgba(237,35,42,.09),transparent 55%)}
+  .hero-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:64px;align-items:center}
+  .eyebrow{font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--color-brand);margin-bottom:16px;display:flex;gap:10px;align-items:center}
+  h1{font-size:clamp(36px,4.6vw,58px);font-weight:800;line-height:1.12;letter-spacing:-.035em;margin-bottom:24px}
+  .hero-copy{font-size:17px;color:var(--color-text-secondary);max-width:560px;line-height:1.8}
+  .hero-actions{display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin-top:30px}
+  .primary-link{display:inline-flex;align-items:center;justify-content:center;gap:14px;padding:14px 20px;border-radius:10px;background:var(--color-brand);color:white;font-size:14px;font-weight:700;transition:background .2s;min-height:48px}
+  .primary-link:hover{background:var(--color-brand-dark)}
+  .secondary-link{display:inline-flex;align-items:center;gap:10px;font-size:13px;padding:12px 0;color:var(--color-text-secondary)}
+  .secondary-link:hover{color:white}
+  .dashboard-note{font-size:11px;color:var(--color-muted);margin-top:18px;line-height:1.7}
+  .dashboard-note i{margin-right:5px}
+  .fleet-visual{border:1px solid var(--color-border);border-radius:20px;padding:28px;background:linear-gradient(145deg,#191b20,#101114);box-shadow:0 20px 70px #0004}
+  .visual-header{display:flex;justify-content:space-between;gap:12px;align-items:center;font-size:10px;letter-spacing:.12em;color:var(--color-muted);font-weight:600}
+  .visual-tag{border:1px solid var(--color-border);border-radius:6px;padding:5px 8px;white-space:nowrap;color:var(--color-text)}
+  .device-matrix{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:28px 0}
+  .device-tile{height:62px;border-radius:10px;display:grid;place-items:center;border:1px solid #ffffff12;font-size:23px}
+  .phone{color:#4ade80;background:#22c55e0b}.linux{color:#60a5fa;background:#3b82f60b}.windows{color:#ff666c;background:#ed232a12;grid-column:1/-1;height:54px}
+  .visual-legend{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--color-text-secondary)}
+  .visual-legend b{margin-right:4px}.visual-footnote{font-size:10px;color:var(--color-muted);text-align:center;margin-top:20px}
+  .cluster-section{padding-top:38px;padding-bottom:38px;scroll-margin-top:100px}
+  .section-heading{margin-bottom:24px}.section-heading .eyebrow{margin-bottom:10px}h2{font-size:clamp(25px,3vw,32px);font-weight:700;letter-spacing:-.02em;line-height:1.3}
+  .section-heading>p:last-child:not(.eyebrow){color:var(--color-muted);font-size:14px;margin-top:10px}
+  .three-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .fleet-card{background:var(--color-panel);border:1px solid var(--color-border);border-radius:14px;padding:26px;display:flex;flex-direction:column}
+  .card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}.card-top i{font-size:28px}.device-count{font-size:32px;font-weight:700;font-family:var(--font-mono);color:var(--color-text)}
+  h3{font-size:17px;font-weight:700;margin-bottom:10px}.fleet-card>p,.work-card>p{font-size:13px;color:var(--color-text-secondary);line-height:1.8}
+  .device-names{margin-top:auto;padding-top:24px;color:var(--color-muted);font-size:11px}
+  .work-card{padding:20px 0}.work-card>i{font-size:22px;margin-bottom:18px}.work-card h3{font-size:16px}
+  .policy-note{display:flex;gap:12px;align-items:baseline;border-top:1px solid var(--color-border);padding-top:20px;margin-top:10px;font-size:12px;color:var(--color-muted)}
+  .dashboard-callout{background:var(--color-panel);border:1px solid var(--color-border);border-radius:18px;padding:36px;display:flex;align-items:center;justify-content:space-between;gap:32px;margin-bottom:32px}
+  .dashboard-callout p:last-child{font-size:13px;color:var(--color-text-secondary);margin-top:12px;max-width:620px}.dashboard-callout .primary-link{flex-shrink:0}
+  @media(max-width:900px){.hero-grid{gap:32px;grid-template-columns:1fr 1fr}.cluster-hero{padding-top:54px}.fleet-visual{padding:20px}.fleet-card{padding:20px}.dashboard-callout{align-items:flex-start;flex-direction:column}}
+  @media(max-width:640px){.cluster-wrap{padding-left:20px;padding-right:20px}.hero-grid,.three-grid{grid-template-columns:1fr}.hero-grid{gap:36px}.cluster-hero{padding:40px 0 24px}.cluster-section{padding-top:28px;padding-bottom:28px}.fleet-visual{padding:24px}.device-tile{height:52px}.device-matrix{margin:22px 0}.work-card{padding:10px 0}.dashboard-callout{padding:24px}.dashboard-callout .primary-link{width:100%}.hero-actions{gap:10px 18px}}
 </style>
-
-<!-- ═══════════════════════════════════ CLUSTER JS ═══════════════════════════════════ -->
-<script>
-  document.addEventListener('DOMContentLoaded', () => {
-    const API_URL = '/.netlify/functions/cluster-status';
-    let countdown = 15;
-    let countdownInterval: ReturnType<typeof setInterval>;
-
-    // Elements
-    const dot = document.getElementById('clusterDot')!;
-    const statusText = document.getElementById('clusterStatusText')!;
-    const lastUpdateEl = document.getElementById('clusterLastUpdate')!;
-    const refreshBtn = document.getElementById('refreshBtn')!;
-    const refreshIcon = document.getElementById('refreshIcon')!;
-    const refreshCountdownEl = document.getElementById('refreshCountdown')!;
-    const demoBanner = document.getElementById('demoBanner')!;
-    const staleBanner = document.getElementById('staleBanner')!;
-    const staleBannerText = document.getElementById('staleBannerText')!;
-    const k3sBanner = document.getElementById('k3sBanner')!;
-
-    async function loadStatus() {
-      refreshIcon.classList.add('spinning');
-      try {
-        const res = await fetch(API_URL);
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        renderDashboard(data);
-      } catch {
-        dot.className = 'cluster-dot offline';
-        statusText.textContent = 'Connection failed';
-      } finally {
-        refreshIcon.classList.remove('spinning');
-        startCountdown();
-      }
-    }
-
-    function renderDashboard(data: any) {
-      const isDemo = data.isDemo || data.demo;
-      const isK3sDown = data.k3sDown;
-
-      // Status dot
-      staleBanner.classList.add('hidden');
-      staleBanner.classList.remove('flex');
-      demoBanner.classList.add('hidden');
-      demoBanner.classList.remove('flex');
-
-      if (isDemo) {
-        dot.className = 'cluster-dot demo';
-        statusText.textContent = 'No data';
-        demoBanner.classList.remove('hidden');
-        demoBanner.classList.add('flex');
-      } else if (data.stale) {
-        dot.className = 'cluster-dot offline';
-        statusText.textContent = `Stale (${data.ageMinutes}m ago)`;
-        const level = data.staleLevel || 'warning';
-        const msgs: Record<string, string> = {
-          warning:  `Data is ${data.ageMinutes} minutes old — cluster may be temporarily unreachable.`,
-          critical: `Data is ${data.ageMinutes} minutes old — cluster has been unreachable for a while.`,
-          dead:     `Data is ${data.ageMinutes} minutes old — cluster appears to be offline.`,
-        };
-        staleBannerText.textContent = msgs[level] || msgs.warning;
-        const colors: Record<string, string> = {
-          warning:  'bg-yellow/10 border-yellow/30 text-yellow',
-          critical: 'bg-red/10 border-red/30 text-red',
-          dead:     'bg-red/10 border-red/30 text-red',
-        };
-        staleBanner.className = `flex items-center gap-3 border rounded-xl px-4 py-3 mb-6 text-sm ${colors[level] || colors.warning}`;
-        staleBanner.classList.remove('hidden');
-      } else {
-        dot.className = 'cluster-dot live';
-        statusText.textContent = 'Live';
-      }
-
-      // K3s down banner
-      if (isK3sDown) {
-        k3sBanner.classList.remove('hidden');
-        k3sBanner.classList.add('flex');
-      } else {
-        k3sBanner.classList.add('hidden');
-      }
-
-      // Last update
-      if (data.lastUpdate) {
-        const d = new Date(data.lastUpdate);
-        lastUpdateEl.textContent = 'Updated ' + d.toLocaleTimeString();
-      }
-
-      // Summary cards
-      const summary = data.summary || {};
-      setText('nodesReady', `${summary.nodesReady || 0}/${summary.nodesTotal || 0}`);
-      const health = summary.healthScore ?? 0;
-      setText('healthScore', health + '%');
-      setText('podsRunning', `${summary.podsRunning || 0}/${summary.podsTotal || 0}`);
-
-      // Health bar
-      const healthBar = document.getElementById('healthBar')!;
-      const healthBarPct = document.getElementById('healthBarPct')!;
-      healthBar.style.width = health + '%';
-      healthBarPct.textContent = health + '%';
-      if (health >= 80) {
-        healthBar.style.background = 'linear-gradient(90deg, #22c55e, #4ade80)';
-        healthBarPct.style.color = '#22c55e';
-      } else if (health >= 50) {
-        healthBar.style.background = 'linear-gradient(90deg, #eab308, #facc15)';
-        healthBarPct.style.color = '#eab308';
-      } else {
-        healthBar.style.background = 'linear-gradient(90deg, #ef4444, #f87171)';
-        healthBarPct.style.color = '#ef4444';
-      }
-
-      // Color the health score card
-      const healthScoreEl = document.getElementById('healthScore')!;
-      if (health >= 80) healthScoreEl.style.color = '#22c55e';
-      else if (health >= 50) healthScoreEl.style.color = '#eab308';
-      else healthScoreEl.style.color = '#ef4444';
-
-      // Node count badge
-      setText('nodeCountBadge', `${summary.nodesReady || 0}/${summary.nodesTotal || 0}`);
-
-      // Resource usage
-      if (data.metrics && Object.keys(data.metrics).length > 0) {
-        document.getElementById('resourcePanel')!.style.display = '';
-        renderResources(data.metrics, data.battery);
-      }
-
-      // Nodes
-      renderNodes(data.nodes || [], data.metrics || {}, data.battery);
-
-      // Mining
-      if (data.mining) {
-        document.getElementById('miningPanel')!.style.display = '';
-        renderMining(data.mining);
-        setText('totalHashrate', data.mining.totalHashrate || '--');
-      } else {
-        setText('totalHashrate', 'N/A');
-      }
-
-      // Battery
-      if (data.battery && data.battery.phones) {
-        document.getElementById('batterySection')!.style.display = '';
-        renderBattery(data.battery);
-      }
-
-      // Pods
-      if (data.pods && data.pods.length > 0) {
-        document.getElementById('podsSection')!.style.display = '';
-        renderPods(data.pods);
-      }
-
-      // Services
-      if (data.services && data.services.length > 0) {
-        document.getElementById('servicesSection')!.style.display = '';
-        renderServices(data.services);
-      }
-
-      // Events
-      if (data.events && data.events.length > 0) {
-        document.getElementById('eventsSection')!.style.display = '';
-        renderEvents(data.events);
-      }
-    }
-
-    function renderNodes(nodes: any[], metrics: any, battery: any) {
-      const grid = document.getElementById('nodeGrid')!;
-      const battMap: Record<string, any> = {};
-      if (battery && battery.phones) {
-        battery.phones.forEach((p: any) => { battMap[p.name] = p; });
-      }
-
-      grid.innerHTML = nodes.map((node: any) => {
-        const isCP = node.role === 'control-plane';
-        const isReady = node.status === 'Ready';
-        const cls = isCP ? 'control-plane' : (isReady ? 'ready' : 'notready');
-        const m = metrics[node.name];
-        const b = battMap[node.name];
-
-        let metricsHtml = '';
-        if (m && m.cpu && m.cpu.usage !== undefined && m.cpu.usage > 0) {
-          metricsHtml += `<div class="flex items-center gap-1 text-[0.65rem] font-mono"><i class="fa-solid fa-microchip text-[0.55rem]" style="color:${m.cpu.usage > 80 ? '#ef4444' : m.cpu.usage > 50 ? '#eab308' : '#22c55e'}"></i>${m.cpu.usage}%</div>`;
-        }
-        if (m && m.memory && m.memory.percent > 0) {
-          metricsHtml += `<div class="flex items-center gap-1 text-[0.65rem] font-mono"><i class="fa-solid fa-memory text-[0.55rem]" style="color:${m.memory.percent > 80 ? '#ef4444' : m.memory.percent > 60 ? '#eab308' : '#22c55e'}"></i>${m.memory.percent}%</div>`;
-        }
-        if (m && m.temp && m.temp.celsius) {
-          const t = m.temp.celsius;
-          metricsHtml += `<div class="flex items-center gap-1 text-[0.65rem] font-mono"><i class="fa-solid fa-temperature-half text-[0.55rem]" style="color:${t > 50 ? '#ef4444' : t > 40 ? '#eab308' : '#22c55e'}"></i>${t}&deg;</div>`;
-        }
-        if (b && b.online && b.level !== undefined) {
-          const lvl = b.level;
-          metricsHtml += `<div class="flex items-center gap-1 text-[0.65rem] font-mono"><i class="fa-solid fa-battery-${lvl > 75 ? 'full' : lvl > 50 ? 'three-quarters' : lvl > 25 ? 'half' : 'quarter'} text-[0.55rem]" style="color:${lvl < 20 ? '#ef4444' : lvl < 40 ? '#eab308' : '#22c55e'}"></i>${lvl}%${b.charging ? '<i class="fa-solid fa-bolt text-[0.5rem]" style="color:#3b82f6"></i>' : ''}</div>`;
-        }
-
-        return `
-          <div class="node-card ${cls}">
-            <div class="flex items-center justify-between mb-2">
-              <span class="font-semibold text-sm flex items-center gap-1.5">
-                <i class="fa-solid fa-${isCP ? 'crown' : 'mobile-screen'} text-xs" style="color:${isCP ? '#ed232a' : isReady ? '#22c55e' : '#ef4444'}"></i>
-                ${node.name}
-              </span>
-              <span class="text-[0.6rem] uppercase font-semibold px-1.5 py-0.5 rounded" style="background:${isCP ? 'rgba(237,35,42,0.15)' : 'rgba(138,138,138,0.15)'};color:${isCP ? '#ed232a' : '#8a8a8a'}">
-                ${isCP ? 'CP' : 'Worker'}
-              </span>
-            </div>
-            <div class="text-[0.7rem] text-muted mb-1.5 font-mono">${node.ip || ''}</div>
-            <div class="inline-flex items-center gap-1 text-[0.65rem] font-semibold rounded px-1.5 py-0.5" style="background:${isReady ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)'};color:${isReady ? '#22c55e' : '#ef4444'}">
-              <i class="fa-solid fa-${isReady ? 'check-circle' : 'times-circle'} text-[0.55rem]"></i> ${node.status}
-            </div>
-            ${metricsHtml ? `<div class="flex flex-wrap gap-2 mt-2">${metricsHtml}</div>` : ''}
-          </div>
-        `;
-      }).join('');
-    }
-
-    function renderResources(metrics: any, battery: any) {
-      let cpuSum = 0, cpuCount = 0;
-      let memSum = 0, memCount = 0;
-      let diskSum = 0, diskCount = 0;
-
-      for (const [, m] of Object.entries(metrics) as [string, any][]) {
-        if (m.cpu && m.cpu.usage > 0) { cpuSum += m.cpu.usage; cpuCount++; }
-        if (m.memory && m.memory.percent > 0) { memSum += m.memory.percent; memCount++; }
-        if (m.storage && m.storage.percent > 0) { diskSum += m.storage.percent; diskCount++; }
-      }
-
-      const avgCpu = cpuCount ? Math.round(cpuSum / cpuCount) : 0;
-      const avgMem = memCount ? Math.round(memSum / memCount) : 0;
-      const avgDisk = diskCount ? Math.round(diskSum / diskCount) : 0;
-
-      setText('totalCpu', avgCpu + '%');
-      setBar('totalCpuBar', avgCpu);
-      setText('totalRam', avgMem + '%');
-      setBar('totalRamBar', avgMem);
-      setText('totalDisk', avgDisk + '%');
-      setBar('totalDiskBar', avgDisk);
-
-      if (battery && battery.summary) {
-        const avgB = battery.summary.avgLevel || 0;
-        setText('avgBatt', avgB + '%');
-        setBar('avgBattBar', avgB);
-      }
-    }
-
-    function renderMining(mining: any) {
-      const isActive = mining.enabled && mining.minersRunning > 0;
-      const dot = document.getElementById('miningDot')!;
-      const badge = document.getElementById('miningStatusBadge')!;
-      const text = document.getElementById('miningStatusText')!;
-
-      if (isActive) {
-        dot.style.background = '#22c55e';
-        badge.style.background = 'rgba(34, 197, 94, 0.15)';
-        badge.style.color = '#22c55e';
-        text.textContent = `Mining (${mining.minersRunning}/${mining.minersTotal})`;
-      } else {
-        dot.style.background = '#ef4444';
-        badge.style.background = 'rgba(239, 68, 68, 0.15)';
-        badge.style.color = '#ef4444';
-        text.textContent = 'Stopped';
-      }
-
-      setText('miningHashrate', mining.totalHashrate || '--');
-      const minerCount = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? String(value) : '—';
-      setText('miningWorkers', `${minerCount(mining.minersRunning)}/${minerCount(mining.minersTotal)}`);
-      setText('miningDaily', mining.estimatedDaily || '--');
-      setText('miningMonthly', mining.estimatedMonthly || '--');
-
-      // Worker chips
-      const chips = document.getElementById('miningWorkerChips')!;
-      if (mining.workers) {
-        chips.innerHTML = mining.workers.map((w: any) => {
-          const isOnline = w.status === 'mining';
-          return `<span class="inline-flex items-center gap-1.5 bg-bg border border-border rounded-lg px-2.5 py-1 text-xs ${!isOnline ? 'opacity-40' : ''}">
-            ${w.name}
-            <span class="font-mono" style="color:#eab308">${w.hashrate}</span>
-          </span>`;
-        }).join('');
-      }
-
-      // Pool info
-      if (mining.pool) {
-        setText('miningPoolInfo', `Pool: ${mining.pool} | Coin: ${mining.coin || 'XMR'}`);
-        const isLocalPool = /^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|localhost|127\.)/.test(mining.pool);
-        const isZeroHashrate = !mining.totalHashrateRaw || mining.totalHashrateRaw === 0;
-        const proxyWarn = document.getElementById('miningProxyWarning')!;
-        if (isLocalPool && isZeroHashrate) {
-          proxyWarn.textContent = `⚠ Pool proxy unreachable: ${mining.pool} — xmrig is running but cannot submit shares. Set a public pool URL in the dashboard or restart your local proxy.`;
-          proxyWarn.classList.remove('hidden');
-        } else {
-          proxyWarn.classList.add('hidden');
-        }
-      }
-    }
-
-    function renderBattery(battery: any) {
-      const summary = battery.summary || {};
-      setText('batterySummary', `Avg: ${summary.avgLevel || 0}% | Charging: ${summary.charging || 0} | Online: ${summary.online || 0}/${summary.total || 0}`);
-
-      const grid = document.getElementById('batteryGrid')!;
-      grid.innerHTML = (battery.phones || []).map((p: any) => {
-        if (!p.online) {
-          return `<div class="batt-cell opacity-40">
-            <div class="font-semibold text-xs mb-1">${p.name}</div>
-            <div class="font-mono text-base font-bold text-muted">Offline</div>
-          </div>`;
-        }
-        const lvl = p.level || 0;
-        const color = lvl < 20 ? '#ef4444' : lvl < 40 ? '#eab308' : '#22c55e';
-        return `<div class="batt-cell">
-          <div class="font-semibold text-xs mb-1">${p.name}</div>
-          <div class="font-mono text-lg font-bold" style="color:${color}">${lvl}%</div>
-          <div class="text-muted text-[0.65rem]">${p.charging ? '<i class="fa-solid fa-bolt text-blue"></i> Charging' : p.status || 'Discharging'}</div>
-          ${p.temp ? `<div class="text-muted text-[0.65rem] font-mono">${p.temp}&deg;C</div>` : ''}
-        </div>`;
-      }).join('');
-    }
-
-    function renderPods(pods: any[]) {
-      setText('podCountBadge', String(pods.length));
-      const tbody = document.getElementById('podsTableBody')!;
-      tbody.innerHTML = pods.map((p: any) => {
-        const statusCls = (p.status || '').toLowerCase();
-        return `<tr class="hover:bg-panel-hover">
-          <td class="px-4 py-2.5 border-b border-border font-medium text-sm">${p.name}</td>
-          <td class="px-4 py-2.5 border-b border-border"><span class="bg-bg-elevated px-2 py-0.5 rounded text-xs font-mono text-blue">${p.namespace}</span></td>
-          <td class="px-4 py-2.5 border-b border-border"><span class="pod-badge ${statusCls}"><i class="fa-solid fa-circle text-[0.4rem]"></i> ${p.status}</span></td>
-          <td class="px-4 py-2.5 border-b border-border text-muted font-mono text-xs">${p.node}</td>
-          <td class="px-4 py-2.5 border-b border-border font-mono text-xs">${p.ready || '--'}</td>
-          <td class="px-4 py-2.5 border-b border-border font-mono text-xs">${p.restarts || 0}</td>
-        </tr>`;
-      }).join('');
-    }
-
-    function renderServices(services: any[]) {
-      setText('serviceCountBadge', String(services.length));
-      const tbody = document.getElementById('servicesTableBody')!;
-      tbody.innerHTML = services.map((s: any) => {
-        const typeColor = s.type === 'LoadBalancer' ? '#22c55e' : s.type === 'NodePort' ? '#3b82f6' : '#8a8a8a';
-        return `<tr class="hover:bg-panel-hover">
-          <td class="px-4 py-2.5 border-b border-border font-medium text-sm">${s.name}</td>
-          <td class="px-4 py-2.5 border-b border-border"><span class="bg-bg-elevated px-2 py-0.5 rounded text-xs font-mono text-blue">${s.namespace}</span></td>
-          <td class="px-4 py-2.5 border-b border-border"><span class="text-xs font-semibold font-mono" style="color:${typeColor}">${s.type}</span></td>
-          <td class="px-4 py-2.5 border-b border-border text-muted font-mono text-xs">${s.clusterIP || '--'}</td>
-          <td class="px-4 py-2.5 border-b border-border font-mono text-xs">${(s.ports || []).join(', ')}</td>
-        </tr>`;
-      }).join('');
-    }
-
-    function renderEvents(events: any[]) {
-      const list = document.getElementById('eventsList')!;
-      const recent = events.slice(-8).reverse();
-      list.innerHTML = recent.map((e: any) => {
-        const isWarn = e.type === 'Warning';
-        const age = e.timestamp ? relTime(new Date(e.timestamp)) : '';
-        return `<div class="flex items-start gap-3 bg-panel border ${isWarn ? 'border-yellow/30' : 'border-border'} rounded-xl px-4 py-3">
-          <i class="fa-solid fa-${isWarn ? 'triangle-exclamation text-yellow' : 'circle-info text-blue'} text-xs mt-0.5 flex-shrink-0"></i>
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2 flex-wrap mb-0.5">
-              <span class="text-xs font-semibold">${e.reason || ''}</span>
-              <span class="text-muted text-[0.65rem] font-mono">${e.object || ''}</span>
-              ${e.count > 1 ? `<span class="text-[0.6rem] bg-bg border border-border rounded px-1.5 py-0.5 text-muted">×${e.count}</span>` : ''}
-              <span class="text-muted text-[0.65rem] ml-auto">${age}</span>
-            </div>
-            <div class="text-xs text-text-secondary truncate">${e.message || ''}</div>
-          </div>
-        </div>`;
-      }).join('');
-    }
-
-    function relTime(d: Date): string {
-      const s = Math.round((Date.now() - d.getTime()) / 1000);
-      if (s < 60) return s + 's ago';
-      if (s < 3600) return Math.round(s / 60) + 'm ago';
-      if (s < 86400) return Math.round(s / 3600) + 'h ago';
-      return Math.round(s / 86400) + 'd ago';
-    }
-
-    async function loadMiningHistory() {
-      try {
-        const res = await fetch(API_URL + '?type=mining-history');
-        if (!res.ok) return;
-        const data = await res.json();
-        const history: any[] = data.history || [];
-        if (history.length < 2) return;
-
-        const panel = document.getElementById('miningHistoryPanel')!;
-        panel.classList.remove('hidden');
-
-        const values = history.map((h: any) => h.totalHashrate as number);
-        const min = Math.min(...values);
-        const max = Math.max(...values);
-        const range = max - min || 1;
-
-        const W = 400, H = 48, pad = 2;
-        const pts = values.map((v, i) => {
-          const x = pad + (i / (values.length - 1)) * (W - pad * 2);
-          const y = H - pad - ((v - min) / range) * (H - pad * 2);
-          return `${x.toFixed(1)},${y.toFixed(1)}`;
-        });
-
-        document.getElementById('miningSparklinePath')!.setAttribute('d', 'M' + pts.join('L'));
-        document.getElementById('miningSparklineFill')!.setAttribute('d', `M${pts[0]}L${pts.join('L')}L${(W - pad)},${H}L${pad},${H}Z`);
-
-        const first = new Date(history[0].timestamp);
-        const last = new Date(history[history.length - 1].timestamp);
-        document.getElementById('miningHistoryRange')!.textContent =
-          `${relTime(first)} → ${relTime(last)} (${values.length} pts)`;
-      } catch { /* silent */ }
-    }
-
-    // Helpers
-    function setText(id: string, val: string) {
-      const el = document.getElementById(id);
-      if (el) el.textContent = val;
-    }
-    function setBar(id: string, pct: number) {
-      const el = document.getElementById(id);
-      if (el) el.style.width = Math.min(pct, 100) + '%';
-    }
-
-    // Countdown — drives the refresh so they stay in sync
-    function startCountdown() {
-      if (countdownInterval) clearInterval(countdownInterval);
-      countdown = 15;
-      refreshCountdownEl.textContent = countdown + 's';
-      countdownInterval = setInterval(() => {
-        countdown--;
-        refreshCountdownEl.textContent = countdown + 's';
-        if (countdown <= 0) {
-          clearInterval(countdownInterval);
-          loadStatus(); // loadStatus calls startCountdown() in finally
-        }
-      }, 1000);
-    }
-
-    // Init
-    refreshBtn.addEventListener('click', () => { loadStatus(); loadMiningHistory(); });
-    loadStatus();
-    loadMiningHistory();
-  });
-</script>
