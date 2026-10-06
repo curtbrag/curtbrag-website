@@ -745,8 +745,9 @@
   function ensureSiteTest(){
     const fleet=document.getElementById('cluster-view-fleet');if(!fleet||document.getElementById('cluster-site-test'))return;
     const card=document.createElement('section');card.id='cluster-site-test';card.className='cluster-control-card';
-    card.innerHTML='<h3>Test a website across devices</h3><p>Run one page-load check from each available phone or computer and collect responses and timing. Each device performs one bounded check; this does not open screens or play streams.</p><label for="site-test-url">Website address</label><input id="site-test-url" type="url" value="https://curtbrag.com/" style="display:block;width:100%;box-sizing:border-box;margin:8px 0;padding:10px"><label for="site-test-owned" style="display:block;margin:10px 0"><input id="site-test-owned" type="checkbox"> I own this site or have permission to test it.</label><button id="site-test-run" type="button">Test on all available devices</button> <button id="site-test-export" type="button" disabled>Export results</button><p id="site-test-state" role="status" aria-live="polite">Ready. Busy and offline units will be skipped.</p><pre id="site-test-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto"></pre>';
+    card.innerHTML='<h3>Test a website across devices</h3><p>Run one page-load check from each available phone or computer and collect responses and timing. Each device performs one bounded check; this does not open screens or play streams.</p><label for="site-test-url">Website address</label><input id="site-test-url" type="url" value="https://curtbrag.com/" style="display:block;width:100%;box-sizing:border-box;margin:8px 0;padding:10px"><label for="site-test-owned" style="display:block;margin:10px 0"><input id="site-test-owned" type="checkbox"> I own this site or have permission to test it.</label><button id="site-test-run" type="button">Test on all available devices</button> <button id="site-test-export" type="button" disabled>Export results</button> <button id="site-test-close" type="button" disabled>Close report</button><p>Close a report after reviewing Queue &amp; results. This preserves its export and does not cancel or retry jobs.</p><p id="site-test-state" role="status" aria-live="polite">Ready. Busy and offline units will be skipped.</p><pre id="site-test-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto"></pre>';
     fleet.prepend(card);card.querySelector('#site-test-run').onclick=dispatchSiteTest;
+    card.querySelector('#site-test-close').onclick=closeSiteTest;
     card.querySelector('#site-test-export').onclick=()=>{
       const url=URL.createObjectURL(new Blob([JSON.stringify(siteTest,null,2)],{type:'application/json'}));
       const a=document.createElement('a');a.href=url;a.download=siteTest.id+'.json';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
@@ -757,7 +758,7 @@
   function renderSiteTest(results){
     const state=document.getElementById('site-test-state');if(!state||!siteTest)return;
     for(const task of siteTest.tasks){
-      if(['passed','failed'].includes(task.state))continue;
+      if(['passed','failed','closed'].includes(task.state))continue;
       const result=results.find(r=>r.job_id===task.job_id&&r.device_id===task.unit);if(!result)continue;
       let report;try{report=JSON.parse(result.stdout||'');}catch{}
       if(report?.kind==='website-load-test'&&report.url===siteTest.url&&Number.isFinite(report.total_ms)){
@@ -766,9 +767,10 @@
       }else{task.state='failed';task.error=String(result.stderr||'Worker returned an invalid page-load result.').slice(0,500);}
     }
     saveSiteTest();
-    const complete=siteTest.tasks.filter(t=>['passed','failed'].includes(t.state)).length,failed=siteTest.tasks.filter(t=>t.state==='failed').length;
-    state.textContent=`${complete}/${siteTest.tasks.length} results returned · ${failed} failed · ${siteTest.skipped.length} devices skipped`;
+    const complete=siteTest.tasks.filter(t=>['passed','failed'].includes(t.state)).length,failed=siteTest.tasks.filter(t=>t.state==='failed').length,closed=siteTest.tasks.filter(t=>t.state==='closed').length;
+    state.textContent=`${complete}/${siteTest.tasks.length} results returned · ${failed} failed · ${closed} closed · ${siteTest.skipped.length} devices skipped`;
     document.getElementById('site-test-export').disabled=false;
+    document.getElementById('site-test-close').disabled=siteTestBusy||!!siteTest.closed_at;
     document.getElementById('site-test-report').textContent=siteTest.url+'\n\n'+siteTest.tasks.map(t=>{
       const r=t.report;return `${t.unit} · ${t.state}${r?' · HTTP '+(r.status??'unavailable')+' · '+Math.round(r.total_ms)+' ms':''}${r?.title?'\n'+r.title:''}${t.error?'\n'+t.error:''}`;
     }).join('\n\n')+(siteTest.skipped.length?'\n\nSkipped: '+siteTest.skipped.map(n=>n.unit+' ('+n.reason+')').join(', '):'');
@@ -777,8 +779,28 @@
     const payload=JSON.stringify({url});const bytes=new TextEncoder().encode(payload);let binary='';bytes.forEach(b=>binary+=String.fromCharCode(b));const encoded=btoa(binary);
     return `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-url-test.py' -o "$HOME/cluster-url-test.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-url-test.py" --settings-b64 '${encoded}'; }`;
   }
+  async function closeSiteTest(){
+    if(siteTestBusy||!siteTest||siteTest.closed_at)return;
+    siteTestBusy=true;document.getElementById('site-test-run').disabled=true;document.getElementById('site-test-close').disabled=true;
+    try{
+      const raw=await swarmApi('queue-status');
+      if(!Array.isArray(raw?.nodes)||!Array.isArray(raw.jobs)||!Array.isArray(raw.results))throw Error('Queue status is incomplete. The report remains open.');
+      const fresh=canonicalize(raw);renderSiteTest(fresh.results);
+      const ids=new Set(siteTest.tasks.map(t=>t.job_id)),jobId=value=>typeof value==='string'?value:value?.job_id||value?.id||value?.job?.id;
+      const terminal=new Set(['completed','cancelled','canceled','failed']);
+      const queued=fresh.jobs.some(job=>ids.has(jobId(job))&&!terminal.has(String(job.status??job.state??'').toLowerCase()));
+      const active=fresh.nodes.some(node=>(node.active_jobs||[]).some(job=>ids.has(jobId(job))));
+      if(queued||active)throw Error('Checks still appear queued or running. Review Queue & results before closing this report.');
+      const ambiguous=siteTest.tasks.some(t=>['queued','submitting','unconfirmed'].includes(t.state));
+      const age=Date.now()-Date.parse(siteTest.created_at);
+      if(ambiguous&&(!Number.isFinite(age)||age<120000))throw Error('Wait at least two minutes after submission, then review Queue & results before closing missing checks.');
+      for(const task of siteTest.tasks)if(!['passed','failed','closed'].includes(task.state))task.state='closed';
+      siteTest.closed_at=new Date().toISOString();saveSiteTest();renderSiteTest(fresh.results);
+    }catch(error){document.getElementById('site-test-state').textContent=error.message;}
+    finally{siteTestBusy=false;document.getElementById('site-test-run').disabled=false;document.getElementById('site-test-close').disabled=!siteTest||!!siteTest.closed_at;}
+  }
   async function dispatchSiteTest(){
-    if(siteTestBusy)return;siteTestBusy=true;const button=document.getElementById('site-test-run');button.disabled=true;
+    if(siteTestBusy)return;siteTestBusy=true;const button=document.getElementById('site-test-run');button.disabled=true;document.getElementById('site-test-close').disabled=true;
     try{
       if(!document.getElementById('site-test-owned').checked)throw Error('Confirm you own this site or have permission to test it.');
       const url=validateSiteTestUrl(document.getElementById('site-test-url').value.trim());
@@ -794,9 +816,8 @@
       }
       await load(true);
     }catch(error){document.getElementById('site-test-state').textContent=error.message;}
-    finally{siteTestBusy=false;button.disabled=false;saveSiteTest();}
+    finally{siteTestBusy=false;button.disabled=false;document.getElementById('site-test-close').disabled=!siteTest||!!siteTest.closed_at;saveSiteTest();}
   }
-
 
   function ensurePhoneRecovery() {
     if (document.getElementById('cluster-phone-recovery')) return;
