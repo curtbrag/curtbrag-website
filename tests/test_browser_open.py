@@ -14,7 +14,7 @@ from contextlib import redirect_stdout
 from unittest.mock import Mock, patch
 
 
-spec = importlib.util.spec_from_file_location("cluster_browser_open", pathlib.Path(__file__).with_name("cluster-browser-open.py"))
+spec = importlib.util.spec_from_file_location("cluster_browser_open", pathlib.Path(__file__).resolve().parent.parent / "scripts" / "cluster-browser-open.py")
 helper = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(helper)
 URL = "https://curtbrag.com/cluster/?layout=wide&unit=phone191#activity"
