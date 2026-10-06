@@ -578,6 +578,7 @@
     ensureWorkspace();
     ensureControlLayout();
     ensureFleetHealth();
+    ensureChangeMonitor();
   }
 
   let healthRun = null, healthSubmitting = false;
@@ -656,6 +657,78 @@
       await load(true);
     } catch (error) { document.getElementById('fleet-health-state').textContent = error.message; }
     finally { healthSubmitting = false; button.disabled = false; saveHealth(); }
+  }
+
+
+  let changeMonitor = {baselines:{},batch:null}, changeBusy=false;
+  try { const saved=JSON.parse(localStorage.getItem('curt-change-monitor-v1')); if(saved?.baselines)changeMonitor=saved; } catch {}
+  function saveChangeMonitor(){try{localStorage.setItem('curt-change-monitor-v1',JSON.stringify(changeMonitor));}catch{}}
+  function ensureChangeMonitor(){
+    const panel=document.getElementById('cluster-view-audit');
+    if(!panel||document.getElementById('cluster-change-monitor'))return;
+    const card=document.createElement('section');card.id='cluster-change-monitor';card.className='cluster-control-card';
+    card.innerHTML='<h3>Website change monitor</h3><p>Compare public CurtBrag page text against saved snapshots. Phones and Linux workers share the checks. First checks establish a baseline; later checks show added and removed text.</p><label for="change-paths">Public page paths · one per line</label><textarea id="change-paths" rows="4" style="display:block;width:100%;box-sizing:border-box">/\n/gallery/\n/shop/\n/cluster/</textarea><button id="change-check" type="button">Check for changes</button> <button id="change-baseline" type="button" disabled>Accept current text as baseline</button> <button id="change-export" type="button" disabled>Export change report</button><p id="change-state" role="status" aria-live="polite">Ready. Snapshots are saved in this browser.</p><pre id="change-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:500px;overflow:auto"></pre>';
+    panel.append(card);card.querySelector('#change-check').onclick=dispatchChangeMonitor;
+    card.querySelector('#change-baseline').onclick=()=>{
+      for(const task of changeMonitor.batch?.tasks||[])if(task.report)changeMonitor.baselines[task.path]=task.report;
+      saveChangeMonitor();renderChangeMonitor(current?.results||[]);
+    };
+    card.querySelector('#change-export').onclick=()=>{
+      const url=URL.createObjectURL(new Blob([JSON.stringify(changeMonitor.batch,null,2)],{type:'application/json'}));
+      const a=document.createElement('a');a.href=url;a.download='website-changes.json';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    };
+    renderChangeMonitor(current?.results||[]);
+  }
+  function pageChanges(before,after){
+    const previous=new Set(before.split('\n')),next=new Set(after.split('\n'));
+    return {added:[...next].filter(line=>!previous.has(line)),removed:[...previous].filter(line=>!next.has(line)),
+      reordered:before!==after&&previous.size===next.size&&[...previous].every(line=>next.has(line))};
+  }
+  function renderChangeMonitor(results){
+    const state=document.getElementById('change-state'),batch=changeMonitor.batch;if(!state||!batch)return;
+    for(const task of batch.tasks){
+      if(task.state==='complete'||task.state==='failed')continue;
+      const result=results.find(r=>r.job_id===task.job_id&&r.device_id===task.worker);if(!result)continue;
+      let report;try{report=JSON.parse(result.stdout||'');}catch{}
+      if(Number(result.exit_code)===0&&report?.kind==='page-snapshot'&&report.path===task.path&&typeof report.text==='string'&&report.text.length<=60000&&/^[a-f0-9]{64}$/.test(report.sha256||'')){
+        task.state='complete';task.report=report;
+        if(!changeMonitor.baselines[task.path]){changeMonitor.baselines[task.path]=report;task.firstBaseline=true;}
+      }else{task.state='failed';task.error=String(report?.error||result.stderr||'Invalid page snapshot').slice(0,1000);}
+    }
+    for(const task of batch.tasks)if(task.report){const baseline=changeMonitor.baselines[task.path];task.changes=pageChanges(baseline.text,task.report.text);task.changed=baseline.sha256!==task.report.sha256;}
+    saveChangeMonitor();
+    const complete=batch.tasks.filter(t=>t.state==='complete').length,failed=batch.tasks.filter(t=>t.state==='failed').length;
+    state.textContent=`${complete}/${batch.tasks.length} pages checked · ${batch.tasks.filter(t=>t.changed).length} changed · ${failed} failed`;
+    document.getElementById('change-baseline').disabled=!complete||changeBusy;
+    document.getElementById('change-export').disabled=false;
+    document.getElementById('change-report').textContent=batch.tasks.map(t=>{
+      if(!t.report)return `${t.path} · ${t.worker} · ${t.state}${t.error?'\n'+t.error:''}`;
+      return `${t.path} · ${t.worker} · ${t.changed?'CHANGED':t.firstBaseline?'Baseline saved':'Unchanged'}\n${t.report.title}\n`+
+        (t.changes.reordered?'Text order or repeated lines changed.\n':'')+
+        t.changes.removed.slice(0,40).map(l=>'- '+l).join('\n')+'\n'+t.changes.added.slice(0,40).map(l=>'+ '+l).join('\n')+
+        (t.changes.added.length>40||t.changes.removed.length>40?'\nPreview limited; export contains all changed lines.':'');
+    }).join('\n\n');
+  }
+  async function dispatchChangeMonitor(){
+    if(changeBusy)return;changeBusy=true;const button=document.getElementById('change-check');button.disabled=true;
+    try{
+      const paths=[...new Set(document.getElementById('change-paths').value.split(/\s+/).filter(Boolean))];
+      if(paths.length<1||paths.length>12||paths.some(path=>!/^\/(?!\/)[A-Za-z0-9/_-]*$/.test(path)||path.startsWith('/cluster/dashboard')))throw Error('Use 1–12 public paths starting with /. Dashboard pages are excluded.');
+      if(changeMonitor.batch?.tasks.some(t=>['queued','submitting','unconfirmed'].includes(t.state)))throw Error('Previous checks are pending. Review Queue & results before sending another batch.');
+      const fresh=canonicalize(await swarmApi('queue-status'));
+      const workers=fresh.nodes.filter(n=>n.online&&!n.busy&&n.id!=='RenderRig');if(!workers.length)throw Error('No idle phone or Linux workers available.');
+      const id='change-monitor-'+Date.now();changeMonitor.batch={id,created_at:new Date().toISOString(),scope:'Public CurtBrag HTML text; manual checks; baselines saved in this browser.',tasks:paths.map((path,i)=>({path,worker:workers[i%workers.length].id,job_id:id+'-'+i,state:'planned'}))};
+      saveChangeMonitor();
+      for(const task of changeMonitor.batch.tasks){
+        const cmd=`curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-page-snapshot.py' -o "$HOME/cluster-page-snapshot.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-page-snapshot.py" --path '${task.path}'; }`;
+        task.state='submitting';saveChangeMonitor();
+        try{await swarmApi('enqueue','POST',{job:{id:task.job_id,type:'shell',cmd,command:cmd},target_device_ids:[task.worker]});task.state='queued';}
+        catch{task.state='unconfirmed';saveChangeMonitor();throw Error('Submission is unconfirmed. Review Queue & results before retrying.');}
+        saveChangeMonitor();renderChangeMonitor(current?.results||[]);
+      }
+      await load(true);
+    }catch(error){document.getElementById('change-state').textContent=error.message;}
+    finally{changeBusy=false;button.disabled=false;saveChangeMonitor();}
   }
 
 
@@ -1501,6 +1574,7 @@
     renderWebsiteAudit(d.results);
     renderWorkspace(d.results);
     renderFleetHealth(d.results);
+    renderChangeMonitor(d.results);
     const setText = (id, value) => {
       const el = document.getElementById(id);
       if (el) el.textContent = value;
