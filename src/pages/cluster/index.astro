@@ -11,6 +11,7 @@ const workloads = [
   { icon: 'fa-solid fa-window-maximize', title: 'Browser audits & local AI', text: 'Linux systems handle browser work and local AI workloads.' },
   { icon: 'fa-solid fa-photo-film', title: 'Media production', text: 'RenderRig handles media tasks while the dashboard collects worker reports.' },
 ];
+const workers = ['phone173', 'phone174', 'phone176', 'phone177', 'phone191', 'phone195', 'phone253', 'phone254', 'Alina', 'Nexus', 'SteamDeck', 'viki', 'RenderRig'];
 ---
 
 <Layout title="Compute Cluster - Curtis Bragdon" description="Explore Curtis Bragdon's 13-device compute fleet: eight Android phones, four Linux systems and one Windows workstation working together on research, browser audits and media production.">
@@ -37,6 +38,16 @@ const workloads = [
     </div>
   </section>
 
+  <section class="cluster-section cluster-wrap" aria-labelledby="connections-heading">
+    <div class="connection-heading"><div class="section-heading"><p class="eyebrow">LIVE CONNECTIONS</p><h2 id="connections-heading">Worker availability</h2><p>Recent worker check-ins, refreshed every 30 seconds.</p></div><button type="button" id="connection-refresh" class="secondary-link">Refresh status <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i></button></div>
+    <p id="connection-summary" class="connection-summary" role="status">Checking worker connections…</p>
+    <div class="connection-grid">
+      {workers.map(worker => <article class="connection-card" data-worker={worker} data-state="unknown"><h3>{worker}</h3><p data-connection-status>Checking…</p><small data-connection-age>Waiting for a response</small></article>)}
+    </div>
+    <p class="connection-note">Online means a worker checked in within 90 seconds. Unavailable means its status could not be verified. Work assignments and controls are in the <a href="/cluster/dashboard/">work dashboard</a>.</p>
+    <noscript><p class="connection-note">Enable JavaScript to see live connections, or open the work dashboard.</p></noscript>
+  </section>
+
   <section id="fleet" class="cluster-section cluster-wrap">
     <div class="section-heading"><p class="eyebrow">BUILT TO WORK TOGETHER</p><h2>Meet the fleet</h2><p>A hybrid setup, with each device group contributing its strengths.</p></div>
     <div class="three-grid">
@@ -57,7 +68,67 @@ const workloads = [
   </section>
 </Layout>
 
+<script is:inline>
+(() => {
+  const cards = [...document.querySelectorAll('[data-worker]')];
+  const refresh = document.getElementById('connection-refresh');
+  const summary = document.getElementById('connection-summary');
+  const snapshots = new Map();
+  let busy = false;
+  let completed = false;
+  function render() {
+    let online = 0, offline = 0, unavailable = 0;
+    for (const card of cards) {
+      const item = snapshots.get(card.dataset.worker);
+      let state = 'unknown', detail = 'Status could not be verified';
+      if (item && Date.now() - item.received < 45000) {
+        const age = item.checkedAt - item.lastSeen + Date.now() - item.received;
+        if (item.lastSeen === null) detail = 'No worker check-in recorded';
+        else if (age >= -5000) {
+          state = age < 90000 ? 'online' : 'offline';
+          const seconds = Math.max(0, Math.floor(age / 1000));
+          detail = seconds < 60 ? `Checked in ${seconds}s ago` : seconds < 3600 ? `Checked in ${Math.floor(seconds / 60)}m ago` : seconds < 86400 ? `Checked in ${Math.floor(seconds / 3600)}h ago` : `Checked in ${Math.floor(seconds / 86400)}d ago`;
+        }
+      }
+      if (state === 'online') online++;
+      else if (state === 'offline') offline++;
+      else unavailable++;
+      card.dataset.state = state;
+      card.querySelector('[data-connection-status]').textContent = state === 'online' ? 'Online' : state === 'offline' ? 'Offline' : 'Unavailable';
+      card.querySelector('[data-connection-age]').textContent = detail;
+    }
+    if (completed) summary.textContent = `${online} of ${cards.length} workers online · ${offline} offline · ${unavailable} unavailable`;
+  }
+  async function update() {
+    if (busy || document.hidden) return;
+    busy = true; refresh.disabled = true; refresh.textContent = 'Checking…';
+    try {
+      await Promise.allSettled(cards.map(async card => {
+        const unit = card.dataset.worker;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+          const response = await fetch('/.netlify/functions/phone-display?phone=' + encodeURIComponent(unit) + '&activity=1', {cache:'no-store', signal:controller.signal});
+          if (!response.ok) throw new Error('Status unavailable');
+          const data = (await response.json()).activity;
+          if (!data || data.unit !== unit || !Number.isFinite(data.checkedAt) || !(data.lastSeen === null || Number.isFinite(data.lastSeen))) throw new Error('Invalid status');
+          snapshots.set(unit, {lastSeen:data.lastSeen, checkedAt:data.checkedAt, received:Date.now()});
+        } catch { snapshots.delete(unit); }
+        finally { clearTimeout(timeout); }
+      }));
+      completed = true; render();
+    } finally { busy = false; refresh.disabled = false; refresh.textContent = 'Refresh status'; }
+  }
+  refresh.addEventListener('click', update);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { render(); update(); } });
+  setInterval(update, 30000);
+  setInterval(() => { if (!document.hidden && completed) render(); }, 1000);
+  update();
+})();
+</script>
+
 <style>
+  .connection-heading{display:flex;justify-content:space-between;gap:20px;align-items:center;flex-wrap:wrap}.connection-heading button{cursor:pointer}.connection-heading button:disabled{opacity:.6;cursor:wait}.connection-summary{color:var(--color-text-secondary);font-size:14px;margin-bottom:20px}.connection-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.connection-card{border:1px solid var(--color-border);border-radius:12px;padding:18px;background:var(--color-panel)}.connection-card h3{font-size:14px;overflow-wrap:anywhere}.connection-card p{font-size:13px;color:var(--color-muted);margin-bottom:8px}.connection-card p:before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:8px}.connection-card[data-state=online] p{color:#4ade80}.connection-card[data-state=offline] p{color:#ff8b87}.connection-card small{font-size:10px;color:var(--color-muted)}.connection-note{font-size:12px;color:var(--color-muted);margin-top:18px;line-height:1.8}.connection-note a{color:var(--color-text-secondary);text-decoration:underline}@media(max-width:640px){.connection-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.connection-card{padding:14px}}
   .cluster-wrap{max-width:1152px;margin:0 auto;padding-left:24px;padding-right:24px}
   .cluster-hero{padding:88px 0 72px;background:radial-gradient(ellipse at 85% 35%,rgba(237,35,42,.09),transparent 55%)}
   .hero-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:64px;align-items:center}
