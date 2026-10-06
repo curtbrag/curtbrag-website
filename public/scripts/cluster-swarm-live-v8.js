@@ -777,7 +777,7 @@
   }
   function siteTestCommand(url){
     const payload=JSON.stringify({url});const bytes=new TextEncoder().encode(payload);let binary='';bytes.forEach(b=>binary+=String.fromCharCode(b));const encoded=btoa(binary);
-    return `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-url-test.py' -o "$HOME/cluster-url-test.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-url-test.py" --settings-b64 '${encoded}'; }`;
+    return `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/d95a9fff64c84531155d858574691a18483583a7/scripts/cluster-url-test.py' -o "$HOME/cluster-url-test.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-url-test.py" --settings-b64 '${encoded}'; }`;
   }
   async function closeSiteTest(){
     if(siteTestBusy||!siteTest||siteTest.closed_at)return;
@@ -805,11 +805,12 @@
       if(!document.getElementById('site-test-owned').checked)throw Error('Confirm you own this site or have permission to test it.');
       const url=validateSiteTestUrl(document.getElementById('site-test-url').value.trim());
       if(siteTest?.tasks.some(t=>['queued','submitting','unconfirmed'].includes(t.state)))throw Error('Previous checks are pending. Review Queue & results before starting another batch.');
+      document.getElementById('site-test-state').textContent='Checking available devices…';
       const fleet=canonicalize(await swarmApi('queue-status')),ready=fleet.nodes.filter(n=>n.online&&!n.busy&&(n.id!=='RenderRig'||versionAtLeast(n.agent_version,'3.7.1')));
       if(!ready.length)throw Error('No idle online devices are available.');
-      const id='site-test-'+Date.now();siteTest={id,url,created_at:new Date().toISOString(),scope:'One HTML HTTP load per available unit; no physical browser or playback test.',tasks:ready.map((n,i)=>({unit:n.id,job_id:id+'-'+i,state:'planned'})),skipped:fleet.nodes.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:!n.online?'offline':n.busy?'busy':'agent update required'}))};saveSiteTest();
+      const id='site-test-'+Date.now();siteTest={id,url,created_at:new Date().toISOString(),scope:'One HTML HTTP load per available unit; no physical browser or playback test.',tasks:ready.map((n,i)=>({unit:n.id,job_id:id+'-'+i,state:'planned'})),skipped:fleet.nodes.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:!n.online?'offline':n.busy?'busy':'agent update required'}))};saveSiteTest();renderSiteTest(current?.results||[]);
       for(const task of siteTest.tasks){
-        const windows=task.unit==='RenderRig',cmd=windows?JSON.stringify({url}):siteTestCommand(url);task.state='submitting';saveSiteTest();
+        const windows=task.unit==='RenderRig',cmd=windows?JSON.stringify({url}):siteTestCommand(url);task.state='submitting';saveSiteTest();renderSiteTest(current?.results||[]);
         try{await swarmApi('enqueue','POST',{job:{id:task.job_id,type:windows?'website-test':'shell',cmd,command:cmd},target_device_ids:[task.unit]});task.state='queued';}
         catch{task.state='unconfirmed';saveSiteTest();throw Error('Submission is unconfirmed. Review Queue & results before retrying.');}
         saveSiteTest();renderSiteTest(current?.results||[]);

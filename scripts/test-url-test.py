@@ -6,6 +6,7 @@ import io
 import json
 import pathlib
 import socket
+import ssl
 import threading
 import time
 import unittest
@@ -240,6 +241,78 @@ class WebsiteTestTests(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 0.4)
         self.assertTrue(connection.closed)
 
+    def test_complete_body_can_close_transport_before_next_read(self):
+        response = FakeResponse(body=b"<title>Complete response</title>")
+        connection = FakeConnection(response)
+        closed_transport = threading.Event()
+        original_read = response.read1
+
+        def close_on_last_chunk(size):
+            chunk = original_read(size)
+            if response.offset == len(response.body):
+                closed_transport.set()
+            return chunk
+
+        def fail_if_socket_closed(*args):
+            if closed_transport.is_set():
+                raise OSError(9, "Bad file descriptor")
+
+        response.read1 = close_on_last_chunk
+        connection.sock.settimeout.side_effect = fail_if_socket_closed
+        with patch.object(worker, "resolve_public", return_value=PUBLIC), patch.object(worker, "PinnedHTTPSConnection", return_value=connection):
+            report = worker.test_website("https://owned.example/")
+        self.assertTrue(closed_transport.is_set())
+        self.assertTrue(report["ok"])
+        self.assertIsNone(report["error"])
+        self.assertEqual(report["bytes"], len(response.body))
+        self.assertEqual(report["title"], "Complete response")
+        self.assertFalse(report["truncated"])
+        self.assertEqual(len(response.read_sizes), 2)
+        connection.sock.settimeout.assert_called_once()
+
+    def test_total_deadline_interrupts_a_trickling_body(self):
+        interrupted = threading.Event()
+        response = FakeResponse()
+        connection = FakeConnection(response)
+        connection.sock.shutdown.side_effect = lambda *args: interrupted.set()
+
+        def trickle_forever(size):
+            if not interrupted.wait(0.5):
+                raise AssertionError("The overall deadline did not interrupt the body")
+            raise TimeoutError("Body timed out")
+
+        response.read1 = trickle_forever
+        started = time.monotonic()
+        with patch.object(worker, "resolve_public", return_value=PUBLIC), patch.object(worker, "PinnedHTTPSConnection", return_value=connection):
+            report = worker.test_website("https://owned.example/", timeout=0.02)
+        self.assertFalse(report["ok"])
+        self.assertTrue(interrupted.is_set())
+        self.assertLess(time.monotonic() - started, 0.4)
+        self.assertTrue(response.closed)
+        self.assertTrue(connection.closed)
+
+    def test_deadline_shutdown_bypasses_closed_ssl_wrapper_for_response_file(self):
+        interrupted = threading.Event()
+        response = FakeResponse()
+        connection = FakeConnection(response)
+        connection.sock = Mock(spec=ssl.SSLSocket)
+        connection.sock.shutdown.side_effect = OSError(9, "SSL socket wrapper was closed")
+
+        def wait_for_transport_shutdown(size):
+            if not interrupted.wait(0.5):
+                raise AssertionError("Response file was not interrupted")
+            raise TimeoutError("Body timed out")
+
+        response.read1 = wait_for_transport_shutdown
+        with patch.object(worker, "resolve_public", return_value=PUBLIC), patch.object(
+            worker, "PinnedHTTPSConnection", return_value=connection
+        ), patch.object(worker.socket.socket, "shutdown", side_effect=lambda *args: interrupted.set()) as raw_shutdown:
+            report = worker.test_website("https://owned.example/", timeout=0.02)
+        self.assertFalse(report["ok"])
+        self.assertTrue(interrupted.is_set())
+        raw_shutdown.assert_called_once_with(connection.sock, socket.SHUT_RDWR)
+        connection.sock.shutdown.assert_not_called()
+
     def test_title_decoding_and_limit(self):
         body = ("<title>" + "\u00e9" * 2000 + "</title>").encode("latin-1")
         report, _, _, _ = self.fetch(responses=[FakeResponse(body=body, headers={"Content-Type": "text/html; charset=iso-8859-1"})])
@@ -299,4 +372,3 @@ class WebsiteTestTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
-
