@@ -577,7 +577,87 @@
     ensureWebsiteAudit();
     ensureWorkspace();
     ensureControlLayout();
+    ensureFleetHealth();
   }
+
+  let healthRun = null, healthSubmitting = false;
+  try { healthRun = JSON.parse(localStorage.getItem('curt-fleet-health-v1')); } catch {}
+  function saveHealth() { try { localStorage.setItem('curt-fleet-health-v1', JSON.stringify(healthRun)); } catch {} }
+  function ensureFleetHealth() {
+    const fleet = document.getElementById('cluster-view-fleet');
+    if (!fleet || document.getElementById('fleet-health')) return;
+    const card = document.createElement('section'); card.id = 'fleet-health';
+    card.className = 'cluster-control-card';
+    card.innerHTML = '<h3>Fleet health report</h3><p>Check storage and website connectivity on idle workers, then collect their results in one report. Busy and offline devices are listed as skipped.</p><button id="fleet-health-run" type="button">Run fleet health check</button> <button id="fleet-health-export" type="button" disabled>Export report</button><p id="fleet-health-state" role="status" aria-live="polite">Ready for a fleet check.</p><pre id="fleet-health-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto"></pre>';
+    fleet.prepend(card);
+    card.querySelector('#fleet-health-run').onclick = dispatchFleetHealth;
+    card.querySelector('#fleet-health-export').onclick = () => {
+      if (!healthRun) return;
+      const blob = new Blob([JSON.stringify(healthRun,null,2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = url; a.download = healthRun.id+'.json'; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+    renderFleetHealth(current?.results || []);
+  }
+  function renderFleetHealth(results) {
+    const state = document.getElementById('fleet-health-state');
+    if (!state || !healthRun) return;
+    let changed = false;
+    for (const task of healthRun.tasks) {
+      const result = results.find(r => r.job_id === task.job_id && r.device_id === task.unit);
+      if (result && !['passed','failed'].includes(task.state)) {
+        task.state = Number(result.exit_code) === 0 ? 'passed' : 'failed';
+        task.output = String(result.stdout || '').slice(0,8000);
+        task.error = String(result.stderr || '').slice(0,2000); changed = true;
+      }
+    }
+    if (changed) saveHealth();
+    const complete = healthRun.tasks.filter(t => ['passed','failed'].includes(t.state)).length;
+    const failed = healthRun.tasks.filter(t => t.state === 'failed').length;
+    state.textContent = `${complete}/${healthRun.tasks.length} checks returned · ${failed} failed · ${healthRun.skipped.length} devices skipped${healthSubmitting ? ' · dispatching' : ''}`;
+    document.getElementById('fleet-health-export').disabled = false;
+    document.getElementById('fleet-health-report').textContent = healthRun.tasks.map(t =>
+      `${t.unit} · ${t.check} · ${t.state}${t.output ? '\n'+t.output : ''}${t.error ? '\n'+t.error : ''}`
+    ).join('\n\n') + (healthRun.skipped.length ? '\n\nSkipped: '+healthRun.skipped.map(n=>n.unit+' ('+n.reason+')').join(', ') : '');
+  }
+  async function dispatchFleetHealth() {
+    if (healthSubmitting) return;
+    const button = document.getElementById('fleet-health-run');
+    healthSubmitting = true; button.disabled = true;
+    try {
+      await load(true);
+      if (!current) throw new Error('Live worker status is unavailable.');
+      if (healthRun?.tasks.some(t=>['queued','submitting','unconfirmed'].includes(t.state))) throw new Error('Previous report still has pending checks. Review Queue & results before starting another batch.');
+      const nodes = current.nodes.filter(n=>n.online && !n.busy);
+      if (!nodes.length) throw new Error('No idle online workers are available.');
+      healthRun = {id:'fleet-health-'+Date.now(), created_at:new Date().toISOString(), tasks:[],
+        skipped:current.nodes.filter(n=>!n.online || n.busy).map(n=>({unit:n.id,reason:n.online?'busy':'offline'})),
+        scope:'Worker storage and website connectivity; physical screen and SSH state are not tested.'};
+      for (const check of ['storage-status','network-check']) {
+        const ready = nodes.filter(n=>versionAtLeast(n.agent_version,n.id==='RenderRig'?DIAGNOSTIC_WINDOWS_AGENT:DIAGNOSTIC_LINUX_AGENT));
+        const fallback = nodes.filter(n=>!ready.includes(n) && n.id!=='RenderRig');
+        for (const group of [ready,fallback]) {
+          if (!group.length) continue;
+          const jobId = healthRun.id+'-'+check+'-'+(group===ready?'native':'fallback');
+          const tasks = group.map(n=>({unit:n.id,check,job_id:jobId,state:'submitting'}));
+          healthRun.tasks.push(...tasks); saveHealth(); renderFleetHealth(current.results);
+          const cmd = group===ready?'':DIAGNOSTIC_FALLBACK[check];
+          try {
+            await swarmApi('enqueue','POST',{job:{id:jobId,type:group===ready?check:'shell',cmd,command:cmd},target_device_ids:group.map(n=>n.id)});
+            tasks.forEach(t=>t.state='queued');
+          } catch (error) { tasks.forEach(t=>t.state='unconfirmed'); throw new Error('Submission could not be confirmed. Check Queue & results before retrying.'); }
+          saveHealth();
+        }
+        for (const node of nodes.filter(n=>!ready.includes(n) && n.id==='RenderRig')) {
+          if (!healthRun.skipped.some(n=>n.unit===node.id)) healthRun.skipped.push({unit:node.id,reason:'agent update required'});
+        }
+      }
+      await load(true);
+    } catch (error) { document.getElementById('fleet-health-state').textContent = error.message; }
+    finally { healthSubmitting = false; button.disabled = false; saveHealth(); }
+  }
+
 
   function ensurePhoneRecovery() {
     if (document.getElementById('cluster-phone-recovery')) return;
@@ -1420,6 +1500,7 @@
     renderMediaDiscovery(d.results);
     renderWebsiteAudit(d.results);
     renderWorkspace(d.results);
+    renderFleetHealth(d.results);
     const setText = (id, value) => {
       const el = document.getElementById(id);
       if (el) el.textContent = value;
