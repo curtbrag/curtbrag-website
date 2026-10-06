@@ -151,12 +151,34 @@ test('concurrent clicks cannot duplicate submissions while fleet status is pendi
   const first = h.api.dispatchSiteTest();
   assert.equal(h.api.busy(), true);
   assert.equal(h.elements['site-test-run'].disabled, true);
+  assert.equal(h.elements['site-test-state'].textContent, 'Checking available devices…');
   await h.api.dispatchSiteTest();
   assert.equal(h.calls.length, 1);
   release({ nodes: [{ id: 'phone191', online: true, busy: false }] });
   await first;
   assert.equal(h.calls.filter(call => call[0] === 'enqueue').length, 1);
   assert.equal(h.api.busy(), false);
+});
+
+test('a slow first submission displays the new report instead of an old permission error', async () => {
+  let release, started;
+  const blocked = new Promise(resolve => { release = resolve; });
+  const submitting = new Promise(resolve => { started = resolve; });
+  const h = harness({ api: async action => {
+    if (action === 'queue-status') return { nodes: [{ id: 'phone191', online: true, busy: false }] };
+    started();
+    return blocked;
+  } });
+  h.elements['site-test-state'].textContent = 'Confirm you own this site or have permission to test it.';
+  const pending = h.api.dispatchSiteTest();
+  await submitting;
+  assert.match(h.elements['site-test-state'].textContent, /0\/1 results returned/);
+  assert.match(h.elements['site-test-report'].textContent, /phone191 · submitting/);
+  assert.equal(h.elements['site-test-run'].disabled, true);
+  assert.equal(h.elements['site-test-close'].disabled, true);
+  release({ ok: true });
+  await pending;
+  assert.match(h.elements['site-test-report'].textContent, /phone191 · queued/);
 });
 
 test('persisted pending tasks prevent a second batch after reload', async () => {
