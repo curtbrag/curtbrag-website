@@ -580,6 +580,7 @@
     ensureFleetHealth();
     ensureChangeMonitor();
     ensureSiteTest();
+    ensureBrowserOpen();
   }
 
   let healthRun = null, healthSubmitting = false;
@@ -732,6 +733,85 @@
     finally{changeBusy=false;button.disabled=false;saveChangeMonitor();}
   }
 
+
+  let browserOpenReport=null,browserOpenBusy=false;
+  try{const saved=JSON.parse(localStorage.getItem('curt-browser-open-v1'));if(saved&&Array.isArray(saved.tasks)&&Array.isArray(saved.skipped)&&typeof saved.url==='string')browserOpenReport=saved;}catch{}
+  function saveBrowserOpen(){try{localStorage.setItem('curt-browser-open-v1',JSON.stringify(browserOpenReport));}catch{}}
+  function validateBrowserOpenUrl(value){
+    if(typeof value!=='string'||value.length>2048||/[\u0000-\u0020\u007f\\]/.test(value))throw Error('Enter a complete public HTTPS address of up to 2048 characters without spaces, control characters or backslashes.');
+    let url;try{url=new URL(value);}catch{throw Error('Enter a complete HTTPS website address.');}
+    if(url.protocol!=='https:'||url.username||url.password||url.port||url.href.length>2048)throw Error('Use a public HTTPS website without credentials or a custom port.');
+    const host=url.hostname.toLowerCase();
+    if(host.endsWith('.')||!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(host)||/^[\d.]+$/.test(host)||/^\d+$/.test(host.split('.').at(-1))||['localhost','local','localdomain','lan','internal','test','invalid','onion','example','home'].some(s=>host===s||host.endsWith('.'+s)))throw Error('Use a public website hostname, rather than a local name, reserved suffix or IP address.');
+    return url.href;
+  }
+  function ensureBrowserOpen(){
+    const fleet=document.getElementById('cluster-view-fleet');if(!fleet||document.getElementById('cluster-browser-open'))return;
+    const card=document.createElement('section');card.id='cluster-browser-open';card.className='cluster-control-card';
+    card.innerHTML='<h3>Open website on devices</h3><p>Request a browser to open a website once on your selected devices. Browser launch requests do not verify screen or page visibility.</p><label for="browser-open-url">Website address</label><input id="browser-open-url" type="url" maxlength="2048" value="https://curtbrag.com/" style="display:block;width:100%;box-sizing:border-box;margin:8px 0;padding:10px"><label for="browser-open-target">Devices</label> <select id="browser-open-target"><option value="all">All available units</option>'+FLEET.map(([id])=>'<option value="'+id+'">'+id+'</option>').join('')+'</select><div class="cluster-action-row"><button id="browser-open-run" type="button">Open on selected devices</button><button id="browser-open-close" type="button" disabled>Close report</button></div><p>Busy and offline units are skipped. Close report preserves the record without cancelling or retrying jobs.</p><p id="browser-open-state" role="status" aria-live="polite">Ready. No browser launch requested.</p><pre id="browser-open-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto"></pre>';
+    fleet.prepend(card);card.querySelector('#browser-open-run').onclick=dispatchBrowserOpen;card.querySelector('#browser-open-close').onclick=closeBrowserOpen;
+    if(browserOpenReport?.url)card.querySelector('#browser-open-url').value=browserOpenReport.url;
+    if(browserOpenReport?.target==='all'||IDS.has(browserOpenReport?.target))card.querySelector('#browser-open-target').value=browserOpenReport.target;
+    renderBrowserOpen(current?.results||[]);
+  }
+  function renderBrowserOpen(results){
+    const state=document.getElementById('browser-open-state');if(!state||!browserOpenReport)return;
+    for(const task of browserOpenReport.tasks){
+      if(['launch-requested','failed','closed'].includes(task.state))continue;
+      const result=results.find(r=>r.job_id===task.job_id&&r.device_id===task.unit);if(!result)continue;
+      let report;try{report=JSON.parse(result.stdout||'');}catch{}
+      if(report?.kind==='website-browser-open'&&report.url===browserOpenReport.url&&typeof report.launch_requested==='boolean'&&report.visible_screen_verified===false){
+        task.report=report;task.state=Number(result.exit_code)===0&&report.launch_requested===true&&report.state==='launch-requested'?'launch-requested':'failed';
+        task.error=task.state==='failed'?String(report.error||result.stderr||'The worker did not report a successful browser launch request.').slice(0,500):'';
+      }else{task.state='failed';task.error=String(result.stderr||'Worker returned an invalid browser launch report.').slice(0,500);}
+    }
+    saveBrowserOpen();
+    const tasks=browserOpenReport.tasks,requested=tasks.filter(t=>t.state==='launch-requested').length,failed=tasks.filter(t=>t.state==='failed').length,closed=tasks.filter(t=>t.state==='closed').length;
+    state.textContent=(tasks.length?'':'No available selected devices. ')+`${requested+failed}/${tasks.length} launch results · ${requested} launch requested · ${failed} failed · ${closed} closed · ${browserOpenReport.skipped.length} skipped. `+(requested?'Browser launch requested; screen/page visibility unverified.':'Screen/page visibility is unverified.');
+    document.getElementById('browser-open-close').disabled=browserOpenBusy||!!browserOpenReport.closed_at;
+    document.getElementById('browser-open-report').textContent=browserOpenReport.url+'\n\n'+tasks.map(t=>`${t.unit} · ${t.state}${t.report?.launcher?' · '+String(t.report.launcher):''}${t.error?'\n'+t.error:''}`).join('\n\n')+(browserOpenReport.skipped.length?'\n\nSkipped: '+browserOpenReport.skipped.map(n=>n.unit+' ('+n.reason+')').join(', '):'');
+  }
+  function browserOpenCommand(url){
+    const bytes=new TextEncoder().encode(JSON.stringify({url}));let binary='';bytes.forEach(b=>binary+=String.fromCharCode(b));const encoded=btoa(binary);
+    return `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/f5a1cd0c29479d42228dd5c7f3905ad2e7ea36b2/scripts/cluster-browser-open.py' -o "$HOME/cluster-browser-open.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-browser-open.py" --settings-b64 '${encoded}'; }`;
+  }
+  async function dispatchBrowserOpen(){
+    if(browserOpenBusy)return;browserOpenBusy=true;document.getElementById('browser-open-run').disabled=true;document.getElementById('browser-open-close').disabled=true;
+    try{
+      const url=validateBrowserOpenUrl(document.getElementById('browser-open-url').value),target=document.getElementById('browser-open-target').value;
+      if(target!=='all'&&!IDS.has(target))throw Error('Select a canonical cluster unit.');
+      if(browserOpenReport?.tasks.some(t=>['queued','submitting','unconfirmed'].includes(t.state)))throw Error('Previous launch requests are pending. Review Queue & results before opening another batch.');
+      document.getElementById('browser-open-state').textContent='Checking available devices…';
+      const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes))throw Error('Worker availability could not be verified.');
+      const fleet=canonicalize(raw),selected=fleet.nodes.filter(n=>IDS.has(n.id)&&(target==='all'||n.id===target));
+      const ready=selected.filter(n=>n.online&&!n.busy&&(n.id!=='RenderRig'||versionAtLeast(n.agent_version,'3.7.2')));
+      const id='browser-open-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+      browserOpenReport={id,url,target,created_at:new Date().toISOString(),scope:'One browser launch request per selected available unit; physical screen and target page visibility are unverified.',tasks:ready.map((n,i)=>({unit:n.id,job_id:id+'-'+i,state:'planned'})),skipped:selected.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:!n.online?'offline':n.busy?'busy':'agent update required'}))};saveBrowserOpen();renderBrowserOpen(current?.results||[]);
+      for(const task of browserOpenReport.tasks){
+        const windows=task.unit==='RenderRig',cmd=windows?JSON.stringify({url}):browserOpenCommand(url);task.state='submitting';saveBrowserOpen();renderBrowserOpen(current?.results||[]);
+        try{await swarmApi('enqueue','POST',{job:{id:task.job_id,type:windows?'website-open':'shell',cmd,command:cmd},target_device_ids:[task.unit]});task.state='queued';}
+        catch{task.state='unconfirmed';saveBrowserOpen();throw Error('Browser launch submission is unconfirmed. Review Queue & results before retrying.');}
+        saveBrowserOpen();renderBrowserOpen(current?.results||[]);
+      }
+      if(ready.length)await load(true);
+    }catch(error){document.getElementById('browser-open-state').textContent=error.message;}
+    finally{browserOpenBusy=false;document.getElementById('browser-open-run').disabled=false;document.getElementById('browser-open-close').disabled=!browserOpenReport||!!browserOpenReport.closed_at;saveBrowserOpen();}
+  }
+  async function closeBrowserOpen(){
+    if(browserOpenBusy||!browserOpenReport||browserOpenReport.closed_at)return;
+    browserOpenBusy=true;document.getElementById('browser-open-run').disabled=true;document.getElementById('browser-open-close').disabled=true;
+    try{
+      const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes)||!Array.isArray(raw.jobs)||!Array.isArray(raw.results))throw Error('Queue status is incomplete. The report remains open.');
+      const fresh=canonicalize(raw);renderBrowserOpen(fresh.results);
+      const ids=new Set(browserOpenReport.tasks.map(t=>t.job_id)),jobId=value=>typeof value==='string'?value:value?.job_id||value?.id||value?.job?.id,terminal=new Set(['completed','cancelled','canceled','failed']);
+      if(fresh.jobs.some(job=>ids.has(jobId(job))&&!terminal.has(String(job.status??job.state??'').toLowerCase()))||fresh.nodes.some(node=>(node.active_jobs||[]).some(job=>ids.has(jobId(job)))))throw Error('Launch requests still appear queued or running. Review Queue & results before closing.');
+      const age=Date.now()-Date.parse(browserOpenReport.created_at);
+      if(browserOpenReport.tasks.some(t=>['queued','submitting','unconfirmed'].includes(t.state))&&(!Number.isFinite(age)||age<120000))throw Error('Wait at least two minutes after submission, then review Queue & results before closing missing launch requests.');
+      for(const task of browserOpenReport.tasks)if(!['launch-requested','failed','closed'].includes(task.state))task.state='closed';
+      browserOpenReport.closed_at=new Date().toISOString();saveBrowserOpen();renderBrowserOpen(fresh.results);
+    }catch(error){document.getElementById('browser-open-state').textContent=error.message;}
+    finally{browserOpenBusy=false;document.getElementById('browser-open-run').disabled=false;document.getElementById('browser-open-close').disabled=!browserOpenReport||!!browserOpenReport.closed_at;}
+  }
 
   let siteTest=null, siteTestBusy=false;
   try{const saved=JSON.parse(localStorage.getItem('curt-site-test-v1'));if(saved?.tasks)siteTest=saved;}catch{}
@@ -1664,6 +1744,7 @@
     renderFleetHealth(d.results);
     renderChangeMonitor(d.results);
     renderSiteTest(d.results);
+    renderBrowserOpen(d.results);
     const setText = (id, value) => {
       const el = document.getElementById(id);
       if (el) el.textContent = value;

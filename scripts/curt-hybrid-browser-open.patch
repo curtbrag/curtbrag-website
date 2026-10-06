@@ -1,0 +1,33 @@
+--- agent-3.7.1.ps1
++++ agent-3.7.2.ps1
+@@ -11,7 +11,7 @@
+ )
+ 
+ $ErrorActionPreference = 'Stop'
+-$AgentVersion = '3.7.1'
++$AgentVersion = '3.7.2'
+ $Root = Join-Path $env:LOCALAPPDATA 'CurtCompute'
+ $AgentPath = Join-Path $Root 'curt-hybrid-workload-agent.ps1'
+ $ConfigPath = Join-Path $Root 'agent-config.json'
+@@ -118,7 +118,7 @@
+             nvidia_smi = Get-CommandPath 'nvidia-smi.exe'
+         }
+         salad = Get-SaladState
+-        supported_jobs = @('status','storage-status','process-snapshot','network-check','website-test','gpu-status','salad-status','workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow','reel-create','episode-create')
++        supported_jobs = @('status','storage-status','process-snapshot','network-check','website-test','website-open','gpu-status','salad-status','workstation-selftest','blender-render','ffmpeg-transcode','whisper-transcribe','comfyui-workflow','reel-create','episode-create')
+     }
+ }
+ 
+@@ -272,6 +272,12 @@
+     $spec = Parse-JobSpec $Command
+     switch ($Type) {
+         'status' { return [ordered]@{ exit_code=0; stdout=(Get-Audit | ConvertTo-Json -Depth 8 -Compress); stderr='' } }
++        'website-open' {
++            $opener = Join-Path $Root 'cluster-browser-open.ps1'
++            if (-not (Test-Path -LiteralPath $opener -PathType Leaf)) { throw 'Browser opener is missing. Update the Windows agent.' }
++            . $opener
++            return Invoke-ClusterWebsiteOpen -Spec $spec
++        }
+         'website-test' {
+             if (-not ($spec.url -is [string]) -or [string]::IsNullOrWhiteSpace($spec.url) -or $spec.url.Length -gt 2048 -or @($spec.PSObject.Properties.Name).Count -ne 1) {
+                 throw 'Website test settings must contain only one HTTPS URL string.'
