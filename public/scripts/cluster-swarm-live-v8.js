@@ -274,7 +274,7 @@
     document.getElementById('display-results').onclick=()=>setControlView('results',true);
     document.getElementById('display-send').onclick=async()=>{
       const button=document.getElementById('display-send'),state=document.getElementById('display-state');button.disabled=true;
-      const saved=[],launched=[],skipped=[];try{
+      const saved=[],launched=[],skipped=[];state.textContent='Checking phone availability…';try{
         const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes))throw new Error('Worker availability could not be verified.');
         const fresh=canonicalize(raw),selected=document.getElementById('display-target').value,mode=document.getElementById('display-mode').value;
         const phones=selected==='all'?Array.from(PHONE_IDS):PHONE_IDS.has(selected)?[selected]:[];
