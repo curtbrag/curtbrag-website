@@ -2339,4 +2339,3 @@ window.queueCmd = async (deviceId, type) => {
     if (!started && token()) start();
   }, 1000);
 })();
-
