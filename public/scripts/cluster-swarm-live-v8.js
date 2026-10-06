@@ -777,7 +777,7 @@
   }
   function siteTestCommand(url){
     const payload=JSON.stringify({url});const bytes=new TextEncoder().encode(payload);let binary='';bytes.forEach(b=>binary+=String.fromCharCode(b));const encoded=btoa(binary);
-    return `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-url-test.py' -o "$HOME/cluster-url-test.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-url-test.py" --settings-b64 '${encoded}'; }`;
+    return `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/d95a9fff64c84531155d858574691a18483583a7/scripts/cluster-url-test.py' -o "$HOME/cluster-url-test.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-url-test.py" --settings-b64 '${encoded}'; }`;
   }
   async function closeSiteTest(){
     if(siteTestBusy||!siteTest||siteTest.closed_at)return;
