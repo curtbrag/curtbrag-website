@@ -252,7 +252,14 @@ def test_website(url, allowed_hosts=None, timeout=TIMEOUT, max_bytes=MAX_BYTES):
             # chunk-size line could otherwise trickle forever inside readline.
             def abort_slow_response(transport=live_socket):
                 try:
-                    transport.shutdown(socket.SHUT_RDWR)
+                    if isinstance(transport, ssl.SSLSocket):
+                        # HTTPResponse's makefile may retain the descriptor after
+                        # HTTPConnection.close marks the SSL socket closed. The
+                        # SSL override refuses shutdown then; the base socket
+                        # method can still interrupt its live response file.
+                        socket.socket.shutdown(transport, socket.SHUT_RDWR)
+                    else:
+                        transport.shutdown(socket.SHUT_RDWR)
                 except OSError:
                     pass
 
@@ -288,7 +295,10 @@ def test_website(url, allowed_hosts=None, timeout=TIMEOUT, max_bytes=MAX_BYTES):
                 raise SafetyError("Compressed responses are excluded from this bounded check.")
             body = bytearray()
             while len(body) < max_bytes:
-                live_socket.settimeout(remaining(deadline))
+                # HTTPResponse may close its socket after the final data chunk.
+                # Keep the hard deadline without touching that closed transport;
+                # read1 then safely returns b"" for the completed response.
+                remaining(deadline)
                 chunk = response.read1(min(16384, max_bytes - len(body)))
                 if not chunk:
                     break
@@ -342,4 +352,3 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
