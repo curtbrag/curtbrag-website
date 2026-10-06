@@ -57,6 +57,8 @@
   let current = null;
   let pollTimer = null;
   let requestBusy = false;
+  let pendingLoad = null;
+  let lastSuccessfulLoad = 0;
   let started = false;
   let livePaused = false;
   let jobSubmitting = false;
@@ -1714,25 +1716,45 @@
     } catch (error) { notify(`Episode preview failed: ${error.message}`, 'error'); }
   }
 
-  async function load(force=false) {
-    if (!token()) return current;
-    if (livePaused && !force) return current;
-    if (requestBusy) return current;
+  function markConnectionStale(message) {
+    setState(message, 'var(--color-yellow)');
+    const grid = document.getElementById('swarm-nodes');
+    if (grid) {
+      grid.dataset.connection = 'stale';
+      grid.style.opacity = '0.65';
+    }
+    const count = document.getElementById('swarm-nodes-online');
+    if (count) count.textContent = 'Unverified';
+  }
+
+  function load(force=false) {
+    if (!token()) return Promise.resolve(null);
+    if (pendingLoad) return pendingLoad;
+    if (livePaused && !force) return Promise.resolve(current);
+    if (document.hidden && !force) return Promise.resolve(current);
     requestBusy = true;
+    pendingLoad = performLoad().finally(() => {
+      requestBusy = false;
+      pendingLoad = null;
+    });
+    return pendingLoad;
+  }
+
+  async function performLoad() {
     try {
       if (!current) setState(`Loading live ${FLEET.length}-node cluster state…`);
       const data = await swarmApi('queue-status');
+      if (!Array.isArray(data?.nodes)) throw new Error('Worker status response is incomplete');
       render(data);
+      lastSuccessfulLoad = Date.now();
+      const grid = document.getElementById('swarm-nodes');
+      if (grid) { grid.dataset.connection = 'live'; grid.style.opacity = ''; }
       void refreshPhoneRecovery();
       return current;
     } catch (error) {
-      setState(`Swarm API error: ${error.message}`, 'var(--color-red)');
-      const grid = document.getElementById('swarm-nodes');
-      if (grid) grid.innerHTML = `<span style="color:var(--color-red)">Unable to load live Swarm: ${esc(error.message)}</span>`;
+      markConnectionStale(`Connection unavailable: ${error.message}. ${lastSuccessfulLoad ? 'Showing the last successful view; worker availability is unverified.' : 'Worker availability could not be verified.'} Retrying automatically.`);
       console.error('Swarm load failed', error);
       return null;
-    } finally {
-      requestBusy = false;
     }
   }
 
@@ -1875,7 +1897,7 @@ async function syncPcDesired(type, targets) {
 
   async function runAction(type, target='__all__', cmd='') {
     try {
-      if (!current) await load();
+      if (!await load(true)) throw new Error('Cannot verify current workers. Refresh the connection before starting work.');
       const resolvedTarget = await resolveTarget(target);
 
       if (DIAGNOSTIC_TYPES.has(type)) {
@@ -2080,9 +2102,18 @@ window.queueCmd = async (deviceId, type) => {
   if (swarmButton) swarmButton.addEventListener('click', () => setTimeout(start, 0), true);
 
   if (token()) setTimeout(start, 50);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && token()) {
+      if (lastSuccessfulLoad && Date.now() - lastSuccessfulLoad > 30000) markConnectionStale('Checking connections after returning to the dashboard…');
+      load();
+    }
+  });
   setInterval(() => {
     if (!token()) return;
     ensureUi();
+    if (lastSuccessfulLoad && Date.now() - lastSuccessfulLoad > 30000 && document.getElementById('swarm-nodes')?.dataset.connection !== 'stale') {
+      markConnectionStale(livePaused ? 'Live updates paused. Worker availability is unverified; resume updates to reconnect.' : 'Connection update is overdue. Worker availability is unverified; retrying automatically.');
+    }
     if (!started && token()) start();
   }, 1000);
 })();
