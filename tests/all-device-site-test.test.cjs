@@ -17,6 +17,7 @@ function harness(options = {}) {
     'site-test-url': { value: 'https://example.com/' },
     'site-test-state': { textContent: '' },
     'site-test-export': { disabled: true },
+    'site-test-close': { disabled: true },
     'site-test-report': { textContent: '' },
   };
   const calls = [];
@@ -46,12 +47,12 @@ function harness(options = {}) {
     swarmApi: async (...args) => {
       calls.push(args);
       if (options.api) return options.api(...args);
-      if (args[0] === 'queue-status') return { nodes: options.nodes || [{ id: 'phone191', online: true, busy: false }] };
+      if (args[0] === 'queue-status') return { nodes: options.nodes || [{ id: 'phone191', online: true, busy: false }], jobs: [], results: [] };
       return { ok: true };
     },
     load: async () => { loads++; },
   });
-  vm.runInContext(feature + '\n;globalThis.testApi = { validateSiteTestUrl, dispatchSiteTest, renderSiteTest, siteTestCommand, get: () => siteTest, set: value => { siteTest = value; }, busy: () => siteTestBusy };', context);
+  vm.runInContext(feature + '\n;globalThis.testApi = { validateSiteTestUrl, dispatchSiteTest, closeSiteTest, renderSiteTest, siteTestCommand, get: () => siteTest, set: value => { siteTest = value; }, busy: () => siteTestBusy };', context);
   return { api: context.testApi, elements, calls, storage, loads: () => loads };
 }
 
@@ -230,3 +231,119 @@ test('malformed, wrong-kind and invalid timing output cannot count as a pass', (
   }
 });
 
+test('closing refuses queued, running, assigned and unknown own queue jobs', async () => {
+  for (const status of ['pending', 'queued', 'running', 'assigned', 'unrecognized', undefined]) {
+    const h = harness({ api: async () => ({ nodes: [], jobs: [{ id: 'job-191', status }], results: [] }) });
+    h.api.set(batch());
+    await h.api.closeSiteTest();
+    assert.equal(h.api.get().tasks[0].state, 'queued', String(status));
+    assert.equal(h.api.get().closed_at, undefined);
+    assert.match(h.elements['site-test-state'].textContent, /still appear queued or running/);
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.elements['site-test-close'].disabled, false);
+  }
+});
+
+test('closing refuses matching active job references as strings or objects', async () => {
+  for (const reference of ['job-191', { id: 'job-191' }, { job_id: 'job-191' }, { job: { id: 'job-191' } }]) {
+    const h = harness({ api: async () => ({ nodes: [{ id: 'phone191', active_jobs: [reference] }], jobs: [], results: [] }) });
+    h.api.set(batch());
+    await h.api.closeSiteTest();
+    assert.equal(h.api.get().tasks[0].state, 'queued');
+    assert.equal(h.api.get().closed_at, undefined);
+    assert.match(h.elements['site-test-state'].textContent, /still appear queued or running/);
+  }
+});
+
+test('closing first collects fresh terminal results and preserves their passed or failed state', async () => {
+  const failed = result({ job_id: 'job-253', device_id: 'phone253', exit_code: 1 });
+  const h = harness({ api: async () => ({ nodes: [], jobs: [{ id: 'job-191', status: 'completed' }, { id: 'job-253', status: 'failed' }], results: [result(), failed] }) });
+  const saved = batch([{ unit: 'phone191', job_id: 'job-191', state: 'queued' }, { unit: 'phone253', job_id: 'job-253', state: 'queued' }]);
+  saved.created_at = new Date().toISOString();
+  h.api.set(saved);
+  await h.api.closeSiteTest();
+  assert.deepEqual(Array.from(h.api.get().tasks, t => t.state), ['passed', 'failed']);
+  assert.ok(h.api.get().closed_at);
+  assert.equal(h.elements['site-test-export'].disabled, false);
+  assert.match(h.elements['site-test-state'].textContent, /2\/2 results returned · 1 failed · 0 closed/);
+});
+
+test('closing requires at least two minutes for young absent queued or unconfirmed submissions', async () => {
+  for (const state of ['queued', 'submitting', 'unconfirmed']) {
+    const h = harness();
+    const saved = batch([{ unit: 'phone191', job_id: 'job-191', state }]);
+    saved.created_at = new Date().toISOString();
+    h.api.set(saved);
+    await h.api.closeSiteTest();
+    assert.equal(h.api.get().tasks[0].state, state);
+    assert.equal(h.api.get().closed_at, undefined);
+    assert.match(h.elements['site-test-state'].textContent, /at least two minutes/);
+  }
+});
+
+test('an old report absent from the fresh queue closes unresolved and never-sent tasks without replay', async () => {
+  const h = harness();
+  const saved = batch(['queued', 'submitting', 'unconfirmed', 'planned'].map((state, i) => ({ unit: 'phone' + i, job_id: 'job-' + i, state })));
+  saved.created_at = new Date(Date.now() - 180000).toISOString();
+  h.api.set(saved);
+  await h.api.closeSiteTest();
+  assert.ok(h.api.get().tasks.every(t => t.state === 'closed'));
+  assert.ok(h.api.get().closed_at);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0][0], 'queue-status');
+  assert.equal(h.elements['site-test-export'].disabled, false);
+  assert.equal(h.elements['site-test-close'].disabled, true);
+  assert.match(h.elements['site-test-state'].textContent, /0\/4 results returned · 0 failed · 4 closed/);
+  assert.match(h.elements['site-test-report'].textContent, /phone0 · closed/);
+  const persisted = JSON.parse(h.storage.get(storageKey));
+  assert.equal(persisted.tasks[0].state, 'closed');
+  h.api.renderSiteTest([result({ job_id: 'job-0', device_id: 'phone0' })]);
+  assert.equal(h.api.get().tasks[0].state, 'closed', 'late output must not reopen the reviewed report');
+  await h.api.dispatchSiteTest();
+  assert.equal(h.calls.filter(call => call[0] === 'enqueue').length, 1, 'a new explicit batch is permitted');
+});
+
+test('known cancelled and failed queue jobs do not prevent closing an old absent report', async () => {
+  for (const status of ['completed', 'cancelled', 'canceled', 'failed']) {
+    const h = harness({ api: async () => ({ nodes: [], jobs: [{ id: 'job-191', status }], results: [] }) });
+    const saved = batch();
+    saved.created_at = new Date(Date.now() - 180000).toISOString();
+    h.api.set(saved);
+    await h.api.closeSiteTest();
+    assert.equal(h.api.get().tasks[0].state, 'closed', status);
+    assert.ok(h.api.get().closed_at);
+  }
+});
+
+test('a close fetch failure or incomplete response preserves the unresolved report', async () => {
+  for (const api of [async () => { throw Error('Queue connection timed out'); }, async () => ({ nodes: [] })]) {
+    const h = harness({ api });
+    const saved = batch();
+    saved.created_at = new Date(Date.now() - 180000).toISOString();
+    h.api.set(saved);
+    const before = JSON.stringify(h.api.get());
+    await h.api.closeSiteTest();
+    assert.equal(JSON.stringify(h.api.get()), before);
+    assert.equal(h.elements['site-test-run'].disabled, false);
+    assert.equal(h.elements['site-test-close'].disabled, false);
+    assert.match(h.elements['site-test-state'].textContent, /timed out|incomplete/);
+    assert.equal(h.calls.length, 1);
+  }
+});
+
+test('close and submit controls stay disabled during the fresh queue check', async () => {
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  const h = harness({ api: async () => pending });
+  h.api.set(batch());
+  const closing = h.api.closeSiteTest();
+  assert.equal(h.elements['site-test-run'].disabled, true);
+  assert.equal(h.elements['site-test-close'].disabled, true);
+  await h.api.closeSiteTest();
+  await h.api.dispatchSiteTest();
+  assert.equal(h.calls.length, 1);
+  release({ nodes: [], jobs: [{ id: 'job-191', status: 'running' }], results: [] });
+  await closing;
+  assert.equal(h.elements['site-test-run'].disabled, false);
+  assert.equal(h.elements['site-test-close'].disabled, false);
+});
