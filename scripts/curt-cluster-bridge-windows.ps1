@@ -32,7 +32,7 @@ catch {
 
 $api = if ($config.api_url) { [string]$config.api_url } else { 'https://curtbrag.com/.netlify/functions/cluster-api' }
 $swarmApi = 'https://curtbrag.com/api/cluster'
-$bridgeVersion = '2.4.0'
+$bridgeVersion = '2.5.0'
 $wallet = [string]$config.wallet
 $poolHost = if ($config.pool_host) { [string]$config.pool_host } else { 'gulf.moneroocean.stream' }
 $poolPort = if ($config.pool_port) { [int]$config.pool_port } else { 10128 }
@@ -614,12 +614,260 @@ function Apply-Desired($p, [bool]$Force=$false) {
     }
 }
 
+function Get-PhoneControllerRemaining($Watch) {
+    $remaining = 10000 - [int]$Watch.ElapsedMilliseconds
+    if ($remaining -le 0) { throw 'CONTROLLER_DEADLINE' }
+    return $remaining
+}
+
+function Read-PhoneControllerExact([IO.Stream]$Stream, [int]$Count, $Watch) {
+    if ($Count -lt 0 -or $Count -gt 65536) { throw 'CONTROLLER_SIZE_LIMIT' }
+    $bytes = New-Object byte[] $Count
+    $offset = 0
+    while ($offset -lt $Count) {
+        $remaining = Get-PhoneControllerRemaining $Watch
+        if ($Stream.CanTimeout) { $Stream.ReadTimeout = $remaining }
+        $read = $Stream.Read($bytes, $offset, $Count - $offset)
+        if ($read -le 0) { throw 'CONTROLLER_PARTIAL_REPLY' }
+        $offset += $read
+    }
+    return ,$bytes
+}
+
+function Write-PhoneControllerService([IO.Stream]$Stream, [string]$Service, $Watch) {
+    $payload = [Text.Encoding]::ASCII.GetBytes($Service)
+    if ($payload.Length -eq 0 -or $payload.Length -gt 4096) { throw 'CONTROLLER_SERVICE_LIMIT' }
+    $remaining = Get-PhoneControllerRemaining $Watch
+    if ($Stream.CanTimeout) { $Stream.WriteTimeout = $remaining }
+    $prefix = [Text.Encoding]::ASCII.GetBytes(('{0:x4}' -f $payload.Length))
+    $Stream.Write($prefix, 0, $prefix.Length)
+    $remaining = Get-PhoneControllerRemaining $Watch
+    if ($Stream.CanTimeout) { $Stream.WriteTimeout = $remaining }
+    $Stream.Write($payload, 0, $payload.Length)
+}
+
+function Read-PhoneControllerString([IO.Stream]$Stream, $Watch) {
+    $header = [Text.Encoding]::ASCII.GetString((Read-PhoneControllerExact $Stream 4 $Watch))
+    if ($header -cnotmatch '^[0-9a-fA-F]{4}$') { throw 'CONTROLLER_BAD_LENGTH' }
+    $length = [Convert]::ToInt32($header, 16)
+    return [Text.Encoding]::UTF8.GetString((Read-PhoneControllerExact $Stream $length $Watch))
+}
+
+function Read-PhoneControllerStatus([IO.Stream]$Stream, $Watch) {
+    $status = [Text.Encoding]::ASCII.GetString((Read-PhoneControllerExact $Stream 4 $Watch))
+    if ($status -ceq 'OKAY') { return }
+    if ($status -ceq 'FAIL') { $null = Read-PhoneControllerString $Stream $Watch }
+    throw 'CONTROLLER_REJECTED_REQUEST'
+}
+
+function Read-PhoneControllerShell([IO.Stream]$Stream, $Watch) {
+    $stdout = New-Object IO.MemoryStream
+    $stderr = New-Object IO.MemoryStream
+    $total = 0
+    try {
+        while ($true) {
+            $header = Read-PhoneControllerExact $Stream 5 $Watch
+            $length = [BitConverter]::ToUInt32($header, 1)
+            if ($length -gt 65536 -or ($total + $length) -gt 65536) { throw 'CONTROLLER_SIZE_LIMIT' }
+            $total += $length
+            $payload = Read-PhoneControllerExact $Stream ([int]$length) $Watch
+            switch ($header[0]) {
+                1 { $stdout.Write($payload, 0, $payload.Length) }
+                2 { $stderr.Write($payload, 0, $payload.Length) }
+                3 {
+                    if ($length -ne 1) { throw 'CONTROLLER_BAD_EXIT_PACKET' }
+                    return [pscustomobject]@{
+                        ExitCode = [int]$payload[0]
+                        Output = [Text.Encoding]::UTF8.GetString($stdout.ToArray())
+                        ErrorOutput = [Text.Encoding]::UTF8.GetString($stderr.ToArray())
+                    }
+                }
+                default { throw 'CONTROLLER_BAD_SHELL_PACKET' }
+            }
+        }
+    } finally { $stdout.Dispose(); $stderr.Dispose() }
+}
+
+function Get-FixedPhoneControllerShell([string]$Operation) {
+    if ($Operation -ceq 'return') {
+        return 'am start --user 0 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n com.termux/.app.TermuxActivity -f 0x10000000'
+    }
+    if ($Operation -ceq 'foreground') {
+        # Filter on the phone. No activity records, titles or other app names
+        # cross the socket. A single top-resumed record takes precedence.
+        return @'
+dumpsys activity activities 2>/dev/null | { top=0; top_termux=0; resumed=0; resumed_termux=0; while IFS= read -r line; do case "$line" in *"topResumedActivity="*|*"topResumedActivity:"*) top=$((top+1)); case "$line" in *" com.termux/"*) top_termux=$((top_termux+1));; esac;; *"mResumedActivity="*|*"mResumedActivity:"*) resumed=$((resumed+1)); case "$line" in *" com.termux/"*) resumed_termux=$((resumed_termux+1));; esac;; esac; done; if { [ "$top" -eq 1 ] && [ "$top_termux" -eq 1 ]; } || { [ "$top" -eq 0 ] && [ "$resumed" -eq 1 ] && [ "$resumed_termux" -eq 1 ]; }; then printf 'TERMUX_RESUMED\n'; else printf 'TERMUX_NOT_RESUMED\n'; fi; }
+'@
+    }
+    throw 'CONTROLLER_OPERATION_UNAVAILABLE'
+}
+
+function Test-PhoneControllerOverrides {
+    foreach ($name in @('ADB_VENDOR_KEYS','ANDROID_USER_HOME','ANDROID_SDK_HOME','ADB_SERVER_SOCKET','ADB_SERVER_PORT','ANDROID_ADB_SERVER_PORT')) {
+        if ([Environment]::GetEnvironmentVariable($name)) { return $true }
+    }
+    return $false
+}
+
+function Invoke-ExistingPhoneController([string]$Operation, [string]$Transport='', $DeadlineWatch=$null) {
+    if ($Operation -cnotin @('devices','discovery','return','foreground')) { throw 'CONTROLLER_OPERATION_UNAVAILABLE' }
+    $shell = $Operation -cin @('return','foreground')
+    if ($shell -and $Transport -cnotmatch '^[A-Za-z0-9._:-]{1,200}$') { throw 'CONTROLLER_TRANSPORT_INVALID' }
+    if (-not $shell -and $Transport) { throw 'CONTROLLER_TRANSPORT_INVALID' }
+    $command = if ($shell) { Get-FixedPhoneControllerShell $Operation } else { $null }
+    $ownWatch = $null -eq $DeadlineWatch
+    $watch = if ($ownWatch) { [Diagnostics.Stopwatch]::StartNew() } else { $DeadlineWatch }
+    $client = [Net.Sockets.TcpClient]::new()
+    $pending = $null
+    try {
+        # A socket request cannot start, reset, pair or connect an ADB server.
+        $null = Get-PhoneControllerRemaining $watch
+        $pending = $client.BeginConnect('127.0.0.1', 5037, $null, $null)
+        if (-not $pending.AsyncWaitHandle.WaitOne((Get-PhoneControllerRemaining $watch))) { throw 'CONTROLLER_DEADLINE' }
+        $client.EndConnect($pending)
+        $stream = $client.GetStream()
+        if (-not $shell) {
+            $service = if ($Operation -ceq 'devices') { 'host:devices-l' } else { 'host:mdns:services' }
+            Write-PhoneControllerService $stream $service $watch
+            Read-PhoneControllerStatus $stream $watch
+            return Read-PhoneControllerString $stream $watch
+        }
+        Write-PhoneControllerService $stream ('host:transport:' + $Transport) $watch
+        Read-PhoneControllerStatus $stream $watch
+        Write-PhoneControllerService $stream ('shell,v2,raw:' + $command) $watch
+        Read-PhoneControllerStatus $stream $watch
+        $closeInput = [byte[]]@(4,0,0,0,0)
+        $stream.WriteTimeout = Get-PhoneControllerRemaining $watch
+        $stream.Write($closeInput, 0, $closeInput.Length)
+        return Read-PhoneControllerShell $stream $watch
+    } finally {
+        if ($pending) { $pending.AsyncWaitHandle.Close() }
+        $client.Dispose()
+        if ($ownWatch) { $watch.Stop() }
+    }
+}
+
+function Resolve-PhoneControllerTransport([string]$Unit, [string]$Devices, [string]$Discovery) {
+    $ips = @{ phone173='192.168.1.173'; phone174='192.168.1.174'; phone176='192.168.1.176'; phone177='192.168.1.177'; phone191='192.168.1.191'; phone195='192.168.1.195'; phone253='192.168.1.253'; phone254='192.168.1.254' }
+    if ($Unit -cnotin @($ips.Keys)) { throw 'CONTROLLER_TARGET_INVALID' }
+    $ip = $ips[$Unit]
+    $names = @{}
+    foreach ($line in ($Discovery -split "`n")) {
+        if ($line -cmatch '^\s*([A-Za-z0-9._-]{1,200})\s+_adb-tls-connect\._tcp\.?\s+(192\.168\.1\.\d{1,3}):(\d{1,5})\s*$') {
+            $name = $Matches[1].TrimEnd('.')
+            $address = $Matches[2]
+            $port = [int]$Matches[3]
+            if ($port -lt 1 -or $port -gt 65535) { continue }
+            foreach ($alias in @($name, ($name -creplace '\._adb-tls-connect\._tcp$', '')) | Select-Object -Unique) {
+                if (-not $names.ContainsKey($alias)) { $names[$alias] = @() }
+                $names[$alias] = @($names[$alias]) + $address
+            }
+        }
+    }
+    $matching = @()
+    foreach ($line in ($Devices -split "`n")) {
+        if ($line -cnotmatch '^([A-Za-z0-9._:-]{1,200})\s+(device|offline|unauthorized)\b') { continue }
+        $serial = $Matches[1]
+        $state = $Matches[2]
+        $matched = $false
+        if ($serial -cmatch '^192\.168\.1\.\d{1,3}:(\d{1,5})$') {
+            $port = [int]$Matches[1]
+            $matched = $port -ge 1 -and $port -le 65535 -and $serial.StartsWith($ip + ':', [StringComparison]::Ordinal)
+        } else {
+            $alias = $serial.TrimEnd('.') -creplace '\._adb-tls-connect\._tcp$', ''
+            if ($names.ContainsKey($alias)) {
+                $addresses = @($names[$alias] | Select-Object -Unique)
+                if ($addresses.Count -gt 1 -and $ip -cin $addresses) { throw 'CONTROLLER_TRANSPORT_AMBIGUOUS' }
+                $matched = $addresses.Count -eq 1 -and $addresses[0] -ceq $ip
+            }
+        }
+        if ($matched) { $matching += [pscustomobject]@{ Serial=$serial; State=$state } }
+    }
+    $authorized = @($matching | Where-Object State -CEQ 'device' | Sort-Object Serial -Unique)
+    if ($authorized.Count -gt 1) { throw 'CONTROLLER_TRANSPORT_AMBIGUOUS' }
+    if ($authorized.Count -eq 1) { return [pscustomobject]@{ Transport=$authorized[0].Serial; ControllerState='connected' } }
+    $state = if (@($matching | Where-Object State -CEQ 'unauthorized').Count -gt 0) { 'unauthorized' } else { 'disconnected' }
+    return [pscustomobject]@{ Transport=$null; ControllerState=$state }
+}
+
+function Invoke-PhoneControllerReturn($Command) {
+    $unit = [string]$Command.target
+    $report = [ordered]@{ kind='phone-controller-return'; unit=$unit; state='failed'; foreground_app_verified=$false; visible_screen_verified=$false; error=$null; controller_state='disconnected' }
+    try {
+        if ($unit -cnotin @('phone173','phone174','phone176','phone177','phone191','phone195','phone253','phone254')) { throw 'CONTROLLER_TARGET_INVALID' }
+        foreach ($name in @('payload','cmd','command','url','serial','component','flags','settings')) {
+            $property = $Command.PSObject.Properties[$name]
+            if ($property -and $null -ne $property.Value) {
+                $value = $property.Value
+                if ($name -ceq 'payload' -and (($value -is [Collections.IDictionary] -and $value.Count -eq 0) -or ($value -is [pscustomobject] -and @($value.PSObject.Properties).Count -eq 0))) { continue }
+                throw 'CONTROLLER_PAYLOAD_INVALID'
+            }
+        }
+        if (Test-PhoneControllerOverrides) { throw 'CONTROLLER_OVERRIDE_PRESENT' }
+        $devices = [string](Invoke-ExistingPhoneController 'devices')
+        $discovery = ''
+        if ($devices -match '(?m)^(?!192\.168\.1\.\d+:)[A-Za-z0-9._:-]+\s+(device|offline|unauthorized)\b') {
+            try { $discovery = [string](Invoke-ExistingPhoneController 'discovery') } catch {}
+        }
+        $resolved = Resolve-PhoneControllerTransport $unit $devices $discovery
+        $report.controller_state = $resolved.ControllerState
+        if (-not $resolved.Transport) {
+            $report.error = 'No already-authorized controller connection for this phone. Reconnect its existing wireless debugging connection before trying again.'
+            return [pscustomobject]$report
+        }
+        $started = Invoke-ExistingPhoneController 'return' $resolved.Transport
+        $raw = [string]$started.Output + "`n" + [string]$started.ErrorOutput
+        if ($started.ExitCode -ne 0 -or $raw -match '(?im)^\s*error(?:\s|:|$)|exception|permission denial|no activity found|unable to resolve intent|background activity start[^\n]*(denied|blocked|not allowed)') { throw 'CONTROLLER_ACTIVITY_REJECTED' }
+        # am may finish before Android updates its resumed activity. Observe
+        # at most three times within one shared ten-second deadline, while
+        # keeping the activity request itself strictly one shot.
+        $observation = [Diagnostics.Stopwatch]::StartNew()
+        $confirmed = $false
+        try {
+            for ($attempt=0; $attempt -lt 3; $attempt++) {
+                if ($attempt -gt 0) {
+                    if ((Get-PhoneControllerRemaining $observation) -le 250) { throw 'CONTROLLER_FOREGROUND_UNCONFIRMED' }
+                    Start-Sleep -Milliseconds 250
+                }
+                $foreground = Invoke-ExistingPhoneController 'foreground' $resolved.Transport $observation
+                if ($foreground.ExitCode -ne 0 -or ([string]$foreground.ErrorOutput).Trim()) { throw 'CONTROLLER_FOREGROUND_UNCONFIRMED' }
+                if (([string]$foreground.Output).Trim() -ceq 'TERMUX_RESUMED') { $confirmed=$true; break }
+            }
+        } finally { $observation.Stop() }
+        if (-not $confirmed) { throw 'CONTROLLER_FOREGROUND_UNCONFIRMED' }
+        $report.state = 'termux-foreground'
+        $report.foreground_app_verified = $true
+    } catch {
+        switch -Exact ($_.Exception.Message) {
+            'CONTROLLER_TARGET_INVALID' { $report.error = 'Choose one of the eight configured phones.' }
+            'CONTROLLER_PAYLOAD_INVALID' { $report.error = 'This action accepts only the fixed return-to-Termux request.' }
+            'CONTROLLER_OVERRIDE_PRESENT' { $report.error = 'Controller overrides are present; the existing default controller was not used.' }
+            'CONTROLLER_TRANSPORT_AMBIGUOUS' { $report.controller_state='failed'; $report.error = 'More than one matching controller connection was found; no activity was opened.' }
+            'CONTROLLER_ACTIVITY_REJECTED' { $report.error = 'Android rejected the fixed Termux activity request.' }
+            'CONTROLLER_FOREGROUND_UNCONFIRMED' { $report.error = 'Android did not confirm Termux as the foreground app. The return remains unconfirmed.' }
+            default { $report.error = 'The existing controller connection was unavailable, refused the request, or timed out. No new connection or authorization was attempted.' }
+        }
+    }
+    return [pscustomobject]$report
+}
+
 function Process-Command {
     $c = Invoke-ApiGet 'commands'
     if (-not $c -or -not $c.queue -or @($c.queue).Count -eq 0) { return $false }
 
     $cmd = @($c.queue)[0]
     $type = [string]$cmd.type
+    if ($type -ceq 'phone-return-termux') {
+        $report = Invoke-PhoneControllerReturn $cmd
+        $verified = $report.state -ceq 'termux-foreground' -and $report.foreground_app_verified -eq $true
+        Invoke-ApiPost 'bridge-complete' @{
+            id=$cmd.id; target=$cmd.target; type=$type
+            status=$(if($verified){'completed'}else{'failed'})
+            result_summary=$(if($verified){'Android confirms Termux in the foreground; physical screen unverified.'}else{'Return to Termux failed or remains unconfirmed.'})
+            output=($report | ConvertTo-Json -Depth 3 -Compress)
+        } | Out-Null
+        return $true
+    }
     if ($type -in @('fleet-diagnose','swarm-recover-pcs','fleet-discover')) {
         try {
             if ($type -eq 'fleet-discover') { $output=Discover-PhoneAddresses; $failed=$false; $summary='Phone SSH address discovery completed' }
