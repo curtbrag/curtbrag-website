@@ -14,7 +14,7 @@ from contextlib import redirect_stdout
 from unittest.mock import Mock, patch
 
 
-spec = importlib.util.spec_from_file_location("cluster_browser_open", pathlib.Path(__file__).resolve().parent.parent / "scripts" / "cluster-browser-open.py")
+spec = importlib.util.spec_from_file_location("cluster_browser_open", pathlib.Path(__file__).resolve().parents[1] / "scripts" / "cluster-browser-open.py")
 helper = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(helper)
 URL = "https://curtbrag.com/cluster/?layout=wide&unit=phone191#activity"
@@ -52,12 +52,34 @@ class BrowserOpenTests(unittest.TestCase):
         self.assertEqual(report["url"], URL)
         args, options = run.call_args
         self.assertEqual(args[0], [AM, "start", "--user", "0", "-a", "android.intent.action.VIEW",
-                                   "--activity-multiple-task", "-f", "0x10000000", "-d", URL])
+                                   "-f", "0x18000000", "-d", URL])
         self.assertEqual(options["timeout"], 20)
         self.assertFalse(options["shell"])
         self.assertFalse(options["check"])
         self.assertEqual(options["env"], TERMUX)
         run.assert_called_once()
+
+    def test_android_final_intent_flags_keep_new_task_and_multiple_task(self):
+        # TermuxAm IntentCmd.java: -f uses setFlags(), while the named option
+        # uses addFlags(). A later -f therefore erases previously added bits.
+        # Source: github.com/termux/TermuxAm app/.../IntentCmd.java lines239-281.
+        def termux_parser_flags(arguments):
+            flags = 0
+            for index, argument in enumerate(arguments):
+                if argument == "-f":
+                    flags = int(arguments[index + 1], 0)
+                elif argument == "--activity-multiple-task":
+                    flags |= 0x08000000
+            return flags
+
+        previous_arguments = ["--activity-multiple-task", "-f", "0x10000000"]
+        self.assertEqual(termux_parser_flags(previous_arguments), 0x10000000)
+        report, run = self.android()
+        flags = termux_parser_flags(run.call_args.args[0])
+        self.assertTrue(report["launch_requested"])
+        self.assertEqual(flags & 0x10000000, 0x10000000)
+        self.assertEqual(flags & 0x08000000, 0x08000000)
+        self.assertEqual(flags, 0x18000000)
 
     def test_android_never_uses_system_am_or_installs_an_opener(self):
         for launcher in (None, "/system/bin/am", "/usr/bin/am"):
