@@ -16,10 +16,20 @@ const saved=(tasks=[task()],extra={})=>({id:'fleet-health-fixture',created_at:ne
 const receipt=(extra={})=>({job_id:'fleet-health-fixture-network-check-native',device_id:'phone253',exit_code:7,stdout:'First output',stderr:'Connection failed',...extra});
 
 function harness(options={}){
-  const storage=options.storage||new Map(),calls=[],loads=[],exports=[];
+  const storage=options.storage||new Map(),calls=[],loads=[],exports=[],revoked=[],copied=[];
   if(Object.prototype.hasOwnProperty.call(options,'saved'))storage.set(KEY,JSON.stringify(options.saved));
   const elements=Object.fromEntries(['fleet-health-run','fleet-health-retry','fleet-health-export','fleet-health-state','fleet-health-report'].map(id=>[id,{id,disabled:false,textContent:''}]));
-  let card=null,random=0;
+  let card=null,random=0,autoClicks=0;
+  const register=element=>{if(element.id)elements[element.id]=element;for(const child of element.children||[])register(child);};
+  function element(tag){
+    return {tagName:tag.toUpperCase(),id:'',className:'',innerHTML:'',textContent:'',children:[],attributes:{},style:{},disabled:false,
+      append(...children){for(const child of children){child.parent=this;this.children.push(child);register(child);}},
+      remove(){if(this.parent)this.parent.children=this.parent.children.filter(child=>child!==this);if(this.id)delete elements[this.id];this.removed=true;},
+      setAttribute(name,value){this.attributes[name]=value;},
+      querySelector:selector=>elements[selector.slice(1)]||null,
+      focus(){this.focused=true;},select(){this.selected=true;},click(){autoClicks++;},
+    };
+  }
   elements['cluster-view-fleet']={prepend:value=>{card=value;elements['fleet-health']=value;}};
   const fresh=options.fresh===undefined?{nodes:options.nodes||[node()],results:options.results||[]}:options.fresh;
   class Clock extends Date{constructor(...args){super(...(args.length?args:[NOW]));}static now(){return NOW;}}
@@ -30,13 +40,14 @@ function harness(options={}){
     current:options.current||{nodes:[node()],results:[]},
     versionAtLeast:(a,r)=>{const x=String(a||'0.0.0').split('.').map(Number),y=r.split('.').map(Number);for(let i=0;i<3;i++){if((x[i]||0)>(y[i]||0))return true;if((x[i]||0)<(y[i]||0))return false;}return true;},
     localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},
-    document:{getElementById:id=>elements[id]||null,createElement:tag=>tag==='section'?{id:'',className:'',innerHTML:'',querySelector:selector=>elements[selector.slice(1)]}:{click(){exports.push(this);}}},
-    Blob,URL:{createObjectURL:blob=>{exports.push(blob);return 'blob:fixture';},revokeObjectURL(){}},setTimeout:fn=>fn(),
+    document:{getElementById:id=>elements[id]||null,createElement:element},
+    navigator:{clipboard:{writeText:async value=>{if(options.clipboardDenied)throw new Error('Clipboard unavailable');copied.push(value);}}},
+    Blob,URL:{createObjectURL:blob=>{exports.push(blob);return 'blob:fixture-'+exports.length;},revokeObjectURL:url=>revoked.push(url)},setTimeout:fn=>fn(),
     load:async force=>{loads.push(force);return options.load?options.load(loads.length):fresh;},
     swarmApi:async(...args)=>{calls.push(args);return options.api?options.api(...args):{ok:true};},
   });
-  vm.runInContext(source+'\nglobalThis.api={ensureFleetHealth,renderFleetHealth,dispatchFleetHealth,retryFleetHealth,normalizeHealthRun,healthCanRetry,updateHealthButtons,get:()=>healthRun,busy:()=>healthSubmitting};',context);
-  return {api:context.api,elements,storage,calls,loads,exports,card:()=>card};
+  vm.runInContext(source+'\nglobalThis.api={ensureFleetHealth,renderFleetHealth,dispatchFleetHealth,retryFleetHealth,normalizeHealthRun,healthCanRetry,updateHealthButtons,openHealthExport,closeHealthExport,get:()=>healthRun,busy:()=>healthSubmitting};',context);
+  return {api:context.api,elements,storage,calls,loads,exports,revoked,copied,autoClicks:()=>autoClicks,card:()=>card};
 }
 
 test('UI exposes explicit retry and exports the combined attempt history',async()=>{
@@ -207,4 +218,68 @@ test('no eligible failures do not change successful counts, outputs or attempt h
   const h=harness({saved:saved([task({state:'passed',exit_code:0,error:''})])});const before=plain(h.api.get());
   await h.api.retryFleetHealth();assert.equal(h.calls.length,0);assert.deepEqual(plain(h.api.get()),before);
   assert.match(h.elements['fleet-health-report'].textContent,/passed · attempt 1\/3/);
+});
+
+function exportParts(h){
+  const panel=h.elements['fleet-health-export-panel'];assert.ok(panel,'Visible export panel exists');
+  const details=panel.children.find(e=>e.tagName==='DETAILS');
+  return {panel,details,data:details.children.find(e=>e.tagName==='TEXTAREA'),
+    heading:panel.children.find(e=>e.tagName==='H4'),download:panel.children.find(e=>e.tagName==='A'),
+    copy:panel.children.find(e=>e.textContent==='Copy report data'),close:panel.children.find(e=>e.textContent==='Close export'),
+    status:panel.children.find(e=>e.attributes.role==='status')};
+}
+
+test('export opens a visible immutable JSON snapshot with explicit download and complete attempts',async()=>{
+  const h=harness({saved:saved()});h.api.ensureFleetHealth();await h.api.retryFleetHealth();
+  const original=h.api.get(),before=plain(original),calls=h.calls.length;
+  h.elements['fleet-health-export'].onclick();const parts=exportParts(h),snapshot=JSON.parse(parts.data.value);
+  assert.equal(parts.heading.textContent,'Combined health report');assert.equal(parts.heading.tabIndex,-1);assert.equal(parts.heading.focused,true);assert.equal(parts.download.textContent,'Download report');
+  assert.equal(parts.download.download,before.id+'.json');assert.match(parts.download.href,/^blob:fixture-/);
+  assert.equal(parts.details.children[0].textContent,'Report data');assert.equal(parts.data.readOnly,true);
+  assert.equal(parts.data.attributes['aria-label'],'Complete health report JSON');assert.deepEqual(snapshot,before);
+  assert.equal(snapshot.tasks[0].attempts.length,2);assert.equal(snapshot.tasks[0].attempts[0].job_id,'fleet-health-fixture-network-check-native');
+  assert.equal(snapshot.tasks[0].attempts[1].job_id,h.calls[0][2].job.id);assert.equal(snapshot.tasks[0].attempts[0].error,'Connection failed');
+  assert.equal(h.api.get(),original);assert.equal(h.calls.length,calls);assert.equal(h.autoClicks(),0);
+  assert.deepEqual(JSON.parse(await h.exports.at(-1).text()),snapshot);
+  h.api.renderFleetHealth([receipt({job_id:before.tasks[0].job_id,exit_code:0,stdout:'Later recovery',stderr:''})]);
+  assert.equal(h.api.get().tasks[0].state,'passed');assert.deepEqual(JSON.parse(parts.data.value),snapshot);
+});
+
+test('closing and reopening export remove old panels and revoke their report URLs',()=>{
+  const h=harness({saved:saved()});h.api.ensureFleetHealth();h.api.openHealthExport();
+  const first=exportParts(h),url=first.download.href;first.close.onclick();
+  assert.equal(first.panel.removed,true);assert.equal(h.elements['fleet-health-export-panel'],undefined);assert.deepEqual(h.revoked,[url]);
+  h.api.openHealthExport();const second=exportParts(h);assert.notEqual(second.download.href,url);assert.equal(h.card().children.length,1);
+  h.api.openHealthExport();const third=exportParts(h);assert.equal(second.panel.removed,true);assert.equal(h.card().children.length,1);
+  assert.deepEqual(h.revoked,[url,second.download.href]);third.close.onclick();h.api.closeHealthExport();
+  assert.deepEqual(h.revoked,[url,second.download.href,third.download.href]);assert.equal(h.card().children.length,0);assert.equal(h.autoClicks(),0);
+});
+
+test('copy exports the exact report snapshot through the clipboard without rerunning workers',async()=>{
+  const h=harness({saved:saved()});h.api.ensureFleetHealth();h.api.openHealthExport();const parts=exportParts(h);
+  await parts.copy.onclick();assert.deepEqual(h.copied,[parts.data.value]);assert.equal(parts.status.textContent,'Report data copied.');
+  assert.equal(parts.copy.disabled,false);assert.equal(h.calls.length,0);assert.equal(h.autoClicks(),0);
+});
+
+test('clipboard denial opens report data and selects the complete read-only JSON as a fallback',async()=>{
+  const h=harness({saved:saved(),clipboardDenied:true});h.api.ensureFleetHealth();h.api.openHealthExport();const parts=exportParts(h);
+  await parts.copy.onclick();assert.equal(parts.details.open,true);assert.equal(parts.data.focused,true);assert.equal(parts.data.selected,true);
+  assert.equal(parts.data.readOnly,true);assert.deepEqual(JSON.parse(parts.data.value),plain(h.api.get()));
+  assert.match(parts.status.textContent,/Report data is selected/);assert.equal(parts.copy.disabled,false);assert.deepEqual(h.copied,[]);assert.equal(h.calls.length,0);
+});
+
+test('export stays available for queued work but is blocked while submission is changing the report',async()=>{
+  let release;const wait=new Promise(resolve=>{release=resolve;});
+  const h=harness({saved:saved(),api:async()=>wait});h.api.ensureFleetHealth();const dispatch=h.api.retryFleetHealth();
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(h.api.busy(),true);assert.equal(h.elements['fleet-health-export'].disabled,true);
+  h.api.openHealthExport();h.elements['fleet-health-export'].onclick();assert.equal(h.exports.length,0);assert.equal(h.elements['fleet-health-export-panel'],undefined);
+  release({ok:true});await dispatch;assert.equal(h.api.get().tasks[0].state,'queued');assert.equal(h.elements['fleet-health-export'].disabled,false);
+  h.elements['fleet-health-export'].onclick();assert.equal(JSON.parse(exportParts(h).data.value).tasks[0].state,'queued');assert.equal(h.calls.length,1);
+});
+
+test('export displays report content as text and does not replace or modify the saved report',()=>{
+  const h=harness({saved:saved([task({output:'<img src=x onerror="run()"> & plain report text'})])});h.api.ensureFleetHealth();
+  const original=h.api.get(),stored=h.storage.get(KEY);h.api.openHealthExport();const parts=exportParts(h);
+  assert.ok(parts.data.value.includes('<img src=x onerror=\\"run()\\">'));assert.equal(parts.data.innerHTML,'');
+  assert.equal(h.api.get(),original);assert.equal(h.storage.get(KEY),stored);assert.equal(h.calls.length,0);
 });
