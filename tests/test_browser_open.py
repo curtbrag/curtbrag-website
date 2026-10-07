@@ -51,7 +51,7 @@ class BrowserOpenTests(unittest.TestCase):
         self.assertEqual(report["platform"], "android")
         self.assertEqual(report["url"], URL)
         args, options = run.call_args
-        self.assertEqual(args[0], [AM, "start", "--check-draw-over-apps-permission", "--user", "0", "-a", "android.intent.action.VIEW",
+        self.assertEqual(args[0], [AM, "start", "--user", "0", "-a", "android.intent.action.VIEW",
                                    "-f", "0x18000000", "-d", URL])
         self.assertEqual(options["timeout"], 20)
         self.assertFalse(options["shell"])
@@ -59,7 +59,7 @@ class BrowserOpenTests(unittest.TestCase):
         self.assertEqual(options["env"], TERMUX)
         run.assert_called_once()
 
-    def test_android_missing_background_permission_fails_cli_without_retry(self):
+    def test_android_permission_precheck_refusal_is_not_a_navigation_attempt(self):
         # Actual TermuxAm 0.8.0 permission-preflight output from phone253.
         denied = ('Error: The com.termux app requires the "Display over other apps" permission '
                   'to start activities and services from background on Android >= 10.')
@@ -76,11 +76,25 @@ class BrowserOpenTests(unittest.TestCase):
         self.assertEqual(report["state"], "failed")
         self.assertFalse(report["visible_screen_verified"])
         self.assertTrue(report["opener_completed"])
-        self.assertIn('Allow "Display over other apps" for Termux in Android settings', report["error"])
+        self.assertIn("before Android attempted navigation", report["error"])
         run.assert_called_once()
-        self.assertEqual(run.call_args.args[0], [AM, "start", "--check-draw-over-apps-permission",
+        self.assertEqual(run.call_args.args[0], [AM, "start",
                                               "--user", "0", "-a", "android.intent.action.VIEW",
                                               "-f", "0x18000000", "-d", "https://www.google.com/"])
+
+    def test_android_does_not_require_overlay_before_normal_activity_request(self):
+        # TermuxAm 0.8's optional precheck rejects without considering foreground
+        # state. Android itself must make the launch decision instead.
+        def existing_wrapper(command, **options):
+            if "--check-draw-over-apps-permission" in command:
+                return subprocess.CompletedProcess(command, 1, 'Error: The com.termux app requires the "Display over other apps" permission', "")
+            return subprocess.CompletedProcess(command, 0, "Starting: Intent { act=android.intent.action.VIEW }", "")
+
+        report, run = self.android(run=Mock(side_effect=existing_wrapper))
+        self.assertTrue(report["launch_requested"])
+        self.assertFalse(report["visible_screen_verified"])
+        self.assertNotIn("--check-draw-over-apps-permission", run.call_args.args[0])
+        run.assert_called_once()
 
     def test_android_final_intent_flags_keep_new_task_and_multiple_task(self):
         # TermuxAm IntentCmd.java: -f uses setFlags(), while the named option
