@@ -595,18 +595,53 @@
   }
 
   let healthRun = null, healthSubmitting = false;
-  try { healthRun = JSON.parse(localStorage.getItem('curt-fleet-health-v1')); } catch {}
+  const HEALTH_CHECKS = ['storage-status','network-check'];
+  const HEALTH_PENDING = new Set(['planned','queued','submitting','unconfirmed']);
+  const healthExitCode = value => typeof value === 'number' && Number.isSafeInteger(value);
+  function normalizeHealthRun(saved) {
+    if (!saved || typeof saved.id !== 'string' || !/^fleet-health-[A-Za-z0-9._-]{1,120}$/.test(saved.id) || !Array.isArray(saved.tasks)) return null;
+    const seen = new Set(), tasks = [];
+    for (const raw of saved.tasks.slice(0,26)) {
+      if (!raw || !IDS.has(raw.unit) || !HEALTH_CHECKS.includes(raw.check) || seen.has(raw.unit+'|'+raw.check)) continue;
+      seen.add(raw.unit+'|'+raw.check);
+      const history = Array.isArray(raw.attempts) && raw.attempts.length ? raw.attempts : [raw];
+      const attempts = history.slice(-3).filter(a => a && typeof a.job_id === 'string' && /^[A-Za-z0-9._-]{1,220}$/.test(a.job_id)).map((a,i) => ({
+        number: i+1, job_id:a.job_id,
+        state:['passed','failed',...HEALTH_PENDING].includes(a.state)?a.state:'unconfirmed',
+        output:String(a.output||'').slice(0,8000), error:String(a.error||'').slice(0,2000),
+        exit_code:healthExitCode(a.exit_code)?a.exit_code:null,
+        submitted_at:typeof a.submitted_at==='string'?a.submitted_at:null,
+      }));
+      if (!attempts.length) continue;
+      const latest = attempts.at(-1);
+      tasks.push({unit:raw.unit,check:raw.check,attempts,attempt_limit_reached:raw.attempt_limit_reached===true||history.length>3,
+        job_id:latest.job_id,state:latest.state,output:latest.output,error:latest.error,exit_code:latest.exit_code,
+        retry_skip_reason:typeof raw.retry_skip_reason==='string'?raw.retry_skip_reason.slice(0,100):''});
+    }
+    return {...saved,version:2,tasks,skipped:(Array.isArray(saved.skipped)?saved.skipped:[]).filter(n=>n&&IDS.has(n.unit)).slice(0,13).map(n=>({unit:n.unit,reason:String(n.reason||'unavailable').slice(0,100)}))};
+  }
+  try { healthRun = normalizeHealthRun(JSON.parse(localStorage.getItem('curt-fleet-health-v1'))); } catch {}
   function saveHealth() { try { localStorage.setItem('curt-fleet-health-v1', JSON.stringify(healthRun)); } catch {} }
+  function healthCanRetry(task) {
+    return task.state==='failed' && healthExitCode(task.exit_code) && task.exit_code!==0 && !task.attempt_limit_reached && task.attempts.length<3;
+  }
+  function updateHealthButtons() {
+    const run=document.getElementById('fleet-health-run'),retry=document.getElementById('fleet-health-retry'),exportButton=document.getElementById('fleet-health-export');
+    if(run)run.disabled=healthSubmitting||!!healthRun?.tasks.some(t=>HEALTH_PENDING.has(t.state));
+    if(retry)retry.disabled=healthSubmitting||!healthRun?.tasks.some(healthCanRetry);
+    if(exportButton)exportButton.disabled=healthSubmitting||!healthRun;
+  }
   function ensureFleetHealth() {
     const fleet = document.getElementById('cluster-view-fleet');
     if (!fleet || document.getElementById('fleet-health')) return;
     const card = document.createElement('section'); card.id = 'fleet-health';
     card.className = 'cluster-control-card';
-    card.innerHTML = '<h3>Fleet health report</h3><p>Check storage and website connectivity on idle workers, then collect their results in one report. Busy and offline devices are listed as skipped.</p><button id="fleet-health-run" type="button">Run fleet health check</button> <button id="fleet-health-export" type="button" disabled>Export report</button><p id="fleet-health-state" role="status" aria-live="polite">Ready for a fleet check.</p><pre id="fleet-health-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto"></pre>';
+    card.innerHTML = '<h3>Fleet health report</h3><p>Check storage and website connectivity on idle workers, then collect their results in one report. Retry confirmed failed checks up to three attempts each; successful results and earlier attempts stay in the report.</p><button id="fleet-health-run" type="button">Run fleet health check</button> <button id="fleet-health-retry" type="button" disabled>Retry failed checks</button> <button id="fleet-health-export" type="button" disabled>Export report</button><p id="fleet-health-state" role="status" aria-live="polite">Ready for a fleet check.</p><pre id="fleet-health-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto"></pre>';
     fleet.prepend(card);
-    card.querySelector('#fleet-health-run').onclick = dispatchFleetHealth;
+    card.querySelector('#fleet-health-run').onclick = () => dispatchFleetHealth();
+    card.querySelector('#fleet-health-retry').onclick = retryFleetHealth;
     card.querySelector('#fleet-health-export').onclick = () => {
-      if (!healthRun) return;
+      if (!healthRun || healthSubmitting) return;
       const blob = new Blob([JSON.stringify(healthRun,null,2)], {type:'application/json'});
       const url = URL.createObjectURL(blob), a = document.createElement('a');
       a.href = url; a.download = healthRun.id+'.json'; a.click();
@@ -616,60 +651,105 @@
   }
   function renderFleetHealth(results) {
     const state = document.getElementById('fleet-health-state');
-    if (!state || !healthRun) return;
+    if (!state) return;
+    if (!healthRun) { updateHealthButtons(); return; }
     let changed = false;
     for (const task of healthRun.tasks) {
-      const result = results.find(r => r.job_id === task.job_id && r.device_id === task.unit);
-      if (result && !['passed','failed'].includes(task.state)) {
-        task.state = Number(result.exit_code) === 0 ? 'passed' : 'failed';
-        task.output = String(result.stdout || '').slice(0,8000);
-        task.error = String(result.stderr || '').slice(0,2000); changed = true;
+      for (const attempt of task.attempts) {
+        if (['passed','failed'].includes(attempt.state) && healthExitCode(attempt.exit_code)) continue;
+        const result = (Array.isArray(results)?results:[]).find(r => r.job_id===attempt.job_id && r.device_id===task.unit);
+        if (!result) continue;
+        const validExit=healthExitCode(result.exit_code);
+        attempt.exit_code=validExit?result.exit_code:null;
+        attempt.state=validExit?(result.exit_code===0?'passed':'failed'):'unconfirmed';
+        attempt.output=String(result.stdout||'').slice(0,8000);
+        attempt.error=validExit?String(result.stderr||'').slice(0,2000):'Worker returned an invalid exit status. This result cannot be retried until a numeric failure receipt is confirmed.';
+        changed=true;
       }
+      const latest=task.attempts.at(-1);
+      for(const field of ['job_id','state','output','error','exit_code'])task[field]=latest[field];
     }
     if (changed) saveHealth();
     const complete = healthRun.tasks.filter(t => ['passed','failed'].includes(t.state)).length;
     const failed = healthRun.tasks.filter(t => t.state === 'failed').length;
-    state.textContent = `${complete}/${healthRun.tasks.length} checks returned · ${failed} failed · ${healthRun.skipped.length} devices skipped${healthSubmitting ? ' · dispatching' : ''}`;
-    document.getElementById('fleet-health-export').disabled = false;
+    const eligible = healthRun.tasks.filter(healthCanRetry).length;
+    state.textContent = `${complete}/${healthRun.tasks.length} checks returned · ${failed} failed · ${eligible} can retry · ${healthRun.skipped.length} devices skipped${healthSubmitting ? ' · dispatching' : ''}`;
     document.getElementById('fleet-health-report').textContent = healthRun.tasks.map(t =>
-      `${t.unit} · ${t.check} · ${t.state}${t.output ? '\n'+t.output : ''}${t.error ? '\n'+t.error : ''}`
+      `${t.unit} · ${t.check} · ${t.state} · attempt ${t.attempts.length}/3${t.retry_skip_reason?' · retry skipped: '+t.retry_skip_reason:''}${t.state==='failed'&&!healthExitCode(t.exit_code)?' · retry unavailable: older failure has no confirmed numeric receipt':''}${t.state==='failed'&&(t.attempt_limit_reached||t.attempts.length>=3)?' · retry limit reached':''}${t.output?'\n'+t.output:''}${t.error?'\n'+t.error:''}`+
+      t.attempts.slice(0,-1).map(a=>`\nPrevious attempt ${a.number}: ${a.state}${a.output?'\n'+a.output:''}${a.error?'\n'+a.error:''}`).join('')
     ).join('\n\n') + (healthRun.skipped.length ? '\n\nSkipped: '+healthRun.skipped.map(n=>n.unit+' ('+n.reason+')').join(', ') : '');
+    updateHealthButtons();
   }
-  async function dispatchFleetHealth() {
-    if (healthSubmitting) return;
-    const button = document.getElementById('fleet-health-run');
-    healthSubmitting = true; button.disabled = true;
+  function healthSkipReason(node) {
+    if (!node || node.online!==true) return 'offline';
+    if (node.busy || (Array.isArray(node.active_jobs)&&node.active_jobs.length)) return 'busy';
+    if (node.id==='RenderRig'&&!versionAtLeast(node.agent_version,DIAGNOSTIC_WINDOWS_AGENT)) return 'agent update required';
+    return '';
+  }
+  function healthNative(node) {
+    return versionAtLeast(node.agent_version,node.id==='RenderRig'?DIAGNOSTIC_WINDOWS_AGENT:DIAGNOSTIC_LINUX_AGENT);
+  }
+  async function sendHealthTasks(tasks,jobId,native) {
+    const attemptTime=new Date().toISOString();
+    for(const task of tasks){
+      const attempt={number:task.attempts.length+1,job_id:jobId,state:'submitting',output:'',error:'',exit_code:null,submitted_at:attemptTime};
+      task.attempts.push(attempt);task.job_id=jobId;task.state='submitting';task.output='';task.error='';task.exit_code=null;task.retry_skip_reason='';
+    }
+    saveHealth();renderFleetHealth([]);
+    const check=tasks[0].check,cmd=native?'':DIAGNOSTIC_FALLBACK[check];
     try {
-      await load(true);
-      if (!current) throw new Error('Live worker status is unavailable.');
-      if (healthRun?.tasks.some(t=>['queued','submitting','unconfirmed'].includes(t.state))) throw new Error('Previous report still has pending checks. Review Queue & results before starting another batch.');
-      const nodes = current.nodes.filter(n=>n.online && !n.busy);
-      if (!nodes.length) throw new Error('No idle online workers are available.');
-      healthRun = {id:'fleet-health-'+Date.now(), created_at:new Date().toISOString(), tasks:[],
-        skipped:current.nodes.filter(n=>!n.online || n.busy).map(n=>({unit:n.id,reason:n.online?'busy':'offline'})),
-        scope:'Worker storage and website connectivity; physical screen and SSH state are not tested.'};
-      for (const check of ['storage-status','network-check']) {
-        const ready = nodes.filter(n=>versionAtLeast(n.agent_version,n.id==='RenderRig'?DIAGNOSTIC_WINDOWS_AGENT:DIAGNOSTIC_LINUX_AGENT));
-        const fallback = nodes.filter(n=>!ready.includes(n) && n.id!=='RenderRig');
-        for (const group of [ready,fallback]) {
-          if (!group.length) continue;
-          const jobId = healthRun.id+'-'+check+'-'+(group===ready?'native':'fallback');
-          const tasks = group.map(n=>({unit:n.id,check,job_id:jobId,state:'submitting'}));
-          healthRun.tasks.push(...tasks); saveHealth(); renderFleetHealth(current.results);
-          const cmd = group===ready?'':DIAGNOSTIC_FALLBACK[check];
-          try {
-            await swarmApi('enqueue','POST',{job:{id:jobId,type:group===ready?check:'shell',cmd,command:cmd},target_device_ids:group.map(n=>n.id)});
-            tasks.forEach(t=>t.state='queued');
-          } catch (error) { tasks.forEach(t=>t.state='unconfirmed'); throw new Error('Submission could not be confirmed. Check Queue & results before retrying.'); }
-          saveHealth();
+      await swarmApi('enqueue','POST',{job:{id:jobId,type:native?check:'shell',cmd,command:cmd},target_device_ids:tasks.map(t=>t.unit)});
+      tasks.forEach(t=>{t.attempts.at(-1).state='queued';t.state='queued';});
+    } catch {
+      tasks.forEach(t=>{t.attempts.at(-1).state='unconfirmed';t.state='unconfirmed';});
+      saveHealth();renderFleetHealth([]);
+      throw new Error('Submission could not be confirmed. Check Queue & results before retrying; uncertain requests are never replayed.');
+    }
+    saveHealth();renderFleetHealth([]);
+  }
+  async function retryFleetHealth() { return dispatchFleetHealth(true); }
+  async function dispatchFleetHealth(retry=false) {
+    if (healthSubmitting) return;
+    healthSubmitting=true;updateHealthButtons();
+    let feedback='';
+    try {
+      const fresh=await load(true);
+      if (!fresh || !Array.isArray(fresh.nodes)) throw new Error('Fresh worker status is unavailable. No checks were submitted.');
+      renderFleetHealth(fresh.results||[]);
+      const nodes=fresh.nodes.filter(n=>IDS.has(n.id));
+      if(retry){
+        if(!healthRun)throw new Error('No health report to retry.');
+        const failed=healthRun.tasks.filter(healthCanRetry);
+        if(!failed.length)throw new Error('No confirmed failed checks have attempts remaining.');
+        for(const task of failed){
+          const node=nodes.find(n=>n.id===task.unit),reason=healthSkipReason(node);
+          if(reason){task.retry_skip_reason=reason;continue;}
+          const jobId=healthRun.id+'-'+task.unit+'-'+task.check+'-retry-'+(task.attempts.length+1)+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+          await sendHealthTasks([task],jobId,healthNative(node));
         }
-        for (const node of nodes.filter(n=>!ready.includes(n) && n.id==='RenderRig')) {
-          if (!healthRun.skipped.some(n=>n.unit===node.id)) healthRun.skipped.push({unit:node.id,reason:'agent update required'});
+      }else{
+        if(healthRun?.tasks.some(t=>HEALTH_PENDING.has(t.state)))throw new Error('Previous report still has pending checks. Review Queue & results before starting another batch.');
+        const available=nodes.filter(n=>!healthSkipReason(n));
+        if(!available.length)throw new Error('No idle compatible online workers are available.');
+        healthRun={version:2,id:'fleet-health-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),created_at:new Date().toISOString(),tasks:[],
+          skipped:nodes.filter(n=>healthSkipReason(n)).map(n=>({unit:n.id,reason:healthSkipReason(n)})),
+          scope:'Worker storage and website connectivity; physical screen and SSH state are not tested. Explicit retries are limited to three attempts per check.'};
+        saveHealth();
+        for(const check of HEALTH_CHECKS){
+          for(const native of [true,false]){
+            const group=available.filter(n=>healthNative(n)===native);
+            if(!group.length)continue;
+            const tasks=group.map(n=>({unit:n.id,check,attempts:[],state:'planned',attempt_limit_reached:false,retry_skip_reason:''}));
+            healthRun.tasks.push(...tasks);
+            await sendHealthTasks(tasks,healthRun.id+'-'+check+'-'+(native?'native':'fallback'),native);
+          }
         }
       }
-      await load(true);
-    } catch (error) { document.getElementById('fleet-health-state').textContent = error.message; }
-    finally { healthSubmitting = false; button.disabled = false; saveHealth(); }
+      saveHealth();renderFleetHealth([]);
+      const refreshed=await load(true);
+      if(refreshed)renderFleetHealth(refreshed.results||[]);
+    } catch (error) { feedback=error.message; }
+    finally { healthSubmitting=false;renderFleetHealth([]);updateHealthButtons();saveHealth();if(feedback)document.getElementById('fleet-health-state').textContent=feedback; }
   }
 
 
