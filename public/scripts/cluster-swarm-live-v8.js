@@ -631,6 +631,35 @@
     if(retry)retry.disabled=healthSubmitting||!healthRun?.tasks.some(healthCanRetry);
     if(exportButton)exportButton.disabled=healthSubmitting||!healthRun;
   }
+  let healthExportPanel=null,healthExportUrl=null;
+  function closeHealthExport() {
+    if(healthExportPanel)healthExportPanel.remove();
+    if(healthExportUrl)URL.revokeObjectURL(healthExportUrl);
+    healthExportPanel=null;healthExportUrl=null;
+  }
+  function openHealthExport() {
+    const host=document.getElementById('fleet-health');
+    if(!healthRun||healthSubmitting||!host)return;
+    closeHealthExport();
+    const snapshot=JSON.stringify(healthRun,null,2);
+    const panel=document.createElement('section');panel.id='fleet-health-export-panel';panel.className='cluster-control-card';panel.setAttribute('aria-labelledby','fleet-health-export-heading');
+    const heading=document.createElement('h4');heading.id='fleet-health-export-heading';heading.textContent='Combined health report';heading.tabIndex=-1;
+    const download=document.createElement('a');download.textContent='Download report';download.download=healthRun.id+'.json';
+    healthExportUrl=URL.createObjectURL(new Blob([snapshot],{type:'application/json'}));download.href=healthExportUrl;
+    const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Report data';
+    const data=document.createElement('textarea');data.readOnly=true;data.rows=12;data.value=snapshot;data.setAttribute('aria-label','Complete health report JSON');data.style.cssText='display:block;width:100%;box-sizing:border-box;margin:8px 0';
+    details.append(summary,data);
+    const copy=document.createElement('button');copy.type='button';copy.textContent='Copy report data';
+    const status=document.createElement('p');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
+    copy.onclick=async()=>{
+      copy.disabled=true;
+      try{await navigator.clipboard.writeText(snapshot);status.textContent='Report data copied.';}
+      catch{details.open=true;data.focus();data.select();status.textContent='Copy is unavailable. Report data is selected; use your device’s Copy command.';}
+      finally{copy.disabled=false;}
+    };
+    const close=document.createElement('button');close.type='button';close.textContent='Close export';close.onclick=closeHealthExport;
+    panel.append(heading,download,details,copy,close,status);host.append(panel);healthExportPanel=panel;heading.focus();
+  }
   function ensureFleetHealth() {
     const fleet = document.getElementById('cluster-view-fleet');
     if (!fleet || document.getElementById('fleet-health')) return;
@@ -640,13 +669,7 @@
     fleet.prepend(card);
     card.querySelector('#fleet-health-run').onclick = () => dispatchFleetHealth();
     card.querySelector('#fleet-health-retry').onclick = retryFleetHealth;
-    card.querySelector('#fleet-health-export').onclick = () => {
-      if (!healthRun || healthSubmitting) return;
-      const blob = new Blob([JSON.stringify(healthRun,null,2)], {type:'application/json'});
-      const url = URL.createObjectURL(blob), a = document.createElement('a');
-      a.href = url; a.download = healthRun.id+'.json'; a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    };
+    card.querySelector('#fleet-health-export').onclick = openHealthExport;
     renderFleetHealth(current?.results || []);
   }
   function renderFleetHealth(results) {
