@@ -33,6 +33,44 @@ const CANONICAL_HOSTNAMES = [
 const CANONICAL_HOSTNAME_MAP = new Map(
   CANONICAL_HOSTNAMES.map((name) => [name.toLowerCase(), name])
 );
+const PHONE_RETURN_COMMAND = "phone-return-termux";
+const PHONE_RETURN_TARGETS = new Set(
+  CANONICAL_HOSTNAMES.filter((name) => /^phone\d+$/.test(name))
+);
+
+function phoneReturnBridgeReady(bridge, now) {
+  const age = now - new Date(bridge?.last_seen_at).getTime();
+  const version = String(bridge?.bridge_version || "");
+  if (!bridge?.last_seen_at || !Number.isFinite(age) || age < 0 || age >= 60000 ||
+      !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) return false;
+  const parts = version.split(".").map(Number);
+  return parts.every(Number.isSafeInteger) &&
+    (parts[0] > 2 || (parts[0] === 2 && parts[1] >= 5));
+}
+
+function phoneReturnReport(output, target, status) {
+  if (typeof output !== "string" || output.length > 4096) return null;
+  let report;
+  try { report = JSON.parse(output); } catch { return null; }
+  if (!report || Array.isArray(report) || typeof report !== "object" ||
+      report.kind !== "phone-controller-return" || report.unit !== target ||
+      report.visible_screen_verified !== false ||
+      typeof report.foreground_app_verified !== "boolean" ||
+      !["termux-foreground", "failed"].includes(report.state) ||
+      typeof report.controller_state !== "string" ||
+      !/^[a-z][a-z0-9-]{0,39}$/.test(report.controller_state) ||
+      !(report.error === null || typeof report.error === "string")) return null;
+  const succeeded = report.state === "termux-foreground";
+  if (report.foreground_app_verified !== succeeded ||
+      status !== (succeeded ? "completed" : "failed") ||
+      (succeeded && (report.controller_state !== "connected" || report.error !== null))) return null;
+  return JSON.stringify({
+    kind: "phone-controller-return", unit: target, state: report.state,
+    foreground_app_verified: report.foreground_app_verified,
+    visible_screen_verified: false, controller_state: report.controller_state,
+    error: report.error === null ? null : report.error.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 500),
+  });
+}
 
 function canonicalHostname(value) {
   return CANONICAL_HOSTNAME_MAP.get(String(value || "").toLowerCase()) || null;
@@ -223,7 +261,7 @@ async function enqueueCommand(cmd) {
 
     // Dual-write to legacy cluster-control queue so existing poll scripts
     // keep receiving commands during the transition to new agents
-    if (!["swarm-recover", "fleet-check", "fleet-diagnose", "swarm-recover-pcs", "fleet-discover"].includes(cmd.type)) {
+    if (!["swarm-recover", "fleet-check", "fleet-diagnose", "swarm-recover-pcs", "fleet-discover", PHONE_RETURN_COMMAND].includes(cmd.type)) {
       try {
         const legacyStore = openStore("cluster-control");
         const legacyQueue =
@@ -822,6 +860,7 @@ exports.handler = async (event, context) => {
         "disable-mining","quarantine","clear-quarantine",
         "run-diagnostic","switch-profile","force-binary-redeploy",
         "reset-restart-count","fresh-connect","swarm-recover","fleet-check","fleet-diagnose","swarm-recover-pcs","fleet-discover",
+        PHONE_RETURN_COMMAND,
       ];
 
       const target = body.target || "all";
@@ -838,6 +877,18 @@ exports.handler = async (event, context) => {
         return json(400, hdrs, { error: "invalid target" });
       if (!VALID_COMMANDS.includes(type))
         return json(400, hdrs, { error: "invalid command" });
+
+      if (type === PHONE_RETURN_COMMAND) {
+        if (!PHONE_RETURN_TARGETS.has(target))
+          return json(400, hdrs, { error: "Phone return requires one canonical phone target" });
+        if (Object.prototype.hasOwnProperty.call(body, "payload") &&
+            (!body.payload || typeof body.payload !== "object" || Array.isArray(body.payload) || Object.keys(body.payload).length !== 0))
+          return json(400, hdrs, { error: "Phone return accepts no command settings" });
+        if (!phoneReturnBridgeReady(await getBridgeHeartbeat(), Date.now()))
+          return json(409, hdrs, { error: "Phone return requires online Windows bridge 2.5.0" });
+        if ((await getQueue()).some((cmd) => cmd.type === PHONE_RETURN_COMMAND && cmd.target === target))
+          return json(409, hdrs, { error: "A return request is already queued for this phone" });
+      }
 
       if (["fleet-diagnose", "swarm-recover-pcs", "fleet-discover"].includes(type)) {
         const bridge = await getBridgeHeartbeat();
@@ -908,11 +959,35 @@ exports.handler = async (event, context) => {
       const queue = await getQueue();
       const idx = queue.findIndex((c) => c.id === id);
       const cmd = idx >= 0 ? queue[idx] : null;
+      const history = await getCommandHistory();
+      const previousReturn = history.some((entry) => entry.id === id && entry.type === PHONE_RETURN_COMMAND);
+      if (type === PHONE_RETURN_COMMAND || cmd?.type === PHONE_RETURN_COMMAND || previousReturn) {
+        if (previousReturn || !cmd)
+          return json(409, hdrs, { error: "No outstanding phone return matches this completion" });
+        if (cmd.type !== PHONE_RETURN_COMMAND || type !== cmd.type || target !== cmd.target || !PHONE_RETURN_TARGETS.has(target))
+          return json(400, hdrs, { error: "Phone return completion does not match its queued command" });
+        const safeOutput = phoneReturnReport(output, target, body.status);
+        if (!safeOutput)
+          return json(400, hdrs, { error: "Invalid phone controller return report" });
+        history.push({
+          ...cmd, status: body.status,
+          result_summary: body.status === "completed" ? "Termux foreground verified" : "Phone return failed",
+          output: safeOutput, finished_at: Date.now(),
+        });
+        queue.splice(idx, 1);
+        try {
+          const store = openStore("cp-commands");
+          await store.setJSON("history", history.slice(-200));
+          await store.setJSON("queue", queue);
+        } catch {
+          return json(503, hdrs, { error: "Could not store phone return completion" });
+        }
+        return json(200, hdrs, { ok: true });
+      }
       if (idx >= 0) {
         queue.splice(idx, 1);
         await saveQueue(queue);
       }
-      const history = await getCommandHistory();
       history.push({
         ...(cmd || {}),
         id,
