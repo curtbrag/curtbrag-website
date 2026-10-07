@@ -784,7 +784,7 @@
   }
   function browserOpenCommand(url){
     const bytes=new TextEncoder().encode(JSON.stringify({url}));let binary='';bytes.forEach(b=>binary+=String.fromCharCode(b));const encoded=btoa(binary);
-    return `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/a5c4fea8effafa29121d0b5db2180326119895b1/scripts/cluster-browser-open.py' -o "$HOME/cluster-browser-open.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-browser-open.py" --settings-b64 '${encoded}'; }`;
+    return `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/656f60e0b2b79471077db63b40fab4e0cd3992f7/scripts/cluster-browser-open.py' -o "$HOME/cluster-browser-open.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-browser-open.py" --settings-b64 '${encoded}'; }`;
   }
   async function dispatchBrowserOpen(){
     if(browserOpenBusy)return;browserOpenBusy=true;document.getElementById('browser-open-run').disabled=true;document.getElementById('browser-open-close').disabled=true;
