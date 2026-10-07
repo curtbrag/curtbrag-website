@@ -179,7 +179,7 @@ def android_command(url, environ, which):
     expected = prefix.rstrip("/") + "/bin/am"
     if not launcher or os.path.normpath(launcher) != os.path.normpath(expected):
         raise LaunchError("Termux's existing am wrapper is unavailable; system am is not used.")
-    return launcher, [launcher, "start", "--user", "0", "-a", "android.intent.action.VIEW",
+    return launcher, [launcher, "start", "--check-draw-over-apps-permission", "--user", "0", "-a", "android.intent.action.VIEW",
                       "-f", "0x18000000", "-d", url]
 
 
@@ -242,6 +242,10 @@ def open_browser(url, environ=None, current_platform=None, run=None, which=None,
                         timeout=TIMEOUT_SECONDS, check=False, shell=False)
         report["opener_completed"] = True
         output = str(completed.stdout or "") + "\n" + str(completed.stderr or "")
+        if 'requires the "Display over other apps" permission' in output:
+            raise LaunchError('This phone has not allowed Termux to open websites from the background. '
+                              'Allow "Display over other apps" for Termux in Android settings, '
+                              'or use an already-authorized device controller.')
         if completed.returncode != 0:
             raise LaunchError("Browser opener failed (exit " + str(completed.returncode) + "): " + compact_text(output))
         if platform == "android" and re.search(
