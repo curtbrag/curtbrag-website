@@ -180,7 +180,7 @@ def android_command(url, environ, which):
     if not launcher or os.path.normpath(launcher) != os.path.normpath(expected):
         raise LaunchError("Termux's existing am wrapper is unavailable; system am is not used.")
     return launcher, [launcher, "start", "--user", "0", "-a", "android.intent.action.VIEW",
-                      "--activity-multiple-task", "-f", "0x10000000", "-d", url]
+                      "-f", "0x18000000", "-d", url]
 
 
 def open_browser(url, environ=None, current_platform=None, run=None, which=None, uid=None,
