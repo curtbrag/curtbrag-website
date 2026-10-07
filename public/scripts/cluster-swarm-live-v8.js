@@ -748,6 +748,17 @@
   let browserOpenReport=null,browserOpenBusy=false;
   try{const saved=JSON.parse(localStorage.getItem('curt-browser-open-v1'));if(saved&&Array.isArray(saved.tasks)&&Array.isArray(saved.skipped)&&typeof saved.url==='string')browserOpenReport=saved;}catch{}
   function saveBrowserOpen(){try{localStorage.setItem('curt-browser-open-v1',JSON.stringify(browserOpenReport));}catch{}}
+  let termuxReturnReport=null,termuxReturnBusy=false;
+  try{const saved=JSON.parse(localStorage.getItem('curt-termux-return-v1'));if(saved&&Array.isArray(saved.tasks)&&Array.isArray(saved.skipped))termuxReturnReport=saved;}catch{}
+  function saveTermuxReturn(){try{localStorage.setItem('curt-termux-return-v1',JSON.stringify(termuxReturnReport));}catch{}}
+  function browserRequestsPending(report){return !!report?.tasks.some(t=>['planned','queued','submitting','unconfirmed'].includes(t.state));}
+  function updateBrowserButtons(){
+    const busy=browserOpenBusy||termuxReturnBusy;
+    document.getElementById('browser-open-run').disabled=busy;
+    document.getElementById('browser-open-close').disabled=busy||!browserOpenReport||!!browserOpenReport.closed_at;
+    document.getElementById('termux-return-run').disabled=busy;
+    document.getElementById('termux-return-close').disabled=busy||!termuxReturnReport||!!termuxReturnReport.closed_at;
+  }
   function validateBrowserOpenUrl(value){
     if(typeof value!=='string'||value.length>2048||/[\u0000-\u0020\u007f\\]/.test(value))throw Error('Enter a complete public HTTPS address of up to 2048 characters without spaces, control characters or backslashes.');
     let url;try{url=new URL(value);}catch{throw Error('Enter a complete HTTPS website address.');}
@@ -759,11 +770,11 @@
   function ensureBrowserOpen(){
     const fleet=document.getElementById('cluster-view-fleet');if(!fleet||document.getElementById('cluster-browser-open'))return;
     const card=document.createElement('section');card.id='cluster-browser-open';card.className='cluster-control-card';
-    card.innerHTML='<h3>Open website on device screens</h3><p>Request a browser to open a website once on your selected devices. Browser launch requests do not verify screen or page visibility.</p><label for="browser-open-url">Website to open on device screens</label><input id="browser-open-url" type="url" maxlength="2048" value="https://curtbrag.com/" style="display:block;width:100%;box-sizing:border-box;margin:8px 0;padding:10px"><label for="browser-open-target">Devices</label> <select id="browser-open-target"><option value="all">All available units</option>'+FLEET.map(([id])=>'<option value="'+id+'">'+id+'</option>').join('')+'</select><div class="cluster-action-row"><button id="browser-open-run" type="button" class="cluster-primary-action">Open website in device browsers</button><button id="browser-open-close" type="button" disabled>Close report</button></div><p>Busy and offline units are skipped. Close report preserves the record without cancelling or retrying jobs.</p><p id="browser-open-state" role="status" aria-live="polite">Ready. No browser launch requested.</p><pre id="browser-open-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto"></pre>';
-    fleet.prepend(card);card.querySelector('#browser-open-run').onclick=dispatchBrowserOpen;card.querySelector('#browser-open-close').onclick=closeBrowserOpen;
+    card.innerHTML='<h3>Open website on device screens</h3><p>Request a browser to open a website once on your selected devices. Browser launch requests do not verify screen or page visibility.</p><label for="browser-open-url">Website to open on device screens</label><input id="browser-open-url" type="url" maxlength="2048" value="https://curtbrag.com/" style="display:block;width:100%;box-sizing:border-box;margin:8px 0;padding:10px"><label for="browser-open-target">Devices</label> <select id="browser-open-target"><option value="all">All available units</option><option value="computers">Computers &amp; laptops</option>'+FLEET.map(([id])=>'<option value="'+id+'">'+id+'</option>').join('')+'</select><div class="cluster-action-row"><button id="browser-open-run" type="button" class="cluster-primary-action">Open website in device browsers</button><button id="browser-open-close" type="button" disabled>Close report</button></div><p>Busy and offline units are skipped. Close report preserves the record without cancelling or retrying jobs.</p><p id="browser-open-state" role="status" aria-live="polite">Ready. No browser launch requested.</p><pre id="browser-open-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto"></pre><h4>Return phones to Termux</h4><p>When finished viewing, request the selected phones to return to Termux before opening the next website. The browser stays open. Phones only; computers and laptops keep their current page.</p><div class="cluster-action-row"><button id="termux-return-run" type="button">Return selected phones to Termux</button><button id="termux-return-close" type="button" disabled>Close return report</button></div><p id="termux-return-state" role="status" aria-live="polite">Ready. No return requested.</p><pre id="termux-return-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto"></pre>';
+    fleet.prepend(card);card.querySelector('#browser-open-run').onclick=dispatchBrowserOpen;card.querySelector('#browser-open-close').onclick=closeBrowserOpen;card.querySelector('#termux-return-run').onclick=dispatchTermuxReturn;card.querySelector('#termux-return-close').onclick=closeTermuxReturn;
     if(browserOpenReport?.url)card.querySelector('#browser-open-url').value=browserOpenReport.url;
-    if(browserOpenReport?.target==='all'||IDS.has(browserOpenReport?.target))card.querySelector('#browser-open-target').value=browserOpenReport.target;
-    renderBrowserOpen(current?.results||[]);
+    if(['all','computers'].includes(browserOpenReport?.target)||IDS.has(browserOpenReport?.target))card.querySelector('#browser-open-target').value=browserOpenReport.target;
+    renderBrowserOpen(current?.results||[]);renderTermuxReturn(current?.results||[]);updateBrowserButtons();
   }
   function renderBrowserOpen(results){
     const state=document.getElementById('browser-open-state');if(!state||!browserOpenReport)return;
@@ -779,22 +790,26 @@
     saveBrowserOpen();
     const tasks=browserOpenReport.tasks,requested=tasks.filter(t=>t.state==='launch-requested').length,failed=tasks.filter(t=>t.state==='failed').length,closed=tasks.filter(t=>t.state==='closed').length;
     state.textContent=(tasks.length?'':'No available selected devices. ')+`${requested+failed}/${tasks.length} launch results · ${requested} launch requested · ${failed} failed · ${closed} closed · ${browserOpenReport.skipped.length} skipped. `+(requested?'Browser launch requested; screen/page visibility unverified.':'Screen/page visibility is unverified.');
-    document.getElementById('browser-open-close').disabled=browserOpenBusy||!!browserOpenReport.closed_at;
+    updateBrowserButtons();
     document.getElementById('browser-open-report').textContent=browserOpenReport.url+'\n\n'+tasks.map(t=>`${t.unit} · ${t.state}${t.report?.launcher?' · '+String(t.report.launcher):''}${t.error?'\n'+t.error:''}`).join('\n\n')+(browserOpenReport.skipped.length?'\n\nSkipped: '+browserOpenReport.skipped.map(n=>n.unit+' ('+n.reason+')').join(', '):'');
   }
   function browserOpenCommand(url){
-    const bytes=new TextEncoder().encode(JSON.stringify({url}));let binary='';bytes.forEach(b=>binary+=String.fromCharCode(b));const encoded=btoa(binary);
-    return `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/656f60e0b2b79471077db63b40fab4e0cd3992f7/scripts/cluster-browser-open.py' -o "$HOME/cluster-browser-open.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-browser-open.py" --settings-b64 '${encoded}'; }`;
+    return browserRequestCommand({url});
+  }
+  function browserRequestCommand(settings){
+    const bytes=new TextEncoder().encode(JSON.stringify(settings));let binary='';bytes.forEach(b=>binary+=String.fromCharCode(b));const encoded=btoa(binary);
+    return `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/f6f01768fdda090564a3f7237d97606a8f01bf4e/scripts/cluster-browser-open.py' -o "$HOME/cluster-browser-open.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-browser-open.py" --settings-b64 '${encoded}'; }`;
   }
   async function dispatchBrowserOpen(){
-    if(browserOpenBusy)return;browserOpenBusy=true;document.getElementById('browser-open-run').disabled=true;document.getElementById('browser-open-close').disabled=true;
+    if(browserOpenBusy||termuxReturnBusy)return;browserOpenBusy=true;updateBrowserButtons();
     try{
       const url=validateBrowserOpenUrl(document.getElementById('browser-open-url').value),target=document.getElementById('browser-open-target').value;
-      if(target!=='all'&&!IDS.has(target))throw Error('Select a canonical cluster unit.');
-      if(browserOpenReport?.tasks.some(t=>['queued','submitting','unconfirmed'].includes(t.state)))throw Error('Previous launch requests are pending. Review Queue & results before opening another batch.');
+      if(!['all','computers'].includes(target)&&!IDS.has(target))throw Error('Select a canonical cluster unit.');
+      if(browserRequestsPending(browserOpenReport))throw Error('Previous launch requests are pending. Review Queue & results before opening another batch.');
+      if(browserRequestsPending(termuxReturnReport))throw Error('Return requests are pending. Review Queue & results before opening another website.');
       document.getElementById('browser-open-state').textContent='Checking available devices…';
       const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes))throw Error('Worker availability could not be verified.');
-      const fleet=canonicalize(raw),selected=fleet.nodes.filter(n=>IDS.has(n.id)&&(target==='all'||n.id===target));
+      const fleet=canonicalize(raw),selected=fleet.nodes.filter(n=>IDS.has(n.id)&&(target==='all'||target==='computers'&&PC_IDS.has(n.id)||n.id===target));
       const ready=selected.filter(n=>n.online&&!n.busy&&(n.id!=='RenderRig'||versionAtLeast(n.agent_version,'3.7.2')));
       const id='browser-open-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
       browserOpenReport={id,url,target,created_at:new Date().toISOString(),scope:'One browser launch request per selected available unit; physical screen and target page visibility are unverified.',tasks:ready.map((n,i)=>({unit:n.id,job_id:id+'-'+i,state:'planned'})),skipped:selected.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:!n.online?'offline':n.busy?'busy':'agent update required'}))};saveBrowserOpen();renderBrowserOpen(current?.results||[]);
@@ -806,11 +821,11 @@
       }
       if(ready.length)await load(true);
     }catch(error){document.getElementById('browser-open-state').textContent=error.message;}
-    finally{browserOpenBusy=false;document.getElementById('browser-open-run').disabled=false;document.getElementById('browser-open-close').disabled=!browserOpenReport||!!browserOpenReport.closed_at;saveBrowserOpen();}
+    finally{browserOpenBusy=false;updateBrowserButtons();saveBrowserOpen();}
   }
   async function closeBrowserOpen(){
-    if(browserOpenBusy||!browserOpenReport||browserOpenReport.closed_at)return;
-    browserOpenBusy=true;document.getElementById('browser-open-run').disabled=true;document.getElementById('browser-open-close').disabled=true;
+    if(browserOpenBusy||termuxReturnBusy||!browserOpenReport||browserOpenReport.closed_at)return;
+    browserOpenBusy=true;updateBrowserButtons();
     try{
       const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes)||!Array.isArray(raw.jobs)||!Array.isArray(raw.results))throw Error('Queue status is incomplete. The report remains open.');
       const fresh=canonicalize(raw);renderBrowserOpen(fresh.results);
@@ -821,7 +836,63 @@
       for(const task of browserOpenReport.tasks)if(!['launch-requested','failed','closed'].includes(task.state))task.state='closed';
       browserOpenReport.closed_at=new Date().toISOString();saveBrowserOpen();renderBrowserOpen(fresh.results);
     }catch(error){document.getElementById('browser-open-state').textContent=error.message;}
-    finally{browserOpenBusy=false;document.getElementById('browser-open-run').disabled=false;document.getElementById('browser-open-close').disabled=!browserOpenReport||!!browserOpenReport.closed_at;}
+    finally{browserOpenBusy=false;updateBrowserButtons();}
+  }
+
+  function renderTermuxReturn(results){
+    const state=document.getElementById('termux-return-state');if(!state||!termuxReturnReport)return;
+    for(const task of termuxReturnReport.tasks){
+      if(['return-requested','failed','closed'].includes(task.state))continue;
+      const result=results.find(r=>r.job_id===task.job_id&&r.device_id===task.unit);if(!result)continue;
+      let report;try{report=JSON.parse(result.stdout||'');}catch{}
+      if(PHONE_IDS.has(task.unit)&&report?.kind==='phone-termux-return'&&typeof report.return_requested==='boolean'&&report.visible_screen_verified===false){
+        task.report=report;task.state=Number(result.exit_code)===0&&report.return_requested===true&&report.request_completed===true&&report.state==='return-requested'?'return-requested':'failed';
+        task.error=task.state==='failed'?String(report.error||result.stderr||'The worker did not accept the return request.').slice(0,500):'';
+      }else{task.state='failed';task.error=String(result.stderr||'Worker returned an invalid return report.').slice(0,500);}
+    }
+    saveTermuxReturn();
+    const tasks=termuxReturnReport.tasks,requested=tasks.filter(t=>t.state==='return-requested').length,failed=tasks.filter(t=>t.state==='failed').length,closed=tasks.filter(t=>t.state==='closed').length;
+    state.textContent=(tasks.length?'':'No available selected phones. ')+`${requested+failed}/${tasks.length} return results · ${requested} return requested · ${failed} failed · ${closed} closed · ${termuxReturnReport.skipped.length} skipped. Screen visibility is unverified.`;
+    document.getElementById('termux-return-report').textContent=tasks.map(t=>`${t.unit} · ${t.state}${t.error?'\n'+t.error:''}`).join('\n\n')+(termuxReturnReport.skipped.length?'\n\nSkipped: '+termuxReturnReport.skipped.map(n=>n.unit+' ('+n.reason+')').join(', '):'');
+    updateBrowserButtons();
+  }
+  async function dispatchTermuxReturn(){
+    if(browserOpenBusy||termuxReturnBusy)return;termuxReturnBusy=true;updateBrowserButtons();
+    try{
+      const target=document.getElementById('browser-open-target').value;
+      if(!['all','computers'].includes(target)&&!IDS.has(target))throw Error('Select a canonical cluster unit.');
+      if(target==='computers'||PC_IDS.has(target))throw Error('Return to Termux is available for phones only. Select all units or a phone.');
+      if(browserRequestsPending(browserOpenReport))throw Error('Launch requests are pending. Review Queue & results before returning phones.');
+      if(browserRequestsPending(termuxReturnReport))throw Error('Previous return requests are pending. Review Queue & results before trying again.');
+      document.getElementById('termux-return-state').textContent='Checking available phones…';
+      const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes))throw Error('Worker availability could not be verified.');
+      const fleet=canonicalize(raw),selected=fleet.nodes.filter(n=>PHONE_IDS.has(n.id)&&(target==='all'||n.id===target)),ready=selected.filter(n=>n.online&&!n.busy);
+      const id='termux-return-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+      termuxReturnReport={id,target,created_at:new Date().toISOString(),tasks:ready.map((n,i)=>({unit:n.id,job_id:id+'-'+i,state:'planned'})),skipped:selected.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:!n.online?'offline':'busy'}))};saveTermuxReturn();renderTermuxReturn(current?.results||[]);
+      for(const task of termuxReturnReport.tasks){
+        const cmd=browserRequestCommand({action:'return-termux'});task.state='submitting';saveTermuxReturn();renderTermuxReturn(current?.results||[]);
+        try{await swarmApi('enqueue','POST',{job:{id:task.job_id,type:'shell',cmd,command:cmd},target_device_ids:[task.unit]});task.state='queued';}
+        catch{task.state='unconfirmed';saveTermuxReturn();throw Error('Return submission is unconfirmed. Review Queue & results before retrying.');}
+        saveTermuxReturn();renderTermuxReturn(current?.results||[]);
+      }
+      if(ready.length)await load(true);
+    }catch(error){document.getElementById('termux-return-state').textContent=error.message;}
+    finally{termuxReturnBusy=false;updateBrowserButtons();saveTermuxReturn();}
+  }
+  async function closeTermuxReturn(){
+    if(browserOpenBusy||termuxReturnBusy||!termuxReturnReport||termuxReturnReport.closed_at)return;
+    termuxReturnBusy=true;updateBrowserButtons();
+    try{
+      const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes)||!Array.isArray(raw.jobs)||!Array.isArray(raw.results))throw Error('Queue status is incomplete. The return report remains open.');
+      const fresh=canonicalize(raw);renderTermuxReturn(fresh.results);
+      const ids=new Set(termuxReturnReport.tasks.map(t=>t.job_id)),jobId=value=>typeof value==='string'?value:value?.job_id||value?.id||value?.job?.id,terminal=new Set(['completed','cancelled','canceled','failed']);
+      if(fresh.jobs.some(job=>ids.has(jobId(job))&&!terminal.has(String(job.status??job.state??'').toLowerCase()))||fresh.nodes.some(node=>(node.active_jobs||[]).some(job=>ids.has(jobId(job)))))throw Error('Return requests still appear queued or running. Review Queue & results before closing.');
+      const age=Date.now()-Date.parse(termuxReturnReport.created_at);
+      if(browserRequestsPending(termuxReturnReport)&&(!Number.isFinite(age)||age<120000))throw Error('Wait at least two minutes after submission, then review Queue & results before closing missing return requests.');
+      for(const task of termuxReturnReport.tasks)if(!['return-requested','failed','closed'].includes(task.state))task.state='closed';
+      termuxReturnReport.closed_at=new Date().toISOString();saveTermuxReturn();renderTermuxReturn(fresh.results);
+    }catch(error){document.getElementById('termux-return-state').textContent=error.message;}
+    finally{termuxReturnBusy=false;updateBrowserButtons();}
   }
 
   let siteTest=null, siteTestBusy=false;
@@ -1755,7 +1826,7 @@
     renderFleetHealth(d.results);
     renderChangeMonitor(d.results);
     renderSiteTest(d.results);
-    renderBrowserOpen(d.results);
+    renderBrowserOpen(d.results);renderTermuxReturn(d.results);
     const setText = (id, value) => {
       const el = document.getElementById(id);
       if (el) el.textContent = value;
