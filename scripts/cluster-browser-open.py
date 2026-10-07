@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ask an existing local desktop/browser to open one URL; never verify a view."""
+"""Request one browser navigation or Termux return; never verify a screen."""
 
 import argparse
 import base64
@@ -171,7 +171,7 @@ def find_graphical_environment(environ, uid, proc_reader=None, checker=None):
     raise LaunchError("No verified graphical desktop session for this user. Browser launch is unavailable.")
 
 
-def android_command(url, environ, which):
+def termux_launcher(environ, which):
     prefix = environ.get("PREFIX", "")
     if not (prefix.startswith("/data/") and prefix.endswith("/com.termux/files/usr")):
         raise LaunchError("Termux's existing am wrapper is required.")
@@ -179,6 +179,11 @@ def android_command(url, environ, which):
     expected = prefix.rstrip("/") + "/bin/am"
     if not launcher or os.path.normpath(launcher) != os.path.normpath(expected):
         raise LaunchError("Termux's existing am wrapper is unavailable; system am is not used.")
+    return launcher
+
+
+def android_command(url, environ, which):
+    launcher = termux_launcher(environ, which)
     # Foreground Termux can launch without overlay permission. Let Android
     # decide whether this activity start is allowed; exit zero is only a request.
     return launcher, [launcher, "start", "--user", "0", "-a", "android.intent.action.VIEW",
@@ -263,22 +268,71 @@ def open_browser(url, environ=None, current_platform=None, run=None, which=None,
     return report
 
 
+def return_termux(environ=None, current_platform=None, run=None, which=None):
+    """Request the fixed existing Termux activity once, without closing a browser."""
+    environ = dict(os.environ if environ is None else environ)
+    run = subprocess.run if run is None else run
+    which = shutil.which if which is None else which
+    platform = platform_name(environ, current_platform)
+    report = {
+        "kind": "phone-termux-return", "platform": platform, "state": "failed",
+        "return_requested": False, "request_completed": False,
+        "visible_screen_verified": False, "launcher": None,
+        "scope": "Existing Termux activity request only; foreground app and physical screen are unverified. Browser is not closed.",
+        "error": None,
+    }
+    try:
+        if platform != "android":
+            raise LaunchError("Return to Termux is available only on Android Termux phones; desktop browsers are not changed.")
+        launcher = termux_launcher(environ, which)
+        report["launcher"] = launcher
+        # This is a request to the existing app, not evidence that Android
+        # brought it forward. Do not request grants or close another activity.
+        command = [launcher, "start", "--user", "0", "-a", "android.intent.action.MAIN",
+                   "-c", "android.intent.category.LAUNCHER", "-n", "com.termux/com.termux.app.TermuxActivity",
+                   "-f", "0x10000000"]
+        completed = run(command, env=environ, capture_output=True, text=True,
+                        timeout=TIMEOUT_SECONDS, check=False, shell=False)
+        report["request_completed"] = True
+        output = str(completed.stdout or "") + "\n" + str(completed.stderr or "")
+        if 'requires the "Display over other apps" permission' in output:
+            raise LaunchError("Termux's overlay permission precheck refused the request before Android attempted the return. "
+                              "A foreground return is unconfirmed.")
+        if completed.returncode != 0:
+            raise LaunchError("Termux return request failed (exit " + str(completed.returncode) + "): " + compact_text(output))
+        if re.search(
+            r"(?im)^\s*error(?:\s|:|$)|exception|permission denial|no activity found|unable to resolve intent|background activity start[^\n]*(?:denied|blocked|not allowed)",
+            output,
+        ):
+            raise LaunchError("Android did not accept the Termux return request: " + compact_text(output))
+        report["state"] = "return-requested"
+        report["return_requested"] = True
+    except subprocess.TimeoutExpired:
+        report["error"] = "Termux return request did not return within 20 seconds; a foreground return is unconfirmed."
+    except (LaunchError, OSError, ValueError) as exc:
+        report["error"] = compact_text(exc) or type(exc).__name__
+    return report
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Request browser navigation on this unit; no screen verification.")
+    parser = argparse.ArgumentParser(description="Request one browser navigation or Termux return; no screen verification.")
     parser.add_argument("--settings-b64", required=True)
     args = parser.parse_args()
     try:
         if len(args.settings_b64) > 16384:
             raise ValueError("Settings are too large")
         settings = json.loads(base64.b64decode(args.settings_b64, validate=True).decode("utf-8"))
-        if not isinstance(settings, dict) or set(settings) != {"url"} or not isinstance(settings["url"], str):
-            raise ValueError("Settings must contain only a URL string")
-        report = open_browser(settings["url"])
+        if isinstance(settings, dict) and set(settings) == {"url"} and isinstance(settings["url"], str):
+            report = open_browser(settings["url"])
+        elif isinstance(settings, dict) and set(settings) == {"action"} and settings["action"] == "return-termux":
+            report = return_termux()
+        else:
+            raise ValueError("Settings must contain only a URL string or the fixed return-termux action")
     except (ValueError, UnicodeError):
         report = open_browser("")
         report["error"] = "Invalid encoded URL settings."
     print(json.dumps(report, ensure_ascii=True, separators=(",", ":")))
-    return 0 if report["launch_requested"] else 1
+    return 0 if report.get("launch_requested") or report.get("return_requested") else 1
 
 
 if __name__ == "__main__":
