@@ -274,13 +274,24 @@
     document.getElementById('display-results').onclick=()=>setControlView('results',true);
     document.getElementById('display-send').onclick=async()=>{
       const button=document.getElementById('display-send'),state=document.getElementById('display-state');button.disabled=true;
-      const sent=[];try{
-        await load(true);const selected=document.getElementById('display-target').value,mode=document.getElementById('display-mode').value;
+      const saved=[],launched=[],skipped=[];state.textContent='Checking phone availability…';try{
+        const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes))throw new Error('Worker availability could not be verified.');
+        const fresh=canonicalize(raw),selected=document.getElementById('display-target').value,mode=document.getElementById('display-mode').value;
         const phones=selected==='all'?Array.from(PHONE_IDS):PHONE_IDS.has(selected)?[selected]:[];
-        if(!phones.length)throw new Error('Select a canonical phone');
-        for(const phone of phones){state.textContent='Sending to '+phone+'…';const response=await fetch('/.netlify/functions/phone-display',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:JSON.stringify({phone,mode})});if(!response.ok)throw new Error('Could not save display mode for '+phone);sent.push(phone);}
-        state.textContent='Display mode saved for '+sent.join(', ')+'. Connected screens update automatically within 10 seconds.';await load(true);
-      }catch(e){state.textContent=(sent.length?'Already queued: '+sent.join(', ')+'. ':'')+e.message;}finally{button.disabled=false;}
+        if(!phones.length)throw new Error('Select a phone');
+        for(const phone of phones){
+          state.textContent='Saving display for '+phone+'…';
+          const response=await fetch('/.netlify/functions/phone-display',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:JSON.stringify({phone,mode})});
+          if(!response.ok)throw new Error('Could not save display mode for '+phone);saved.push(phone);
+          const node=fresh.nodes.find(n=>n.id===phone);
+          if(node?.online&&!node.busy){
+            const url='https://curtbrag.com/cluster/display.html?mode='+encodeURIComponent(mode)+'&name='+encodeURIComponent(phone)+'&immersive=1&v=62';
+            await enqueueSwarm('shell',browserOpenCommand(url),[phone]);launched.push(phone);
+          }else skipped.push(phone+' ('+(node?.online?'busy':'offline')+')');
+        }
+        state.textContent='Display mode saved for '+saved.join(', ')+'. '+(launched.length?'Browser launch queued for '+launched.join(', ')+'. ':'')+(skipped.length?'Browser launch skipped: '+skipped.join(', ')+'. ':'')+'Connected displays also update automatically within 10 seconds.';
+        await load(true);
+      }catch(e){state.textContent=(saved.length?'Display mode saved: '+saved.join(', ')+'. ':'')+(launched.length?'Browser launch queued: '+launched.join(', ')+'. ':'')+e.message;}finally{button.disabled=false;}
     };
   }
 
