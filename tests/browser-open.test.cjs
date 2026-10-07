@@ -11,16 +11,20 @@ const source=dashboard.slice(start,end);
 const key='curt-browser-open-v1';
 const FLEET=[['phone173','worker'],['phone174','worker'],['phone176','worker'],['phone177','worker'],['phone191','worker'],['phone195','worker'],['phone253','worker'],['phone254','worker'],['Alina','pc'],['Nexus','pc'],['SteamDeck','pc'],['viki','pc'],['RenderRig','gpu-worker']];
 const IDS=new Set(FLEET.map(([id])=>id));
+const PHONE_IDS=new Set(FLEET.filter(([,kind])=>kind==='worker').map(([id])=>id));
+const PC_IDS=new Set(FLEET.filter(([,kind])=>kind!=='worker').map(([id])=>id));
 function harness(options={}){
   const storage=options.storage||new Map(),calls=[];
   const elements={
     'browser-open-run':{disabled:false},'browser-open-close':{disabled:true},
     'browser-open-url':{value:'https://curtbrag.com/'},'browser-open-target':{value:'all'},
     'browser-open-state':{textContent:''},'browser-open-report':{textContent:''},
+    'termux-return-run':{disabled:false},'termux-return-close':{disabled:true},
+    'termux-return-state':{textContent:''},'termux-return-report':{textContent:''},
   };
   let loads=0;
   const context=vm.createContext({
-    URL,TextEncoder,FLEET,IDS,btoa:value=>Buffer.from(value,'binary').toString('base64'),
+    URL,TextEncoder,FLEET,IDS,PHONE_IDS,PC_IDS,btoa:value=>Buffer.from(value,'binary').toString('base64'),
     localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v)},
     document:{getElementById:id=>elements[id]||null},current:{results:[]},
     canonicalize:raw=>({...raw,nodes:FLEET.map(([id,node_class])=>raw.nodes.find(n=>n.id===id)||{id,node_class,online:false,busy:false,active_jobs:[]}),jobs:raw.jobs||[],results:raw.results||[]}),
@@ -28,7 +32,7 @@ function harness(options={}){
     swarmApi:async(...args)=>{calls.push(args);if(options.api)return options.api(...args);return args[0]==='queue-status'?{nodes:options.nodes||[{id:'phone191',online:true,busy:false}],jobs:[],results:[]}:{ok:true};},
     load:async()=>{loads++;},
   });
-  vm.runInContext(source+'\nglobalThis.api={validateBrowserOpenUrl,browserOpenCommand,dispatchBrowserOpen,closeBrowserOpen,renderBrowserOpen,get:()=>browserOpenReport,set:value=>browserOpenReport=value,busy:()=>browserOpenBusy};',context);
+  vm.runInContext(source+'\nglobalThis.api={validateBrowserOpenUrl,browserOpenCommand,dispatchBrowserOpen,closeBrowserOpen,renderBrowserOpen,dispatchTermuxReturn,closeTermuxReturn,renderTermuxReturn,get:()=>browserOpenReport,set:value=>browserOpenReport=value,busy:()=>browserOpenBusy,getReturn:()=>termuxReturnReport,setReturn:value=>termuxReturnReport=value,returnBusy:()=>termuxReturnBusy};',context);
   return {api:context.api,elements,storage,calls,loads:()=>loads};
 }
 function report(state='queued'){
@@ -52,7 +56,7 @@ test('URL shell metacharacters remain base64 data and never enter the generated 
   assert.equal(cmd.includes('$(touch'),false);
   assert.equal(cmd.includes('echo%20unsafe'),false);
   assert.equal(cmd.includes('`id`'),false);
-  assert.match(cmd,/\/f5a1cd0c29479d42228dd5c7f3905ad2e7ea36b2\/scripts\/cluster-browser-open\.py/);
+  assert.match(cmd,/\/(?:[a-f0-9]{40}|f6f01768fdda090564a3f7237d97606a8f01bf4e)\/scripts\/cluster-browser-open\.py/);
   assert.match(cmd,/--max-time 20/);
 });
 
@@ -199,4 +203,112 @@ test('a failed close check preserves the report instead of assuming the queue is
   const h=harness({api:async()=>{throw Error('Connection timed out');}});h.api.set(report('unconfirmed'));const before=JSON.stringify(h.api.get());await h.api.closeBrowserOpen();
   assert.equal(JSON.stringify(h.api.get()),before);assert.equal(h.calls.length,1);assert.match(h.elements['browser-open-state'].textContent,/timed out/);
   assert.equal(h.elements['browser-open-run'].disabled,false);assert.equal(h.elements['browser-open-close'].disabled,false);
+});
+
+function returnReport(state='queued'){
+  return {id:'termux-return-fixture',target:'all',created_at:new Date(Date.now()-180000).toISOString(),tasks:[{unit:'phone191',job_id:'return-191',state}],skipped:[]};
+}
+function returnResult(overrides={}){
+  return {job_id:'return-191',device_id:'phone191',exit_code:0,stdout:JSON.stringify({kind:'phone-termux-return',state:'return-requested',return_requested:true,request_completed:true,visible_screen_verified:false}),...overrides};
+}
+
+test('computers and laptops selection includes viki and all known PCs, without sending phone jobs',async()=>{
+  const h=harness({nodes:FLEET.map(([id])=>({id,online:true,busy:false,agent_version:'3.7.2'})).concat({id:'unregisteredLaptop',online:true,busy:false})});
+  h.elements['browser-open-target'].value='computers';await h.api.dispatchBrowserOpen();
+  assert.deepEqual(h.calls.filter(c=>c[0]==='enqueue').map(c=>Array.from(c[2].target_device_ids)),[['Alina'],['Nexus'],['SteamDeck'],['viki'],['RenderRig']]);
+  assert.equal(h.api.get().tasks.some(t=>PHONE_IDS.has(t.unit)||t.unit==='unregisteredLaptop'),false);
+  assert.match(source,/<option value="computers">Computers &amp; laptops<\/option>/);
+});
+
+test('return action queues one fixed request per selected available phone and preserves browser report',async()=>{
+  const h=harness({nodes:[{id:'phone191',online:true,busy:false},{id:'phone253',online:true,busy:true},{id:'Nexus',online:true,busy:false},{id:'viki',online:true,busy:false}]});
+  const saved=report('launch-requested');h.api.set(saved);await h.api.dispatchTermuxReturn();
+  const jobs=h.calls.filter(c=>c[0]==='enqueue');
+  assert.deepEqual(jobs.map(c=>Array.from(c[2].target_device_ids)),[['phone191']]);
+  assert.equal(jobs[0][2].job.type,'shell');assert.equal(jobs[0][2].job.command,jobs[0][2].job.cmd);
+  const encoded=jobs[0][2].job.cmd.match(/--settings-b64 '([A-Za-z0-9+/=]+)'/)[1];
+  assert.deepEqual(JSON.parse(Buffer.from(encoded,'base64').toString()),{action:'return-termux'});
+  assert.ok(h.api.getReturn().skipped.some(t=>t.unit==='phone253'&&t.reason==='busy'));
+  assert.ok(h.api.getReturn().skipped.some(t=>t.unit==='phone173'&&t.reason==='offline'));
+  assert.equal(h.api.getReturn().skipped.some(t=>PC_IDS.has(t.unit)),false);
+  assert.equal(h.api.get(),saved);assert.equal(h.loads(),1);
+  assert.ok(h.storage.has('curt-termux-return-v1'));
+});
+
+test('return individual target chooses that phone and computer selections send no jobs or availability checks',async()=>{
+  const h=harness({nodes:[{id:'phone191',online:true,busy:false},{id:'phone253',online:true,busy:false}]});
+  h.elements['browser-open-target'].value='phone253';await h.api.dispatchTermuxReturn();
+  assert.deepEqual(h.calls.filter(c=>c[0]==='enqueue').map(c=>Array.from(c[2].target_device_ids)),[['phone253']]);
+  for(const target of ['computers',...PC_IDS]){
+    const pc=harness();pc.elements['browser-open-target'].value=target;await pc.api.dispatchTermuxReturn();
+    assert.equal(pc.calls.length,0);assert.match(pc.elements['termux-return-state'].textContent,/phones only/);assert.equal(pc.api.getReturn(),null);
+  }
+});
+
+test('return jobs skip busy or offline phones and reject injected selections',async()=>{
+  for(const node of [{id:'phone191',online:true,busy:true},{id:'phone191',online:false,busy:false}]){
+    const h=harness({nodes:[node]});h.elements['browser-open-target'].value='phone191';await h.api.dispatchTermuxReturn();
+    assert.equal(h.calls.filter(c=>c[0]==='enqueue').length,0);assert.equal(h.api.getReturn().skipped[0].reason,node.online?'busy':'offline');
+  }
+  const bad=harness();bad.elements['browser-open-target'].value='unknown';await bad.api.dispatchTermuxReturn();
+  assert.equal(bad.calls.length,0);assert.match(bad.elements['termux-return-state'].textContent,/canonical cluster unit/);
+});
+
+test('launch and return operations share a lock during availability checks without creating overlapping jobs',async()=>{
+  for(const first of ['dispatchBrowserOpen','dispatchTermuxReturn']){
+    let release;const pendingStatus=new Promise(resolve=>{release=resolve;});
+    const h=harness({api:async action=>action==='queue-status'?pendingStatus:{ok:true}});
+    const pending=h.api[first]();
+    assert.equal(h.elements['browser-open-run'].disabled,true);assert.equal(h.elements['termux-return-run'].disabled,true);
+    await h.api[first==='dispatchBrowserOpen'?'dispatchTermuxReturn':'dispatchBrowserOpen']();
+    assert.equal(h.calls.length,1);
+    release({nodes:[{id:'phone191',online:true,busy:false}],jobs:[],results:[]});await pending;
+    assert.equal(h.calls.filter(c=>c[0]==='enqueue').length,1);assert.equal(h.api.busy(),false);assert.equal(h.api.returnBusy(),false);
+  }
+});
+
+test('persisted pending launch and return reports block cross-submission until reviewed',async()=>{
+  for(const state of ['planned','queued','submitting','unconfirmed']){
+    const launch=harness({storage:new Map([[key,JSON.stringify(report(state))]])});await launch.api.dispatchTermuxReturn();
+    assert.equal(launch.calls.length,0);assert.match(launch.elements['termux-return-state'].textContent,/Launch requests are pending/);
+    const returning=harness({storage:new Map([['curt-termux-return-v1',JSON.stringify(returnReport(state))]])});
+    await returning.api.dispatchBrowserOpen();assert.equal(returning.calls.length,0);assert.match(returning.elements['browser-open-state'].textContent,/Return requests are pending/);
+    await returning.api.dispatchTermuxReturn();assert.equal(returning.calls.length,0);assert.match(returning.elements['termux-return-state'].textContent,/Previous return requests are pending/);
+  }
+});
+
+test('return acceptance requires matching job, phone, contract and zero exit without claiming screen success',()=>{
+  const h=harness();h.api.setReturn(returnReport());h.api.set(report('launch-requested'));
+  h.api.renderTermuxReturn([returnResult({job_id:'other'}),returnResult({device_id:'phone253'})]);assert.equal(h.api.getReturn().tasks[0].state,'queued');
+  h.api.renderTermuxReturn([returnResult()]);assert.equal(h.api.getReturn().tasks[0].state,'return-requested');
+  assert.match(h.elements['termux-return-state'].textContent,/Screen visibility is unverified/);
+  assert.equal(h.elements['termux-return-report'].textContent.includes('success'),false);assert.equal(h.api.get().tasks[0].state,'launch-requested');
+  const reload=harness({storage:h.storage});assert.equal(reload.api.getReturn().tasks[0].state,'return-requested');
+  for(const parsed of [
+    {kind:'website-browser-open',state:'launch-requested',launch_requested:true,visible_screen_verified:false},
+    {kind:'phone-termux-return',state:'return-requested',return_requested:true,request_completed:true,visible_screen_verified:true},
+    {kind:'phone-termux-return',state:'return-requested',return_requested:true,visible_screen_verified:false},
+    {kind:'phone-termux-return',state:'return-requested',return_requested:false,request_completed:true,visible_screen_verified:false},
+  ]){const bad=harness();bad.api.setReturn(returnReport());bad.api.renderTermuxReturn([returnResult({stdout:JSON.stringify(parsed)})]);assert.equal(bad.api.getReturn().tasks[0].state,'failed');}
+  const failed=harness();failed.api.setReturn(returnReport());failed.api.renderTermuxReturn([returnResult({exit_code:1})]);assert.equal(failed.api.getReturn().tasks[0].state,'failed');
+  const pc=harness();const injected=returnReport();injected.tasks[0].unit='Nexus';pc.api.setReturn(injected);pc.api.renderTermuxReturn([returnResult({device_id:'Nexus'})]);assert.equal(pc.api.getReturn().tasks[0].state,'failed');
+});
+
+test('ambiguous return submission persists and cannot replay automatically or through repeat clicks',async()=>{
+  const h=harness({api:async action=>{if(action==='queue-status')return {nodes:[{id:'phone191',online:true,busy:false}]};throw Error('Disconnected');}});
+  await h.api.dispatchTermuxReturn();assert.equal(h.api.getReturn().tasks[0].state,'unconfirmed');
+  assert.equal(JSON.parse(h.storage.get('curt-termux-return-v1')).tasks[0].state,'unconfirmed');
+  await h.api.dispatchTermuxReturn();await h.api.dispatchBrowserOpen();
+  assert.equal(h.calls.filter(c=>c[0]==='enqueue').length,1);
+});
+
+test('closing return reports refuses active jobs and closes old missing jobs without cancellation or retry',async()=>{
+  for(const fixture of [
+    {nodes:[],jobs:[{id:'return-191',status:'queued'}],results:[]},
+    {nodes:[{id:'phone191',active_jobs:['return-191']}],jobs:[],results:[]},
+  ]){const h=harness({api:async()=>fixture});h.api.setReturn(returnReport());await h.api.closeTermuxReturn();assert.equal(h.api.getReturn().closed_at,undefined);assert.equal(h.calls.filter(c=>c[0]==='enqueue').length,0);}
+  const h=harness({api:async()=>({nodes:[],jobs:[],results:[]})});h.api.setReturn(returnReport('unconfirmed'));await h.api.closeTermuxReturn();
+  assert.equal(h.api.getReturn().tasks[0].state,'closed');assert.ok(h.api.getReturn().closed_at);assert.equal(h.calls.length,1);assert.equal(h.calls[0][0],'queue-status');
+  const young=harness();const recent=returnReport('unconfirmed');recent.created_at=new Date().toISOString();young.api.setReturn(recent);await young.api.closeTermuxReturn();
+  assert.equal(young.api.getReturn().closed_at,undefined);assert.match(young.elements['termux-return-state'].textContent,/at least two minutes/);
 });
