@@ -13,10 +13,10 @@ const command = (extra = {}) => ({
   created_at: NOW - 1000, payload: {}, ...extra,
 });
 const device = (id, hostname) => ({ id, hostname, device_class: "phone" });
-function harness(initial = { queue: [], history: [] }) {
+function harness(initial = { queue: [], history: [] }, { legacyRuntime = false } = {}) {
   let state = copy(initial), sequence = 0, tail = Promise.resolve();
   const receipts = new Map(), io = [], runtime = [], providerContexts = [], faults = { read: false, write: false, afterCommit: false };
-  let runtimeSequence = 0;
+  let runtimeSequence = 0, compatibilityCalls = 0;
   const cells = new Map([
     ["cp-devices:dev253", device("dev253", "phone253")],
     ["cp-devices:dev191", device("dev191", "phone191")],
@@ -70,11 +70,12 @@ function harness(initial = { queue: [], history: [] }) {
       require(name) {
         if (name === "crypto") return mockCrypto;
         if (name === "@netlify/blobs" || name === "@netlify/control-blobs") return { getStore, connectLambda() {
+          compatibilityCalls++;
           const provider = JSON.parse(Buffer.from(context.process.env.NETLIFY_BLOBS_CONTEXT, "base64").toString());
           delete provider.uncachedEdgeURL;
           context.process.env.NETLIFY_BLOBS_CONTEXT = Buffer.from(JSON.stringify(provider)).toString("base64");
         } };
-        if (name === "./lib/control-command-store.cjs") return {
+        if (name === "./control-command-store.cjs") return {
           captureControlContext() {
             const provider = JSON.parse(Buffer.from(context.process.env.NETLIFY_BLOBS_CONTEXT, "base64").toString());
             assert.equal(provider.uncachedEdgeURL, "https://fixture-strong.invalid/", "Capture must precede legacy context replacement");
@@ -102,20 +103,20 @@ function harness(initial = { queue: [], history: [] }) {
       return result;
     };
   }
-  const agent = load("agent-api.js"), legacy = load("cluster-control.js");
+  const agent = load("lib/agent-api.cjs"), legacy = load("lib/cluster-control.cjs");
   async function response(handler, event) {
     const result = await handler(event);
     return { status: result.statusCode, body: result.body ? JSON.parse(result.body) : null };
   }
   return {
-    cells, io, runtime, providerContexts, faults,
+    cells, io, runtime, providerContexts, faults, compatibilityCalls: () => compatibilityCalls,
     state: () => copy(state),
     agent(action, { id = "dev253", method = "GET", body = {}, token = "fixture-agent-key" } = {}) {
-      return response(agent, { path: "/api/agent/" + action, headers: { "x-device-id": id, "x-agent-token": token }, httpMethod: method, body: JSON.stringify(body) });
+      return response(agent, { path: "/api/agent/" + action, headers: { "x-device-id": id, "x-agent-token": token }, httpMethod: method, body: JSON.stringify(body), ...(legacyRuntime ? { blobs: "fixture-legacy-context" } : {}) });
     },
     legacy(action = "", { method = "GET", body = {}, key = "fixture-agent-key" } = {}) {
       return response(legacy, { queryStringParameters: { action }, headers: { "x-cluster-key": key }, httpMethod: method,
-        body: JSON.stringify({ ...body, ...(action && method === "POST" ? { action } : {}) }) });
+        body: JSON.stringify({ ...body, ...(action && method === "POST" ? { action } : {}) }), ...(legacyRuntime ? { blobs: "fixture-legacy-context" } : {}) });
     },
   };
 }
@@ -124,7 +125,7 @@ const legacyInput = (extra = {}) => ({ password: "fixture-web-password", command
 const legacyResult = (id, extra = {}) => ({ id, command: "browse", target: "viki", result: "success", output: "fixture output", ...extra });
 
 test("both consumers capture full runtime context before compatibility reset without exposing it", async () => {
-  const h = harness();
+  const h = harness(undefined, { legacyRuntime: true });
   const responses = await Promise.all([h.agent("commands"), h.legacy("poll")]);
   assert.deepEqual(responses.map(result => result.status), [200, 200]);
   assert.equal(h.providerContexts.length, 2);
@@ -134,6 +135,19 @@ test("both consumers capture full runtime context before compatibility reset wit
   assert.ok(h.runtime.every(event => Object.getOwnPropertySymbols(event).length === 1));
   assert.equal(JSON.stringify(responses).includes("fixture-runtime-"), false);
   assert.equal(JSON.stringify(h.state()).includes("fixture-runtime-"), false);
+  assert.equal(h.compatibilityCalls(), 2);
+});
+
+test("modern requests preserve normal runtime context through repeated consumer calls", async () => {
+  const h = harness();
+  for (let i = 0; i < 2; i++) {
+    assert.equal((await h.agent("commands")).status, 200);
+    assert.equal((await h.legacy("poll")).status, 200);
+  }
+  assert.equal(h.compatibilityCalls(), 0);
+  assert.equal(h.providerContexts.length, 4);
+  assert.equal(new Set(h.providerContexts.map(provider => provider.token)).size, 4);
+  assert.ok(h.providerContexts.every(provider => provider.uncachedEdgeURL === "https://fixture-strong.invalid/"));
 });
 
 test("direct group claim freezes ownership separately for both recipients", async () => {

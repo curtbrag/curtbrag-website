@@ -9,7 +9,7 @@
 const { connectLambda, getStore } = require("@netlify/blobs");
 const crypto = require("crypto");
 const { getStore: controlGetStore } = require("@netlify/control-blobs");
-const { openControlCommandStore, captureControlContext } = require("./lib/control-command-store.cjs");
+const { openControlCommandStore, captureControlContext } = require("./control-command-store.cjs");
 const CONTROL_PROVIDER_CONTEXT = Symbol("controlProviderContext");
 
 
@@ -584,7 +584,7 @@ exports.handler = async (event, context) => {
   const providerContext = captureControlContext();
   event = { ...event };
   Object.defineProperty(event, CONTROL_PROVIDER_CONTEXT, { value: providerContext });
-  connectLambda(event);
+  if (event.blobs) connectLambda(event);
   const origin = event.headers.origin || "";
   const hdrs = corsHeaders(origin);
 

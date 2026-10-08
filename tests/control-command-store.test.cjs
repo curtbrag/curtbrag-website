@@ -353,7 +353,7 @@ test('capture follows normal Netlify.env priority and never mixes fields across 
 let publishedSDK;
 try { publishedSDK = require.resolve('@netlify/control-blobs', { paths: [path.resolve(__dirname, '..')] }); }
 catch (_) { publishedSDK = path.resolve(__dirname, '../../controller-reevaluation/storage-sources-20261008/blobs-10.7.12/dist/main.cjs'); }
-test('exact pinned SDK10.7.12 preserves supplied uncached runtime transport after connectLambda', { skip: !fs.existsSync(publishedSDK) }, async () => {
+function sdkRuntimeFixture() {
   const network = [];
   const blobs = new Map();
   let revision = 0;
@@ -387,17 +387,40 @@ test('exact pinned SDK10.7.12 preserves supplied uncached runtime transport afte
   const event = { blobs: Buffer.from(JSON.stringify({ url: 'https://cached.offline.invalid/', token: 'dummy' })).toString('base64'), headers: { 'x-nf-site-id': 'dummy-site', 'x-nf-deploy-id': 'dummy-deploy' } };
   const rich = { edgeURL: 'https://cached.offline.invalid/', uncachedEdgeURL: 'https://uncached.offline.invalid/', siteID: 'dummy-site', token: 'dummy', deployID: 'dummy-deploy' };
   environment.NETLIFY_BLOBS_CONTEXT = Buffer.from(JSON.stringify(rich)).toString('base64');
-  const providerContext = captureControlContext({ env: environment });
-  sdk.connectLambda(event);
-  assert.equal(JSON.parse(Buffer.from(environment.NETLIFY_BLOBS_CONTEXT, 'base64').toString()).uncachedEdgeURL, undefined);
   const getStore = options => {
     const store = sdk.getStore(options);
     return { getWithMetadata: async (...args) => { const value = await store.getWithMetadata(...args); return value === null ? null : copy(value); }, set: (...args) => store.set(...args) };
   };
+  return { sdk, event, rich, environment, getStore, syntheticFetch, network };
+}
+
+test('exact pinned SDK10.7.12 preserves supplied uncached runtime transport after connectLambda', { skip: !fs.existsSync(publishedSDK) }, async () => {
+  const { sdk, event, environment, getStore, syntheticFetch, network } = sdkRuntimeFixture();
+  const providerContext = captureControlContext({ env: environment });
+  sdk.connectLambda(event);
+  assert.equal(JSON.parse(Buffer.from(environment.NETLIFY_BLOBS_CONTEXT, 'base64').toString()).uncachedEdgeURL, undefined);
   const api = openControlCommandStore({ getStore, event, providerContext, env: { CONTEXT: 'production' }, fetch: syntheticFetch });
   await api.snapshot();
   await enqueue(api, 'a');
   assert.equal((await api.snapshot()).queue.length, 1);
+  assert.equal(network.some(request => new URL(request.url).host === 'api.netlify.com'), false);
+  assert.equal(network.some(request => new URL(request.url).host === 'cached.offline.invalid'), false);
+  assert.ok(network.some(request => request.headers['if-match']));
+  assert.ok(network.some(request => request.headers['if-none-match'] === '*'));
+});
+
+test('exact SDK modern warm invocations retain normal runtime context and strong conditional storage', { skip: !fs.existsSync(publishedSDK) }, async () => {
+  const { environment, getStore, syntheticFetch, network } = sdkRuntimeFixture();
+  const initialContext = environment.NETLIFY_BLOBS_CONTEXT;
+  for (let invocation = 0; invocation < 3; invocation++) {
+    const providerContext = captureControlContext({ env: environment });
+    assert.ok(providerContext);
+    const api = openControlCommandStore({ getStore, event: { headers: {} }, providerContext, env: { CONTEXT: 'production' }, fetch: syntheticFetch });
+    assert.equal((await api.snapshot()).queue.length, invocation);
+    await enqueue(api, 'modern-' + invocation);
+    assert.equal((await api.snapshot()).queue.length, invocation + 1);
+    assert.equal(environment.NETLIFY_BLOBS_CONTEXT, initialContext);
+  }
   assert.equal(network.some(request => new URL(request.url).host === 'api.netlify.com'), false);
   assert.equal(network.some(request => new URL(request.url).host === 'cached.offline.invalid'), false);
   assert.ok(network.some(request => request.headers['if-match']));

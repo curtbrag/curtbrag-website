@@ -7,7 +7,7 @@
 const { connectLambda, getStore } = require("@netlify/blobs");
 const { getStore: controlGetStore } = require("@netlify/control-blobs");
 const crypto = require("crypto");
-const { openControlCommandStore, captureControlContext, CommandStoreError } = require("./lib/control-command-store.cjs");
+const { openControlCommandStore, captureControlContext, CommandStoreError } = require("./control-command-store.cjs");
 
 
 function openStore(name) {
@@ -517,7 +517,7 @@ async function buildSummary(devices, observedMap) {
 
 exports.handler = async (event, context) => {
   const providerContext = captureControlContext();
-  connectLambda(event);
+  if (event.blobs) connectLambda(event);
   const origin = event.headers.origin || "";
   const hdrs = corsHeaders(origin);
 

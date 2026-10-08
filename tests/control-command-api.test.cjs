@@ -132,7 +132,8 @@ function fixture(options = {}) {
   async function invoke(filename, method, action, body = {}, extra = {}) {
     const headers = filename === 'cluster-api.js' ? { authorization: 'Bearer fixture-operator' } :
       filename === 'agent-api.js' ? { 'x-agent-token': 'fixture-agent', 'x-device-id': 'fixture-phone' } : { 'x-cluster-key': 'fixture-agent' };
-    const response = await load(path.join(ROOT, 'netlify/functions', filename)).handler({
+    const sourceFile = path.join(ROOT, 'netlify/functions/lib', filename.replace(/\.js$/, '.cjs'));
+    const response = await load(sourceFile).handler({
       httpMethod: method, headers: { ...headers, ...extra.headers },
       queryStringParameters: { action, ...extra.params },
       path: filename === 'agent-api.js' ? `/.netlify/functions/agent-api/${action}` : `/.netlify/functions/${filename.slice(0, -3)}`,
