@@ -8,6 +8,7 @@ exports.createHandler = ({ connectLambda, getStore, controlGetStore }) => {
 const crypto = require("crypto");
 const { openControlCommandStore, captureControlContext, CommandStoreError } = require("./control-command-store.cjs");
 const { commandHistoryTime } = require("./control-command-history.cjs");
+const { openPersonalControllerRegistry } = require("./personal-controllers.cjs");
 
 
 function openStore(name) {
@@ -557,8 +558,12 @@ return async (event, context) => {
 
   try {
   const commandStore = () => openControlCommandStore({ getStore: controlGetStore, event, providerContext });
+  const personalControllers = () => openPersonalControllerRegistry({ getStore: controlGetStore, event, providerContext });
   // ── GET routes ────────────────────────────────────────────────────────────
   if (event.httpMethod === "GET") {
+    if (action === "personal-controllers") {
+      return json(200, hdrs, { controllers: await personalControllers().list() });
+    }
     // Summary
     if (action === "summary") {
       const devices = await getAllDevices();
@@ -795,7 +800,14 @@ return async (event, context) => {
   // ── POST routes ───────────────────────────────────────────────────────────
   if (event.httpMethod === "POST") {
     const body = JSON.parse(event.body || "{}");
+    if (action === "register-personal-controller" && (!body || typeof body !== "object" || Array.isArray(body))) {
+      return json(400, hdrs, { error: "Provide personal controller details as a JSON object.", code: "INVALID_CONTROLLER" });
+    }
     const postAction = body.action || action;
+
+    if (postAction === "register-personal-controller") {
+      return json(200, hdrs, await personalControllers().register(body));
+    }
 
     // Queue a command
     if (postAction === "queue-command") {

@@ -29,6 +29,30 @@
 .personal-controller footer{display:none}
 .personal-controller #panel{min-width:0}
 .personal-controller #personal-controller-card a,.personal-controller #personal-controller-card button{font-size:14px}
+#personal-controller-inventory{min-width:0;margin-bottom:24px;padding:22px;background:var(--color-panel);border:1px solid var(--color-border);border-radius:12px}
+#personal-controller-inventory h2{font-size:20px;font-weight:700;margin-bottom:8px}
+#personal-controller-inventory h3{font-size:17px;font-weight:700;margin-bottom:10px}
+#personal-controller-inventory p{font-size:13px;line-height:1.6;color:var(--color-muted);margin-bottom:12px}
+#personal-controller-inventory button{min-height:44px;max-width:100%;padding:10px 14px;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:var(--color-text);font-size:14px;cursor:pointer;white-space:normal}
+#personal-controller-inventory button:disabled{cursor:default;opacity:.6}
+#personal-controller-inventory button:focus-visible,#personal-controller-inventory input:focus-visible,#personal-controller-inventory summary:focus-visible{outline:2px solid var(--color-brand);outline-offset:3px}
+#personal-controller-inventory-status{margin-top:12px}
+#personal-controller-inventory-status[data-error="1"]{color:var(--color-red)}
+#personal-controller-inventory-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px;margin:16px 0}
+.personal-controller-inventory-record{min-width:0;padding:16px;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface);overflow-wrap:anywhere}
+#personal-controller-inventory .personal-controller-registration-label{font-size:12px;font-weight:700;color:var(--color-brand);margin-bottom:6px}
+.personal-controller-inventory-record dl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);gap:8px 12px;font-size:13px;line-height:1.5}
+.personal-controller-inventory-record dt{color:var(--color-muted)}
+.personal-controller-inventory-record dd{margin:0;min-width:0}
+#personal-controller-registration-form{padding-top:18px;border-top:1px solid var(--color-border);min-width:0}
+.personal-controller-registration-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+#personal-controller-registration-form label{display:block;font-size:13px;font-weight:600;line-height:1.5;margin-bottom:6px}
+#personal-controller-registration-form input{box-sizing:border-box;width:100%;min-width:0;min-height:44px;font-size:16px;padding:10px;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:var(--color-text)}
+.personal-controller-registration-advanced{margin:14px 0}
+.personal-controller-registration-advanced summary{min-height:44px;padding:12px 0;font-size:13px;cursor:pointer}
+.personal-controller-inventory-identifiers summary{min-height:44px;padding:12px 0;font-size:13px;cursor:pointer;color:var(--color-muted)}
+.personal-controller-registration-advanced>div{margin-top:12px}
+#personal-controller-register{background:var(--color-brand)!important;color:white!important;border-color:var(--color-brand)!important}
 @media(max-width:700px){
   .phone-controller-setup{padding:28px 16px 36px}
   .controller-hero{grid-template-columns:minmax(0,1fr);gap:24px;margin-bottom:24px}
@@ -45,4 +69,8 @@
   #personal-controller-card .controller-shortcuts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   #personal-controller-card .controller-shortcuts button,#personal-controller-card .controller-shortcuts a{min-width:0;white-space:normal;padding:12px 8px}
   #personal-controller-card{padding:18px!important}
+  #personal-controller-inventory{padding:16px}
+  .personal-controller-registration-fields{grid-template-columns:minmax(0,1fr)}
+  .personal-controller-inventory-record dl{grid-template-columns:minmax(0,1fr);gap:3px}
+  .personal-controller-inventory-record dd{margin-bottom:8px}
 }
