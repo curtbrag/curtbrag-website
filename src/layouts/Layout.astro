@@ -18,6 +18,7 @@ const {
 } = Astro.props;
 
 const canonicalUrl = ogUrl || Astro.url.href;
+const clusterControlPage = /^\/cluster\/(?:dashboard|control)\/?$/.test(Astro.url.pathname);
 
 const structuredData = {
   '@context': 'https://schema.org',
@@ -69,6 +70,9 @@ const structuredData = {
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
+
+    {clusterControlPage && <link rel="manifest" href="/cluster/controller.webmanifest" />}
+    {clusterControlPage && <link rel="stylesheet" href="/styles/cluster-personal-control.css?v=1" />}
 
     <!-- Theme Color -->
     <meta name="theme-color" content="#ed232a" />
@@ -142,5 +146,6 @@ const structuredData = {
     <link rel="stylesheet" href="/styles/cluster-controls.css?v=3" />
     <!-- Authoritative cluster workload client. -->
     <script is:inline src="/scripts/cluster-swarm-live-v8.js?v=70"></script>
+    {clusterControlPage && <script is:inline src="/scripts/cluster-personal-control.js?v=1"></script>}
   </body>
 </html>

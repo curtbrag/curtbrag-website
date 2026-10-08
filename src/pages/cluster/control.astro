@@ -1,0 +1,52 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="My Cluster — Phone Controller" description="Use your personal Android to control your CurtBrag cluster from home or away.">
+  <section id="phone-controller-setup" class="phone-controller-setup">
+    <div class="controller-hero">
+      <div>
+        <p class="controller-eyebrow">Personal Android · cluster controller</p>
+        <h1>Your cluster, in your hand.</h1>
+        <p class="controller-intro">Manage your phones, computers and laptops from home Wi-Fi or mobile data.</p>
+        <div class="controller-entry-actions">
+          <a class="controller-primary" href="/cluster/dashboard/?controller=personal">Open phone controls</a>
+          <button id="personal-control-install" type="button">Add to home screen</button>
+        </div>
+        <p id="personal-control-install-status" class="controller-note" role="status" aria-live="polite">Use your existing dashboard sign-in.</p>
+      </div>
+      <div class="controller-icon-card" aria-hidden="true">
+        <img src="/cluster/controller-icon.svg" alt="" width="168" height="168" />
+        <span>My Cluster</span>
+      </div>
+    </div>
+
+    <div class="controller-use-cards">
+      <article><h2>See your fleet</h2><p>Check each unit’s activity, available workers and combined health reports.</p></article>
+      <article><h2>Send work</h2><p>Run research, website audits and other workflows through the shared queue.</p></article>
+      <article><h2>Control screens</h2><p>Use the existing website and display controls. The home controller and target devices need to be connected.</p></article>
+    </div>
+
+    <div class="controller-setup-grid">
+      <section class="controller-guide" aria-labelledby="controller-first-use">
+        <h2 id="controller-first-use">Start on your Android</h2>
+        <ol>
+          <li>Open <strong>curtbrag.com/cluster/control/</strong> in Chrome on your personal phone.</li>
+          <li>Tap <strong>Open phone controls</strong> and sign in with your dashboard password.</li>
+          <li>Add <strong>My Cluster</strong> to your home screen for quick access.</li>
+        </ol>
+        <details id="personal-control-install-help">
+          <summary>Home-screen instructions</summary>
+          <p>In Chrome, open the three-dot menu and choose <strong>Add to home screen</strong> or <strong>Install app</strong>. Follow the browser’s prompt. The wording varies by browser.</p>
+          <p>The shortcut opens your phone controls. Sign in there if the browser asks.</p>
+        </details>
+      </section>
+      <aside class="controller-guide">
+        <h2>Home and away</h2>
+        <p>Your phone sends commands through curtbrag.com. Keep the home PC controller and workers online to receive them.</p>
+        <p>Queue results are shared across controllers. Saved combined reports stay in the browser where you create them; use Export to keep a copy.</p>
+        <a href="/cluster/dashboard/">Open the full dashboard</a>
+      </aside>
+    </div>
+  </section>
+</Layout>
