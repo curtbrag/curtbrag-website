@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { STATE_KEY, strictFetch, createControlCommandStore, openControlCommandStore } = require('../netlify/functions/lib/control-command-store.cjs');
+const { STATE_KEY, strictFetch, createControlCommandStore, captureControlContext, openControlCommandStore } = require('../netlify/functions/lib/control-command-store.cjs');
 const copy = value => JSON.parse(JSON.stringify(value));
 const command = (id, extra = {}) => ({ id, type: 'open-url', target: 'phone253', payload: { url: 'https://curtbrag.com/' }, status: 'queued', ...extra });
 
@@ -308,15 +308,17 @@ test('runtime rejects unknown context and isolates preview without touching prod
   assert.equal(opened[0].siteID, undefined);
 });
 
-test('runtime uses provider invocation context only in SDK options, never in saved state', async () => {
+test('runtime preserves one complete provider context only in SDK options, never saved state', async () => {
   const stores = [];
   const event = { blobs: Buffer.from(JSON.stringify({ url: 'https://cached.offline.invalid/', token: 'synthetic-provider-token' })).toString('base64'), headers: { 'x-nf-site-id': 'synthetic-site' } };
-  const api = openControlCommandStore({ getStore: options => { const store = new MemoryStore(); stores.push({ store, options }); return store; }, event, env: { CONTEXT: 'production' }, fetch: async () => {} });
+  const providerContext = captureControlContext({ context: Buffer.from(JSON.stringify({ siteID: 'synthetic-site', token: 'synthetic-provider-token', edgeURL: 'https://cached.offline.invalid/', uncachedEdgeURL: 'https://uncached.offline.invalid/' })).toString('base64') });
+  const api = openControlCommandStore({ getStore: options => { const store = new MemoryStore(); stores.push({ store, options }); return store; }, event, providerContext, env: { CONTEXT: 'production' }, fetch: async () => {} });
   await api.snapshot();
   for (const { options } of stores) {
     assert.equal(options.siteID, 'synthetic-site');
     assert.equal(options.token, 'synthetic-provider-token');
-    assert.equal('edgeURL' in options, false);
+    assert.equal(options.edgeURL, 'https://cached.offline.invalid/');
+    assert.equal(options.uncachedEdgeURL, 'https://uncached.offline.invalid/');
   }
   const saved = JSON.stringify(stores[0].store.records.get(STATE_KEY).data);
   assert.equal(saved.includes('synthetic-provider-token'), false);
@@ -324,17 +326,42 @@ test('runtime uses provider invocation context only in SDK options, never in sav
   assert.equal(saved.includes('cached.offline'), false);
 });
 
-const publishedSDK = path.resolve(__dirname, '../../controller-reevaluation/storage-sources-20261008/blobs-10.7.12/dist/main.cjs');
-test('exact pinned SDK10.7.12 uses API strong reads and genuine conditional headers after connectLambda', { skip: !fs.existsSync(publishedSDK) }, async () => {
+test('legacy event token alone cannot be reinterpreted as API credentials or combined with partial context', () => {
+  let stores = 0;
+  const getStore = () => { stores++; return new MemoryStore(); };
+  const event = { blobs: Buffer.from(JSON.stringify({ url: 'https://cached.offline.invalid/', token: 'other-token' })).toString('base64'), headers: { 'x-nf-site-id': 'other-site' } };
+  const partial = Buffer.from(JSON.stringify({ siteID: 'runtime-site', token: 'runtime-token', edgeURL: 'https://cached.offline.invalid/' })).toString('base64');
+  assert.equal(captureControlContext({ context: partial }), undefined);
+  assert.throws(() => openControlCommandStore({ getStore, event, env: { CONTEXT: 'production' }, fetch: async () => {} }), { code: 'CONFIGURATION' });
+  assert.throws(() => openControlCommandStore({ getStore, event, providerContext: { siteID: 'runtime-site', token: 'runtime-token', edgeURL: 'https://cached.offline.invalid/' }, env: { CONTEXT: 'production' }, fetch: async () => {} }), { code: 'CONFIGURATION' });
+  assert.equal(stores, 0);
+});
+
+test('capture follows normal Netlify.env priority and never mixes fields across contexts', () => {
+  const prior = globalThis.Netlify;
+  const rich = { siteID: 'runtime-site', token: 'runtime-token', edgeURL: 'https://cached.offline.invalid/', uncachedEdgeURL: 'https://uncached.offline.invalid/' };
+  const encoded = Buffer.from(JSON.stringify(rich)).toString('base64');
+  try {
+    globalThis.Netlify = { env: { get: key => key === 'NETLIFY_BLOBS_CONTEXT' ? encoded : undefined } };
+    assert.deepEqual(captureControlContext(), rich);
+    const partial = Buffer.from(JSON.stringify({ siteID: 'other-site', token: 'other-token' })).toString('base64');
+    assert.equal(captureControlContext({ context: partial }), undefined);
+    assert.equal(captureControlContext({ env: { NETLIFY_BLOBS_CONTEXT: partial } }), undefined);
+  } finally { if (prior === undefined) delete globalThis.Netlify; else globalThis.Netlify = prior; }
+});
+
+let publishedSDK;
+try { publishedSDK = require.resolve('@netlify/control-blobs', { paths: [path.resolve(__dirname, '..')] }); }
+catch (_) { publishedSDK = path.resolve(__dirname, '../../controller-reevaluation/storage-sources-20261008/blobs-10.7.12/dist/main.cjs'); }
+test('exact pinned SDK10.7.12 preserves supplied uncached runtime transport after connectLambda', { skip: !fs.existsSync(publishedSDK) }, async () => {
   const network = [];
   const blobs = new Map();
   let revision = 0;
   const syntheticFetch = async (url, options) => {
     network.push({ url, method: options.method, headers: options.headers });
     const parsed = new URL(url);
-    if (parsed.host === 'api.netlify.com') return Response.json({ url: 'https://signed.offline.invalid/?key=' + encodeURIComponent(parsed.pathname) });
-    assert.equal(parsed.host, 'signed.offline.invalid');
-    const key = parsed.searchParams.get('key');
+    assert.equal(parsed.host, 'uncached.offline.invalid');
+    const key = parsed.pathname;
     if (String(options.method).toUpperCase() === 'GET') {
       const stored = blobs.get(key);
       return stored ? new Response(stored.body, { headers: { etag: stored.etag } }) : new Response('', { status: 404 });
@@ -358,17 +385,21 @@ test('exact pinned SDK10.7.12 uses API strong reads and genuine conditional head
   vm.runInNewContext(fs.readFileSync(publishedSDK, 'utf8'), context);
   const sdk = context.module.exports;
   const event = { blobs: Buffer.from(JSON.stringify({ url: 'https://cached.offline.invalid/', token: 'dummy' })).toString('base64'), headers: { 'x-nf-site-id': 'dummy-site', 'x-nf-deploy-id': 'dummy-deploy' } };
+  const rich = { edgeURL: 'https://cached.offline.invalid/', uncachedEdgeURL: 'https://uncached.offline.invalid/', siteID: 'dummy-site', token: 'dummy', deployID: 'dummy-deploy' };
+  environment.NETLIFY_BLOBS_CONTEXT = Buffer.from(JSON.stringify(rich)).toString('base64');
+  const providerContext = captureControlContext({ env: environment });
   sdk.connectLambda(event);
+  assert.equal(JSON.parse(Buffer.from(environment.NETLIFY_BLOBS_CONTEXT, 'base64').toString()).uncachedEdgeURL, undefined);
   const getStore = options => {
     const store = sdk.getStore(options);
     return { getWithMetadata: async (...args) => { const value = await store.getWithMetadata(...args); return value === null ? null : copy(value); }, set: (...args) => store.set(...args) };
   };
-  const api = openControlCommandStore({ getStore, event, env: { CONTEXT: 'production' }, fetch: syntheticFetch });
+  const api = openControlCommandStore({ getStore, event, providerContext, env: { CONTEXT: 'production' }, fetch: syntheticFetch });
   await api.snapshot();
   await enqueue(api, 'a');
   assert.equal((await api.snapshot()).queue.length, 1);
-  assert.ok(network.some(request => new URL(request.url).host === 'api.netlify.com'));
-  assert.equal(network.some(request => request.url.includes('cached.offline')), false);
+  assert.equal(network.some(request => new URL(request.url).host === 'api.netlify.com'), false);
+  assert.equal(network.some(request => new URL(request.url).host === 'cached.offline.invalid'), false);
   assert.ok(network.some(request => request.headers['if-match']));
   assert.ok(network.some(request => request.headers['if-none-match'] === '*'));
 });

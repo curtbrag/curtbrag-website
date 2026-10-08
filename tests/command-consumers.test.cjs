@@ -15,7 +15,8 @@ const command = (extra = {}) => ({
 const device = (id, hostname) => ({ id, hostname, device_class: "phone" });
 function harness(initial = { queue: [], history: [] }) {
   let state = copy(initial), sequence = 0, tail = Promise.resolve();
-  const receipts = new Map(), io = [], runtime = [], faults = { read: false, write: false, afterCommit: false };
+  const receipts = new Map(), io = [], runtime = [], providerContexts = [], faults = { read: false, write: false, afterCommit: false };
+  let runtimeSequence = 0;
   const cells = new Map([
     ["cp-devices:dev253", device("dev253", "phone253")],
     ["cp-devices:dev191", device("dev191", "phone191")],
@@ -68,12 +69,23 @@ function harness(initial = { queue: [], history: [] }) {
       Date: class extends Date { constructor(...args) { super(...(args.length ? args : [NOW])); } static now() { return NOW; } },
       require(name) {
         if (name === "crypto") return mockCrypto;
-        if (name === "@netlify/blobs" || name === "@netlify/control-blobs") return { getStore, connectLambda() {} };
+        if (name === "@netlify/blobs" || name === "@netlify/control-blobs") return { getStore, connectLambda() {
+          const provider = JSON.parse(Buffer.from(context.process.env.NETLIFY_BLOBS_CONTEXT, "base64").toString());
+          delete provider.uncachedEdgeURL;
+          context.process.env.NETLIFY_BLOBS_CONTEXT = Buffer.from(JSON.stringify(provider)).toString("base64");
+        } };
         if (name === "./lib/control-command-store.cjs") return {
+          captureControlContext() {
+            const provider = JSON.parse(Buffer.from(context.process.env.NETLIFY_BLOBS_CONTEXT, "base64").toString());
+            assert.equal(provider.uncachedEdgeURL, "https://fixture-strong.invalid/", "Capture must precede legacy context replacement");
+            return Object.freeze(provider);
+          },
           openControlCommandStore(options) {
             assert.equal(options.getStore, getStore);
             assert.ok(options.event && options.event.headers, "Runtime factory needs this request event");
             runtime.push(options.event);
+            assert.equal(options.providerContext.uncachedEdgeURL, "https://fixture-strong.invalid/");
+            providerContexts.push(options.providerContext);
             return shared;
           },
         };
@@ -81,7 +93,14 @@ function harness(initial = { queue: [], history: [] }) {
       },
     };
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../netlify/functions", file), "utf8"), context, { filename: file });
-    return context.exports.handler;
+    return async event => {
+      const provider = { siteID: "fixture-site", token: "fixture-runtime-" + (++runtimeSequence), edgeURL: "https://fixture-edge.invalid/", uncachedEdgeURL: "https://fixture-strong.invalid/" };
+      context.process.env.NETLIFY_BLOBS_CONTEXT = Buffer.from(JSON.stringify(provider)).toString("base64");
+      const serialized = JSON.stringify(event);
+      const result = await context.exports.handler(event);
+      assert.equal(JSON.stringify(event), serialized, "Private provider context must not be attached to the caller event");
+      return result;
+    };
   }
   const agent = load("agent-api.js"), legacy = load("cluster-control.js");
   async function response(handler, event) {
@@ -89,7 +108,7 @@ function harness(initial = { queue: [], history: [] }) {
     return { status: result.statusCode, body: result.body ? JSON.parse(result.body) : null };
   }
   return {
-    cells, io, runtime, faults,
+    cells, io, runtime, providerContexts, faults,
     state: () => copy(state),
     agent(action, { id = "dev253", method = "GET", body = {}, token = "fixture-agent-key" } = {}) {
       return response(agent, { path: "/api/agent/" + action, headers: { "x-device-id": id, "x-agent-token": token }, httpMethod: method, body: JSON.stringify(body) });
@@ -103,6 +122,19 @@ function harness(initial = { queue: [], history: [] }) {
 const complete = (id = "control-fixture", extra = {}) => ({ command_id: id, success: true, exit_code: 0, stdout: "fixture output", stderr: "", ...extra });
 const legacyInput = (extra = {}) => ({ password: "fixture-web-password", command: "browse", target: "viki", url: "https://curtbrag.com/", ...extra });
 const legacyResult = (id, extra = {}) => ({ id, command: "browse", target: "viki", result: "success", output: "fixture output", ...extra });
+
+test("both consumers capture full runtime context before compatibility reset without exposing it", async () => {
+  const h = harness();
+  const responses = await Promise.all([h.agent("commands"), h.legacy("poll")]);
+  assert.deepEqual(responses.map(result => result.status), [200, 200]);
+  assert.equal(h.providerContexts.length, 2);
+  assert.notEqual(h.providerContexts[0].token, h.providerContexts[1].token);
+  assert.ok(h.providerContexts.every(provider => provider.uncachedEdgeURL === "https://fixture-strong.invalid/"));
+  assert.ok(h.runtime.every(event => !JSON.stringify(event).includes("fixture-runtime-")));
+  assert.ok(h.runtime.every(event => Object.getOwnPropertySymbols(event).length === 1));
+  assert.equal(JSON.stringify(responses).includes("fixture-runtime-"), false);
+  assert.equal(JSON.stringify(h.state()).includes("fixture-runtime-"), false);
+});
 
 test("direct group claim freezes ownership separately for both recipients", async () => {
   const h = harness({ queue: [command()], history: [] });
@@ -404,4 +436,3 @@ test("actual CAS: empty agent and legacy polls do not rewrite state or evict ret
   assert.equal(h.writes.filter(write => write.name === "cp-commands" && write.key === CAS_STATE_KEY).length, count);
   assert.equal(h.inspect("cp-commands", CAS_STATE_KEY).requestReceipts.length, before);
 });
-

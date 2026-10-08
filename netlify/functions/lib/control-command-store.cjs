@@ -243,7 +243,21 @@ function createControlCommandStore({ store, legacyStore, now = () => new Date().
   return { snapshot, transact };
 }
 
-function openControlCommandStore({ getStore, event, env = process.env, fetch: baseFetch = globalThis.fetch } = {}) {
+// Capture normal runtime configuration before the legacy connectLambda helper
+// replaces its environment context. Never combine separate credential contexts.
+function captureControlContext({ env = process.env, context = globalThis.netlifyBlobsContext } = {}) {
+  try {
+    // Match @netlify/runtime-utils' normal Node runtime environment priority.
+    const sourceEnv = env === process.env && globalThis.Netlify && globalThis.Netlify.env ? globalThis.Netlify.env : env;
+    const encoded = typeof context === 'string' && context ? context : typeof sourceEnv.get === 'function' ? sourceEnv.get('NETLIFY_BLOBS_CONTEXT') : sourceEnv.NETLIFY_BLOBS_CONTEXT;
+    if (typeof encoded !== 'string' || !encoded) return undefined;
+    const data = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+    if (!plain(data) || ['siteID', 'token', 'edgeURL', 'uncachedEdgeURL'].some(key => typeof data[key] !== 'string' || !data[key])) return undefined;
+    return Object.freeze({ siteID: data.siteID, token: data.token, edgeURL: data.edgeURL, uncachedEdgeURL: data.uncachedEdgeURL });
+  } catch (_) { return undefined; }
+}
+
+function openControlCommandStore({ getStore, event, providerContext, env = process.env, fetch: baseFetch = globalThis.fetch } = {}) {
   if (typeof getStore !== 'function') fail('CONFIGURATION', 'Command storage is unavailable.');
   const context = deployment.context || env.CONTEXT;
   const deployID = deployment.deployID || env.DEPLOY_ID;
@@ -252,14 +266,11 @@ function openControlCommandStore({ getStore, event, env = process.env, fetch: ba
   if (preview && (typeof deployID !== 'string' || !/^[a-zA-Z0-9_-]{1,120}$/.test(deployID))) fail('DEPLOYMENT_CONTEXT', 'Preview command controls require an isolated deployment ID.');
   const checkedFetch = strictFetch(baseFetch);
   let provider = {};
-  if (event && event.blobs) {
-    try {
-      const data = JSON.parse(Buffer.from(event.blobs, 'base64').toString('utf8'));
-      const headers = event.headers || {};
-      const siteID = headers['x-nf-site-id'] || headers['X-Nf-Site-Id'];
-      if (typeof data.token !== 'string' || !data.token || typeof siteID !== 'string' || !siteID) throw new Error('Invalid provider context');
-      provider = { siteID, token: data.token };
-    } catch (_) { fail('CONFIGURATION', 'The provider command storage context is unavailable.'); }
+  if (providerContext !== undefined) {
+    if (!plain(providerContext) || ['siteID', 'token', 'edgeURL', 'uncachedEdgeURL'].some(key => typeof providerContext[key] !== 'string' || !providerContext[key])) fail('CONFIGURATION', 'The complete provider command storage context is unavailable.');
+    provider = { siteID: providerContext.siteID, token: providerContext.token, edgeURL: providerContext.edgeURL, uncachedEdgeURL: providerContext.uncachedEdgeURL };
+  } else if (event && event.blobs) {
+    fail('CONFIGURATION', 'The provider did not supply a complete strongly consistent command storage context.');
   }
   const name = preview ? 'cp-commands-isolated-' + context + '-' + deployID : 'cp-commands';
   const store = getStore({ name, ...provider, consistency: 'strong', fetch: checkedFetch });
@@ -267,4 +278,4 @@ function openControlCommandStore({ getStore, event, env = process.env, fetch: ba
   return createControlCommandStore({ store, legacyStore, migrateLegacy: !preview });
 }
 
-module.exports = { STATE_KEY, CommandStoreError, strictFetch, createControlCommandStore, openControlCommandStore };
+module.exports = { STATE_KEY, CommandStoreError, strictFetch, createControlCommandStore, captureControlContext, openControlCommandStore };

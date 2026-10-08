@@ -5,7 +5,8 @@
 const { getStore, connectLambda } = require("@netlify/blobs");
 const crypto = require("crypto");
 const { getStore: controlGetStore } = require("@netlify/control-blobs");
-const { openControlCommandStore } = require("./lib/control-command-store.cjs");
+const { openControlCommandStore, captureControlContext } = require("./lib/control-command-store.cjs");
+const CONTROL_PROVIDER_CONTEXT = Symbol("controlProviderContext");
 
 // Timing-safe string comparison to prevent timing attacks on credentials
 function safeCompare(a, b) {
@@ -43,7 +44,7 @@ const LEGACY_COMMAND_TYPES = new Set(["start","stop","restart","wake","sleep","m
 function commandError(statusCode, message) {
   const error = new Error(message); error.statusCode = statusCode; return error;
 }
-function commandState(event) { return openControlCommandStore({ getStore: controlGetStore, event }); }
+function commandState(event) { return openControlCommandStore({ getStore: controlGetStore, event, providerContext: event[CONTROL_PROVIDER_CONTEXT] }); }
 function operationId(prefix, value) {
   return prefix + ":" + crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
@@ -248,6 +249,9 @@ exports.handler = async (event) => {
   }
 
   // Initialize Netlify Blobs for Lambda compatibility mode
+  const providerContext = captureControlContext();
+  event = { ...event };
+  Object.defineProperty(event, CONTROL_PROVIDER_CONTEXT, { value: providerContext });
   connectLambda(event);
 
   const apiKey = event.headers['x-cluster-key'];
