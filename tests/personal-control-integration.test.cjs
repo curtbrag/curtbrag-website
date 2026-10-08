@@ -40,6 +40,9 @@ test('Layout preserves the released controller additions and updates the command
   original = original.replace('/scripts/cluster-swarm-live-v8.js?v=71', '/scripts/cluster-swarm-live-v8.js?v=70');
   const route = "const clusterControlPage = /^\\/cluster\\/(?:dashboard|control)\\/?$/.test(Astro.url.pathname);";
   for (const addition of [
+    "const clusterDashboardPage = /^\\/cluster\\/dashboard\\/?$/.test(Astro.url.pathname);\n",
+    '    {clusterDashboardPage && <link rel="stylesheet" href="/styles/cluster-phone-follow.css?v=1" />}\n',
+    '\n    {clusterDashboardPage && <script is:inline src="/scripts/cluster-phone-follow.js?v=1"></script>}',
     route + '\n',
     '    {clusterControlPage && <link rel="manifest" href="/cluster/controller.webmanifest" />}\n' +
       '    {clusterControlPage && <link rel="stylesheet" href="/styles/cluster-personal-control.css?v=3" />}\n\n',
@@ -63,6 +66,12 @@ test('Controller assets are scoped to exact landing/dashboard routes and never w
     assert.equal(vm.runInNewContext(statement + '\nclusterControlPage', { Astro: { url: { pathname } } }), expected, pathname);
   }
   assert.equal((layout.match(/clusterControlPage &&/g) || []).length, 3);
+  const dashboardStatement = layout.match(/^const clusterDashboardPage = .+;$/m)?.[0];
+  assert.ok(dashboardStatement);
+  for (const [pathname, expected] of [['/cluster/dashboard/', true], ['/cluster/dashboard', true], ['/cluster/control/', false], ['/cluster/display.html', false], ['/cluster/dashboard/extra', false], ['/', false]]) {
+    assert.equal(vm.runInNewContext(dashboardStatement + '\nclusterDashboardPage', { Astro: { url: { pathname } } }), expected, pathname);
+  }
+  assert.equal((layout.match(/clusterDashboardPage &&/g) || []).length, 2);
 });
 
 test('Manifest installs the existing dashboard with only a non-secret presentation query', () => {

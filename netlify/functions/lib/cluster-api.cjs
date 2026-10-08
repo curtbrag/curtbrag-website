@@ -9,6 +9,7 @@ const crypto = require("crypto");
 const { openControlCommandStore, captureControlContext, CommandStoreError } = require("./control-command-store.cjs");
 const { commandHistoryTime } = require("./control-command-history.cjs");
 const { openPersonalControllerRegistry } = require("./personal-controllers.cjs");
+const { openPhoneFollow } = require("./phone-follow.cjs");
 
 
 function openStore(name) {
@@ -559,8 +560,10 @@ return async (event, context) => {
   try {
   const commandStore = () => openControlCommandStore({ getStore: controlGetStore, event, providerContext });
   const personalControllers = () => openPersonalControllerRegistry({ getStore: controlGetStore, event, providerContext });
+  const phoneFollow = () => openPhoneFollow({ getStore: controlGetStore, event, providerContext, controllers: personalControllers() });
   // ── GET routes ────────────────────────────────────────────────────────────
   if (event.httpMethod === "GET") {
+    if (action === "phone-follow-status") return json(200, hdrs, await phoneFollow().status());
     if (action === "personal-controllers") {
       return json(200, hdrs, { controllers: await personalControllers().list() });
     }
@@ -800,10 +803,17 @@ return async (event, context) => {
   // ── POST routes ───────────────────────────────────────────────────────────
   if (event.httpMethod === "POST") {
     const body = JSON.parse(event.body || "{}");
+    if (action.startsWith("phone-follow-") && (!body || typeof body !== "object" || Array.isArray(body))) {
+      return json(400, hdrs, { error: "Provide following settings as a JSON object.", code: "INVALID_FOLLOW_REQUEST" });
+    }
     if (action === "register-personal-controller" && (!body || typeof body !== "object" || Array.isArray(body))) {
       return json(400, hdrs, { error: "Provide personal controller details as a JSON object.", code: "INVALID_CONTROLLER" });
     }
     const postAction = body.action || action;
+
+    if (postAction === "phone-follow-start") return json(200, hdrs, await phoneFollow().start(body));
+    if (postAction === "phone-follow-stop") return json(200, hdrs, await phoneFollow().stop(body));
+    if (postAction === "phone-follow-runner-update") return json(200, hdrs, await phoneFollow().runnerUpdate(body));
 
     if (postAction === "register-personal-controller") {
       return json(200, hdrs, await personalControllers().register(body));
