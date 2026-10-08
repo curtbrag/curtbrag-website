@@ -1,0 +1,16 @@
+{
+  "id": "/cluster/personal-controller",
+  "name": "My Cluster",
+  "short_name": "My Cluster",
+  "description": "Personal phone control for the CurtBrag cluster.",
+  "start_url": "/cluster/dashboard/?controller=personal",
+  "scope": "/cluster/",
+  "display": "standalone",
+  "background_color": "#0b0d0f",
+  "theme_color": "#ed232a",
+  "prefer_related_applications": false,
+  "icons": [
+    {"src": "/cluster/controller-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
+    {"src": "/assets/truck_favicon.png", "sizes": "64x64", "type": "image/png", "purpose": "any"}
+  ]
+}
