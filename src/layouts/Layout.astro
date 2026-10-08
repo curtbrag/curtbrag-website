@@ -19,6 +19,7 @@ const {
 
 const canonicalUrl = ogUrl || Astro.url.href;
 const clusterControlPage = /^\/cluster\/(?:dashboard|control)\/?$/.test(Astro.url.pathname);
+const clusterDashboardPage = /^\/cluster\/dashboard\/?$/.test(Astro.url.pathname);
 
 const structuredData = {
   '@context': 'https://schema.org',
@@ -73,6 +74,7 @@ const structuredData = {
 
     {clusterControlPage && <link rel="manifest" href="/cluster/controller.webmanifest" />}
     {clusterControlPage && <link rel="stylesheet" href="/styles/cluster-personal-control.css?v=3" />}
+    {clusterDashboardPage && <link rel="stylesheet" href="/styles/cluster-phone-follow.css?v=1" />}
 
     <!-- Theme Color -->
     <meta name="theme-color" content="#ed232a" />
@@ -147,5 +149,6 @@ const structuredData = {
     <!-- Authoritative cluster workload client. -->
     <script is:inline src="/scripts/cluster-swarm-live-v8.js?v=71"></script>
     {clusterControlPage && <script is:inline src="/scripts/cluster-personal-control.js?v=3"></script>}
+    {clusterDashboardPage && <script is:inline src="/scripts/cluster-phone-follow.js?v=1"></script>}
   </body>
 </html>

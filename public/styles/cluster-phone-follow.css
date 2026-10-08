@@ -1,0 +1,17 @@
+#phone-follow-control{min-width:0}
+.phone-follow-heading{display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between}
+#tab-swarm .phone-follow-heading h3{margin:0!important}
+#phone-follow-badge{border:1px solid var(--color-border);border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;color:var(--color-muted)}
+#phone-follow-status[data-error="1"]{color:var(--color-red)}
+#phone-follow-current-url{display:block;max-width:100%;overflow-wrap:anywhere;color:var(--color-brand);font-size:13px;line-height:1.6;text-decoration:underline}
+#phone-follow-current-url[hidden]{display:none}
+#phone-follow-report{margin-top:16px;border-top:1px solid var(--color-border);padding-top:8px}
+#phone-follow-report summary{min-height:44px;padding:12px 0;font-size:13px;font-weight:600;cursor:pointer}
+#phone-follow-units{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:8px}
+.phone-follow-unit{display:flex;flex-wrap:wrap;gap:6px 12px;justify-content:space-between;padding:12px;background:var(--color-bg);border:1px solid var(--color-border);border-radius:8px;min-width:0;font-size:12px;overflow-wrap:anywhere}
+.phone-follow-unit strong{color:var(--color-text);font-weight:600}
+.phone-follow-unit span{color:var(--color-muted)}
+.phone-follow-unit small{flex-basis:100%;font-size:11px;color:var(--color-muted)}
+#phone-follow-control button{min-height:44px}
+#tab-swarm #phone-follow-stop{border-color:var(--color-red)!important;color:var(--color-red)!important}
+@media(max-width:700px){#phone-follow-control .cluster-action-row>button{flex:1 1 180px;white-space:normal}#phone-follow-units{grid-template-columns:minmax(0,1fr)}}
