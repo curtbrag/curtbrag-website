@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const crypto = require('node:crypto');
 const { STATE_KEY, strictFetch, createControlCommandStore, captureControlContext, openControlCommandStore } = require('../netlify/functions/lib/control-command-store.cjs');
 const copy = value => JSON.parse(JSON.stringify(value));
 const command = (id, extra = {}) => ({ id, type: 'open-url', target: 'phone253', payload: { url: 'https://curtbrag.com/' }, status: 'queued', ...extra });
@@ -21,7 +22,7 @@ class MemoryStore {
   }
   async set(key, serialized, options) {
     this.writes.push({ key, options });
-    assert.equal(key, STATE_KEY);
+    assert.ok(key === STATE_KEY || key.startsWith('history-backup-v1-'));
     assert.equal(Object.keys(options).length, 1);
     const old = this.records.get(key);
     if (options.onlyIfNew ? old : (!old || old.etag !== options.onlyIfMatch)) return { modified: false };
@@ -293,6 +294,174 @@ test('new explicit legacy commands after cutover keep their route', async () => 
   await api.snapshot();
   await api.transact(draft => { draft.queue.push(command('new-legacy', { route: 'legacy' })); }, { requestId: 'new-legacy' });
   assert.equal((await api.snapshot()).queue[0].route, 'legacy');
+});
+
+const HISTORY_NOW = Date.parse('2026-10-08T20:00:00.000Z');
+async function oldHistoryFixture() {
+  const values = fixture();
+  const cp = Array.from({ length: 200 }, (_, index) => command('cp-' + index, { status: 'completed', finished_at: HISTORY_NOW - 200 + index }));
+  const legacy = Array.from({ length: 50 }, (_, index) => ({ id: 'legacy-' + index, command: 'restart', target: 'all', completedAt: new Date(HISTORY_NOW - 86400000 + index).toISOString(), result: 'old report' }));
+  values.store.seed('history', cp);
+  values.legacyStore.seed('history', legacy);
+  values.legacyStore.seed('queue', [command('held-pending', { type: 'mining-start' })]);
+  await values.api.snapshot();
+  const previous = copy(values.store.records.get(STATE_KEY).data);
+  previous.revision = 'deployed-old-history';
+  previous.history = [...cp.slice(50).map(record => ({ ...record, route: 'bridge' })), ...legacy.map(record => ({ ...record, type: record.command, route: 'legacy', status: 'completed' }))];
+  previous.requestReceipts = [{ requestId: 'accepted-before-repair', fingerprint: 'old', result: { accepted: true }, revision: 'saved-old-request', at: '2026-10-08' }];
+  delete previous.migration.history_version;
+  values.store.seed(STATE_KEY, previous);
+  return { ...values, cp, legacy, previous };
+}
+
+test('initial retention keeps newest CP200 over appended older legacy50', async () => {
+  const { api, store, legacyStore } = fixture();
+  store.seed('history', Array.from({ length: 200 }, (_, index) => command('cp-' + index, { status: 'completed', finished_at: HISTORY_NOW + index })));
+  legacyStore.seed('history', Array.from({ length: 50 }, (_, index) => ({ id: 'old-' + index, command: 'restart', target: 'all', completedAt: new Date(HISTORY_NOW - 86400000 + index).toISOString() })));
+  const snapshot = await api.snapshot();
+  assert.equal(snapshot.history.length, 200);
+  assert.ok(snapshot.history.every(record => record.id.startsWith('cp-')));
+  assert.equal(snapshot.history.at(-1).id, 'cp-199');
+  assert.equal(snapshot.receipt.history_version, 2);
+});
+
+test('deployed old history repairs once with immutable backup and no pending or receipt changes', async () => {
+  const { api, store, legacyStore, previous } = await oldHistoryFixture();
+  const sourceBefore = copy([...store.records.entries()].filter(([key]) => ['queue', 'history'].includes(key)));
+  const legacyBefore = copy([...legacyStore.records.entries()]);
+  const snapshot = await api.snapshot();
+  const upgraded = store.records.get(STATE_KEY).data;
+  assert.equal(snapshot.history.length, 200);
+  assert.ok(snapshot.history.every(record => record.id.startsWith('cp-')));
+  assert.equal(upgraded.migration.history_repair.restored_count, 50);
+  assert.deepEqual(upgraded.queue, previous.queue);
+  assert.deepEqual(upgraded.requestReceipts, previous.requestReceipts);
+  assert.deepEqual(upgraded.migration.sources, previous.migration.sources);
+  assert.deepEqual(sourceBefore, copy([...store.records.entries()].filter(([key]) => ['queue', 'history'].includes(key))));
+  assert.deepEqual(legacyBefore, copy([...legacyStore.records.entries()]));
+  const repair = upgraded.migration.history_repair;
+  const backup = store.records.get(repair.backup_key);
+  assert.deepEqual(backup.data, { schema: 1, source_revision: previous.revision, history: previous.history });
+  assert.equal(backup.etag, repair.backup_etag);
+  const writes = store.writes.length;
+  await api.snapshot();
+  assert.equal(store.writes.length, writes);
+});
+
+test('unconfirmed backup write blocks repair without touching authoritative state', async () => {
+  const { api, store, previous } = await oldHistoryFixture();
+  store.failure = 'precommit';
+  await assert.rejects(api.snapshot(), { code: 'HISTORY_BACKUP_UNCONFIRMED' });
+  assert.deepEqual(store.records.get(STATE_KEY).data, previous);
+});
+
+test('committed backup timeout is strongly confirmed before state repair', async () => {
+  const { api, store } = await oldHistoryFixture();
+  store.failure = 'aftercommit';
+  const snapshot = await api.snapshot();
+  assert.equal(snapshot.receipt.history_version, 2);
+  const backupWrite = store.writes.findIndex(write => write.key.startsWith('history-backup-v1-'));
+  assert.ok(backupWrite >= 0);
+  assert.deepEqual(store.writes[backupWrite].options, { onlyIfNew: true });
+});
+
+test('existing immutable backup conflicts are never overwritten', async () => {
+  const { api, store, previous } = await oldHistoryFixture();
+  const key = 'history-backup-v1-' + crypto.createHash('sha256').update(previous.revision).digest('hex');
+  const conflicting = { schema: 1, source_revision: previous.revision, history: [] };
+  store.seed(key, conflicting);
+  const writes = store.writes.length;
+  await assert.rejects(api.snapshot(), { code: 'HISTORY_BACKUP_CONFLICT' });
+  assert.equal(store.writes.length, writes);
+  assert.deepEqual(store.records.get(key).data, conflicting);
+  assert.deepEqual(store.records.get(STATE_KEY).data, previous);
+});
+
+test('matching concurrent immutable backup creation is strongly verified without overwriting', async () => {
+  const { api, store, previous } = await oldHistoryFixture();
+  const original = store.set.bind(store);
+  let backupAttempts = 0;
+  store.set = async (...args) => {
+    if (args[0].startsWith('history-backup-v1-')) {
+      backupAttempts++;
+      assert.deepEqual(args[2], { onlyIfNew: true });
+      store.seed(args[0], JSON.parse(args[1]));
+      return { modified: false };
+    }
+    return original(...args);
+  };
+  assert.equal((await api.snapshot()).receipt.history_version, 2);
+  assert.equal(backupAttempts, 1);
+  const repair = store.records.get(STATE_KEY).data.migration.history_repair;
+  assert.deepEqual(store.records.get(repair.backup_key).data.history, previous.history);
+  assert.equal(repair.backup_etag, store.records.get(repair.backup_key).etag);
+});
+
+test('accepted backup with failed confirmation read cannot authorize main history mutation', async () => {
+  const { api, store, previous } = await oldHistoryFixture();
+  const originalRead = store.getWithMetadata.bind(store);
+  let backupReads = 0;
+  store.getWithMetadata = async (...args) => {
+    if (args[0].startsWith('history-backup-v1-') && ++backupReads > 1) throw Error('synthetic unavailable backup receipt');
+    return originalRead(...args);
+  };
+  await assert.rejects(api.snapshot(), { code: 'READ_FAILED' });
+  assert.deepEqual(store.records.get(STATE_KEY).data, previous);
+  assert.equal([...store.records.keys()].filter(key => key.startsWith('history-backup-v1-')).length, 1);
+});
+
+test('source drift after backup confirmation blocks repair before state CAS', async () => {
+  const { api, store, legacyStore, previous } = await oldHistoryFixture();
+  const original = store.set.bind(store);
+  store.set = async (...args) => { const result = await original(...args); if (args[0].startsWith('history-backup-v1-')) legacyStore.seed('history', []); return result; };
+  await assert.rejects(api.snapshot(), { code: 'LEGACY_SOURCE_CHANGED' });
+  assert.deepEqual(store.records.get(STATE_KEY).data, previous);
+});
+
+test('repair CAS conflict recomputes from fresh authority and preserves a concurrent completion', async () => {
+  const { api, store, previous } = await oldHistoryFixture();
+  const original = store.set.bind(store);
+  let conflict = true;
+  store.set = async (...args) => {
+    if (args[0] === STATE_KEY && conflict) {
+      conflict = false;
+      const concurrent = copy(previous);
+      concurrent.revision = 'concurrent-completion';
+      concurrent.history = [...concurrent.history.slice(1), command('new-completion', { route: 'bridge', status: 'completed', finished_at: HISTORY_NOW + 1000 })];
+      store.seed(STATE_KEY, concurrent);
+      return { modified: false };
+    }
+    return original(...args);
+  };
+  const snapshot = await api.snapshot();
+  assert.equal(snapshot.history.at(-1).id, 'new-completion');
+  assert.deepEqual(snapshot.queue, previous.queue);
+  assert.equal(store.records.get(STATE_KEY).data.migration.history_repair.previous_revision, 'concurrent-completion');
+  assert.equal([...store.records.keys()].filter(key => key.startsWith('history-backup-v1-')).length, 2);
+});
+
+test('state repair committed timeout reconciles revision without repeating upgrade', async () => {
+  const { api, store } = await oldHistoryFixture();
+  const original = store.set.bind(store);
+  let stateWrites = 0;
+  store.set = async (...args) => { const result = await original(...args); if (args[0] === STATE_KEY) { stateWrites++; throw Error('synthetic committed repair timeout'); } return result; };
+  assert.equal((await api.snapshot()).receipt.history_version, 2);
+  assert.equal(stateWrites, 1);
+});
+
+test('repair keeps current same-ID terminal authority while preserving complete old evidence', async () => {
+  const { api, store, previous } = await oldHistoryFixture();
+  const terminal = previous.history.find(record => record.id === 'cp-50');
+  terminal.status = 'cancelled';
+  terminal.pending_cancelled_at = HISTORY_NOW + 1000;
+  terminal.output = 'operator cancelled the held entry';
+  store.seed(STATE_KEY, previous);
+  const snapshot = await api.snapshot();
+  const authoritative = snapshot.history.find(record => record.id === 'cp-50');
+  assert.equal(authoritative.status, 'cancelled');
+  assert.equal(authoritative.output, terminal.output);
+  assert.equal(authoritative.finished_at, terminal.finished_at);
+  assert.equal(snapshot.history.at(-1).id, 'cp-50');
 });
 
 test('runtime rejects unknown context and isolates preview without touching production sources', async () => {

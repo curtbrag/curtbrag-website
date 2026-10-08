@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const deployment = require('./control-deployment.cjs');
+const { normalizeCommandHistory, orderCommandHistory } = require('./control-command-history.cjs');
 const STATE_KEY = 'control-state-v1';
 const MAX_QUEUE = 200;
 const MAX_HISTORY = 200;
@@ -65,6 +66,7 @@ function checkState(state, migrateLegacy) {
   }
   if (!migrateLegacy && state.migration.sources.length !== 0) fail('INVALID_STATE', 'A preview cannot use production migration sources.');
   if (migrateLegacy && state.migration.sources.length < 2) fail('INVALID_STATE', 'The command migration fence is missing.');
+  if (state.migration.history_version !== undefined && ![1, 2].includes(state.migration.history_version)) fail('INVALID_STATE', 'The command history version is unsupported.');
   clone(state);
   return state;
 }
@@ -104,8 +106,10 @@ function createControlCommandStore({ store, legacyStore, now = () => new Date().
   }
   function fingerprints(sources) { return sources.map(({ source, key, etag, digest: hash }) => ({ source, key, etag, digest: hash })); }
   async function verifyFence(state) {
-    const live = fingerprints(await readSources());
+    const sources = await readSources();
+    const live = fingerprints(sources);
     if (canonical(live) !== canonical(state.migration.sources)) fail('LEGACY_SOURCE_CHANGED', 'An older command writer changed the migration sources. Commands are held until the writer is updated.');
+    return sources;
   }
   const legacyPayloadKeys = ['url', 'sshCmd', 'displayMode', 'miningLevel', 'poolUrl', 'namespace', 'podName', 'tail'];
   function intent(record) {
@@ -119,22 +123,34 @@ function createControlCommandStore({ store, legacyStore, now = () => new Date().
     if (!copy.type && copy.command) copy.type = copy.command;
     if (!copy.route) copy.route = source === 'cp' ? 'bridge' : 'legacy';
     if (!copy.status) copy.status = history ? 'completed' : 'queued';
-    return copy;
+    return history ? normalizeCommandHistory(copy) : copy;
   }
   function held(record, reason, copies) {
     return { ...record, route: 'held', status: 'held', hold_reason: reason, migration_evidence: copies };
   }
+  function mergedHistory(sources) {
+    const history = new Map();
+    for (const source of sources.filter(source => source.key === 'history')) {
+      for (const original of source.data) {
+        const incoming = normalized(original, source.source, true);
+        const previous = history.get(incoming.id);
+        if (!previous) history.set(incoming.id, incoming);
+        else if (canonical(previous) !== canonical(incoming)) history.set(incoming.id, held(previous, 'Conflicting copies of this command require review before execution.', previous.migration_evidence ? [...previous.migration_evidence, incoming] : [previous, incoming]));
+      }
+    }
+    return history;
+  }
   function mergeSources(sources) {
     const pending = new Map();
-    const history = new Map();
+    const history = mergedHistory(sources);
     const cpPendingIds = new Set(sources.filter(source => source.source === 'cp' && source.key === 'queue').flatMap(source => source.data.map(record => record.id)));
-    for (const source of sources) {
-      const map = source.key === 'queue' ? pending : history;
+    for (const source of sources.filter(source => source.key === 'queue')) {
+      const map = pending;
       for (const original of source.data) {
         const incoming = normalized(original, source.source, source.key === 'history');
         const previous = map.get(incoming.id);
         if (!previous) { map.set(incoming.id, incoming); continue; }
-        const matches = source.key === 'queue' ? intent(previous) === intent(incoming) && previous.status === incoming.status : canonical(previous) === canonical(incoming);
+        const matches = intent(previous) === intent(incoming) && previous.status === incoming.status;
         if (!matches) map.set(incoming.id, held(previous, 'Conflicting copies of this command require review before execution.', previous.migration_evidence ? [...previous.migration_evidence, incoming] : [previous, incoming]));
       }
     }
@@ -146,32 +162,78 @@ function createControlCommandStore({ store, legacyStore, now = () => new Date().
       else if (!['queued', 'running', 'held'].includes(record.status)) pending.set(id, held(record, 'A pending command has a terminal or unknown status; automatic replay is blocked.', [record]));
     }
     const queue = [...pending.values()];
-    const archived = [...history.values()].slice(-MAX_HISTORY);
+    const archived = orderCommandHistory([...history.values()]).slice(-MAX_HISTORY);
     checkArrays(queue, archived);
     return { queue, history: archived };
   }
-  async function conditionalWrite(state, etag) {
+  async function writeBlob(key, value, etag) {
     let result;
-    try { result = await store.set(STATE_KEY, JSON.stringify(state), etag === null ? { onlyIfNew: true } : { onlyIfMatch: etag }); }
+    try { result = await store.set(key, JSON.stringify(value), etag === null ? { onlyIfNew: true } : { onlyIfMatch: etag }); }
     catch (_) { fail('WRITE_UNCERTAIN', 'The command write could not be confirmed. Do not automatically replay this request.'); }
     if (!result || (result.modified !== true && result.modified !== false)) fail('WRITE_UNCERTAIN', 'Command storage returned no valid write receipt.');
     if (result.modified === false) return null;
     if (!validETag(result.etag)) fail('WRITE_UNCERTAIN', 'Command storage returned no write version receipt.');
     return result.etag;
   }
+  async function conditionalWrite(state, etag) { return writeBlob(STATE_KEY, state, etag); }
+  async function ensureHistoryBackup(state) {
+    const key = 'history-backup-v1-' + crypto.createHash('sha256').update(state.revision).digest('hex');
+    const value = { schema: 1, source_revision: state.revision, history: clone(state.history) };
+    const hash = digest(value);
+    let existing = await readBlob(store, key);
+    if (!existing) {
+      // Backup is immutable evidence, not execution authority. Even a reported
+      // successful write must be strongly confirmed before the state upgrade.
+      try { await writeBlob(key, value, null); } catch (_) { /* Confirm below. */ }
+      existing = await readBlob(store, key);
+    }
+    if (!existing) fail('HISTORY_BACKUP_UNCONFIRMED', 'The command history backup could not be confirmed; history was not changed.');
+    if (digest(existing.data) !== hash) fail('HISTORY_BACKUP_CONFLICT', 'The immutable command history backup differs; history was not changed.');
+    return { backup_key: key, backup_etag: existing.etag, backup_digest: hash };
+  }
+  async function historyUpgrade(state, sources) {
+    const backup = await ensureHistoryBackup(state);
+    const records = new Map(state.history.map(record => [record.id, clone(record)]));
+    const originalIds = new Set(records.keys());
+    for (const [id, record] of mergedHistory(sources)) if (!records.has(id)) records.set(id, record);
+    const history = orderCommandHistory([...records.values()].map(normalizeCommandHistory)).slice(-MAX_HISTORY);
+    const upgraded = {
+      ...state,
+      revision: randomId(),
+      history,
+      migration: {
+        ...state.migration,
+        history_version: 2,
+        history_repair: { version: 2, ...backup, previous_revision: state.revision, repaired_at: now(), restored_count: history.filter(record => !originalIds.has(record.id)).length },
+      },
+    };
+    checkState(upgraded, migrateLegacy);
+    await verifyFence(upgraded);
+    return upgraded;
+  }
   async function load() {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const existing = await readBlob(store, STATE_KEY);
       if (existing) {
         const state = checkState(existing.data, migrateLegacy);
-        await verifyFence(state);
-        return { state, etag: existing.etag };
+        const sources = await verifyFence(state);
+        if (state.migration.history_version === 2) return { state, etag: existing.etag };
+        const upgraded = await historyUpgrade(state, sources);
+        let etag;
+        try { etag = await conditionalWrite(upgraded, existing.etag); }
+        catch (error) {
+          const observed = await readBlob(store, STATE_KEY);
+          if (observed && observed.data.revision === upgraded.revision) { await verifyFence(checkState(observed.data, migrateLegacy)); return { state: observed.data, etag: observed.etag }; }
+          throw error;
+        }
+        if (etag !== null) { await verifyFence(upgraded); return { state: upgraded, etag }; }
+        continue;
       }
       const first = await readSources();
       const second = await readSources();
       if (canonical(fingerprints(first)) !== canonical(fingerprints(second))) continue;
       const merged = mergeSources(second);
-      const state = { schema: 1, revision: randomId(), ...merged, migration: { sources: fingerprints(second) }, requestReceipts: [] };
+      const state = { schema: 1, revision: randomId(), ...merged, migration: { sources: fingerprints(second), history_version: 2 }, requestReceipts: [] };
       checkState(state, migrateLegacy);
       let etag;
       try { etag = await conditionalWrite(state, null); }
@@ -184,7 +246,7 @@ function createControlCommandStore({ store, legacyStore, now = () => new Date().
     }
     fail('CONFLICT', 'Command storage is busy; retry this request later.', 409);
   }
-  function receipt(state, etag, options = {}) { return { schema: 1, revision: state.revision, etag, migrated: true, ...options }; }
+  function receipt(state, etag, options = {}) { return { schema: 1, revision: state.revision, etag, migrated: true, history_version: state.migration.history_version, ...options }; }
   function response(state, etag, result, options, includeResult) {
     const output = { queue: clone(state.queue), history: clone(state.history), receipt: receipt(state, etag, options) };
     if (includeResult) output.result = clone(result);
