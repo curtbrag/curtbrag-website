@@ -601,22 +601,27 @@ function renderDevicesTable() {
 function renderCommands() {
   const queue = document.getElementById('cmdQueue');
   const hist = document.getElementById('cmdHistory');
-  queue.innerHTML = state.commands.queue.length
-    ? state.commands.queue.map(c => `
+  const held = state.commands.queue.filter(c => c.status === 'held');
+  const active = state.commands.queue.filter(c => c.status !== 'held');
+  const commandCard = c => `
         <div style="padding:10px;background:var(--color-bg);border-radius:4px;margin:4px 0;border-left:3px solid var(--color-yellow)">
           <div style="display:flex;justify-content:space-between">
             <strong>${c.type}</strong>
             <span style="color:var(--color-muted);font-size:10px">${timeAgo(c.created_at)}</span>
           </div>
           <div style="color:var(--color-muted);font-size:11px">→ ${c.target} · ${c.status}${c.status === 'held' ? ' · Needs review before execution' : ''}</div>
-        </div>`).join('')
-    : 'No pending commands';
+        </div>`;
+  queue.innerHTML = (active.length ? active.map(commandCard).join('')
+    : held.length ? 'No commands ready for execution' : 'No pending commands') +
+    (held.length ? `<details style="margin-top:12px"><summary>${held.length} commands held for review</summary>
+      <p style="color:var(--color-muted)">These saved commands require review before execution.</p>
+      ${held.map(commandCard).join('')}</details>` : '');
   hist.innerHTML = state.commands.history.length
     ? state.commands.history.slice(0, 20).map(c => `
         <div style="padding:10px;background:var(--color-bg);border-radius:4px;margin:4px 0;border-left:3px solid ${['succeeded', 'completed'].includes(c.status) ? 'var(--color-green)' : 'var(--color-red)'}">
           <div style="display:flex;justify-content:space-between">
             <strong>${c.type}</strong>
-            <span style="color:var(--color-muted);font-size:10px">${timeAgo(c.finished_at || c.created_at)}</span>
+            <span style="color:var(--color-muted);font-size:10px">${timeAgo(c.history_time || c.finished_at || c.created_at)}</span>
           </div>
           <div style="color:var(--color-muted);font-size:11px">→ ${c.target} · ${c.status}</div>
           ${(c.output || c.stdout) ? `<pre style="margin:6px 0 0;font-size:10px;color:var(--color-muted);white-space:pre-wrap;max-height:140px;overflow-y:auto">${(c.output || c.stdout).slice(0,1200)}</pre>` : ''}
@@ -1153,4 +1158,3 @@ if (password) {
 // Swarm tab behavior is owned by /scripts/cluster-swarm-live-v8.js.
 </script>
 <script is:inline src="/scripts/cluster-jobs-v1.js?v=1"></script>
-

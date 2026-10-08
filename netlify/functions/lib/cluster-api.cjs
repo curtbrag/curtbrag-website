@@ -7,6 +7,7 @@
 exports.createHandler = ({ connectLambda, getStore, controlGetStore }) => {
 const crypto = require("crypto");
 const { openControlCommandStore, captureControlContext, CommandStoreError } = require("./control-command-store.cjs");
+const { commandHistoryTime } = require("./control-command-history.cjs");
 
 
 function openStore(name) {
@@ -661,8 +662,9 @@ return async (event, context) => {
       return json(200, hdrs, {
         queue: queue.filter(cmd => cmd.route === "bridge" && cmd.status !== "held"),
         pending: queue.filter(cmd => cmd.route !== "bridge" || cmd.status === "held"),
-        history: history.slice().reverse().slice(0, 100),
-        storage: { schema: 1, atomic: true, revision: receipt.revision },
+        history: history.slice().reverse().sort((a, b) => commandHistoryTime(b) - commandHistoryTime(a)).slice(0, 100)
+          .map(command => ({ ...command, history_time: commandHistoryTime(command) })),
+        storage: { schema: 1, atomic: true, revision: receipt.revision, history_version: receipt.history_version },
       });
     }
 

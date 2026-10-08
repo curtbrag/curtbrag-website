@@ -193,7 +193,8 @@ integrationTest('completion racing enqueue atomically archives old ID and retain
   const [done, added] = await Promise.all([h.cp('bridge-complete', completion(a)), queue(h, 'phone174')]);
   assert.equal(done.status, 200); assert.equal(added.status, 200); const view = await h.view();
   preserves(view, [a.id, old.id, added.body.command_id]); assert.deepEqual(sortedIds(view.queue), [added.body.command_id]);
-  assert.deepEqual(view.history.find(item => item.id === old.id), old);
+  assert.deepEqual(h.inspect('cp-commands', STATE_KEY).history.find(item => item.id === old.id), old);
+  assert.equal(view.history.find(item => item.id === old.id).history_time, old.finished_at);
 });
 
 integrationTest('simultaneous completions retain both reports and previous history', async () => {
@@ -201,7 +202,56 @@ integrationTest('simultaneous completions retain both reports and previous histo
   await h.ready(); h.barrier('read', 'cp-commands', STATE_KEY);
   const responses = await Promise.all([h.cp('bridge-complete', completion(a)), h.cp('bridge-complete', completion(b))]);
   assert.ok(responses.every(response => response.status === 200)); const view = await h.view();
-  preserves(view, ['a', 'b', 'old']); assert.equal(view.queue.length, 0); assert.deepEqual(view.history.find(item => item.id === 'old'), old);
+  preserves(view, ['a', 'b', 'old']); assert.equal(view.queue.length, 0);
+  assert.deepEqual(h.inspect('cp-commands', STATE_KEY).history.find(item => item.id === 'old'), old);
+  assert.equal(view.history.find(item => item.id === 'old').history_time, old.finished_at);
+});
+
+integrationTest('merged CP and legacy histories retain newest200 by time before projecting newest100', async () => {
+  const cp = Array.from({ length: 200 }, (_, index) => ({ ...completed(cmd(`cp-${index}`)), finished_at: NOW - 200 + index }));
+  const legacy = Array.from({ length: 50 }, (_, index) => ({ id: `legacy-${index}`, command: 'mining-status', target: 'node1', result: 'old fixture result', completedAt: new Date(NOW - 86400000 - 50 + index).toISOString() }));
+  const h = fixture({ history: cp, legacyHistory: legacy }); const response = await h.cpGet(); assert.equal(response.status, 200);
+  assert.equal(response.body.history.length, 100); assert.deepEqual(response.body.history.map(entry => entry.id), Array.from({ length: 100 }, (_, index) => `cp-${199 - index}`));
+  const state = h.inspect('cp-commands', STATE_KEY); assert.equal(state.history.length, 200); assert.deepEqual(sortedIds(state.history), sortedIds(cp));
+  assert.deepEqual(h.inspect('cp-commands', 'history'), cp); assert.deepEqual(h.inspect('cluster-control', 'history'), legacy);
+});
+
+integrationTest('already-migrated legacy tail repairs missing newer CP history without changing queue receipts or source fence', async () => {
+  const pending = cmd('pending-stable');
+  const cp = Array.from({ length: 200 }, (_, index) => ({ ...completed(cmd(`cp-${index}`)), finished_at: NOW - 200 + index }));
+  const legacy = Array.from({ length: 50 }, (_, index) => ({ id: `legacy-${index}`, command: 'mining-status', target: 'node1', result: 'old fixture result', completedAt: new Date(NOW - 86400000 - 50 + index).toISOString() }));
+  const h = fixture({ queue: [pending], history: cp, legacyHistory: legacy }); await h.ready();
+  const old = h.inspect('cp-commands', STATE_KEY);
+  old.revision = 'old-history-ordering-fixture';
+  old.history = [...cp.slice(50), ...legacy.map(entry => ({ ...entry, type: entry.command, route: 'legacy', status: 'completed' }))];
+  old.requestReceipts = Array.from({ length: 3 }, (_, index) => ({ requestId: `stable-receipt-${index}`, fingerprint: `saved-input-${index}`, result: { ok: true, command_id: `saved-command-${index}` }, revision: `saved-revision-${index}`, at: new Date(NOW - 1000).toISOString() }));
+  delete old.migration.history_version; delete old.migration.history_repair;
+  h.seed('cp-commands', STATE_KEY, old);
+  const beforeQueue = clone(old.queue), beforeReceipts = clone(old.requestReceipts), beforeSources = clone(old.migration.sources);
+  const response = await h.cpGet(); assert.equal(response.status, 200); assert.equal(response.body.history[0].id, 'cp-199');
+  const repaired = h.inspect('cp-commands', STATE_KEY); assert.equal(repaired.history.length, 200); assert.deepEqual(sortedIds(repaired.history), sortedIds(cp));
+  assert.deepEqual(repaired.queue, beforeQueue); assert.deepEqual(repaired.requestReceipts, beforeReceipts); assert.deepEqual(repaired.migration.sources, beforeSources);
+  assert.equal(repaired.migration.history_version, 2); assert.ok(repaired.migration.history_repair.backup_key);
+  assert.deepEqual(h.inspect('cp-commands', 'history'), cp); assert.deepEqual(h.inspect('cluster-control', 'history'), legacy);
+});
+
+integrationTest('history projection uses valid completion timestamps and cancellation evidence across schemas', async () => {
+  const records = [
+    { ...completed(cmd('finished')), finished_at: NOW + 60, created_at: NOW - 1000 },
+    { ...completed(cmd('completed-snake')), finished_at: null, completed_at: new Date(NOW + 50).toISOString(), created_at: NOW + 5000 },
+    { ...completed(cmd('completed-camel')), finished_at: null, completedAt: new Date(NOW + 40).toISOString() },
+    { ...completed(cmd('timestamp')), finished_at: null, created_at: null, timestamp: NOW + 30 },
+    { ...completed(cmd('invalid-fallback')), finished_at: 'invalid', completed_at: null, timestamp: '', created_at: NOW + 20 },
+    { ...completed(cmd('created-preferred')), finished_at: null, created_at: NOW + 15, timestamp: NOW + 55 },
+    { ...completed(cmd('created-only')), finished_at: null, created_at: NOW + 10 },
+    { ...completed(cmd('cancelled-pending')), finished_at: NOW - 86400000, pending_cancelled_at: NOW + 70 },
+    { ...completed(cmd('unknown')), finished_at: null, created_at: null, timestamp: '' },
+  ];
+  const h = fixture({ history: records }); const response = await h.cpGet(); assert.equal(response.status, 200);
+  assert.deepEqual(response.body.history.map(entry => entry.id), ['cancelled-pending', 'finished', 'completed-snake', 'completed-camel', 'timestamp', 'invalid-fallback', 'created-preferred', 'created-only', 'unknown']);
+  assert.equal(response.body.history.find(entry => entry.id === 'created-preferred').history_time, NOW + 15);
+  assert.equal(response.body.history.find(entry => entry.id === 'finished').finished_at, NOW + 60);
+  assert.equal(response.body.history.find(entry => entry.id === 'cancelled-pending').finished_at, NOW - 86400000);
 });
 
 integrationTest('duplicate ordinary completion cannot append duplicate history', async () => {
