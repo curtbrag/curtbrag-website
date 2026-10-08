@@ -14,6 +14,8 @@
   let watchedWorkspace = null;
   let watchedBridge = null;
   let installMessage = '';
+  let inventoryBusy = false;
+  let inventoryRecords = [];
   const byId = id => document.getElementById(id);
   const setText = (element, text) => { if (element && element.textContent !== text) element.textContent = text; };
   const make = (tag, id, text) => {
@@ -81,6 +83,144 @@
   function panelVisible() {
     const panel = byId('panel');
     return !!panel && !panel.hidden && panel.style.display !== 'none' && (typeof window.getComputedStyle !== 'function' || window.getComputedStyle(panel).display !== 'none');
+  }
+  function inventoryMessage(text, error = false) {
+    const status = byId('personal-controller-inventory-status');
+    if (status) { setText(status, text); status.dataset.error = error ? '1' : '0'; }
+  }
+  function inventoryLock(busy) {
+    inventoryBusy = busy;
+    for (const id of ['personal-controller-inventory-refresh', 'personal-controller-register']) {
+      const button = byId(id);
+      if (button) button.disabled = busy;
+    }
+    byId('personal-controller-inventory')?.setAttribute('aria-busy', busy ? 'true' : 'false');
+  }
+  function inventoryApi() {
+    if (!panelVisible()) throw new Error('Sign in to view or add personal controllers.');
+    if (typeof window.callApi !== 'function') throw new Error('Dashboard controls are unavailable. Refresh this page and retry.');
+    return window.callApi;
+  }
+  function privateAddress(value) {
+    const parts = value.split('.');
+    if (parts.length !== 4 || parts.some(part => !/^(0|[1-9]\d{0,2})$/.test(part) || Number(part) > 255)) return false;
+    const numbers = parts.map(Number);
+    return numbers[0] === 10 || (numbers[0] === 172 && numbers[1] >= 16 && numbers[1] <= 31) || (numbers[0] === 192 && numbers[1] === 168);
+  }
+  function registrationPayload() {
+    const value = key => byId('personal-controller-input-' + key).value.trim();
+    const name = value('name');
+    const payload = {
+      controller_id: value('controller_id') || controllerSlug(name), name, model: value('model'),
+      private_ip: value('private_ip'), adb_connect_port: Number(value('adb_connect_port')),
+    };
+    const guid = value('adb_guid');
+    if (!/^[a-z][a-z0-9-]{0,63}$/.test(payload.controller_id)) throw new Error('Use a controller ID of up to 64 lowercase letters, numbers and hyphens, starting with a letter.');
+    if (!payload.name || payload.name.length > 80 || !/^[\p{L}\p{N}\p{M} ._'’()/-]+$/u.test(payload.name)) throw new Error('Enter a controller name of up to 80 letters, numbers, spaces or simple punctuation.');
+    if (!/^[A-Za-z0-9][A-Za-z0-9 ._()-]{0,63}$/.test(payload.model)) throw new Error('Enter a model of up to 64 letters, numbers, spaces, dots, underscores, hyphens or parentheses.');
+    if (!privateAddress(payload.private_ip)) throw new Error('Enter its private local IPv4 address, such as 192.168.1.20.');
+    if (!/^\d{1,5}$/.test(value('adb_connect_port')) || !Number.isInteger(payload.adb_connect_port) || payload.adb_connect_port < 1 || payload.adb_connect_port > 65535) throw new Error('Enter a wireless debugging connection port from 1 to 65535.');
+    if (guid && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/.test(guid)) throw new Error('Use a wireless debugging ID of up to 160 letters, numbers, dots, hyphens or underscores, starting with a letter or number.');
+    if (guid) payload.adb_guid = guid;
+    return payload;
+  }
+  function controllerSlug(name) {
+    let slug = name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    if (!/^[a-z]/.test(slug)) slug = 'personal-' + (slug || 'controller');
+    return slug.slice(0, 64).replace(/-+$/g, '');
+  }
+  function isPersonalRecord(record) {
+    return !!record && record.role === 'personal-controller' && record.worker_enabled === false && record.mining_enabled === false && typeof record.controller_id === 'string' && typeof record.name === 'string' && typeof record.model === 'string' && typeof record.private_ip === 'string' && Number.isInteger(record.adb_connect_port);
+  }
+  function renderInventory(records) {
+    const list = byId('personal-controller-inventory-list');
+    if (!list) return;
+    list.textContent = '';
+    inventoryRecords = records;
+    if (!records.length) { list.append(make('p', null, 'No personal controllers registered.')); return; }
+    for (const record of records) {
+      const card = make('article'); card.className = 'personal-controller-inventory-record';
+      const label = make('p', null, 'Registered personal controller'); label.className = 'personal-controller-registration-label';
+      card.append(label, make('h3', null, record.name));
+      const details = make('dl');
+      const registered = typeof record.registered_at === 'number' && Number.isFinite(record.registered_at) && record.registered_at > 0 ? new Date(record.registered_at) : null;
+      const fields = [['Model', record.model], ['Local network address', record.private_ip], ['Wireless debugging port', String(record.adb_connect_port)], ['Last registered', registered && Number.isFinite(registered.getTime()) ? registered.toLocaleString() : 'Unavailable']];
+      for (const [name, value] of fields) details.append(make('dt', null, name), make('dd', null, value));
+      const identifiers = make('details'); identifiers.className = 'personal-controller-inventory-identifiers';
+      identifiers.append(make('summary', null, 'Connection identifiers'));
+      const identifierList = make('dl'); identifierList.append(make('dt', null, 'Controller ID'), make('dd', null, record.controller_id));
+      if (typeof record.adb_guid === 'string' && record.adb_guid) identifierList.append(make('dt', null, 'Wireless debugging ID'), make('dd', null, record.adb_guid));
+      identifiers.append(identifierList); card.append(details, identifiers); list.append(card);
+    }
+  }
+  async function refreshInventory() {
+    if (inventoryBusy) return;
+    inventoryLock(true); inventoryMessage('Loading personal controllers…');
+    try {
+      const api = inventoryApi();
+      const response = await api('personal-controllers');
+      if (!Array.isArray(response?.controllers) || response.controllers.some(record => !isPersonalRecord(record))) throw new Error('The saved controller list could not be verified. Retry refresh.');
+      renderInventory(response.controllers);
+      inventoryMessage(response.controllers.length ? 'Saved personal controllers loaded. Registration does not report whether a device is online.' : 'No personal controllers registered.');
+    } catch (error) {
+      inventoryMessage(error instanceof Error ? error.message : 'Could not load personal controllers. Retry refresh.', true);
+    } finally { inventoryLock(false); }
+  }
+  async function registerController(event) {
+    event.preventDefault();
+    if (inventoryBusy) return;
+    inventoryLock(true); inventoryMessage('Saving personal controller…');
+    try {
+      const api = inventoryApi();
+      const payload = registrationPayload();
+      const response = await api('register-personal-controller', 'POST', payload);
+      if (response?.ok !== true || !isPersonalRecord(response.controller) || response.controller.controller_id !== payload.controller_id) throw new Error('Registration response could not be verified. Refresh the list before retrying.');
+      const records = inventoryRecords.filter(record => record.controller_id !== response.controller.controller_id);
+      records.push(response.controller); renderInventory(records);
+      inventoryMessage(response.created === false ? 'This personal controller is already registered with these details.' : 'Personal controller registered. Its saved details are shown below.');
+    } catch (error) {
+      inventoryMessage(error instanceof Error ? error.message : 'Registration was not confirmed. Refresh the list before retrying.', true);
+    } finally { inventoryLock(false); }
+  }
+  function createInventory() {
+    const tab = byId('tab-devices');
+    if (!tab || byId('personal-controller-inventory')) return;
+    const section = make('section', 'personal-controller-inventory');
+    section.setAttribute('aria-labelledby', 'personal-controller-inventory-heading');
+    section.append(make('h2', 'personal-controller-inventory-heading', 'Personal controllers'), make('p', null, 'Phones used to control the cluster. These registrations stay separate from cluster workers.'));
+    const refresh = make('button', 'personal-controller-inventory-refresh', 'Refresh personal controllers');
+    refresh.type = 'button'; refresh.addEventListener('click', refreshInventory);
+    const status = make('p', 'personal-controller-inventory-status', 'Open Devices or refresh to view saved personal controllers.');
+    status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
+    const list = make('div', 'personal-controller-inventory-list');
+    section.append(refresh, status, list);
+    const form = make('form', 'personal-controller-registration-form');
+    form.append(make('h3', null, 'Add personal controller'), make('p', null, 'Save the connection details shown in Wireless debugging. Registration does not pair or connect the phone.'));
+    const fields = make('div'); fields.className = 'personal-controller-registration-fields';
+    const addField = (parent, key, label, defaultValue = '', maxLength = 80) => {
+      const wrapper = make('div'); const input = make('input', 'personal-controller-input-' + key);
+      const caption = make('label', null, label); caption.setAttribute('for', input.id);
+      input.type = 'text'; input.name = key; input.value = defaultValue; input.maxLength = maxLength; input.autocomplete = 'off';
+      input.required = key !== 'adb_guid' && key !== 'controller_id';
+      if (key === 'adb_connect_port') { input.inputMode = 'numeric'; input.setAttribute('pattern', '[0-9]{1,5}'); }
+      if (key === 'private_ip') { input.inputMode = 'decimal'; input.placeholder = '192.168.1.20'; }
+      wrapper.append(caption, input); parent.append(wrapper);
+    };
+    addField(fields, 'name', 'Controller name');
+    addField(fields, 'model', 'Phone model', '', 64);
+    addField(fields, 'private_ip', 'Local network address', '', 15);
+    addField(fields, 'adb_connect_port', 'Wireless debugging connection port', '', 5);
+    const advanced = make('details'); advanced.className = 'personal-controller-registration-advanced';
+    advanced.append(make('summary', null, 'Advanced connection details'), make('p', null, 'A stable controller ID is created from the name. Set your own ID only if needed.'));
+    addField(advanced, 'controller_id', 'Controller ID (optional)', '', 64);
+    addField(advanced, 'adb_guid', 'Wireless debugging ID (optional)', '', 160);
+    const submit = make('button', 'personal-controller-register', 'Add personal controller'); submit.type = 'submit';
+    form.append(fields, advanced, submit); form.addEventListener('submit', registerController);
+    section.append(form); tab.insertBefore(section, tab.firstElementChild);
+    const idInput = byId('personal-controller-input-controller_id');
+    idInput.placeholder = 'Created from the controller name';
+    byId('personal-controller-input-name').addEventListener('input', event => { idInput.placeholder = controllerSlug(event.target.value.trim()); });
+    document.querySelector('[data-tab="devices"]')?.addEventListener('click', refreshInventory);
   }
   function refreshButton() {
     return Array.from(byId('tab-swarm')?.querySelectorAll('button') || []).find(button => button.textContent.trim() === 'Refresh') || null;
@@ -150,6 +290,7 @@
   function ensureDashboard() {
     const panel = byId('panel');
     if (!panel) return;
+    createInventory();
     if (!personal) {
       if (!byId('personal-controller-link')) {
         const link = make('a', 'personal-controller-link', 'Use your personal phone');
