@@ -8,6 +8,14 @@ const source = fs.readFileSync(path.join(__dirname, '../public/scripts/cluster-p
 
 function fixture(options = {}) {
   const requests = [], forbidden = [];
+  const observers = [], observerQueue = new Set();
+  function descendant(element, ancestor) { for (let node = element; node; node = node.parentElement) if (node === ancestor) return true; return false; }
+  function mutation(element, kind, name) {
+    for (const observer of observers) for (const target of observer.targets) {
+      const match = target.element === element || (target.config.subtree && descendant(element, target.element));
+      if (match && target.config[kind] && (kind !== 'attributes' || !target.config.attributeFilter || target.config.attributeFilter.includes(name))) observerQueue.add(observer);
+    }
+  }
   class Events {
     constructor() { this.listeners = new Map(); }
     addEventListener(type, callback) { if (!this.listeners.has(type)) this.listeners.set(type, []); this.listeners.get(type).push(callback); }
@@ -18,18 +26,23 @@ function fixture(options = {}) {
     get firstElementChild() { return this.children[0] || null; }
     get nextElementSibling() { const list = this.parentElement?.children || []; return list[list.indexOf(this) + 1] || null; }
     get textContent() { return this._text + this.children.map(child => child.textContent).join(''); }
-    set textContent(value) { this._text = String(value); this.children = []; }
+    set textContent(value) { this._text = String(value); for (const child of this.children) child.parentElement = null; this.children = []; mutation(this, 'childList'); }
     get innerHTML() { forbidden.push('read innerHTML'); throw new Error('HTML access is forbidden'); }
     set innerHTML(value) { forbidden.push('write innerHTML'); throw new Error('HTML rendering is forbidden'); }
-    append(...children) { for (const child of children) { child.parentElement = this; this.children.push(child); } }
-    insertBefore(child, before) { child.parentElement = this; const index = this.children.indexOf(before); if (index < 0) this.children.push(child); else this.children.splice(index, 0, child); }
-    insertAdjacentElement(where, child) { assert.equal(where, 'afterend'); const list = this.parentElement.children; list.splice(list.indexOf(this) + 1, 0, child); child.parentElement = this.parentElement; }
-    setAttribute(name, value) { this.attributes[name] = String(value); if (name.startsWith('data-')) this.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = String(value); }
+    append(...children) { for (const child of children) { child.parentElement = this; this.children.push(child); } mutation(this, 'childList'); }
+    insertBefore(child, before) { child.parentElement = this; const index = this.children.indexOf(before); if (index < 0) this.children.push(child); else this.children.splice(index, 0, child); mutation(this, 'childList'); }
+    insertAdjacentElement(where, child) { assert.equal(where, 'afterend'); const list = this.parentElement.children; list.splice(list.indexOf(this) + 1, 0, child); child.parentElement = this.parentElement; mutation(this.parentElement, 'childList'); }
+    setAttribute(name, value) { this.attributes[name] = String(value); if (name.startsWith('data-')) this.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = String(value); mutation(this, 'attributes', name); }
     getAttribute(name) { return this.attributes[name] ?? null; }
     querySelector(selector) { if (selector === 'h1') return find(this, node => node.tagName === 'H1'); throw new Error('Unexpected selector ' + selector); }
     querySelectorAll(selector) { assert.equal(selector, 'button'); return all(this, node => node.tagName === 'BUTTON'); }
     async click() { if (!this.disabled) await this.emit('click'); }
     focus() { this.focused = true; }
+  }
+  class Observer {
+    constructor(callback) { this.callback = callback; this.targets = []; observers.push(this); }
+    observe(element, config) { this.targets.push({ element, config }); }
+    disconnect() { this.targets = []; observerQueue.delete(this); }
   }
   function find(element, predicate) { if (predicate(element)) return element; for (const child of element.children) { const value = find(child, predicate); if (value) return value; } return null; }
   function all(element, predicate) { return [...(predicate(element) ? [element] : []), ...element.children.flatMap(child => all(child, predicate))]; }
@@ -46,10 +59,27 @@ function fixture(options = {}) {
   const workers = make('div', 'deviceGrid', 'existing worker inventory');
   const queue = make('select', 'cmdTarget', 'existing worker/group targets');
   panel.append(header, devicesTab, workers, queue, devices); document.body.append(panel);
+  let workspace, fleet, nodeGrid, workerCard, nodeCount;
+  const addFleet = () => {
+    if (!workspace) { workspace = make('div', 'tab-swarm'); panel.append(workspace); }
+    if (fleet) return;
+    const fleetTab = make('button', 'cluster-view-tab-fleet', 'Fleet'); fleetTab.setAttribute('role', 'tab');
+    fleetTab.addEventListener('click', () => { fleet.hidden = false; });
+    nodeCount = make('span', 'swarm-nodes-online', '13 / 13');
+    fleet = make('section', 'cluster-view-fleet');
+    workerCard = make('div', 'existing-worker-card'); workerCard.append(make('h3', null, 'Workers'));
+    nodeGrid = make('div', 'swarm-nodes'); nodeGrid.setAttribute('data-connection', 'live');
+    for (let index = 0; index < 13; index++) nodeGrid.append(make('div', null, 'canonical-worker-' + index));
+    workerCard.append(nodeGrid); fleet.append(workerCard); workspace.append(fleetTab, nodeCount, fleet);
+  };
+  if (options.fleet) {
+    workspace = make('div', 'tab-swarm'); panel.append(workspace);
+    if (!options.lateFleet) addFleet();
+  }
   const window = new Events(); window.getComputedStyle = node => ({ display: node.style.display || 'block' }); window.matchMedia = () => null;
   let implementation = options.api || (async () => ({ controllers: [] }));
   window.callApi = async (...args) => { requests.push(structuredClone(args)); return implementation(...args); };
-  const context = { window, document, navigator: { onLine: true }, location: { pathname: options.pathname || '/cluster/dashboard/', search: '' }, URLSearchParams, Date, Error };
+  const context = { window, document, navigator: { onLine: true }, location: { pathname: options.pathname || '/cluster/dashboard/', search: options.search || '' }, URLSearchParams, Date, Error, MutationObserver: Observer };
   for (const name of ['fetch', 'localStorage', 'sessionStorage', 'XMLHttpRequest', 'WebSocket']) Object.defineProperty(context, name, { get() { forbidden.push(name); throw new Error('Forbidden ' + name); } });
   vm.runInNewContext(source, context);
   const get = id => document.getElementById(id);
@@ -57,7 +87,19 @@ function fixture(options = {}) {
     for (const [name, value] of Object.entries({ name: 'Curtis S26 Ultra', model: 'Samsung Galaxy S26 Ultra', private_ip: '192.168.1.88', adb_connect_port: '37129', ...data })) get('personal-controller-input-' + name).value = String(value);
   }
   const submit = () => get('personal-controller-registration-form').emit('submit');
-  return { get, requests, forbidden, window, document, devices, table, workers, queue, fill, submit, setApi: api => { implementation = api; } };
+  const flush = () => {
+    let cycles = 0;
+    while (observerQueue.size) {
+      assert.ok(++cycles < 20, 'No observer feedback loop');
+      const batch = [...observerQueue]; observerQueue.clear();
+      for (const observer of batch) if (observer.targets.length) observer.callback([]);
+    }
+    return cycles;
+  };
+  const settle = async () => { let cycles = 0; for (let turn = 0; turn < 5; turn++) { await Promise.resolve(); cycles += flush(); } return cycles; };
+  const setVisible = visible => { panel.style.display = visible ? 'block' : 'none'; mutation(panel, 'attributes', 'style'); flush(); };
+  const renderWorkers = () => { nodeGrid.textContent = ''; for (let index = 0; index < 13; index++) nodeGrid.append(make('div', null, 'updated-worker-' + index)); nodeGrid.setAttribute('data-connection', 'live'); flush(); };
+  return { get, requests, forbidden, window, document, devices, table, workers, queue, fill, submit, flush, settle, setVisible, addFleet, renderWorkers, observers, setApi: api => { implementation = api; } };
 }
 const controller = overrides => ({ controller_id: 'curtis-s26-ultra', name: 'Curtis S26 Ultra', model: 'Samsung Galaxy S26 Ultra', private_ip: '192.168.1.88', adb_connect_port: 37129, role: 'personal-controller', worker_enabled: false, mining_enabled: false, registered_at: 1791480000000, ...overrides });
 const pending = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -196,4 +238,86 @@ test('generic form starts blank and derives stable IDs from names without hardco
   h.fill({ name: '253 phone', controller_id: '' }); await h.submit(); assert.equal(h.requests[1][2].controller_id, 'personal-253-phone');
   h.fill({ name: 'Élodie phone', controller_id: '' }); await h.submit(); assert.equal(h.requests[2][2].controller_id, 'elodie-phone');
   h.fill({ name: 'Another phone', controller_id: 'my-explicit-id' }); await h.submit(); assert.equal(h.requests[3][2].controller_id, 'my-explicit-id');
+});
+test('normal and personal dashboards load one separate registered Fleet tile while keeping 13 workers', async () => {
+  for (const search of ['', '?controller=personal']) {
+    const h = fixture({ fleet: true, search, api: async () => ({ controllers: [controller({ model: 'SM-S948U' })] }) }); await h.settle();
+    assert.deepEqual(h.requests, [['personal-controllers']]);
+    const tileSection = h.get('personal-controller-fleet'); const workerCard = h.get('existing-worker-card');
+    assert.equal(tileSection.parentElement.id, 'cluster-view-fleet'); assert.equal(workerCard.nextElementSibling, tileSection);
+    const tile = h.get('personal-controller-fleet-list').children[0];
+    assert.match(tile.textContent, /Curtis S26 UltraREGISTERED/); assert.match(tile.textContent, /Personal controller · SM-S948U/);
+    assert.match(tile.textContent, /Saved connection: 192\.168\.1\.88:37129/); assert.match(tile.textContent, /Last registered:/);
+    assert.doesNotMatch(tile.textContent, /ONLINE|OFFLINE|heartbeat|seen .*ago|worker ready|agent|pid/i);
+    assert.equal(h.get('swarm-nodes').children.length, 13); assert.equal(h.get('swarm-nodes-online').textContent, '13 / 13');
+    assert.equal(h.queue.textContent, 'existing worker/group targets'); assert.deepEqual(h.forbidden, []);
+  }
+});
+test('signed-out Fleet makes zero reads, sign-in starts one bounded read and no worker update retries', async () => {
+  const wait = pending(); const h = fixture({ fleet: true, signedOut: true, api: () => wait.promise });
+  assert.deepEqual(h.requests, []); assert.equal(h.get('personal-controller-fleet-list').textContent, '');
+  h.setVisible(true); h.renderWorkers(); await h.window.emit('online'); await h.window.emit('pageshow'); await h.get('cluster-view-tab-fleet').click();
+  assert.deepEqual(h.requests, [['personal-controllers']]); assert.equal(h.get('personal-controller-fleet-refresh').disabled, true);
+  wait.resolve({ controllers: [controller()] }); await h.settle();
+  h.renderWorkers(); await h.get('cluster-view-tab-fleet').click(); await h.window.emit('pageshow'); await h.settle();
+  assert.equal(h.requests.length, 1); assert.equal(h.get('personal-controller-fleet-list').children.length, 1);
+  assert.equal(h.get('swarm-nodes').children.length, 13); assert.equal(h.get('swarm-nodes-online').textContent, '13 / 13');
+});
+test('worker rerender/filter replacements leave mirrored controller tile intact with no extra API request', async () => {
+  const h = fixture({ fleet: true, search: '?controller=personal', api: async () => ({ controllers: [controller()] }) }); await h.settle();
+  const tile = h.get('personal-controller-fleet-list').children[0];
+  for (let index = 0; index < 4; index++) { h.renderWorkers(); assert.ok((await h.settle()) < 5); }
+  assert.equal(h.get('personal-controller-fleet-list').children[0], tile); assert.deepEqual(h.requests, [['personal-controllers']]);
+  assert.equal(h.get('personal-controller-fleet').children.some(node => node.tagName === 'SELECT'), false);
+  assert.equal(h.get('swarm-nodes-online').textContent, '13 / 13'); assert.equal(h.table.textContent, 'existing worker table');
+});
+test('late Fleet layout construction triggers a single authenticated load and mounts one tile section', async () => {
+  const h = fixture({ fleet: true, lateFleet: true, api: async () => ({ controllers: [controller()] }) });
+  assert.deepEqual(h.requests, []); h.addFleet(); await h.settle();
+  assert.deepEqual(h.requests, [['personal-controllers']]); assert.equal(h.get('personal-controller-fleet-list').children.length, 1);
+  await h.window.emit('pageshow'); h.flush();
+  assert.equal(h.get('cluster-view-fleet').children.filter(node => node.id === 'personal-controller-fleet').length, 1); assert.equal(h.requests.length, 1);
+});
+test('Fleet errors stay visible in both views without automatic retry; explicit Fleet refresh can recover', async () => {
+  const h = fixture({ fleet: true, api: async () => { throw new Error('Controller inventory temporarily unavailable.'); } }); await h.settle();
+  for (const id of ['personal-controller-fleet-status', 'personal-controller-inventory-status']) {
+    assert.equal(h.get(id).textContent, 'Controller inventory temporarily unavailable.'); assert.equal(h.get(id).dataset.error, '1');
+  }
+  h.renderWorkers(); await h.window.emit('online'); await h.window.emit('pageshow'); await h.get('cluster-view-tab-fleet').click(); await h.settle();
+  assert.equal(h.requests.length, 1);
+  h.setApi(async () => ({ controllers: [controller()] })); await h.get('personal-controller-fleet-refresh').click(); await h.settle();
+  assert.equal(h.requests.length, 2); assert.equal(h.get('personal-controller-fleet-list').children.length, 1); assert.equal(h.get('personal-controller-fleet-status').dataset.error, '0');
+});
+test('Devices refresh and explicit registration mirror saved records on Fleet without worker enrollment', async () => {
+  const h = fixture({ fleet: true, api: async () => ({ controllers: [] }) }); await h.settle();
+  h.setApi(async action => action === 'personal-controllers' ? { controllers: [controller({ name: 'Saved phone' })] } : { ok: true, created: true, controller: controller() });
+  await h.get('personal-controller-inventory-refresh').click();
+  assert.match(h.get('personal-controller-fleet-list').textContent, /Saved phone/);
+  h.fill(); await h.submit(); await h.settle();
+  assert.match(h.get('personal-controller-fleet-list').textContent, /Curtis S26 UltraREGISTERED/); assert.equal(h.get('personal-controller-fleet-list').children.length, 1);
+  assert.deepEqual(h.requests.map(args => args[0]), ['personal-controllers', 'personal-controllers', 'register-personal-controller']);
+  assert.equal(h.get('swarm-nodes').children.length, 13); assert.equal(h.get('swarm-nodes-online').textContent, '13 / 13'); assert.equal(h.queue.textContent, 'existing worker/group targets');
+});
+test('sign-out clears both views and entered connection details and rejects an earlier-session response', async () => {
+  const late = pending(); const h = fixture({ fleet: true, api: async () => ({ controllers: [controller()] }) }); await h.settle(); h.fill();
+  h.setApi(() => late.promise); const oldRead = h.get('personal-controller-fleet-refresh').click();
+  h.setVisible(false); assert.equal(h.get('personal-controller-fleet-list').textContent, ''); assert.equal(h.get('personal-controller-inventory-list').textContent, '');
+  assert.equal(h.get('personal-controller-input-private_ip').value, ''); assert.equal(h.get('personal-controller-input-adb_connect_port').value, '');
+  h.setApi(async () => ({ controllers: [controller({ name: 'New session phone' })] })); h.setVisible(true); await h.settle();
+  late.resolve({ controllers: [controller({ name: 'Old private session record' })] }); await oldRead; await h.settle();
+  assert.match(h.get('personal-controller-fleet-list').textContent, /New session phone/); assert.doesNotMatch(h.document.body.textContent, /Old private session record/);
+  assert.equal(h.requests.length, 3); assert.equal(h.get('personal-controller-fleet-refresh').disabled, false);
+});
+test('pending registration receipt after sign-out cannot repopulate private records', async () => {
+  const late = pending(); const h = fixture({ fleet: true, api: async () => ({ controllers: [] }) }); await h.settle(); h.fill(); h.setApi(() => late.promise);
+  const registration = h.submit(); h.setVisible(false);
+  late.resolve({ ok: true, created: true, controller: controller() }); await registration; await h.settle();
+  assert.equal(h.get('personal-controller-fleet-list').textContent, ''); assert.equal(h.get('personal-controller-inventory-list').textContent, '');
+  assert.deepEqual(h.requests.map(args => args[0]), ['personal-controllers', 'register-personal-controller']);
+});
+test('pagehide stops inventory watchers and pageshow reconnects without a new read for an existing session', async () => {
+  const h = fixture({ fleet: true, api: async () => ({ controllers: [controller()] }) }); await h.settle(); await h.window.emit('pagehide');
+  assert.ok(h.observers.every(observer => observer.targets.length === 0));
+  await h.window.emit('pageshow'); await h.settle(); assert.equal(h.requests.length, 1);
+  assert.ok(h.observers.some(observer => observer.targets.some(target => target.element.id === 'panel')));
 });
