@@ -39,7 +39,7 @@ test('phone253 selection saves only its mode and queues only its correctly named
   assert.equal(h.saves[0].request.headers.Authorization,'Bearer test-operator-session');
   assert.equal(h.enqueues.length,1);assert.equal(h.enqueues[0].type,'shell');assert.deepEqual(h.enqueues[0].targets,['phone253']);
   const url=launchUrl(h.enqueues[0]);assert.equal(url.origin,'https://curtbrag.com');assert.equal(url.pathname,'/cluster/display.html');
-  assert.deepEqual(Object.fromEntries(url.searchParams),{mode:'activity',name:'phone253',immersive:'1',v:'62'});
+  assert.deepEqual(Object.fromEntries(url.searchParams),{mode:'activity',name:'phone253',immersive:'1',v:'63'});
   assert.match(h.enqueues[0].cmd,/\/[a-f0-9]{40}\/scripts\/cluster-browser-open\.py/);
   assert.match(h.elements['display-state'].textContent,/Browser launch queued for phone253/);
   assert.equal(h.elements['display-send'].disabled,false);assert.equal(h.loads(),1);
@@ -50,7 +50,7 @@ test('all eight phones receive distinct correct names in decoded URLs and modes 
   assert.deepEqual(h.saves.map(s=>s.body.phone),phones);assert.equal(h.enqueues.length,8);
   for(let i=0;i<phones.length;i++){
     assert.deepEqual(h.enqueues[i].targets,[phones[i]]);const url=launchUrl(h.enqueues[i]);
-    assert.deepEqual(Object.fromEntries(url.searchParams),{mode:'clock',name:phones[i],immersive:'1',v:'62'});
+    assert.deepEqual(Object.fromEntries(url.searchParams),{mode:'clock',name:phones[i],immersive:'1',v:'63'});
     const saveIndex=h.events.findIndex(e=>e.kind==='save'&&e.phone===phones[i]),launchIndex=h.events.findIndex(e=>e.kind==='launch'&&e.phone===phones[i]);
     assert.ok(saveIndex>=0&&saveIndex<launchIndex,'Mode must be saved first for '+phones[i]);
   }

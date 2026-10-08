@@ -4,25 +4,13 @@
 //
 // All operator endpoints require Authorization: Bearer <web-password> header.
 
-const { connectLambda, getStore } = require("@netlify/blobs");
+exports.createHandler = ({ connectLambda, getStore, controlGetStore }) => {
 const crypto = require("crypto");
+const { openControlCommandStore, captureControlContext, CommandStoreError } = require("./control-command-store.cjs");
 
 
 function openStore(name) {
-  const siteID =
-    process.env.NETLIFY_BLOBS_SITE_ID ||
-    process.env.SITE_ID ||
-    undefined;
-
-  const token =
-    process.env.NETLIFY_BLOBS_TOKEN ||
-    process.env.NETLIFY_ACCESS_TOKEN ||
-    process.env.NETLIFY_TOKEN ||
-    undefined;
-
-  if (siteID && token) {
-    return getStore(name, { siteID, token });
-  }
+  // Non-command stores retain SDK 8 and its existing injected context.
   return getStore(name);
 }
 const CANONICAL_HOSTNAMES = [
@@ -211,35 +199,16 @@ async function getObservedState(deviceId) {
 
 // ─── Command queue ────────────────────────────────────────────────────────────
 
-async function getQueue() {
-  try {
-    return (await openStore("cp-commands").get("queue", { type: "json" })) || [];
-  } catch {
-    return [];
-  }
+function requestId(body) {
+  const id = body.request_id;
+  if (id === undefined) return undefined;
+  if (typeof id !== "string" || !/^[a-zA-Z0-9:_-]{8,128}$/.test(id))
+    throw new CommandStoreError("invalid_request_id", "Invalid request ID", 400);
+  return id;
 }
 
-async function getCommandHistory() {
-  try {
-    return (
-      (await openStore("cp-commands").get("history", { type: "json" })) || []
-    );
-  } catch {
-    return [];
-  }
-}
-
-
-async function saveCommandHistory(history) {
-  try {
-    await openStore("cp-commands").setJSON("history", history.slice(-200));
-  } catch {}
-}
-
-async function saveQueue(queue) {
-  try {
-    await openStore("cp-commands").setJSON("queue", queue);
-  } catch {}
+function commandFingerprint(value) {
+  return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
 async function getBridgeHeartbeat() {
@@ -250,51 +219,30 @@ async function getBridgeHeartbeat() {
   }
 }
 
-async function enqueueCommand(cmd) {
-  try {
-    // Write to new cp-commands store (for new node agents)
-    const store = openStore("cp-commands");
-    const queue = (await store.get("queue", { type: "json" })) || [];
-    if (queue.length >= 200) queue.shift();
-    queue.push(cmd);
-    await store.setJSON("queue", queue);
-
-    // Dual-write to legacy cluster-control queue so existing poll scripts
-    // keep receiving commands during the transition to new agents
-    if (!["swarm-recover", "fleet-check", "fleet-diagnose", "swarm-recover-pcs", "fleet-discover", PHONE_RETURN_COMMAND].includes(cmd.type)) {
-      try {
-        const legacyStore = openStore("cluster-control");
-        const legacyQueue =
-          (await legacyStore.get("queue", { type: "json" })) || [];
-        if (legacyQueue.length < 100) {
-          // Map new command schema to old schema that poll-cluster-commands.sh expects
-          const legacyCmd = {
-            id: cmd.id,
-            target: cmd.target,
-            command: cmd.type,
-            payload: cmd.payload || {},
-            status: "queued",
-            created_at: cmd.created_at,
-          };
-          legacyQueue.push(legacyCmd);
-          await legacyStore.setJSON("queue", legacyQueue);
-        }
-      } catch (_) {
-        // Legacy dual-write is best-effort; don't fail the whole enqueue
-      }
-    }
-
-    return true;
-  } catch (e) {
-    console.warn("enqueueCommand:", e.message);
-    return false;
-  }
+async function enqueueCommand(store, cmd, id, guard = () => {}) {
+  return store.transact((draft) => {
+    guard(draft.queue);
+    if (draft.queue.length >= 200)
+      throw new CommandStoreError("queue_full", "Command queue is full; existing work was kept", 409);
+    draft.queue.push({ ...cmd, route: "bridge" });
+    return { ok: true, command_id: cmd.id };
+  }, { requestId: id, requestFingerprint: commandFingerprint(["enqueue", cmd.target, cmd.type, cmd.payload]) });
 }
 
-async function flushQueue() {
-  try {
-    await openStore("cp-commands").setJSON("queue", []);
-  } catch {}
+async function flushQueue(store, id) {
+  return store.transact((draft) => {
+    const count = draft.queue.length;
+    const pendingIds = new Set(draft.queue.map(cmd => cmd.id));
+    const saved = new Map(draft.history.map(cmd => [cmd.id, cmd]));
+    const cancelled = draft.queue.map(cmd => saved.has(cmd.id)
+      ? { ...saved.get(cmd.id), pending_cancelled_at: Date.now(), cancelled_pending_record: cmd }
+      : { ...cmd, status: "cancelled", finished_at: Date.now(), result_summary: "Cancelled by operator" });
+    // A migration hold may already have a saved terminal record. Preserve its
+    // evidence and archive the cancellation without creating a duplicate ID.
+    draft.history = [...draft.history.filter(cmd => !pendingIds.has(cmd.id)), ...cancelled];
+    draft.queue = [];
+    return { ok: true, cancelled: count };
+  }, { requestId: id, requestFingerprint: "flush" });
 }
 
 // ─── Profiles ─────────────────────────────────────────────────────────────────
@@ -566,8 +514,9 @@ async function buildSummary(devices, observedMap) {
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
-exports.handler = async (event, context) => {
-  connectLambda(event);
+return async (event, context) => {
+  const providerContext = captureControlContext();
+  if (event.blobs) connectLambda(event);
   const origin = event.headers.origin || "";
   const hdrs = corsHeaders(origin);
 
@@ -605,6 +554,8 @@ exports.handler = async (event, context) => {
     return json(401, hdrs, { error: "unauthorized" });
   }
 
+  try {
+  const commandStore = () => openControlCommandStore({ getStore: controlGetStore, event, providerContext });
   // ── GET routes ────────────────────────────────────────────────────────────
   if (event.httpMethod === "GET") {
     // Summary
@@ -706,11 +657,12 @@ exports.handler = async (event, context) => {
     }
 
     if (action === "commands") {
-      const queue = await getQueue();
-      const history = await getCommandHistory();
+      const { queue, history, receipt } = await commandStore().snapshot();
       return json(200, hdrs, {
-        queue,
+        queue: queue.filter(cmd => cmd.route === "bridge" && cmd.status !== "held"),
+        pending: queue.filter(cmd => cmd.route !== "bridge" || cmd.status === "held"),
         history: history.slice().reverse().slice(0, 100),
+        storage: { schema: 1, atomic: true, revision: receipt.revision },
       });
     }
 
@@ -886,8 +838,6 @@ exports.handler = async (event, context) => {
           return json(400, hdrs, { error: "Phone return accepts no command settings" });
         if (!phoneReturnBridgeReady(await getBridgeHeartbeat(), Date.now()))
           return json(409, hdrs, { error: "Phone return requires online Windows bridge 2.5.0" });
-        if ((await getQueue()).some((cmd) => cmd.type === PHONE_RETURN_COMMAND && cmd.target === target))
-          return json(409, hdrs, { error: "A return request is already queued for this phone" });
       }
 
       if (["fleet-diagnose", "swarm-recover-pcs", "fleet-discover"].includes(type)) {
@@ -896,8 +846,6 @@ exports.handler = async (event, context) => {
         if (target !== "all" || !bridge?.last_seen_at || Date.now() - new Date(bridge.last_seen_at).getTime() >= 60000 ||
             !v.every(Number.isInteger) || !(v[0] > 2 || (v[0] === 2 && v[1] >= 4)))
           return json(409, hdrs, { error: "Online bridge 2.4.0 required" });
-        if ((await getQueue()).some(c => ["fleet-diagnose","swarm-recover-pcs","fleet-discover"].includes(c.type)))
-          return json(409, hdrs, { error: "Fleet diagnostics or PC recovery already running" });
       }
       if (type === "fleet-check") {
         const bridge = await getBridgeHeartbeat();
@@ -905,8 +853,6 @@ exports.handler = async (event, context) => {
         if (target !== "all" || !bridge?.last_seen_at || Date.now() - new Date(bridge.last_seen_at).getTime() >= 60000 ||
             !parts.every(Number.isInteger) || !(parts[0] > 2 || (parts[0] === 2 && parts[1] >= 3)))
           return json(409, hdrs, { error: "Fleet check requires online Windows bridge 2.3.0 and target all" });
-        if ((await getQueue()).some(cmd => cmd.type === "fleet-check"))
-          return json(409, hdrs, { error: "Fleet connection check already queued" });
       }
       if (type === "swarm-recover") {
         const phones = new Set(VALID_TARGETS.filter((id) => /^phone\d+$/.test(id)));
@@ -919,8 +865,6 @@ exports.handler = async (event, context) => {
             (version[0] === 2 && (version[1] || 0) < 2)) {
           return json(409, hdrs, { error: "Update the Windows bridge to 2.2.0 before recovering phone workers" });
         }
-        if ((await getQueue()).some((cmd) => cmd.type === "swarm-recover"))
-          return json(409, hdrs, { error: "Phone swarm recovery is already queued" });
       }
 
       const cmd = {
@@ -936,9 +880,16 @@ exports.handler = async (event, context) => {
         result_summary: null,
       };
 
-      if (!(await enqueueCommand(cmd)))
-        return json(503, hdrs, { error: "Could not queue command" });
-      return json(200, hdrs, { ok: true, command_id: cmd.id });
+      const accepted = await enqueueCommand(commandStore(), cmd, requestId(body), (queue) => {
+        if (type === PHONE_RETURN_COMMAND && queue.some(c => c.type === type && c.target === target))
+          throw new CommandStoreError("already_queued", "A return request is already queued for this phone", 409);
+        const diagnostics = ["fleet-diagnose", "swarm-recover-pcs", "fleet-discover"];
+        if (diagnostics.includes(type) && queue.some(c => diagnostics.includes(c.type)))
+          throw new CommandStoreError("already_queued", "Fleet diagnostics or PC recovery already running", 409);
+        if (["fleet-check", "swarm-recover"].includes(type) && queue.some(c => c.type === type))
+          throw new CommandStoreError("already_queued", "This fleet command is already queued", 409);
+      });
+      return json(200, hdrs, accepted.result);
     }
 
     if (postAction === "bridge-heartbeat") {
@@ -956,50 +907,68 @@ exports.handler = async (event, context) => {
     if (postAction === "bridge-complete") {
       const { id, target, type, result_summary, output } = body;
       if (!id || !target || !type) return json(400, hdrs, { error: "id, target, type required" });
-      const queue = await getQueue();
-      const idx = queue.findIndex((c) => c.id === id);
+      if ((output !== undefined && (typeof output !== "string" || output.length > 32768)) ||
+          (result_summary !== undefined && (typeof result_summary !== "string" || result_summary.length > 1024)))
+        return json(400, hdrs, { error: "Completion report exceeds its supported size" });
+      const completed = await commandStore().transact((draft) => {
+      const { queue, history } = draft;
+      const idx = queue.findIndex(c => c.id === id);
       const cmd = idx >= 0 ? queue[idx] : null;
-      const history = await getCommandHistory();
-      const previousReturn = history.some((entry) => entry.id === id && entry.type === PHONE_RETURN_COMMAND);
-      if (type === PHONE_RETURN_COMMAND || cmd?.type === PHONE_RETURN_COMMAND || previousReturn) {
-        if (previousReturn || !cmd)
-          return json(409, hdrs, { error: "No outstanding phone return matches this completion" });
+      const previous = history.find(entry => entry.id === id);
+      if (previous) {
+        if (previous.route !== "bridge")
+          throw new CommandStoreError("wrong_executor", "This completion belongs to another command executor", 409);
+        if (previous.status === "cancelled")
+          throw new CommandStoreError("cancelled", "This command was cancelled", 409);
+        if (previous.type === PHONE_RETURN_COMMAND) {
+          const safeOutput = phoneReturnReport(output, target, body.status);
+          if (type !== previous.type || target !== previous.target || !safeOutput ||
+              safeOutput !== previous.output || body.status !== previous.status)
+            throw new CommandStoreError("completion_mismatch", "Phone return completion differs from its saved report", 409);
+          return { ok: true, replayed: true };
+        }
+        if (previous.target !== target || previous.type !== type)
+          throw new CommandStoreError("completion_mismatch", "Completion does not match its saved command", 400);
+        if (previous.status !== (body.status === "failed" ? "failed" : "completed") ||
+            previous.output !== (output || "") || previous.result_summary !== (result_summary || ""))
+          throw new CommandStoreError("completion_mismatch", "Completion differs from its saved report", 409);
+        return { ok: true, replayed: true };
+      }
+      if (!cmd) throw new CommandStoreError("not_outstanding", "No outstanding command matches this completion", 409);
+      if (cmd.route !== "bridge" || cmd.status === "held")
+        throw new CommandStoreError("wrong_executor", "This command is unavailable to the bridge", 409);
+      if (cmd.type !== type || cmd.target !== target)
+        throw new CommandStoreError("completion_mismatch", "Completion does not match its queued command", 400);
+      if (type === PHONE_RETURN_COMMAND || cmd.type === PHONE_RETURN_COMMAND) {
         if (cmd.type !== PHONE_RETURN_COMMAND || type !== cmd.type || target !== cmd.target || !PHONE_RETURN_TARGETS.has(target))
-          return json(400, hdrs, { error: "Phone return completion does not match its queued command" });
+          throw new CommandStoreError("completion_mismatch", "Phone return completion does not match its queued command", 400);
         const safeOutput = phoneReturnReport(output, target, body.status);
         if (!safeOutput)
-          return json(400, hdrs, { error: "Invalid phone controller return report" });
+          throw new CommandStoreError("invalid_report", "Invalid phone controller return report", 400);
         history.push({
           ...cmd, status: body.status,
           result_summary: body.status === "completed" ? "Termux foreground verified" : "Phone return failed",
           output: safeOutput, finished_at: Date.now(),
         });
         queue.splice(idx, 1);
-        try {
-          const store = openStore("cp-commands");
-          await store.setJSON("history", history.slice(-200));
-          await store.setJSON("queue", queue);
-        } catch {
-          return json(503, hdrs, { error: "Could not store phone return completion" });
-        }
-        return json(200, hdrs, { ok: true });
+        return { ok: true };
       }
       if (idx >= 0) {
         queue.splice(idx, 1);
-        await saveQueue(queue);
       }
       history.push({
         ...(cmd || {}),
         id,
         target,
         type,
-        status: body.status === "failed" && ["swarm-recover","fleet-diagnose","swarm-recover-pcs","fleet-discover"].includes(type) ? "failed" : "completed",
+        status: body.status === "failed" ? "failed" : "completed",
         result_summary: result_summary || "",
         output: output || "",
         finished_at: Date.now(),
       });
-      await saveCommandHistory(history);
-      return json(200, hdrs, { ok: true });
+      return { ok: true };
+      }, { requestId: requestId(body), requestFingerprint: commandFingerprint(["complete", id, target, type, body.status, result_summary, output]) });
+      return json(200, hdrs, completed.result);
     }
 
     // Bridge pushes per-device state after each node command. Updates
@@ -1022,8 +991,8 @@ exports.handler = async (event, context) => {
 
     // Flush command queue
     if (postAction === "flush-queue") {
-      await flushQueue();
-      return json(200, hdrs, { ok: true });
+      const cancelled = await flushQueue(commandStore(), requestId(body));
+      return json(200, hdrs, cancelled.result);
     }
 
     // Update desired state for a device
@@ -1515,8 +1484,8 @@ exports.handler = async (event, context) => {
         started_at: null,
         finished_at: null,
       };
-      await enqueueCommand(cmd);
-      return json(200, hdrs, { ok: true });
+      const accepted = await enqueueCommand(commandStore(), cmd, requestId(body));
+      return json(200, hdrs, accepted.result);
     }
 
     // Set pool config for a device
@@ -1612,4 +1581,11 @@ exports.handler = async (event, context) => {
   }
 
   return json(405, hdrs, { error: "method not allowed" });
+  } catch (error) {
+    if (error instanceof CommandStoreError)
+      return json(error.statusCode || 503, hdrs, { error: error.message, code: error.code });
+    if (error instanceof SyntaxError) return json(400, hdrs, { error: "Invalid JSON body" });
+    throw error;
+  }
+};
 };

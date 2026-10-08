@@ -6,9 +6,14 @@
 // per-device token returned after registration for all subsequent calls).
 // Device identity passed via X-Device-Id header.
 
-const { connectLambda, getStore } = require("@netlify/blobs");
 const crypto = require("crypto");
+const { openControlCommandStore, captureControlContext } = require("./control-command-store.cjs");
+const CONTROL_PROVIDER_CONTEXT = Symbol("controlProviderContext");
 
+exports.createHandler = function createHandler({ connectLambda, getStore, controlGetStore }) {
+  if (![connectLambda, getStore, controlGetStore].every(value => typeof value === "function")) {
+    throw new TypeError("Storage runtime dependencies are required.");
+  }
 
 function openStore(name) {
   const siteID =
@@ -153,63 +158,108 @@ async function saveObservedState(deviceId, state) {
 
 // ─── Command queue ───────────────────────────────────────────────────────────
 
-async function getPendingCommandsForDevice(deviceId, deviceClass, hostname) {
-  try {
-    const store = openStore("cp-commands");
-    const queue = (await store.get("queue", { type: "json" })) || [];
-    const isPhone = deviceClass === "phone";
-    const isPC = deviceClass === "pc" || deviceClass === "steamdeck";
-
-    return queue.filter((cmd) => {
-      if (cmd.status !== "queued") return false;
-      const t = cmd.target;
-      if (t === "all") return true;
-      if (t === "phones" && isPhone) return true;
-      if (t === "pcs" && isPC) return true;
-      if (t === deviceId) return true;
-      if (hostname && t === hostname) return true;
-      return false;
-    });
-  } catch {
-    return [];
-  }
+const AGENT_COMMAND_TYPES = new Set([
+  "mining-start","start","mining-stop","stop","disable-mining","restart","update",
+  "force-binary-redeploy","quarantine","clear-quarantine","mining-status","status",
+  "kill-rogue","reconcile","reset-restart-count","reboot","ssh","fetch-logs",
+  "run-diagnostic","screenshot","mining-level","pool-change","profile-switch","switch-profile",
+]);
+function commandError(statusCode, message) {
+  const error = new Error(message); error.statusCode = statusCode; return error;
 }
-
-async function ackCommand(commandId, deviceId) {
-  try {
-    const store = openStore("cp-commands");
-    const queue = (await store.get("queue", { type: "json" })) || [];
-    const updated = queue.map((cmd) =>
-      cmd.id === commandId
-        ? { ...cmd, status: "running", acked_by: deviceId, acked_at: Date.now() }
-        : cmd
-    );
-    await store.setJSON("queue", updated);
-  } catch (e) {
-    console.warn("ackCommand:", e.message);
-  }
+function commandState(event) {
+  return openControlCommandStore({ getStore: controlGetStore, event, providerContext: event[CONTROL_PROVIDER_CONTEXT] });
 }
-
-async function completeCommand(commandId, result) {
-  try {
-    const store = openStore("cp-commands");
-    const queue = (await store.get("queue", { type: "json" })) || [];
-    const history = (await store.get("history", { type: "json" })) || [];
-
-    const cmd = queue.find((c) => c.id === commandId);
-    if (cmd) {
-      const completed = {
-        ...cmd,
-        ...result,
-        status: result.success !== false ? "succeeded" : "failed",
-        finished_at: Date.now(),
-      };
-      await store.setJSON("queue", queue.filter((c) => c.id !== commandId));
-      await store.setJSON("history", [...history, completed].slice(-100));
+function agentRecipients(command, deviceId, hostname) {
+  if (command.route !== "agent" || !AGENT_COMMAND_TYPES.has(command.type)) return [];
+  if (Array.isArray(command.recipient_ids)) {
+    const ids = command.recipient_ids;
+    if (!ids.length || ids.length > 200 || ids.some(id => typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(id))) return [];
+    return [...new Set(ids)];
+  }
+  // Only an explicit single-device route may freeze its recipient at claim.
+  // Group commands without an enqueue-time recipient list are held.
+  return command.target === deviceId || (hostname && command.target === hostname) ? [deviceId] : [];
+}
+function assignmentFor(command, deviceId) {
+  return command.assignments && Object.prototype.hasOwnProperty.call(command.assignments, deviceId)
+    ? command.assignments[deviceId] : null;
+}
+function agentPending(command, deviceId, hostname) {
+  if (!["queued", "running"].includes(command.status)) return false;
+  if (!agentRecipients(command, deviceId, hostname).includes(deviceId)) return false;
+  const assignment = assignmentFor(command, deviceId);
+  return !assignment || assignment.status === "queued";
+}
+async function getPendingCommandsForDevice(deviceId, deviceClass, hostname, event) {
+  const { queue } = await commandState(event).snapshot();
+  return queue.filter(command => agentPending(command, deviceId, hostname));
+}
+async function claimCommandsForDevice(deviceId, hostname, event) {
+  const claimedAt = Date.now();
+  const transaction = await commandState(event).transact(({ queue }) => {
+    const commands = [];
+    for (const command of queue) {
+      if (!agentPending(command, deviceId, hostname)) continue;
+      const recipients = agentRecipients(command, deviceId, hostname);
+      if (!Array.isArray(command.recipient_ids)) command.recipient_ids = recipients;
+      const assignments = command.assignments || {};
+      for (const id of recipients) {
+        if (!Object.prototype.hasOwnProperty.call(assignments, id)) {
+          Object.defineProperty(assignments, id, { value: { status: "queued" }, enumerable: true, writable: true, configurable: true });
+        }
+      }
+      const assignment = assignments[deviceId];
+      assignment.status = "running"; assignment.acked_by = deviceId; assignment.acked_at = claimedAt;
+      command.assignments = assignments; command.status = "running";
+      command.started_at = command.started_at || claimedAt;
+      commands.push({ ...command, acked_by: deviceId, acked_at: claimedAt });
     }
-  } catch (e) {
-    console.warn("completeCommand:", e.message);
-  }
+    return { commands };
+  });
+  return transaction.result.commands;
+}
+async function completeCommand(commandId, result, deviceId, event) {
+  const requestId = "agent-complete:" + crypto.createHash("sha256").update(JSON.stringify([commandId, deviceId, result])).digest("hex");
+  const finishedAt = Date.now();
+  const transaction = await commandState(event).transact(({ queue, history }) => {
+    const command = queue.find(entry => entry.id === commandId);
+    const terminal = history.find(entry => entry.id === commandId);
+    if (!command) {
+      const prior = terminal && terminal.route === "agent" && assignmentFor(terminal, deviceId);
+      if (prior && ["succeeded", "failed"].includes(prior.status) &&
+          JSON.stringify(prior.result) === JSON.stringify(result)) return { duplicate: true };
+      throw commandError(409, "No claimed command matches this result");
+    }
+    if (command.route !== "agent" || !AGENT_COMMAND_TYPES.has(command.type) ||
+        !Array.isArray(command.recipient_ids) || !command.recipient_ids.includes(deviceId)) {
+      throw commandError(409, "Command is not assigned to this agent");
+    }
+    const assignment = assignmentFor(command, deviceId);
+    if (!assignment || assignment.status !== "running" || assignment.acked_by !== deviceId) {
+      if (assignment && ["succeeded", "failed"].includes(assignment.status) &&
+          JSON.stringify(assignment.result) === JSON.stringify(result)) return { duplicate: true };
+      throw commandError(409, "Command result has no matching agent claim");
+    }
+    assignment.status = result.success ? "succeeded" : "failed";
+    assignment.finished_at = finishedAt; assignment.result = result;
+    const finished = command.recipient_ids.every(id => {
+      const entry = assignmentFor(command, id);
+      return entry && ["succeeded", "failed"].includes(entry.status);
+    });
+    if (finished) {
+      const failed = command.recipient_ids.some(id => assignmentFor(command, id).status === "failed");
+      const completed = { ...command, status: failed ? "failed" : "succeeded", finished_at: finishedAt };
+      if (command.recipient_ids.length === 1) Object.assign(completed, result);
+      else {
+        completed.result_summary = command.recipient_ids.length + " agent results collected";
+        completed.output = JSON.stringify(Object.fromEntries(command.recipient_ids.map(id => [id, assignmentFor(command, id).result])));
+      }
+      queue.splice(queue.indexOf(command), 1); history.push(completed);
+    }
+    return { duplicate: false };
+  }, { requestId });
+  return transaction.result;
 }
 
 // ─── Events & alerts ─────────────────────────────────────────────────────────
@@ -532,8 +582,11 @@ async function validateAgent(headers, deviceId) {
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
-exports.handler = async (event, context) => {
-  connectLambda(event);
+return async (event, context) => {
+  const providerContext = captureControlContext();
+  event = { ...event };
+  Object.defineProperty(event, CONTROL_PROVIDER_CONTEXT, { value: providerContext });
+  if (event.blobs) connectLambda(event);
   const origin = event.headers.origin || "";
   const hdrs = corsHeaders(origin);
 
@@ -664,7 +717,8 @@ exports.handler = async (event, context) => {
       const pending = await getPendingCommandsForDevice(
         deviceId,
         device.device_class,
-        device.hostname
+        device.hostname,
+        event
       );
 
       return json(200, hdrs, {
@@ -756,15 +810,7 @@ exports.handler = async (event, context) => {
       const device = await getDevice(deviceId);
       if (!device) return json(404, hdrs, { error: "device not found" });
 
-      const cmds = await getPendingCommandsForDevice(
-        deviceId,
-        device.device_class,
-        device.hostname
-      );
-      for (const cmd of cmds) {
-        await ackCommand(cmd.id, deviceId);
-      }
-
+      const cmds = await claimCommandsForDevice(deviceId, device.hostname, event);
       return json(200, hdrs, { commands: cmds });
     }
 
@@ -777,13 +823,21 @@ exports.handler = async (event, context) => {
       if (!body.command_id)
         return json(400, hdrs, { error: "command_id required" });
 
+      if (typeof body.command_id !== "string" || body.command_id.length > 220 ||
+          typeof body.success !== "boolean" || typeof body.exit_code !== "number" ||
+          !Number.isInteger(body.exit_code)) {
+        return json(400, hdrs, { error: "Valid command_id, success and numeric exit_code required" });
+      }
+      if (body.success !== (body.exit_code === 0)) {
+        return json(400, hdrs, { error: "Result success must match exit_code" });
+      }
       await completeCommand(body.command_id, {
-        success: body.success !== false,
+        success: body.success,
         stdout: String(body.stdout || "").slice(0, 4000),
         stderr: String(body.stderr || "").slice(0, 2000),
-        exit_code: body.exit_code ?? 0,
+        exit_code: body.exit_code,
         node: deviceId,
-      });
+      }, deviceId, event);
 
       return json(200, hdrs, { ok: true });
     }
@@ -868,6 +922,7 @@ exports.handler = async (event, context) => {
     return json(404, hdrs, { error: "not found" });
   } catch (e) {
     console.error("agent-api error:", e);
-    return json(500, hdrs, { error: "internal error", message: e.message });
+    return json(e.statusCode || e.status || (["commands", "command-result", "heartbeat"].includes(action) ? 503 : 500), hdrs, { error: "internal error", message: e.message });
   }
+};
 };
