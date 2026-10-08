@@ -4,6 +4,8 @@
 
 const { getStore, connectLambda } = require("@netlify/blobs");
 const crypto = require("crypto");
+const { getStore: controlGetStore } = require("@netlify/control-blobs");
+const { openControlCommandStore } = require("./lib/control-command-store.cjs");
 
 // Timing-safe string comparison to prevent timing attacks on credentials
 function safeCompare(a, b) {
@@ -37,46 +39,124 @@ async function getApiKey() {
   } catch { return null; }
 }
 
-async function getQueue() {
-  try {
-    const store = getStore("cluster-control");
-    const data = await store.get("queue", { type: "json" });
-    return Array.isArray(data) ? data : [];
-  } catch (e) {
-    console.warn("Failed to read queue:", e.message);
-    return [];
-  }
+const LEGACY_COMMAND_TYPES = new Set(["start","stop","restart","wake","sleep","mining-start","mining-stop","mining-status","mining-level","mining-pool","display-mode","browse","update","reboot","ssh","screenshot","brightness","debug","pod-logs"]);
+function commandError(statusCode, message) {
+  const error = new Error(message); error.statusCode = statusCode; return error;
 }
-
-async function saveQueue(queue) {
-  try {
-    const store = getStore("cluster-control");
-    await store.setJSON("queue", queue);
-  } catch (e) {
-    console.warn("Failed to save queue:", e.message);
-  }
+function commandState(event) { return openControlCommandStore({ getStore: controlGetStore, event }); }
+function operationId(prefix, value) {
+  return prefix + ":" + crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
-
-async function getHistory() {
-  try {
-    const store = getStore("cluster-control");
-    const data = await store.get("history", { type: "json" });
-    return Array.isArray(data) ? data : [];
-  } catch (e) {
-    console.warn("Failed to read history:", e.message);
-    return [];
-  }
+function callerRequest(body) {
+  if (body.request_id === undefined) return null;
+  if (typeof body.request_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(body.request_id))
+    throw commandError(400, "Invalid request_id");
+  return body.request_id;
 }
-
-async function saveHistory(history) {
-  try {
-    const store = getStore("cluster-control");
-    // Keep only last 50
-    const trimmed = history.slice(-50);
-    await store.setJSON("history", trimmed);
-  } catch (e) {
-    console.warn("Failed to save history:", e.message);
-  }
+function legacyInput(command) {
+  return {
+    command: command.type || command.command, target: command.target,
+    url: command.url ?? command.payload?.url ?? null,
+    sshCmd: command.sshCmd ?? command.payload?.sshCmd ?? command.payload?.command ?? null,
+    displayMode: command.displayMode ?? command.payload?.displayMode ?? command.payload?.mode ?? null,
+    miningLevel: command.miningLevel ?? command.payload?.miningLevel ?? command.payload?.level ?? null,
+    poolUrl: command.poolUrl ?? command.payload?.poolUrl ?? null,
+    namespace: command.namespace ?? command.payload?.namespace ?? null,
+    podName: command.podName ?? command.payload?.podName ?? null,
+    tail: command.tail ?? command.payload?.tail ?? null,
+  };
+}
+function legacyCommand(command) {
+  const createdAt = command.created_at ?? command.queuedAt;
+  return { id: command.id, ...legacyInput(command), status: command.status,
+    queuedAt: command.queuedAt || new Date(createdAt).toISOString() };
+}
+function legacyHistory(command) {
+  return { ...legacyCommand(command), result: command.result ?? command.result_summary ?? command.status,
+    output: command.output || command.stdout || null,
+    completedAt: command.completedAt || new Date(command.finished_at).toISOString() };
+}
+async function getQueue(event) {
+  const { queue } = await commandState(event).snapshot();
+  return queue.filter(command => command.route === "legacy").map(legacyCommand);
+}
+async function getHistory(event) {
+  const { history } = await commandState(event).snapshot();
+  return history.filter(command => command.route === "legacy").map(legacyHistory);
+}
+async function enqueueLegacy(command, requestId, event) {
+  const transaction = await commandState(event).transact(({ queue, history }) => {
+    const existing = [...queue, ...history].find(entry => entry.id === command.id);
+    if (existing) {
+      if (existing.route !== "legacy" || JSON.stringify(legacyInput(existing)) !== JSON.stringify(legacyInput(command)))
+        throw commandError(409, "Request ID already belongs to different command settings");
+      return { id: existing.id, position: Math.max(0, queue.indexOf(existing) + 1), duplicate: true };
+    }
+    if (queue.filter(entry => entry.route === "legacy").length >= MAX_QUEUE_SIZE)
+      throw commandError(429, "Command queue is full. Try again later.");
+    queue.push(command);
+    return { id: command.id, position: queue.filter(entry => entry.route === "legacy").length, duplicate: false };
+  }, { requestId });
+  return transaction.result;
+}
+async function pollLegacy(event) {
+  const startedAt = Date.now();
+  const transaction = await commandState(event).transact(({ queue, history }) => {
+    for (let index = queue.length - 1; index >= 0; index--) {
+      const command = queue[index];
+      if (command.route !== "legacy" || command.status !== "queued") continue;
+      const createdAt = typeof command.created_at === "number" ? command.created_at : Date.parse(command.queuedAt || command.created_at);
+      if (Number.isFinite(createdAt) && startedAt - createdAt > 24 * 60 * 60 * 1000) {
+        queue.splice(index, 1);
+        history.push({ ...command, status: "failed", finished_at: startedAt,
+          result: "expired: command timed out in queue", result_summary: "Legacy command expired before claim" });
+      }
+    }
+    const command = queue.find(entry => entry.route === "legacy" && entry.status === "queued" &&
+      LEGACY_COMMAND_TYPES.has(entry.type || entry.command));
+    if (!command) return {};
+    command.status = "running"; command.claimed_by = "legacy-poller"; command.started_at = startedAt;
+    return legacyCommand(command);
+  });
+  return transaction.result;
+}
+async function completeLegacy(body, event) {
+  if (typeof body.id !== "string" || !body.id || body.id.length > 220 ||
+      typeof body.command !== "string" || typeof body.target !== "string" || typeof body.result !== "string")
+    throw commandError(400, "id, command, target and result are required");
+  const output = String(body.output || "").slice(0, 12000);
+  const result = body.result.slice(0, 4000);
+  const finishedAt = Date.now();
+  const transaction = await commandState(event).transact(({ queue, history }) => {
+    const command = queue.find(entry => entry.id === body.id);
+    const terminal = history.find(entry => entry.id === body.id);
+    const matches = entry => entry && entry.route === "legacy" &&
+      (entry.type || entry.command) === body.command && entry.target === body.target &&
+      entry.claimed_by === "legacy-poller";
+    if (!command) {
+      if (matches(terminal) && terminal.result === result && terminal.output === output) return { duplicate: true };
+      throw commandError(409, "No legacy claim matches this completion");
+    }
+    if (!matches(command) || command.status !== "running" || !LEGACY_COMMAND_TYPES.has(command.type || command.command))
+      throw commandError(409, "No legacy claim matches this completion");
+    queue.splice(queue.indexOf(command), 1);
+    history.push({ ...command, status: /^(error|failed|failure|partial)\b/i.test(result) ? "failed" : "completed",
+      finished_at: finishedAt, result, result_summary: result, output });
+    return { duplicate: false };
+  }, { requestId: operationId("legacy-complete", [body.id, body.command, body.target, result, output]) });
+  return transaction.result;
+}
+async function flushLegacy(body, event) {
+  const request = callerRequest(body) || crypto.randomBytes(16).toString("hex");
+  const finishedAt = Date.now();
+  const transaction = await commandState(event).transact(({ queue, history }) => {
+    const selected = queue.filter(command => command.route === "legacy");
+    for (const command of selected) history.push({ ...command, status: "cancelled", finished_at: finishedAt,
+      result: "flushed: manually cleared from queue", result_summary: "Legacy command cancelled by operator" });
+    for (let index = queue.length - 1; index >= 0; index--) if (queue[index].route === "legacy") queue.splice(index, 1);
+    return { flushed: selected.length };
+  }, { requestId: operationId("legacy-flush", request) });
+  return transaction.result;
 }
 
 async function getSchedules() {
@@ -172,6 +252,8 @@ exports.handler = async (event) => {
 
   const apiKey = event.headers['x-cluster-key'];
 
+  try {
+
   // GET - Poll for commands (from node1) or get status (from dashboard)
   if (event.httpMethod === 'GET') {
     const params = event.queryStringParameters || {};
@@ -188,32 +270,8 @@ exports.handler = async (event) => {
         await store.setJSON("poller-heartbeat", { lastPoll: new Date().toISOString() });
       } catch (e) { /* best-effort */ }
 
-      const queue = await getQueue();
-      // Auto-expire commands older than 24 hours
-      const now = Date.now();
-      const expiredIds = [];
-      const liveQueue = queue.filter(c => {
-        const age = now - new Date(c.queuedAt).getTime();
-        if (age > 24 * 60 * 60 * 1000) { expiredIds.push(c.id); return false; }
-        return true;
-      });
-      // Move expired commands to history
-      if (expiredIds.length > 0) {
-        const history = await getHistory();
-        for (const c of queue) {
-          if (expiredIds.includes(c.id)) {
-            history.push({ id: c.id, command: c.command, target: c.target, result: 'expired: command timed out in queue', completedAt: new Date().toISOString() });
-          }
-        }
-        await saveHistory(history);
-      }
-      const cmd = liveQueue.shift();
-      await saveQueue(liveQueue);
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify(cmd || {})
-      };
+      const command = await pollLegacy(event);
+      return { statusCode: 200, headers, body: JSON.stringify(command) };
     }
 
     // Poller heartbeat check (for dashboard)
@@ -289,12 +347,12 @@ exports.handler = async (event) => {
 
     // Command status check by ID (for dashboard polling)
     if (params.action === 'command-status' && params.id) {
-      const queue = await getQueue();
+      const queue = await getQueue(event);
       const inQueue = queue.some(c => c.id === params.id);
       if (inQueue) {
         return { statusCode: 200, headers, body: JSON.stringify({ status: 'queued' }) };
       }
-      const history = await getHistory();
+      const history = await getHistory(event);
       const entry = history.find(h => h.id === params.id);
       if (entry) {
         return {
@@ -352,8 +410,8 @@ exports.handler = async (event) => {
     }
 
     // Dashboard getting queue status
-    const queue = await getQueue();
-    const history = await getHistory();
+    const queue = await getQueue(event);
+    const history = await getHistory(event);
     return {
       statusCode: 200,
       headers,
@@ -380,21 +438,8 @@ exports.handler = async (event) => {
       if (!validKey || !safeCompare(apiKey || '', validKey)) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
       }
-      const history = await getHistory();
-      history.push({
-        id: body.id,
-        command: body.command || null,
-        target: body.target || null,
-        result: body.result,
-        output: body.output || null,
-        completedAt: new Date().toISOString()
-      });
-      await saveHistory(history);
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ success: true })
-      };
+      await completeLegacy(body, event);
+      return { statusCode: 200, headers, body: JSON.stringify({ success: true }) };
     }
 
     // Screenshot upload from node1
@@ -438,17 +483,11 @@ exports.handler = async (event) => {
       if (!safeCompare(body.password || '', webPassword)) {
         return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid password' }) };
       }
-      const queue = await getQueue();
-      if (queue.length === 0) {
-        return { statusCode: 200, headers, body: JSON.stringify({ flushed: 0, message: 'Queue already empty' }) };
-      }
-      const history = await getHistory();
-      for (const c of queue) {
-        history.push({ id: c.id, command: c.command, target: c.target, result: 'flushed: manually cleared from queue', completedAt: new Date().toISOString() });
-      }
-      await saveHistory(history);
-      await saveQueue([]);
-      return { statusCode: 200, headers, body: JSON.stringify({ flushed: queue.length, message: `Flushed ${queue.length} commands from queue` }) };
+      const result = await flushLegacy(body, event);
+      return { statusCode: 200, headers, body: JSON.stringify({
+        flushed: result.flushed,
+        message: result.flushed ? "Flushed " + result.flushed + " commands from queue" : "Queue already empty"
+      }) };
     }
 
     // Save schedules from dashboard
@@ -510,7 +549,7 @@ exports.handler = async (event) => {
 
       for (const [id, sched] of Object.entries(schedules)) {
         if (!sched.enabled) continue;
-        const rules = sched.rules || [];
+        const rules = [...(sched.rules || [])];
         // Legacy format support: wake/sleep times
         if (sched.wake) rules.push({ time: sched.wake, command: 'wake' });
         if (sched.sleep) rules.push({ time: sched.sleep, command: 'sleep' });
@@ -520,7 +559,16 @@ exports.handler = async (event) => {
             // Include date in key so schedules fire once per day, not once ever
             const key = rule.command + ':' + id + ':' + timeStr + ':' + dateStr;
             if (!lastExec[key]) {
-              commands.push({ command: rule.command, target: id });
+              if (!LEGACY_COMMAND_TYPES.has(rule.command))
+                throw commandError(409, "Unsupported legacy schedule command");
+              const createdAt = Date.now();
+              const commandId = "legacy-schedule-" + crypto.createHash("sha256").update(key).digest("hex").slice(0, 32);
+              await enqueueLegacy({
+                id: commandId, type: rule.command, command: rule.command, target: id,
+                route: "legacy", status: "queued", created_at: createdAt,
+                queuedAt: new Date(createdAt).toISOString(),
+              }, operationId("legacy-schedule", key), event);
+              commands.push({ id: commandId, command: rule.command, target: id });
               lastExec[key] = true;
             }
           }
@@ -534,7 +582,7 @@ exports.handler = async (event) => {
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({ commands, checkedAt: new Date().toISOString() })
+        body: JSON.stringify({ commands: [], queued_commands: commands, checkedAt: new Date().toISOString() })
       };
     }
 
@@ -641,40 +689,30 @@ exports.handler = async (event) => {
       }
     }
 
-    const cmdId = crypto.randomBytes(8).toString('hex');
+    const request = callerRequest(body);
+    const cmdId = request ? "legacy-" + crypto.createHash("sha256").update(request).digest("hex").slice(0, 32)
+      : crypto.randomBytes(8).toString("hex");
+    const now = Date.now();
     const newCmd = {
-      id: cmdId,
-      command,
-      target: target || 'all',
-      url: body.url || null,
-      sshCmd: body.sshCmd || null,
-      displayMode: body.displayMode || null,
+      id: cmdId, type: command, command, target: target || 'all', route: "legacy", status: "queued",
+      url: body.url || null, sshCmd: body.sshCmd || null, displayMode: body.displayMode || null,
       miningLevel: body.miningLevel != null ? parseInt(body.miningLevel) : null,
-      poolUrl: body.poolUrl || null,
-      namespace: body.namespace || null,
-      podName: body.podName || null,
+      poolUrl: body.poolUrl || null, namespace: body.namespace || null, podName: body.podName || null,
       tail: body.tail != null ? parseInt(body.tail) : null,
-      queuedAt: new Date().toISOString()
+      created_at: now, queuedAt: new Date(now).toISOString(),
     };
-
-    const queue = await getQueue();
-    if (queue.length >= MAX_QUEUE_SIZE) {
-      return { statusCode: 429, headers, body: JSON.stringify({ error: 'Command queue is full. Try again later.' }) };
-    }
-    queue.push(newCmd);
-    await saveQueue(queue);
-
+    const queued = await enqueueLegacy(newCmd, operationId("legacy-enqueue", [request || cmdId, legacyInput(newCmd)]), event);
     return {
-      statusCode: 200,
-      headers,
+      statusCode: 200, headers,
       body: JSON.stringify({
-        success: true,
-        message: `Command '${command}' queued for ${target || 'all'}`,
-        id: cmdId,
-        position: queue.length
+        success: true, message: "Command '" + command + "' queued for " + (target || 'all'),
+        id: queued.id, position: queued.position
       })
     };
   }
 
   return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
+  } catch (error) {
+    return { statusCode: error.statusCode || 503, headers, body: JSON.stringify({ error: error.message || 'Command service unavailable' }) };
+  }
 };

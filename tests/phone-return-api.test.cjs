@@ -1,62 +1,38 @@
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const vm = require('node:vm');
 const test = require('node:test');
-const crypto = require('node:crypto');
-
-const source = fs.readFileSync(path.join(__dirname, '../netlify/functions/cluster-api.js'), 'utf8');
+const { fixture, STATE_KEY } = require('./control-command-api.test.cjs');
 const NOW = Date.parse('2026-10-07T05:00:00.000Z');
 const TYPE = 'phone-return-termux';
 const PHONES = ['phone173', 'phone174', 'phone176', 'phone177', 'phone191', 'phone195', 'phone253', 'phone254'];
 const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 
 function harness(options = {}) {
-  const stores = new Map(), writes = [];
-  const getData = name => {
-    if (!stores.has(name)) stores.set(name, new Map());
-    return stores.get(name);
-  };
-  getData('cp-bridge').set('heartbeat', clone(options.bridge === undefined ? {
-    last_seen_at: new Date(NOW - 1000).toISOString(), bridge_version: '2.5.0',
-  } : options.bridge));
-  getData('cp-commands').set('queue', clone(options.queue || []));
-  getData('cp-commands').set('history', clone(options.history || []));
-  for (const device of options.devices || []) getData('cp-devices').set(device.id, clone(device));
-  const getStore = name => ({
-    get: async key => clone(getData(name).get(key) ?? null),
-    setJSON: async (key, value) => {
-      if (options.failWrite === name + ':' + key) throw new Error('Mock persistence failure');
-      writes.push({name, key, value: clone(value)}); getData(name).set(key, clone(value));
-    },
-    set: async (key, value) => { writes.push({name, key, value}); getData(name).set(key, value); },
-    list: async () => ({blobs: [...getData(name).keys()].map(key => ({key}))}),
-  });
-  class Clock extends Date {
-    constructor(...args) { super(...(args.length ? args : [NOW])); }
-    static now() { return NOW; }
+  const backing = fixture({ ...options, now: NOW });
+  let initialized = false;
+  async function initialize() {
+    if (initialized) return;
+    await backing.ready();
+    backing.writes.length = 0; // Assertions below concern the requested action.
+    if (options.failWrite) backing.fault('write', 'cp-commands', STATE_KEY, 'throw');
+    initialized = true;
   }
-  const exported = {};
-  const context = vm.createContext({
-    require: name => name === '@netlify/blobs' ? {getStore, connectLambda() {}} : name === 'crypto' ? crypto : (() => {throw new Error('Unexpected dependency: ' + name);})(),
-    exports: exported, module: {exports: exported}, Buffer, Date: Clock,
-    process: {env: {CLUSTER_WEB_PASSWORD: 'fixture-operator-password'}},
-    console: {warn() {}, log() {}, error() {}},
-  });
-  vm.runInContext(source, context, {filename: 'cluster-api.js'});
   return {
-    data: (store, key) => clone(getData(store).get(key)), writes,
+    data: (store, key) => {
+      if (store === 'cp-commands' && ['queue', 'history'].includes(key)) return clone(backing.inspect(store, STATE_KEY)?.[key] ?? backing.inspect(store, key));
+      if (store === 'cluster-control' && key === 'queue') {
+        const queued = backing.inspect('cp-commands', STATE_KEY)?.queue.filter(entry => entry.route === 'legacy') || [];
+        return queued.length ? clone(queued) : undefined;
+      }
+      return backing.inspect(store, key);
+    }, writes: backing.writes,
     post: async (action, body = {}, authenticated = true) => {
-      const response = await exported.handler({
-        httpMethod: 'POST', headers: {authorization: authenticated ? 'Bearer fixture-operator-password' : ''},
-        queryStringParameters: {action}, body: JSON.stringify(body),
-      });
-      return {status: response.statusCode, body: JSON.parse(response.body)};
+      await initialize();
+      return backing.cp(action, body, { headers: { authorization: authenticated ? 'Bearer fixture-operator' : '' } });
     },
   };
 }
 
-const queued = (overrides = {}) => ({id: 'return-253', type: TYPE, target: 'phone253', payload: {}, status: 'queued', created_at: NOW - 5000, ...overrides});
+const queued = (overrides = {}) => ({id: 'return-253', type: TYPE, target: 'phone253', route: 'bridge', payload: {}, status: 'queued', created_at: NOW - 5000, ...overrides});
 const report = (overrides = {}) => ({kind: 'phone-controller-return', unit: 'phone253', state: 'termux-foreground', foreground_app_verified: true, visible_screen_verified: false, controller_state: 'connected', error: null, ...overrides});
 const completion = (overrides = {}) => ({id: 'return-253', type: TYPE, target: 'phone253', status: 'completed', output: JSON.stringify(report()), ...overrides});
 const queueReturn = (h, target = 'phone253', extra = {}) => h.post('queue-command', {type: TYPE, target, ...extra});
@@ -161,10 +137,11 @@ test('return type cannot consume an existing different-type command', async () =
   assert.equal((await h.post('bridge-complete', completion())).status, 400); assert.deepEqual(h.writes, []);
 });
 
-test('duplicate completed return is rejected even when disguised as an older command type', async () => {
+test('identical completed return replays once and a disguised older command type is rejected', async () => {
   const h = harness({queue: [queued()]}); assert.equal((await h.post('bridge-complete', completion())).status, 200);
+  assert.equal((await h.post('bridge-complete', completion())).status, 200);
   const count = h.writes.length;
-  for (const type of [TYPE, 'browse']) assert.equal((await h.post('bridge-complete', completion({type}))).status, 409);
+  assert.equal((await h.post('bridge-complete', completion({type: 'browse'}))).status, 409);
   assert.equal(h.writes.length, count); assert.equal(h.data('cp-commands', 'history').length, 1);
 });
 
@@ -214,11 +191,11 @@ test('return completion storage failure is reported and does not claim completed
   assert.deepEqual(h.data('cp-commands', 'queue'), [queued()]); assert.deepEqual(h.data('cp-commands', 'history'), []);
 });
 
-test('existing command enqueue and completion behavior is preserved', async () => {
+test('existing bridge command schema and plain completion output are preserved', async () => {
   const h = harness();
   const response = await h.post('queue-command', {type: 'browse', target: 'phone253', payload: {url: 'https://curtbrag.com/'}});
-  assert.equal(response.status, 200); assert.equal(h.data('cluster-control', 'queue').length, 1);
+  assert.equal(response.status, 200); assert.equal(h.data('cluster-control', 'queue'), undefined);
   assert.equal((await h.post('bridge-complete', {id: response.body.command_id, type: 'browse', target: 'phone253', status: 'failed', output: 'Existing plain output', result_summary: 'Existing summary'})).status, 200);
-  const entry = h.data('cp-commands', 'history')[0]; assert.equal(entry.status, 'completed');
+  const entry = h.data('cp-commands', 'history')[0]; assert.equal(entry.status, 'failed');
   assert.equal(entry.output, 'Existing plain output'); assert.equal(entry.result_summary, 'Existing summary');
 });

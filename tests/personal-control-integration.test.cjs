@@ -31,11 +31,13 @@ function mobileRules() {
   return css.slice(begin + 1, end - 1);
 }
 
-test('Layout patch preserves released v70 content apart from its four additions and line-ending normalization', () => {
+test('Layout preserves the released controller additions and updates the command client cache version', () => {
   // Hash of released v70 Layout after CRLF conversion and one optional final newline.
   // Keeping this fixture as a hash makes the test portable outside this workspace.
   const baselineHash = '84f7d6090c2bf12e60e095da0c513c50a81d9650a6980b67821c5b8d4fa5a480';
   let original = layout.replace(/\r\n/g, '\n').replace(/\n$/, '');
+  assert.equal(original.split('/scripts/cluster-swarm-live-v8.js?v=71').length, 2);
+  original = original.replace('/scripts/cluster-swarm-live-v8.js?v=71', '/scripts/cluster-swarm-live-v8.js?v=70');
   const route = "const clusterControlPage = /^\\/cluster\\/(?:dashboard|control)\\/?$/.test(Astro.url.pathname);";
   for (const addition of [
     route + '\n',
@@ -47,7 +49,7 @@ test('Layout patch preserves released v70 content apart from its four additions 
     original = original.replace(addition, '');
   }
   assert.equal(crypto.createHash('sha256').update(original).digest('hex'), baselineHash,
-    'Only the controller page predicate, manifest, stylesheet and isolated helper may be added');
+    'Only the controller additions and command client cache version may change');
 });
 
 test('Controller assets are scoped to exact landing/dashboard routes and never worker display pages', () => {

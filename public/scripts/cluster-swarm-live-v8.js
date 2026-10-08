@@ -133,7 +133,19 @@
   }
 
   const swarmApi = (action, method='GET', body=null) => request(SWARM_API, action, method, body);
-  const controlApi = (action, method='GET', body=null) => request(CONTROL_API, action, method, body);
+  const controlApi = async (action, method='GET', body=null) => {
+    const durable = method === 'POST' && ['queue-command', 'flush-queue', 'reset-restart-count'].includes(action);
+    if (!durable) return request(CONTROL_API, action, method, body);
+    const requestId = body?.request_id || crypto.randomUUID();
+    const settings = { ...(body || {}), request_id: requestId };
+    try { return await request(CONTROL_API, action, method, settings); }
+    catch (error) {
+      // One transport retry keeps the same saved operation. A validation or
+      // authorization failure never submits another command.
+      if (error.name !== 'TypeError' && !/Connection timed out|HTTP 503/.test(error.message)) throw error;
+      return request(CONTROL_API, action, method, settings);
+    }
+  };
 
   function canonicalize(raw) {
     const source = Array.isArray(raw?.nodes) ? raw.nodes : [];
