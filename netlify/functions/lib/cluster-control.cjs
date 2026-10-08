@@ -2,11 +2,14 @@
 // Queues commands for the cluster to execute
 // Uses Netlify Blobs for persistence across cold starts
 
-const { getStore, connectLambda } = require("@netlify/blobs");
 const crypto = require("crypto");
-const { getStore: controlGetStore } = require("@netlify/control-blobs");
 const { openControlCommandStore, captureControlContext } = require("./control-command-store.cjs");
 const CONTROL_PROVIDER_CONTEXT = Symbol("controlProviderContext");
+
+exports.createHandler = function createHandler({ connectLambda, getStore, controlGetStore }) {
+  if (![connectLambda, getStore, controlGetStore].every(value => typeof value === "function")) {
+    throw new TypeError("Storage runtime dependencies are required.");
+  }
 
 // Timing-safe string comparison to prevent timing attacks on credentials
 function safeCompare(a, b) {
@@ -234,7 +237,7 @@ function normalizeTime(t) {
   return parts[0].padStart(2, '0') + ':' + (parts[1] || '00').padStart(2, '0');
 }
 
-exports.handler = async (event) => {
+return async (event) => {
   const corsOrigin = getCorsOrigin(event);
   const headers = {
     'Access-Control-Allow-Headers': 'Content-Type, X-Cluster-Key',
@@ -719,4 +722,5 @@ exports.handler = async (event) => {
   } catch (error) {
     return { statusCode: error.statusCode || 503, headers, body: JSON.stringify({ error: error.message || 'Command service unavailable' }) };
   }
+};
 };

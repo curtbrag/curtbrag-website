@@ -17,7 +17,7 @@ const sortedIds = values => values.map(item => item.id).sort();
 
 function fixture(options = {}) {
   const fixtureNow = options.now ?? NOW;
-  const stores = new Map(), reads = [], writes = [], calls = [], faults = [], barriers = [], modules = new Map();
+  const stores = new Map(), reads = [], writes = [], calls = [], faults = [], barriers = [], modules = new Map(), handlers = new Map();
   let identities = 0;
   const data = name => { if (!stores.has(name)) stores.set(name, new Map()); return stores.get(name); };
   function seed(name, key, value) { data(name).set(key, { value: clone(value), etag: '"v1"', version: 1 }); }
@@ -133,7 +133,11 @@ function fixture(options = {}) {
     const headers = filename === 'cluster-api.js' ? { authorization: 'Bearer fixture-operator' } :
       filename === 'agent-api.js' ? { 'x-agent-token': 'fixture-agent', 'x-device-id': 'fixture-phone' } : { 'x-cluster-key': 'fixture-agent' };
     const sourceFile = path.join(ROOT, 'netlify/functions/lib', filename.replace(/\.js$/, '.cjs'));
-    const response = await load(sourceFile).handler({
+    if (!handlers.has(sourceFile)) {
+      const implementation = load(sourceFile);
+      handlers.set(sourceFile, implementation.createHandler({ connectLambda() {}, getStore, controlGetStore: getStore }));
+    }
+    const response = await handlers.get(sourceFile)({
       httpMethod: method, headers: { ...headers, ...extra.headers },
       queryStringParameters: { action, ...extra.params },
       path: filename === 'agent-api.js' ? `/.netlify/functions/agent-api/${action}` : `/.netlify/functions/${filename.slice(0, -3)}`,

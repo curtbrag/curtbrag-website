@@ -4,8 +4,7 @@
 //
 // All operator endpoints require Authorization: Bearer <web-password> header.
 
-const { connectLambda, getStore } = require("@netlify/blobs");
-const { getStore: controlGetStore } = require("@netlify/control-blobs");
+exports.createHandler = ({ connectLambda, getStore, controlGetStore }) => {
 const crypto = require("crypto");
 const { openControlCommandStore, captureControlContext, CommandStoreError } = require("./control-command-store.cjs");
 
@@ -515,7 +514,7 @@ async function buildSummary(devices, observedMap) {
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
-exports.handler = async (event, context) => {
+return async (event, context) => {
   const providerContext = captureControlContext();
   if (event.blobs) connectLambda(event);
   const origin = event.headers.origin || "";
@@ -1588,4 +1587,5 @@ exports.handler = async (event, context) => {
     if (error instanceof SyntaxError) return json(400, hdrs, { error: "Invalid JSON body" });
     throw error;
   }
+};
 };

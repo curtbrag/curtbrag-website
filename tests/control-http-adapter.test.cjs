@@ -98,7 +98,11 @@ test('each public function has only a modern default entrypoint and its retained
     assert.ok(fs.existsSync(path.join(functions, 'lib', name + '.cjs')));
     const source = fs.readFileSync(path.join(functions, name + '.mjs'), 'utf8');
     assert.ok(source.includes("import legacy from './lib/" + name + ".cjs'"));
-    assert.ok(source.includes('export default adapter.createLegacyFunction(legacy.handler)'));
-    assert.equal(source.includes('connectLambda'), false);
+    assert.ok(source.includes("import { connectLambda, getStore } from '@netlify/blobs'"));
+    assert.ok(source.includes("import { getStore as controlGetStore } from '@netlify/control-blobs'"));
+    assert.ok(source.includes('export default adapter.createLegacyFunction(legacy.createHandler({ connectLambda, getStore, controlGetStore }))'));
+    const implementation = fs.readFileSync(path.join(functions, 'lib', name + '.cjs'), 'utf8');
+    assert.equal(/require\(["']@netlify\//.test(implementation), false);
+    assert.ok(implementation.includes('if (event.blobs) connectLambda(event)'));
   }
 });

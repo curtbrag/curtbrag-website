@@ -94,11 +94,13 @@ function harness(initial = { queue: [], history: [] }, { legacyRuntime = false }
       },
     };
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../netlify/functions", file), "utf8"), context, { filename: file });
+    const sdk = context.require("@netlify/blobs");
+    const handler = context.exports.createHandler({ ...sdk, controlGetStore: getStore });
     return async event => {
       const provider = { siteID: "fixture-site", token: "fixture-runtime-" + (++runtimeSequence), edgeURL: "https://fixture-edge.invalid/", uncachedEdgeURL: "https://fixture-strong.invalid/" };
       context.process.env.NETLIFY_BLOBS_CONTEXT = Buffer.from(JSON.stringify(provider)).toString("base64");
       const serialized = JSON.stringify(event);
-      const result = await context.exports.handler(event);
+      const result = await handler(event);
       assert.equal(JSON.stringify(event), serialized, "Private provider context must not be attached to the caller event");
       return result;
     };

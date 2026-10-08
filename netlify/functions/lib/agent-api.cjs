@@ -6,12 +6,14 @@
 // per-device token returned after registration for all subsequent calls).
 // Device identity passed via X-Device-Id header.
 
-const { connectLambda, getStore } = require("@netlify/blobs");
 const crypto = require("crypto");
-const { getStore: controlGetStore } = require("@netlify/control-blobs");
 const { openControlCommandStore, captureControlContext } = require("./control-command-store.cjs");
 const CONTROL_PROVIDER_CONTEXT = Symbol("controlProviderContext");
 
+exports.createHandler = function createHandler({ connectLambda, getStore, controlGetStore }) {
+  if (![connectLambda, getStore, controlGetStore].every(value => typeof value === "function")) {
+    throw new TypeError("Storage runtime dependencies are required.");
+  }
 
 function openStore(name) {
   const siteID =
@@ -580,7 +582,7 @@ async function validateAgent(headers, deviceId) {
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
-exports.handler = async (event, context) => {
+return async (event, context) => {
   const providerContext = captureControlContext();
   event = { ...event };
   Object.defineProperty(event, CONTROL_PROVIDER_CONTEXT, { value: providerContext });
@@ -922,4 +924,5 @@ exports.handler = async (event, context) => {
     console.error("agent-api error:", e);
     return json(e.statusCode || e.status || (["commands", "command-result", "heartbeat"].includes(action) ? 503 : 500), hdrs, { error: "internal error", message: e.message });
   }
+};
 };
