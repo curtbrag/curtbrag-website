@@ -24,6 +24,10 @@
   let inventoryRequestVersion = 0;
   let inventoryObserver = null;
   let watchedInventoryWorkspace = null;
+  let fleetGridObserver = null;
+  let watchedFleetGrid = null;
+  let watchedFleetFilter = null;
+  const fleetControllerCards = new Map();
   const byId = id => document.getElementById(id);
   const setText = (element, text) => { if (element && element.textContent !== text) element.textContent = text; };
   const make = (tag, id, text) => {
@@ -148,19 +152,77 @@
     return registered && Number.isFinite(registered.getTime()) ? registered.toLocaleString() : 'Unavailable';
   }
   function renderFleetControllers(records) {
-    const list = byId('personal-controller-fleet-list');
-    if (!list) return;
-    list.textContent = '';
-    if (!records.length) { list.append(make('div', null, 'No personal controllers registered.')); return; }
+    const retained = new Set(records.map(record => record.controller_id));
+    for (const [id, entry] of fleetControllerCards) {
+      if (!retained.has(id)) { entry.tile.remove(); fleetControllerCards.delete(id); }
+    }
     for (const record of records) {
+      const signature = JSON.stringify([record.name, record.model, record.private_ip, record.adb_connect_port, record.registered_at]);
+      const existing = fleetControllerCards.get(record.controller_id);
+      if (existing?.signature === signature) continue;
+      existing?.tile.remove();
       const tile = make('article'); tile.className = 'personal-controller-fleet-tile';
+      tile.dataset.personalControllerId = record.controller_id;
+      tile.setAttribute('aria-label', record.name + ' — registered personal controller');
       const heading = make('div'); heading.className = 'personal-controller-fleet-tile-heading';
       const name = make('strong', null, record.name);
       const badge = make('span', null, 'REGISTERED'); badge.className = 'personal-controller-fleet-badge';
       heading.append(name, badge);
-      tile.append(heading, make('div', null, 'Personal controller · ' + record.model), make('div', null, 'Saved connection: ' + record.private_ip + ':' + record.adb_connect_port), make('div', null, 'Last registered: ' + registrationTime(record)));
-      list.append(tile);
+      tile.append(heading, make('div', null, 'Personal controller · ' + record.model), make('div', null, 'Excluded from worker jobs.'), make('div', null, 'Saved connection: ' + record.private_ip + ':' + record.adb_connect_port), make('div', null, 'Last registered: ' + registrationTime(record)));
+      fleetControllerCards.set(record.controller_id, { tile, signature });
     }
+    mountFleetControllers();
+  }
+  function mountFleetControllers() {
+    const grid = byId('swarm-nodes');
+    const show = panelVisible() && inventoryHasSnapshot && (byId('swarm-node-filter')?.value || 'all') === 'all';
+    for (const { tile } of fleetControllerCards.values()) {
+      if (show && grid) { if (tile.parentElement !== grid) grid.append(tile); }
+      else if (tile.parentElement) tile.remove();
+    }
+    const list = byId('personal-controller-fleet-list');
+    if (!inventoryHasSnapshot || !panelVisible()) { setText(list, ''); return; }
+    const count = fleetControllerCards.size;
+    const label = count + ' personal controller' + (count === 1 ? '' : 's');
+    setText(list, !count ? 'No personal controllers registered.' : show ? label + ' shown in Workers above.' : label + ' registered. Select All in Workers to show them.');
+  }
+  function watchFleetGrid() {
+    if (!byId('personal-controller-fleet')) return;
+    const grid = byId('swarm-nodes');
+    if (typeof MutationObserver === 'function' && grid !== watchedFleetGrid) {
+      fleetGridObserver?.disconnect();
+      fleetGridObserver = grid ? new MutationObserver(() => { watchFleetGrid(); mountFleetControllers(); }) : null;
+      watchedFleetGrid = grid;
+      if (grid) {
+        fleetGridObserver.observe(grid, { childList: true });
+        if (grid.parentElement) fleetGridObserver.observe(grid.parentElement, { childList: true });
+      }
+    }
+    const filter = byId('swarm-node-filter');
+    if (filter && filter !== watchedFleetFilter) {
+      if (watchedFleetFilter) watchedFleetFilter.removeEventListener('change', mountFleetControllers);
+      filter.addEventListener('change', mountFleetControllers);
+      watchedFleetFilter = filter;
+    }
+    mountFleetControllers();
+  }
+  function clearControllerInventory() {
+    inventoryRecords = []; inventoryHasSnapshot = false;
+    for (const { tile } of fleetControllerCards.values()) tile.remove();
+    fleetControllerCards.clear();
+    for (const id of ['personal-controller-inventory-list', 'personal-controller-fleet-list']) {
+      const list = byId(id); if (list) setText(list, '');
+    }
+    for (const key of ['name', 'model', 'private_ip', 'adb_connect_port', 'controller_id', 'adb_guid']) {
+      const input = byId('personal-controller-input-' + key); if (input) input.value = '';
+    }
+  }
+  function clearExpiredInventory(error) {
+    if (error?.status !== 401 && error?.statusCode !== 401 && error?.message !== 'Session expired. Sign in again.') return;
+    inventoryRequestVersion += 1;
+    inventoryLoadAttempted = true;
+    clearControllerInventory();
+    inventoryLock(false);
   }
   function renderInventory(records) {
     inventoryRecords = records;
@@ -194,11 +256,12 @@
       const api = inventoryApi();
       const response = await api('personal-controllers');
       if (!currentInventoryRequest(requestVersion)) return;
-      if (!Array.isArray(response?.controllers) || response.controllers.some(record => !isPersonalRecord(record))) throw new Error('The saved controller list could not be verified. Retry refresh.');
+      if (!Array.isArray(response?.controllers) || response.controllers.some(record => !isPersonalRecord(record)) || new Set(response.controllers.map(record => record.controller_id)).size !== response.controllers.length) throw new Error('The saved controller list could not be verified. Retry refresh.');
       renderInventory(response.controllers);
       inventoryMessage(response.controllers.length ? 'Saved personal controllers loaded. Registration does not report whether a device is online.' : 'No personal controllers registered.');
     } catch (error) {
       if (!currentInventoryRequest(requestVersion)) return;
+      clearExpiredInventory(error);
       inventoryMessage(error instanceof Error ? error.message : 'Could not load personal controllers. Retry refresh.', true);
     } finally { if (requestVersion === inventoryRequestVersion) inventoryLock(false); }
   }
@@ -219,6 +282,7 @@
       inventoryMessage(response.created === false ? 'This personal controller is already registered with these details.' : 'Personal controller registered. Its saved details are shown below.');
     } catch (error) {
       if (!currentInventoryRequest(requestVersion)) return;
+      clearExpiredInventory(error);
       inventoryMessage(error instanceof Error ? error.message : 'Registration was not confirmed. Refresh the list before retrying.', true);
     } finally { if (requestVersion === inventoryRequestVersion) inventoryLock(false); }
   }
@@ -233,13 +297,7 @@
       inventoryLoadAttempted = false;
       if (!signedIn) {
         inventoryRequestVersion += 1;
-        inventoryRecords = []; inventoryHasSnapshot = false;
-        for (const id of ['personal-controller-inventory-list', 'personal-controller-fleet-list']) {
-          const list = byId(id); if (list) list.textContent = '';
-        }
-        for (const key of ['name', 'model', 'private_ip', 'adb_connect_port', 'controller_id', 'adb_guid']) {
-          const input = byId('personal-controller-input-' + key); if (input) input.value = '';
-        }
+        clearControllerInventory();
         inventoryLock(false);
         inventoryMessage('Sign in to view personal controllers.');
       }
@@ -256,7 +314,7 @@
     const refresh = make('button', 'personal-controller-fleet-refresh', 'Refresh personal controllers'); refresh.type = 'button'; refresh.addEventListener('click', refreshInventory);
     heading.append(make('h3', 'personal-controller-fleet-heading', 'Personal controllers'), refresh);
     const status = make('p', 'personal-controller-fleet-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-    section.append(heading, make('p', null, 'Registered personal phones, shown separately from cluster workers.'), status, make('div', 'personal-controller-fleet-list'));
+    section.append(heading, status, make('p', 'personal-controller-fleet-list'));
     workers.insertAdjacentElement('afterend', section);
     inventoryMessage(inventoryStatusText, inventoryStatusError);
     if (inventoryHasSnapshot) renderFleetControllers(inventoryRecords);
@@ -279,6 +337,7 @@
       inventoryObserver.observe(workspace, { childList: true });
       watchedInventoryWorkspace = workspace;
     }
+    watchFleetGrid();
   }
   function createInventory() {
     const tab = byId('tab-devices');
@@ -392,6 +451,7 @@
     createFleetInventory();
     syncControllerSession();
     watchControllerInventory();
+    watchFleetGrid();
     if (!personal) {
       if (!byId('personal-controller-link')) {
         const link = make('a', 'personal-controller-link', 'Use your personal phone');
@@ -445,5 +505,5 @@
   window.addEventListener('offline', recheck);
   window.addEventListener('pageshow', recheck);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) recheck(); });
-  window.addEventListener('pagehide', () => { observer?.disconnect(); observer = null; watchedWorkspace = null; watchedBridge = null; inventoryObserver?.disconnect(); inventoryObserver = null; watchedInventoryWorkspace = null; });
+  window.addEventListener('pagehide', () => { observer?.disconnect(); observer = null; watchedWorkspace = null; watchedBridge = null; inventoryObserver?.disconnect(); inventoryObserver = null; watchedInventoryWorkspace = null; fleetGridObserver?.disconnect(); fleetGridObserver = null; watchedFleetGrid = null; });
 })();

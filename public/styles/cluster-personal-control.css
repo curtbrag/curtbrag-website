@@ -57,8 +57,8 @@
 .personal-controller-fleet-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
 #tab-swarm .personal-controller-fleet-heading h3{margin:0!important}
 #personal-controller-fleet-status[data-error="1"]{color:var(--color-red)}
-#personal-controller-fleet-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,205px),1fr));gap:10px;font-size:11px}
-.personal-controller-fleet-tile{min-width:0;border-left:3px solid var(--color-muted);border-radius:9px;padding:14px;background:var(--color-bg);color:var(--color-muted);line-height:1.5;overflow-wrap:anywhere}
+#personal-controller-fleet-list{font-size:11px;color:var(--color-muted);line-height:1.5}
+#swarm-nodes>.personal-controller-fleet-tile{min-width:0;border-left:3px solid var(--color-muted);border-radius:6px;padding:10px;background:var(--color-bg);color:var(--color-muted);font-size:10px;line-height:1.5;overflow-wrap:anywhere}
 .personal-controller-fleet-tile-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
 .personal-controller-fleet-tile-heading strong{font-size:12px;font-weight:600;color:var(--color-text);min-width:0}
 .personal-controller-fleet-badge{font-size:9px;font-weight:700;color:var(--color-muted);flex-shrink:0}
@@ -82,5 +82,4 @@
   .personal-controller-registration-fields{grid-template-columns:minmax(0,1fr)}
   .personal-controller-inventory-record dl{grid-template-columns:minmax(0,1fr);gap:3px}
   .personal-controller-inventory-record dd{margin-bottom:8px}
-  #personal-controller-fleet-list{grid-template-columns:repeat(auto-fill,minmax(min(100%,180px),1fr))}
 }

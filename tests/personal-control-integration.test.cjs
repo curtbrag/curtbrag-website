@@ -45,8 +45,8 @@ test('Layout preserves the released controller additions and updates the command
     '\n    {clusterDashboardPage && <script is:inline src="/scripts/cluster-phone-follow.js?v=1"></script>}',
     route + '\n',
     '    {clusterControlPage && <link rel="manifest" href="/cluster/controller.webmanifest" />}\n' +
-      '    {clusterControlPage && <link rel="stylesheet" href="/styles/cluster-personal-control.css?v=3" />}\n\n',
-    '\n    {clusterControlPage && <script is:inline src="/scripts/cluster-personal-control.js?v=3"></script>}',
+      '    {clusterControlPage && <link rel="stylesheet" href="/styles/cluster-personal-control.css?v=4" />}\n\n',
+    '\n    {clusterControlPage && <script is:inline src="/scripts/cluster-personal-control.js?v=4"></script>}',
   ]) {
     assert.equal(original.split(addition).length, 2, 'Each authorized addition must appear exactly once');
     original = original.replace(addition, '');
