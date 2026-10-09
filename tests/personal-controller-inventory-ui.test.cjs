@@ -7,7 +7,7 @@ const test = require('node:test');
 const source = fs.readFileSync(path.join(__dirname, '../public/scripts/cluster-personal-control.js'), 'utf8');
 
 function fixture(options = {}) {
-  const requests = [], forbidden = [];
+  const requests = [], forbidden = [], registeredCounts = [];
   const observers = [], observerQueue = new Set();
   function descendant(element, ancestor) { for (let node = element; node; node = node.parentElement) if (node === ancestor) return true; return false; }
   function mutation(element, kind, name) {
@@ -80,6 +80,7 @@ function fixture(options = {}) {
     if (!options.lateFleet) addFleet();
   }
   const window = new Events(); window.getComputedStyle = node => ({ display: node.style.display || 'block' }); window.matchMedia = () => null;
+  window.updatePersonalControllerCount = count => { if (!registeredCounts.length || registeredCounts.at(-1) !== count) registeredCounts.push(count); };
   let implementation = options.api || (async () => ({ controllers: [] }));
   window.callApi = async (...args) => { requests.push(structuredClone(args)); return implementation(...args); };
   const context = { window, document, navigator: { onLine: true }, location: { pathname: options.pathname || '/cluster/dashboard/', search: options.search || '' }, URLSearchParams, Date, Error, MutationObserver: Observer };
@@ -104,7 +105,7 @@ function fixture(options = {}) {
   const renderWorkers = () => { nodeGrid.textContent = ''; for (let index = 0; index < 13; index++) nodeGrid.append(make('div', null, 'updated-worker-' + index)); nodeGrid.setAttribute('data-connection', 'live'); flush(); };
   const filterWorkers = async value => { const filter = get('swarm-node-filter'); filter.value = value; renderWorkers(); await filter.emit('change', { target: filter }); flush(); };
   const gridControllers = () => (get('swarm-nodes')?.children || []).filter(node => node.dataset.personalControllerId !== undefined);
-  return { get, requests, forbidden, window, document, devices, table, workers, queue, fill, submit, flush, settle, setVisible, addFleet, renderWorkers, filterWorkers, gridControllers, observers, setApi: api => { implementation = api; } };
+  return { get, requests, forbidden, registeredCounts, window, document, devices, table, workers, queue, fill, submit, flush, settle, setVisible, addFleet, renderWorkers, filterWorkers, gridControllers, observers, setApi: api => { implementation = api; } };
 }
 const controller = overrides => ({ controller_id: 'curtis-s26-ultra', name: 'Curtis S26 Ultra', model: 'Samsung Galaxy S26 Ultra', private_ip: '192.168.1.88', adb_connect_port: 37129, role: 'personal-controller', worker_enabled: false, mining_enabled: false, registered_at: 1791480000000, ...overrides });
 const pending = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -367,4 +368,22 @@ test('expired authentication clears cached cards and fields without altering aut
     h.renderWorkers(); await h.window.emit('pageshow'); await h.window.emit('online'); await h.settle();
     assert.equal(h.gridControllers().length, 0); assert.equal(h.requests.length, 2); assert.deepEqual(h.forbidden, []);
   }
+});
+test('only verified registry counts contribute to fleet totals independent of worker filters and repaint', async () => {
+  const wait = pending(); const h = fixture({ fleet: true, api: () => wait.promise });
+  assert.deepEqual(h.registeredCounts, [null]); h.renderWorkers(); await h.settle(); assert.deepEqual(h.registeredCounts, [null]);
+  wait.resolve({ controllers: [controller()] }); await h.settle(); assert.deepEqual(h.registeredCounts, [null, 1]);
+  for (const filter of ['online', 'offline', 'busy', 'all']) { await h.filterWorkers(filter); await h.settle(); }
+  assert.deepEqual(h.registeredCounts, [null, 1]);
+  h.setApi(async () => { throw new Error('Temporary inventory failure'); }); await h.get('personal-controller-fleet-refresh').click(); await h.settle();
+  assert.deepEqual(h.registeredCounts, [null, 1]);
+  h.setApi(async () => ({ controllers: [] })); await h.get('personal-controller-fleet-refresh').click(); await h.settle();
+  assert.deepEqual(h.registeredCounts, [null, 1, 0]); h.setVisible(false); assert.deepEqual(h.registeredCounts, [null, 1, 0, null]);
+});
+test('401 clears the registered count and an old session response cannot reintroduce it', async () => {
+  const late = pending(); const h = fixture({ fleet: true, api: async () => ({ controllers: [controller()] }) }); await h.settle();
+  h.setApi(() => late.promise); const old = h.get('personal-controller-fleet-refresh').click(); h.setVisible(false);
+  assert.equal(h.registeredCounts.at(-1), null);
+  h.setApi(async () => { throw new Error('Session expired. Sign in again.'); }); h.setVisible(true); await h.settle();
+  late.resolve({ controllers: [controller()] }); await old; await h.settle(); assert.equal(h.registeredCounts.at(-1), null); assert.equal(h.gridControllers().length, 0);
 });

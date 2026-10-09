@@ -36,8 +36,8 @@ test('Layout preserves the released controller additions and updates the command
   // Keeping this fixture as a hash makes the test portable outside this workspace.
   const baselineHash = '84f7d6090c2bf12e60e095da0c513c50a81d9650a6980b67821c5b8d4fa5a480';
   let original = layout.replace(/\r\n/g, '\n').replace(/\n$/, '');
-  assert.equal(original.split('/scripts/cluster-swarm-live-v8.js?v=71').length, 2);
-  original = original.replace('/scripts/cluster-swarm-live-v8.js?v=71', '/scripts/cluster-swarm-live-v8.js?v=70');
+  assert.equal(original.split('/scripts/cluster-swarm-live-v8.js?v=72').length, 2);
+  original = original.replace('/scripts/cluster-swarm-live-v8.js?v=72', '/scripts/cluster-swarm-live-v8.js?v=70');
   const route = "const clusterControlPage = /^\\/cluster\\/(?:dashboard|control)\\/?$/.test(Astro.url.pathname);";
   for (const addition of [
     "const clusterDashboardPage = /^\\/cluster\\/dashboard\\/?$/.test(Astro.url.pathname);\n",
@@ -46,7 +46,7 @@ test('Layout preserves the released controller additions and updates the command
     route + '\n',
     '    {clusterControlPage && <link rel="manifest" href="/cluster/controller.webmanifest" />}\n' +
       '    {clusterControlPage && <link rel="stylesheet" href="/styles/cluster-personal-control.css?v=4" />}\n\n',
-    '\n    {clusterControlPage && <script is:inline src="/scripts/cluster-personal-control.js?v=4"></script>}',
+    '\n    {clusterControlPage && <script is:inline src="/scripts/cluster-personal-control.js?v=5"></script>}',
   ]) {
     assert.equal(original.split(addition).length, 2, 'Each authorized addition must appear exactly once');
     original = original.replace(addition, '');

@@ -63,6 +63,8 @@
   let livePaused = false;
   let jobSubmitting = false;
   let nodeFilter = 'all';
+  let registeredControllerCount = null;
+  let fleetWorkersVerified = false;
   let recoveryLastCheck = 0;
   let recoveryBusy = false;
   let recoveryReady = false;
@@ -171,6 +173,42 @@
     };
   }
 
+  function renderFleetCounts() {
+    const workerCount = document.getElementById('swarm-nodes-online');
+    if (!workerCount) return;
+    const controllers = registeredControllerCount;
+    const registered = controllers === null ? 'Controller registration unavailable' : controllers + ' controller' + (controllers === 1 ? '' : 's') + ' registered';
+    const total = controllers === null ? FLEET.length + ' workers' : FLEET.length + controllers + ' devices';
+    const updateText = (element, text) => { if (element && element.textContent !== text) element.textContent = text; };
+    let value = document.getElementById('swarm-fleet-total');
+    if (!value && document.getElementById('cluster-work-navigation')) {
+      const card = workerCount.parentElement;
+      if (card) {
+        updateText(card.firstElementChild, 'Fleet devices');
+        value = document.createElement('div'); value.id = 'swarm-fleet-total';
+        value.style.cssText = 'font-size:28px;font-weight:bold;color:var(--color-text)';
+        card.insertBefore(value, workerCount);
+        const detail = document.createElement('div'); detail.id = 'swarm-fleet-detail';
+        detail.style.cssText = 'font-size:11px;color:var(--color-muted);line-height:1.5;margin-top:6px';
+        const label = document.createElement('span'); label.textContent = 'Workers online: ';
+        const contribution = document.createElement('span'); contribution.id = 'swarm-controllers-registered';
+        workerCount.style.cssText = 'display:inline;font-size:11px;font-weight:600;color:var(--color-muted)';
+        detail.append(label, workerCount, contribution); card.append(detail);
+      }
+    }
+    updateText(value, total);
+    updateText(document.getElementById('swarm-controllers-registered'), ' · ' + registered);
+    const grid = document.getElementById('swarm-nodes');
+    let summary = document.getElementById('swarm-fleet-summary');
+    if (!summary && grid?.parentElement) {
+      summary = document.createElement('p'); summary.id = 'swarm-fleet-summary';
+      summary.style.cssText = 'font-size:12px;font-weight:600;line-height:1.5;margin:0 0 12px;color:var(--color-text)';
+      grid.parentElement.insertBefore(summary, grid);
+    }
+    const availability = fleetWorkersVerified ? workerCount.textContent + ' workers online' : 'Worker availability unverified';
+    updateText(summary, total + ' · ' + availability + ' · ' + registered);
+  }
+
   function ensureStateNote() {
     const heading = Array.from(tab.querySelectorAll('h3'))
       .find((h) => ['Swarm Nodes', 'Workers'].includes(h.textContent?.trim()));
@@ -184,6 +222,13 @@
     }
     return note;
   }
+
+  window.updatePersonalControllerCount = count => {
+    if (count !== null && (!Number.isSafeInteger(count) || count < 0)) return;
+    if (registeredControllerCount === count) return;
+    registeredControllerCount = count;
+    renderFleetCounts();
+  };
 
   function setState(text, color='var(--color-muted)') {
     const el = ensureStateNote();
@@ -600,6 +645,7 @@
     ensureWebsiteAudit();
     ensureWorkspace();
     ensureControlLayout();
+    renderFleetCounts();
     ensureFleetHealth();
     ensureChangeMonitor();
     ensureSiteTest();
@@ -1140,7 +1186,7 @@
     const card = document.createElement('div');
     card.id = 'cluster-phone-recovery';
     card.style.cssText = 'background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px';
-    card.innerHTML = `<h3 style="margin:0 0 7px">Fleet connections · 13 devices</h3>
+    card.innerHTML = `<h3 style="margin:0 0 7px">Worker connections · 13 workers</h3>
       <p style="font-size:12px;color:var(--color-muted)">8 phones · RenderRig · Alina · Nexus · SteamDeck · viki. The Windows bridge checks SSH ports automatically every 5 minutes.</p>
       <button id="cluster-fleet-check" type="button" disabled>Check all connections now</button>
       <pre id="cluster-fleet-check-result" style="white-space:pre-wrap;font-size:12px">Bridge 2.3.0 required for connection checks.</pre>
@@ -1987,6 +2033,8 @@
 
     setText('swarm-queued', d.queued ?? 0);
     setText('swarm-nodes-online', `${d.nodes_online} / ${FLEET.length}`);
+    fleetWorkersVerified = true;
+    renderFleetCounts();
     setText('swarm-total', d.total_completed ?? d.results.length ?? 0);
     setText('swarm-assignments', d.assignments_pending ?? 0);
     setText('swarm-busy', d.nodes_busy ?? 0);
@@ -1995,8 +2043,8 @@
     const oldAgents = d.nodes.filter((n) => n.online && !versionAtLeast(n.agent_version, REQUIRED_AGENT)).map((n) => n.id);
     const ghostCount = d.hidden_extras.length;
     let note = offline.length
-      ? `Canonical fleet: ${FLEET.length - offline.length}/${FLEET.length} online · offline: ${offline.join(', ')}`
-      : `Canonical fleet: ${FLEET.length}/${FLEET.length} online`;
+      ? `Workers: ${FLEET.length - offline.length}/${FLEET.length} online · offline: ${offline.join(', ')}`
+      : `Workers: ${FLEET.length}/${FLEET.length} online`;
     note += ' · mining disabled by policy';
     if (oldAgents.length) note += ` · upgrade agents: ${oldAgents.join(', ')}`;
     if (ghostCount) note += ` · ${ghostCount} stale record${ghostCount === 1 ? '' : 's'} hidden`;
@@ -2285,6 +2333,8 @@
     }
     const count = document.getElementById('swarm-nodes-online');
     if (count) count.textContent = 'Unverified';
+    fleetWorkersVerified = false;
+    renderFleetCounts();
   }
 
   function load(force=false) {

@@ -176,6 +176,7 @@
   function mountFleetControllers() {
     const grid = byId('swarm-nodes');
     const show = panelVisible() && inventoryHasSnapshot && (byId('swarm-node-filter')?.value || 'all') === 'all';
+    if (typeof window.updatePersonalControllerCount === 'function') window.updatePersonalControllerCount(panelVisible() && inventoryHasSnapshot ? fleetControllerCards.size : null);
     for (const { tile } of fleetControllerCards.values()) {
       if (show && grid) { if (tile.parentElement !== grid) grid.append(tile); }
       else if (tile.parentElement) tile.remove();
@@ -210,6 +211,7 @@
     inventoryRecords = []; inventoryHasSnapshot = false;
     for (const { tile } of fleetControllerCards.values()) tile.remove();
     fleetControllerCards.clear();
+    if (typeof window.updatePersonalControllerCount === 'function') window.updatePersonalControllerCount(null);
     for (const id of ['personal-controller-inventory-list', 'personal-controller-fleet-list']) {
       const list = byId(id); if (list) setText(list, '');
     }
