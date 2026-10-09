@@ -279,7 +279,7 @@ test('foreground change after address read removes its owned forward and discard
   const source = new BrowserSource({
     adb: { async devices() { return transport + '\tdevice'; }, async foreground() { return ++foreground < 3 ? 'BROWSER_SAMSUNG' : 'BROWSER_OTHER'; }, async forward() { return 41234; }, async remove() { removed++; } },
     json: async () => [{ type: 'page', webSocketDebuggerUrl: 'ws://localhost:41234/devtools/page/a' }],
-    evaluate: async (url, expression) => expression === 'location.href' ? 'https://curtbrag.com/' : 'visible',
+    evaluate: async (url, expression) => expression === 'location.href' ? 'https://curtbrag.com/' : expression === 'document.hasFocus()' ? true : 'visible',
   });
   assert.equal(await source.sample(registeredController(registry)), null); assert.equal(removed, 1);
 });
@@ -346,7 +346,7 @@ test('missing existing ADB server fails without launching any process or connect
 test('source reads only selected browser metadata and uses fixed Samsung socket', async () => {
   const calls = [], values = ['hidden', 'visible'];
   const adb = { async devices() { calls.push('devices'); return transport + '\tdevice'; }, async foreground() { return 'BROWSER_SAMSUNG'; }, async forward(serial, browser) { calls.push(browser); return 41234; }, async remove(port) { calls.push('remove:' + port); } };
-  const source = new BrowserSource({ adb, json: async url => { assert.equal(url, 'http://127.0.0.1:41234/json/list'); return [{ type: 'page', url: 'DO NOT CAPTURE BACKGROUND URL', title: 'DO NOT CAPTURE', webSocketDebuggerUrl: 'ws://localhost:41234/devtools/page/a' }, { type: 'page', url: 'DO NOT USE URL METADATA', webSocketDebuggerUrl: 'ws://localhost:41234/devtools/page/b' }]; }, evaluate: async (url, expression) => { calls.push({ url, expression }); if (expression === 'location.href') return 'https://curtbrag.com/gallery/'; return values.length ? values.shift() : 'visible'; } });
+  const source = new BrowserSource({ adb, json: async url => { assert.equal(url, 'http://127.0.0.1:41234/json/list'); return [{ type: 'page', url: 'DO NOT CAPTURE BACKGROUND URL', title: 'DO NOT CAPTURE', webSocketDebuggerUrl: 'ws://localhost:41234/devtools/page/a' }, { type: 'page', url: 'DO NOT USE URL METADATA', webSocketDebuggerUrl: 'ws://localhost:41234/devtools/page/b' }]; }, evaluate: async (url, expression) => { calls.push({ url, expression }); if (expression === 'location.href') return 'https://curtbrag.com/gallery/'; if (expression === 'document.hasFocus()') return true; return values.length ? values.shift() : 'visible'; } });
   assert.equal(await source.sample(registeredController(registry)), 'https://curtbrag.com/gallery/');
   assert.equal(calls.filter(call => call.expression === 'location.href').length, 1);
   assert.match(calls.find(call => call.expression === 'location.href').url, /\/b$/);
@@ -372,7 +372,7 @@ test('debugger endpoints are rewritten to this owned loopback port and reject ar
   for (const endpoint of ['ws://evil.com:41234/devtools/page/a', 'ws://localhost:1234/devtools/page/a', 'ws://user:pass@localhost:41234/devtools/page/a', 'ws://localhost:41234/devtools/browser/a', 'ws://localhost:41234/devtools/page/a?token=secret', 'wss://localhost:41234/devtools/page/a']) assert.throws(() => websocketAddress(endpoint, 41234));
 });
 
-test('CDP accepts only two fixed read-only expressions and strict metadata responses', async () => {
+test('CDP accepts only three fixed read-only expressions and strict metadata responses', async () => {
   const sent = [];
   class Socket extends EventEmitter {
     constructor() { super(); queueMicrotask(() => this.emit('open')); }
@@ -420,4 +420,146 @@ test('large queue history is bounded separately and discarded except for pending
     assert.equal(result.results.length, 1); assert.equal(result.results[0].job_id, 'pending-job'); assert.equal(Object.hasOwn(result.results[0], 'stderr'), false);
     assert.deepEqual(result.jobs, []); assert.equal(Object.hasOwn(result.nodes[0], 'secret'), false); assert.equal(JSON.stringify(result).includes('do not retain'), false);
   } finally { globalThis.fetch = originalFetch; }
+});
+
+
+function browserFixture({ targets = 41, json, evaluate, foreground } = {}) {
+  const calls = [], removes = [];
+  const pages = () => Array.from({ length: targets }, (_, index) => ({ type: 'page', url: 'NEVER READ BACKGROUND URL ' + index, title: 'NEVER READ CONTENT', webSocketDebuggerUrl: 'ws://localhost:41234/devtools/page/' + index }));
+  const source = new BrowserSource({
+    adb: { async devices() { return transport + '\tdevice'; }, async foreground() { return foreground ? foreground() : 'BROWSER_CHROME'; }, async forward() { return 41234; }, async remove(port) { removes.push(port); } },
+    json: async (...args) => json ? json(...args, pages) : pages(),
+    evaluate: async (url, expression, options) => { calls.push({ url, expression }); return evaluate(url, expression, options); },
+  });
+  return { source, calls, removes, controller: registeredController(registry) };
+}
+const timeoutFailure = () => Object.assign(Error('unverified connection'), { code: 'CDP_READ_TIMEOUT' });
+
+test('41-page Chrome with40 unknown timeouts reads only the positively visible focused page', async () => {
+  let reads = 0, maximum = 0, running = 0, jsonReads = 0;
+  const f = browserFixture({
+    json: async (url, options, pages) => { jsonReads++; return pages(); },
+    evaluate: async (url, expression, options) => {
+      if (!url.endsWith('/0')) {
+        assert.equal(options.timeoutMs, 1400);
+        assert.equal(expression, 'document.visibilityState');
+        running++; maximum = Math.max(maximum, running);
+        await new Promise(resolve => setImmediate(resolve)); running--; throw timeoutFailure();
+      }
+      if (expression === 'location.href') { reads++; return 'https://www.google.com/'; }
+      return expression === 'document.hasFocus()' ? true : 'visible';
+    },
+  });
+  assert.equal(await f.source.sample(f.controller), 'https://www.google.com/');
+  assert.equal(reads, 1); assert.equal(maximum, 8); assert.equal(running, 0); assert.equal(jsonReads, 2);
+  assert.equal(f.calls.filter(call => call.expression === 'document.hasFocus()').length, 2);
+  assert.equal(f.calls.some(call => call.expression !== 'document.visibilityState' && !call.url.endsWith('/0')), false);
+  assert.equal(JSON.stringify(f.calls).includes('NEVER READ'), false);
+  await f.source.cleanup(); assert.deepEqual(f.removes, [41234]);
+});
+
+test('timed-out pages never become hidden proof and a visible but unfocused page cannot yield a URL', async () => {
+  const f = browserFixture({ evaluate: async (url, expression) => {
+    if (!url.endsWith('/0')) throw timeoutFailure();
+    if (expression === 'location.href') assert.fail('Unfocused address must not be read');
+    return expression === 'document.hasFocus()' ? false : 'visible';
+  } });
+  assert.equal(await f.source.sample(f.controller), null);
+  assert.equal(f.calls.some(call => call.expression === 'location.href'), false); assert.deepEqual(f.removes, [41234]);
+});
+
+test('focus loss after address read discards the address and cleans only its owned forward', async () => {
+  let focused = true, reads = 0;
+  const f = browserFixture({ targets: 1, evaluate: async (url, expression) => {
+    if (expression === 'document.hasFocus()') return focused;
+    if (expression === 'location.href') { reads++; focused = false; return 'https://www.google.com/'; }
+    return 'visible';
+  } });
+  assert.equal(await f.source.sample(f.controller), null); assert.equal(reads, 1); assert.deepEqual(f.removes, [41234]);
+});
+
+test('Stop during focused-page proof prevents the address read', async () => {
+  let active = true;
+  const f = browserFixture({ targets: 1, evaluate: async (url, expression) => {
+    if (expression === 'document.hasFocus()') { active = false; return true; }
+    if (expression === 'location.href') assert.fail('Stopped address must not be read');
+    return 'visible';
+  } });
+  await assert.rejects(f.source.sample(f.controller, async () => active));
+  assert.equal(f.calls.some(call => call.expression === 'location.href'), false); assert.deepEqual(f.removes, [41234]);
+});
+
+test('a new target during uncertain discovery postpones sampling without reading an address', async () => {
+  let discovery = 0;
+  const f = browserFixture({ targets: 2,
+    json: async (url, options, pages) => { const result = pages(); if (++discovery > 1) result.push({ type: 'page', webSocketDebuggerUrl: 'ws://localhost:41234/devtools/page/new' }); return result; },
+    evaluate: async (url, expression) => { if (url.endsWith('/1')) throw timeoutFailure(); assert.equal(expression, 'document.visibilityState'); return 'visible'; },
+  });
+  assert.equal(await f.source.sample(f.controller), null); assert.equal(f.calls.some(call => call.expression === 'location.href'), false); assert.deepEqual(f.removes, [41234]);
+});
+
+test('closed uncertain targets are revalidated but unknown live-page errors still fail closed', async () => {
+  for (const retained of [false, true]) {
+    let discovery = 0;
+    const f = browserFixture({ targets: 2,
+      json: async (url, options, pages) => { const result = pages(); if (++discovery > 1 && !retained) result.pop(); return result; },
+      evaluate: async (url, expression) => {
+        if (url.endsWith('/1')) throw Error('generic/private response cannot be trusted');
+        if (expression === 'location.href') return 'https://www.google.com/';
+        return expression === 'document.hasFocus()' ? true : 'visible';
+      },
+    });
+    if (retained) { await assert.rejects(f.source.sample(f.controller)); assert.equal(f.calls.some(call => call.expression === 'location.href'), false); }
+    else { assert.equal(await f.source.sample(f.controller), 'https://www.google.com/'); await f.source.cleanup(); }
+    assert.deepEqual(f.removes, [41234]);
+  }
+});
+
+test('discovery bound is128 and duplicate endpoint identities never yield an address', async () => {
+  for (const targets of [128, 129]) {
+    const f = browserFixture({ targets, evaluate: async () => 'hidden' });
+    if (targets === 128) assert.equal(await f.source.sample(f.controller), null);
+    else await assert.rejects(f.source.sample(f.controller));
+    assert.equal(f.calls.some(call => call.expression === 'location.href'), false); assert.deepEqual(f.removes, [41234]);
+  }
+  const f = browserFixture({ targets: 2, json: async (url, options, pages) => { const result = pages(); result[1] = result[0]; return result; }, evaluate: async () => assert.fail('Duplicate targets must not be evaluated') });
+  await assert.rejects(f.source.sample(f.controller)); assert.deepEqual(f.removes, [41234]);
+});
+
+test('focus metadata requires a native boolean and timeouts expose only a bounded failure classification', async () => {
+  for (const value of [true, false, 'true', 1, null]) {
+    class Socket extends EventEmitter {
+      constructor() { super(); queueMicrotask(() => this.emit('open')); }
+      addEventListener(name, fn) { this.on(name, fn); }
+      send(raw) { const message = JSON.parse(raw); assert.equal(message.params.expression, 'document.hasFocus()'); assert.equal(message.params.throwOnSideEffect, true); queueMicrotask(() => this.emit('message', { data: JSON.stringify({ id: 1, result: { result: { type: typeof value, value } } }) })); }
+      close() {}
+    }
+    if (typeof value === 'boolean') assert.equal(await evaluateMetadata('ws://127.0.0.1:41234/devtools/page/0', 'document.hasFocus()', { WebSocket: Socket }), value);
+    else await assert.rejects(evaluateMetadata('ws://127.0.0.1:41234/devtools/page/0', 'document.hasFocus()', { WebSocket: Socket }));
+  }
+  class Silent extends EventEmitter { constructor() { super(); queueMicrotask(() => this.emit('open')); } addEventListener(name, fn) { this.on(name, fn); } send() {} close() {} }
+  await assert.rejects(evaluateMetadata('ws://127.0.0.1:41234/devtools/page/0', 'document.visibilityState', { WebSocket: Silent, timeoutMs: 10 }), error => error.code === 'CDP_READ_TIMEOUT' && !error.message.includes('ws:'));
+});
+
+
+test('a closed visible candidate and a source change during fresh target revalidation never yield a URL', async () => {
+  for (const changedBrowser of [false, true]) {
+    let discovery = 0, foregroundReads = 0;
+    const f = browserFixture({ targets: 2,
+      foreground: () => ++foregroundReads > 1 && changedBrowser ? 'BROWSER_OTHER' : 'BROWSER_CHROME',
+      json: async (url, options, pages) => { const result = pages(); if (++discovery > 1) result.shift(); return result; },
+      evaluate: async (url, expression) => { if (url.endsWith('/1')) throw timeoutFailure(); assert.equal(expression, 'document.visibilityState'); return 'visible'; },
+    });
+    assert.equal(await f.source.sample(f.controller), null); assert.equal(f.calls.some(call => call.expression === 'location.href'), false); assert.deepEqual(f.removes, [41234]);
+  }
+});
+
+test('lease expiry while final focus/foreground verification is running discards the sampled URL', async () => {
+  let active = true, focusReads = 0, urlReads = 0;
+  const f = browserFixture({ targets: 1, evaluate: async (url, expression) => {
+    if (expression === 'document.hasFocus()') { if (++focusReads === 2) active = false; return true; }
+    if (expression === 'location.href') { urlReads++; return 'https://www.google.com/'; }
+    return 'visible';
+  } });
+  await assert.rejects(f.source.sample(f.controller, async () => active)); assert.equal(urlReads, 1); assert.deepEqual(f.removes, [41234]);
 });

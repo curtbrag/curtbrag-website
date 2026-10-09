@@ -195,15 +195,15 @@ async function readJson(url, { fetch: fetcher = globalThis.fetch, signal, timeou
 }
 
 function evaluateMetadata(url, expression, { WebSocket: Socket = globalThis.WebSocket, signal, timeoutMs = 4000 } = {}) {
-  if (!['document.visibilityState', 'location.href'].includes(expression)) return Promise.reject(safeFailure());
+  if (!['document.visibilityState', 'document.hasFocus()', 'location.href'].includes(expression)) return Promise.reject(safeFailure());
   return new Promise((resolve, reject) => {
     const socket = new Socket(url); let finished = false;
     const finish = (error, value) => {
       if (finished) return; finished = true; clearTimeout(timer); signal?.removeEventListener('abort', aborted);
       try { socket.close(); } catch (_) {}
-      error ? reject(safeFailure()) : resolve(value);
+      error ? reject(['CDP_CONTEXT_UNAVAILABLE', 'CDP_READ_TIMEOUT'].includes(error?.code) ? error : safeFailure()) : resolve(value);
     };
-    const aborted = () => finish(true), timer = setTimeout(() => finish(true), timeoutMs);
+    const aborted = () => finish(true), timer = setTimeout(() => finish(Object.assign(safeFailure(), { code: 'CDP_READ_TIMEOUT' })), timeoutMs);
     signal?.addEventListener('abort', aborted, { once: true });
     if (signal?.aborted) return finish(true);
     socket.addEventListener('open', () => {
@@ -213,8 +213,15 @@ function evaluateMetadata(url, expression, { WebSocket: Socket = globalThis.WebS
       if (typeof event.data !== 'string' || event.data.length > 8192) return finish(true);
       let message; try { message = JSON.parse(event.data); } catch (_) { return finish(true); }
       if (message.id !== 1) return;
-      if (message.error || message.result?.exceptionDetails || message.result?.result?.type !== 'string' || typeof message.result.result.value !== 'string') return finish(true);
-      const value = message.result.result.value;
+      if (message.error?.code === -32000 && /^(?:Cannot find default execution context|Cannot find context with specified id|Execution context was destroyed\.?|Inspected target navigated or closed\.?)$/.test(message.error.message || '')) return finish(Object.assign(safeFailure(), { code: 'CDP_CONTEXT_UNAVAILABLE' }));
+      if (message.error || message.result?.exceptionDetails) return finish(true);
+      const result = message.result?.result;
+      if (expression === 'document.hasFocus()') {
+        if (result?.type !== 'boolean' || typeof result.value !== 'boolean') return finish(true);
+        return finish(false, result.value);
+      }
+      if (result?.type !== 'string' || typeof result.value !== 'string') return finish(true);
+      const value = result.value;
       if (expression === 'document.visibilityState' && !['hidden', 'visible'].includes(value)) return finish(true);
       finish(false, value);
     });
@@ -243,35 +250,60 @@ class BrowserSource {
       if (!this.forwarding) this.forwarding = { serial, browser, port: await this.adb.forward(serial, browser) };
       const port = this.forwarding.port;
       await check();
-      const raw = await this.json('http://127.0.0.1:' + port + '/json/list', { signal });
-      if (!Array.isArray(raw) || raw.length > 128) throw safeFailure();
-      // Keep only debugger endpoint strings. Discard URL/title/description and
-      // every other target property without logging or retaining them.
-      const pages = raw.filter(target => target?.type === 'page').map(target => websocketAddress(target.webSocketDebuggerUrl, port));
-      if (new Set(pages).size !== pages.length || pages.length > 32) throw safeFailure();
-      raw.length = 0;
-      const visible = []; let next = 0;
+      const pageEndpoints = async () => {
+        const raw = await this.json('http://127.0.0.1:' + port + '/json/list', { signal });
+        if (!Array.isArray(raw) || raw.length > 128) throw safeFailure();
+        // Keep only debugger endpoint strings; never use URL/title metadata.
+        const pages = raw.filter(target => target?.type === 'page').map(target => websocketAddress(target.webSocketDebuggerUrl, port));
+        raw.length = 0;
+        if (new Set(pages).size !== pages.length) throw safeFailure();
+        return pages;
+      };
+      const pages = await pageEndpoints(), visible = [], failures = new Map(); let next = 0;
       // Eight bounded readers avoid a many-tab browser delaying Stop for minutes.
       // Join all readers before removing the forward, including on failure.
       const readers = Array.from({ length: Math.min(8, pages.length) }, async () => {
         try {
           while (next < pages.length) {
             const endpoint = pages[next++]; await check();
-            if (await this.evaluate(endpoint, 'document.visibilityState', { signal }) === 'visible') visible.push(endpoint);
+            try {
+              if (await this.evaluate(endpoint, 'document.visibilityState', { signal, timeoutMs: 1400 }) === 'visible') visible.push(endpoint);
+            } catch (error) { if (signal.aborted) throw error; failures.set(endpoint, error); }
           }
         } catch (_) { aborted.abort(); throw safeFailure(); }
       });
       const settled = await Promise.allSettled(readers);
       if (settled.some(item => item.status === 'rejected')) throw safeFailure();
+      if (failures.size) {
+        await check();
+        if (await this.adb.foreground(serial) !== browser) { await this.cleanup(); return null; }
+        const refreshed = new Set(await pageEndpoints());
+        // New targets require a fresh full discovery next tick. Never read the
+        // old visible address while an unexamined page may have appeared.
+        if ([...refreshed].some(endpoint => !pages.includes(endpoint))) { await this.cleanup(); return null; }
+        for (let index = visible.length - 1; index >= 0; index--) if (!refreshed.has(visible[index])) visible.splice(index, 1);
+        // A timeout is unknown, not evidence that a tab is hidden. Chrome can
+        // freeze background documents, which need not answer Runtime.evaluate.
+        // Only a positively visible AND system-focused page below may supply
+        // an address. Malformed or otherwise unverified responses still block.
+        for (const [endpoint, error] of failures) {
+          if (refreshed.has(endpoint) && !['CDP_CONTEXT_UNAVAILABLE', 'CDP_READ_TIMEOUT'].includes(error?.code)) throw safeFailure();
+        }
+      }
       if (visible.length !== 1) { await this.cleanup(); return null; }
       // Stop or an expired lease during visibility discovery must prevent the
       // actual address read, even when an earlier page was visible.
       await check();
       if (await this.adb.foreground(serial) !== browser) { await this.cleanup(); return null; }
       await check();
+      if (await this.evaluate(visible[0], 'document.hasFocus()', { signal }) !== true) { await this.cleanup(); return null; }
+      await check();
+      if (await this.evaluate(visible[0], 'document.visibilityState', { signal }) !== 'visible') { await this.cleanup(); return null; }
+      await check();
       const url = await this.evaluate(visible[0], 'location.href', { signal });
       await check();
-      if (await this.evaluate(visible[0], 'document.visibilityState', { signal }) !== 'visible' || await this.adb.foreground(serial) !== browser) { await this.cleanup(); return null; }
+      if (await this.evaluate(visible[0], 'document.visibilityState', { signal }) !== 'visible' || await this.evaluate(visible[0], 'document.hasFocus()', { signal }) !== true || await this.adb.foreground(serial) !== browser) { await this.cleanup(); return null; }
+      await check();
       return validateUrl(url);
     } catch (_) { aborted.abort(); await this.cleanup().catch(() => {}); throw safeFailure(); }
   }
