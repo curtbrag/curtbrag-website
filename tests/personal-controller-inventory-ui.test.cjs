@@ -19,6 +19,7 @@ function fixture(options = {}) {
   class Events {
     constructor() { this.listeners = new Map(); }
     addEventListener(type, callback) { if (!this.listeners.has(type)) this.listeners.set(type, []); this.listeners.get(type).push(callback); }
+    removeEventListener(type, callback) { this.listeners.set(type, (this.listeners.get(type) || []).filter(listener => listener !== callback)); }
     async emit(type, event = {}) { event.preventDefault ||= () => { event.prevented = true; }; for (const callback of this.listeners.get(type) || []) await callback(event); }
   }
   class Element extends Events {
@@ -29,7 +30,8 @@ function fixture(options = {}) {
     set textContent(value) { this._text = String(value); for (const child of this.children) child.parentElement = null; this.children = []; mutation(this, 'childList'); }
     get innerHTML() { forbidden.push('read innerHTML'); throw new Error('HTML access is forbidden'); }
     set innerHTML(value) { forbidden.push('write innerHTML'); throw new Error('HTML rendering is forbidden'); }
-    append(...children) { for (const child of children) { child.parentElement = this; this.children.push(child); } mutation(this, 'childList'); }
+    append(...children) { for (const child of children) { child.remove(); child.parentElement = this; this.children.push(child); } mutation(this, 'childList'); }
+    remove() { const parent = this.parentElement; if (parent) { parent.children.splice(parent.children.indexOf(this), 1); this.parentElement = null; mutation(parent, 'childList'); } }
     insertBefore(child, before) { child.parentElement = this; const index = this.children.indexOf(before); if (index < 0) this.children.push(child); else this.children.splice(index, 0, child); mutation(this, 'childList'); }
     insertAdjacentElement(where, child) { assert.equal(where, 'afterend'); const list = this.parentElement.children; list.splice(list.indexOf(this) + 1, 0, child); child.parentElement = this.parentElement; mutation(this.parentElement, 'childList'); }
     setAttribute(name, value) { this.attributes[name] = String(value); if (name.startsWith('data-')) this.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = String(value); mutation(this, 'attributes', name); }
@@ -68,6 +70,7 @@ function fixture(options = {}) {
     nodeCount = make('span', 'swarm-nodes-online', '13 / 13');
     fleet = make('section', 'cluster-view-fleet');
     workerCard = make('div', 'existing-worker-card'); workerCard.append(make('h3', null, 'Workers'));
+    const filter = make('select', 'swarm-node-filter'); filter.value = 'all'; workerCard.append(filter);
     nodeGrid = make('div', 'swarm-nodes'); nodeGrid.setAttribute('data-connection', 'live');
     for (let index = 0; index < 13; index++) nodeGrid.append(make('div', null, 'canonical-worker-' + index));
     workerCard.append(nodeGrid); fleet.append(workerCard); workspace.append(fleetTab, nodeCount, fleet);
@@ -99,7 +102,9 @@ function fixture(options = {}) {
   const settle = async () => { let cycles = 0; for (let turn = 0; turn < 5; turn++) { await Promise.resolve(); cycles += flush(); } return cycles; };
   const setVisible = visible => { panel.style.display = visible ? 'block' : 'none'; mutation(panel, 'attributes', 'style'); flush(); };
   const renderWorkers = () => { nodeGrid.textContent = ''; for (let index = 0; index < 13; index++) nodeGrid.append(make('div', null, 'updated-worker-' + index)); nodeGrid.setAttribute('data-connection', 'live'); flush(); };
-  return { get, requests, forbidden, window, document, devices, table, workers, queue, fill, submit, flush, settle, setVisible, addFleet, renderWorkers, observers, setApi: api => { implementation = api; } };
+  const filterWorkers = async value => { const filter = get('swarm-node-filter'); filter.value = value; renderWorkers(); await filter.emit('change', { target: filter }); flush(); };
+  const gridControllers = () => (get('swarm-nodes')?.children || []).filter(node => node.dataset.personalControllerId !== undefined);
+  return { get, requests, forbidden, window, document, devices, table, workers, queue, fill, submit, flush, settle, setVisible, addFleet, renderWorkers, filterWorkers, gridControllers, observers, setApi: api => { implementation = api; } };
 }
 const controller = overrides => ({ controller_id: 'curtis-s26-ultra', name: 'Curtis S26 Ultra', model: 'Samsung Galaxy S26 Ultra', private_ip: '192.168.1.88', adb_connect_port: 37129, role: 'personal-controller', worker_enabled: false, mining_enabled: false, registered_at: 1791480000000, ...overrides });
 const pending = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -239,17 +244,18 @@ test('generic form starts blank and derives stable IDs from names without hardco
   h.fill({ name: 'Élodie phone', controller_id: '' }); await h.submit(); assert.equal(h.requests[2][2].controller_id, 'elodie-phone');
   h.fill({ name: 'Another phone', controller_id: 'my-explicit-id' }); await h.submit(); assert.equal(h.requests[3][2].controller_id, 'my-explicit-id');
 });
-test('normal and personal dashboards load one separate registered Fleet tile while keeping 13 workers', async () => {
+test('normal and personal dashboards show a registered personal controller in Workers without changing 13 workers', async () => {
   for (const search of ['', '?controller=personal']) {
     const h = fixture({ fleet: true, search, api: async () => ({ controllers: [controller({ model: 'SM-S948U' })] }) }); await h.settle();
     assert.deepEqual(h.requests, [['personal-controllers']]);
     const tileSection = h.get('personal-controller-fleet'); const workerCard = h.get('existing-worker-card');
     assert.equal(tileSection.parentElement.id, 'cluster-view-fleet'); assert.equal(workerCard.nextElementSibling, tileSection);
-    const tile = h.get('personal-controller-fleet-list').children[0];
+    const tile = h.gridControllers()[0]; assert.equal(tile.parentElement.id, 'swarm-nodes');
     assert.match(tile.textContent, /Curtis S26 UltraREGISTERED/); assert.match(tile.textContent, /Personal controller · SM-S948U/);
     assert.match(tile.textContent, /Saved connection: 192\.168\.1\.88:37129/); assert.match(tile.textContent, /Last registered:/);
     assert.doesNotMatch(tile.textContent, /ONLINE|OFFLINE|heartbeat|seen .*ago|worker ready|agent|pid/i);
-    assert.equal(h.get('swarm-nodes').children.length, 13); assert.equal(h.get('swarm-nodes-online').textContent, '13 / 13');
+    assert.equal(h.get('swarm-nodes').children.length, 14); assert.equal(h.get('swarm-nodes-online').textContent, '13 / 13');
+    assert.equal(h.get('personal-controller-fleet-list').children.length, 0); assert.equal(h.get('personal-controller-fleet-list').textContent, '1 personal controller shown in Workers above.');
     assert.equal(h.queue.textContent, 'existing worker/group targets'); assert.deepEqual(h.forbidden, []);
   }
 });
@@ -260,23 +266,36 @@ test('signed-out Fleet makes zero reads, sign-in starts one bounded read and no 
   assert.deepEqual(h.requests, [['personal-controllers']]); assert.equal(h.get('personal-controller-fleet-refresh').disabled, true);
   wait.resolve({ controllers: [controller()] }); await h.settle();
   h.renderWorkers(); await h.get('cluster-view-tab-fleet').click(); await h.window.emit('pageshow'); await h.settle();
-  assert.equal(h.requests.length, 1); assert.equal(h.get('personal-controller-fleet-list').children.length, 1);
-  assert.equal(h.get('swarm-nodes').children.length, 13); assert.equal(h.get('swarm-nodes-online').textContent, '13 / 13');
+  assert.equal(h.requests.length, 1); assert.equal(h.gridControllers().length, 1);
+  assert.equal(h.get('swarm-nodes').children.length, 14); assert.equal(h.get('swarm-nodes-online').textContent, '13 / 13');
 });
-test('worker rerender/filter replacements leave mirrored controller tile intact with no extra API request', async () => {
-  const h = fixture({ fleet: true, search: '?controller=personal', api: async () => ({ controllers: [controller()] }) }); await h.settle();
-  const tile = h.get('personal-controller-fleet-list').children[0];
-  for (let index = 0; index < 4; index++) { h.renderWorkers(); assert.ok((await h.settle()) < 5); }
-  assert.equal(h.get('personal-controller-fleet-list').children[0], tile); assert.deepEqual(h.requests, [['personal-controllers']]);
-  assert.equal(h.get('personal-controller-fleet').children.some(node => node.tagName === 'SELECT'), false);
-  assert.equal(h.get('swarm-nodes-online').textContent, '13 / 13'); assert.equal(h.table.textContent, 'existing worker table');
+test('worker repaints restore the same cached card without extra requests or observer feedback', async () => {
+  for (const search of ['', '?controller=personal']) {
+    const h = fixture({ fleet: true, search, api: async () => ({ controllers: [controller()] }) }); await h.settle();
+    const tile = h.gridControllers()[0];
+    for (let index = 0; index < 8; index++) { h.renderWorkers(); assert.ok((await h.settle()) < 5); assert.equal(h.gridControllers()[0], tile); assert.equal(h.gridControllers().length, 1); }
+    assert.deepEqual(h.requests, [['personal-controllers']]);
+    assert.equal(h.get('swarm-nodes-online').textContent, '13 / 13'); assert.equal(h.table.textContent, 'existing worker table');
+  }
+});
+test('only All shows registered controllers; status filters retain worker meaning without fetching', async () => {
+  const h = fixture({ fleet: true, api: async () => ({ controllers: [controller()] }) }); await h.settle();
+  const tile = h.gridControllers()[0];
+  for (const filter of ['online', 'offline', 'busy']) {
+    await h.filterWorkers(filter); assert.equal(h.gridControllers().length, 0); assert.equal(h.get('swarm-nodes').children.length, 13);
+    assert.match(h.get('personal-controller-fleet-list').textContent, /Select All in Workers/);
+    h.renderWorkers(); await h.settle(); assert.equal(h.gridControllers().length, 0);
+    await h.filterWorkers('all'); assert.equal(h.gridControllers()[0], tile); assert.equal(h.get('swarm-nodes').children.length, 14);
+  }
+  assert.deepEqual(h.requests, [['personal-controllers']]); assert.equal(h.get('swarm-nodes-online').textContent, '13 / 13');
 });
 test('late Fleet layout construction triggers a single authenticated load and mounts one tile section', async () => {
   const h = fixture({ fleet: true, lateFleet: true, api: async () => ({ controllers: [controller()] }) });
   assert.deepEqual(h.requests, []); h.addFleet(); await h.settle();
-  assert.deepEqual(h.requests, [['personal-controllers']]); assert.equal(h.get('personal-controller-fleet-list').children.length, 1);
+  assert.deepEqual(h.requests, [['personal-controllers']]); assert.equal(h.gridControllers().length, 1);
   await h.window.emit('pageshow'); h.flush();
   assert.equal(h.get('cluster-view-fleet').children.filter(node => node.id === 'personal-controller-fleet').length, 1); assert.equal(h.requests.length, 1);
+  h.renderWorkers(); await h.settle(); assert.equal(h.gridControllers().length, 1); assert.equal(h.requests.length, 1);
 });
 test('Fleet errors stay visible in both views without automatic retry; explicit Fleet refresh can recover', async () => {
   const h = fixture({ fleet: true, api: async () => { throw new Error('Controller inventory temporarily unavailable.'); } }); await h.settle();
@@ -286,26 +305,27 @@ test('Fleet errors stay visible in both views without automatic retry; explicit 
   h.renderWorkers(); await h.window.emit('online'); await h.window.emit('pageshow'); await h.get('cluster-view-tab-fleet').click(); await h.settle();
   assert.equal(h.requests.length, 1);
   h.setApi(async () => ({ controllers: [controller()] })); await h.get('personal-controller-fleet-refresh').click(); await h.settle();
-  assert.equal(h.requests.length, 2); assert.equal(h.get('personal-controller-fleet-list').children.length, 1); assert.equal(h.get('personal-controller-fleet-status').dataset.error, '0');
+  assert.equal(h.requests.length, 2); assert.equal(h.gridControllers().length, 1); assert.equal(h.get('personal-controller-fleet-status').dataset.error, '0');
 });
 test('Devices refresh and explicit registration mirror saved records on Fleet without worker enrollment', async () => {
   const h = fixture({ fleet: true, api: async () => ({ controllers: [] }) }); await h.settle();
   h.setApi(async action => action === 'personal-controllers' ? { controllers: [controller({ name: 'Saved phone' })] } : { ok: true, created: true, controller: controller() });
   await h.get('personal-controller-inventory-refresh').click();
-  assert.match(h.get('personal-controller-fleet-list').textContent, /Saved phone/);
+  assert.match(h.gridControllers()[0].textContent, /Saved phone/);
   h.fill(); await h.submit(); await h.settle();
-  assert.match(h.get('personal-controller-fleet-list').textContent, /Curtis S26 UltraREGISTERED/); assert.equal(h.get('personal-controller-fleet-list').children.length, 1);
+  assert.match(h.gridControllers()[0].textContent, /Curtis S26 UltraREGISTERED/); assert.equal(h.gridControllers().length, 1);
   assert.deepEqual(h.requests.map(args => args[0]), ['personal-controllers', 'personal-controllers', 'register-personal-controller']);
-  assert.equal(h.get('swarm-nodes').children.length, 13); assert.equal(h.get('swarm-nodes-online').textContent, '13 / 13'); assert.equal(h.queue.textContent, 'existing worker/group targets');
+  assert.equal(h.get('swarm-nodes').children.length, 14); assert.equal(h.get('swarm-nodes-online').textContent, '13 / 13'); assert.equal(h.queue.textContent, 'existing worker/group targets');
 });
 test('sign-out clears both views and entered connection details and rejects an earlier-session response', async () => {
   const late = pending(); const h = fixture({ fleet: true, api: async () => ({ controllers: [controller()] }) }); await h.settle(); h.fill();
   h.setApi(() => late.promise); const oldRead = h.get('personal-controller-fleet-refresh').click();
   h.setVisible(false); assert.equal(h.get('personal-controller-fleet-list').textContent, ''); assert.equal(h.get('personal-controller-inventory-list').textContent, '');
+  assert.equal(h.gridControllers().length, 0); assert.equal(h.get('swarm-nodes').children.length, 13);
   assert.equal(h.get('personal-controller-input-private_ip').value, ''); assert.equal(h.get('personal-controller-input-adb_connect_port').value, '');
   h.setApi(async () => ({ controllers: [controller({ name: 'New session phone' })] })); h.setVisible(true); await h.settle();
   late.resolve({ controllers: [controller({ name: 'Old private session record' })] }); await oldRead; await h.settle();
-  assert.match(h.get('personal-controller-fleet-list').textContent, /New session phone/); assert.doesNotMatch(h.document.body.textContent, /Old private session record/);
+  assert.match(h.gridControllers()[0].textContent, /New session phone/); assert.doesNotMatch(h.document.body.textContent, /Old private session record/);
   assert.equal(h.requests.length, 3); assert.equal(h.get('personal-controller-fleet-refresh').disabled, false);
 });
 test('pending registration receipt after sign-out cannot repopulate private records', async () => {
@@ -313,6 +333,7 @@ test('pending registration receipt after sign-out cannot repopulate private reco
   const registration = h.submit(); h.setVisible(false);
   late.resolve({ ok: true, created: true, controller: controller() }); await registration; await h.settle();
   assert.equal(h.get('personal-controller-fleet-list').textContent, ''); assert.equal(h.get('personal-controller-inventory-list').textContent, '');
+  assert.equal(h.gridControllers().length, 0);
   assert.deepEqual(h.requests.map(args => args[0]), ['personal-controllers', 'register-personal-controller']);
 });
 test('pagehide stops inventory watchers and pageshow reconnects without a new read for an existing session', async () => {
@@ -320,4 +341,30 @@ test('pagehide stops inventory watchers and pageshow reconnects without a new re
   assert.ok(h.observers.every(observer => observer.targets.length === 0));
   await h.window.emit('pageshow'); await h.settle(); assert.equal(h.requests.length, 1);
   assert.ok(h.observers.some(observer => observer.targets.some(target => target.element.id === 'panel')));
+  assert.ok(h.observers.some(observer => observer.targets.some(target => target.element.id === 'swarm-nodes')));
+  h.renderWorkers(); assert.equal(h.gridControllers().length, 1); assert.equal(h.requests.length, 1);
+});
+test('repeated registry snapshots reuse one card per ID and reset removes saved cards only', async () => {
+  const saved = [controller(), controller({ controller_id: 'kitchen-phone', name: 'Kitchen phone' })];
+  const h = fixture({ fleet: true, api: async () => ({ controllers: saved }) }); await h.settle();
+  const original = [...h.gridControllers()]; assert.equal(original.length, 2);
+  for (let count = 0; count < 3; count++) { await h.get('personal-controller-fleet-refresh').click(); await h.settle(); assert.deepEqual(h.gridControllers(), original); }
+  assert.equal(h.get('swarm-nodes').children.length, 15); assert.equal(h.get('personal-controller-fleet-list').children.length, 0);
+  h.setApi(async () => ({ controllers: [] })); await h.get('personal-controller-fleet-refresh').click(); await h.settle(); h.renderWorkers();
+  assert.equal(h.gridControllers().length, 0); assert.equal(h.get('swarm-nodes').children.length, 13); assert.match(h.get('personal-controller-fleet-list').textContent, /No personal controllers/);
+});
+test('duplicate registry IDs are rejected without replacing or multiplying verified cards', async () => {
+  const h = fixture({ fleet: true, api: async () => ({ controllers: [controller()] }) }); await h.settle(); const original = h.gridControllers()[0];
+  h.setApi(async () => ({ controllers: [controller(), controller({ name: 'Conflicting duplicate' })] }));
+  await h.get('personal-controller-fleet-refresh').click(); await h.settle();
+  assert.deepEqual(h.gridControllers(), [original]); assert.match(h.get('personal-controller-fleet-status').textContent, /could not be verified/);
+});
+test('expired authentication clears cached cards and fields without altering auth or auto retrying', async () => {
+  for (const failure of [new Error('Session expired. Sign in again.'), Object.assign(new Error('Owner authentication required.'), { status: 401 })]) {
+    const h = fixture({ fleet: true, api: async () => ({ controllers: [controller()] }) }); await h.settle(); h.fill();
+    h.setApi(async () => { throw failure; }); await h.get('personal-controller-fleet-refresh').click(); await h.settle();
+    assert.equal(h.gridControllers().length, 0); assert.equal(h.get('personal-controller-inventory-list').textContent, ''); assert.equal(h.get('personal-controller-input-private_ip').value, '');
+    h.renderWorkers(); await h.window.emit('pageshow'); await h.window.emit('online'); await h.settle();
+    assert.equal(h.gridControllers().length, 0); assert.equal(h.requests.length, 2); assert.deepEqual(h.forbidden, []);
+  }
 });
