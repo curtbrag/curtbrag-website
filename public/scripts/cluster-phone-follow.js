@@ -90,6 +90,7 @@
     const seen = typeof runner?.seen_at === 'number' && Number.isFinite(runner.seen_at) && runner.seen_at > 0;
     const stale = seen && (Date.now() - runner.seen_at > 30000 || runner.seen_at - Date.now() > 10000);
     let runnerText = !snapshot ? 'Main PC connection has not been checked.' : !following ? seen && !stale && runner.status === 'off' ? 'Main PC ready · following off.' : 'Main PC connection not confirmed · following off.' : 'Runner: ' + RUNNER_LABELS[runner.status] + (stale ? ' · last update is stale' : '') + '.';
+    if (following && runner.status === 'waiting' && seen && !stale) runnerText = 'Main PC connected · waiting for a supported browser page.';
     if (following && runner?.status === 'following' && !seen) runnerText = 'Runner: following was reported without a recent update time.';
     if (following && typeof runner?.message === 'string' && runner.message) runnerText += ' ' + runner.message.slice(0, 240);
     if (following && seen) runnerText += ' Last update: ' + time(runner.seen_at) + '.';

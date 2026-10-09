@@ -494,12 +494,12 @@ class PhoneFollower {
       const sessionId = this.session;
       const url = await this.source.sample(this.controller, () => this.fresh(sessionId));
       if (!await this.fresh(this.session)) { await this.clearLocal(); return; }
-      if (!url) { this.candidate = null; await this.report('waiting', 'Waiting for one visible supported browser page.'); return; }
+      if (!url) { this.candidate = null; await this.report('waiting', 'Waiting for one visible supported browser page.', undefined, this.navigation ?? undefined); return; }
       const checked = validateUrl(url);
       if (checked === this.lastUrl) { this.candidate = null; await this.report('following', 'Current address is unchanged. No repeated launch was requested.', this.lastUrl, this.navigation); return; }
       if (!this.candidate || this.candidate.url !== checked) this.candidate = { url: checked, at: this.now() };
       else if (this.now() - this.candidate.at >= 4000 && this.now() - this.lastFanout >= 10000) { this.candidate = null; await this.dispatch(checked); return; }
-      await this.report('waiting', 'Waiting for a stable public browser address.');
+      await this.report('waiting', 'Waiting for a stable public browser address.', undefined, this.navigation ?? undefined);
     } catch (_) {
       this.candidate = null;
       await this.source.cleanup().catch(() => {});

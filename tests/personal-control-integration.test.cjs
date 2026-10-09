@@ -42,7 +42,7 @@ test('Layout preserves the released controller additions and updates the command
   for (const addition of [
     "const clusterDashboardPage = /^\\/cluster\\/dashboard\\/?$/.test(Astro.url.pathname);\n",
     '    {clusterDashboardPage && <link rel="stylesheet" href="/styles/cluster-phone-follow.css?v=1" />}\n',
-    '\n    {clusterDashboardPage && <script is:inline src="/scripts/cluster-phone-follow.js?v=1"></script>}',
+    '\n    {clusterDashboardPage && <script is:inline src="/scripts/cluster-phone-follow.js?v=2"></script>}',
     route + '\n',
     '    {clusterControlPage && <link rel="manifest" href="/cluster/controller.webmanifest" />}\n' +
       '    {clusterControlPage && <link rel="stylesheet" href="/styles/cluster-personal-control.css?v=4" />}\n\n',

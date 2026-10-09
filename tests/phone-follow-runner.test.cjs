@@ -199,11 +199,27 @@ test('waiting preserves the latest public link and pending checkpoint through re
   await s.follower.tick(); s.advance(); await s.follower.tick(); shown = false;
   s.advance(); await s.follower.tick();
   const update = s.calls.filter(call => call.action === 'phone-follow-runner-update').at(-1).body;
-  assert.equal(update.status, 'waiting'); assert.equal(Object.hasOwn(update, 'current_url'), false); assert.equal(Object.hasOwn(update, 'current_navigation'), false);
+  assert.equal(update.status, 'waiting'); assert.equal(Object.hasOwn(update, 'current_url'), false); assert.deepEqual(update.current_navigation, s.follow.current_navigation);
   assert.equal(s.follow.current_url, 'https://curtbrag.com/gallery/'); assert.equal(s.follow.current_navigation.units.length, 13);
   const restarted = new PhoneFollower(config, { api: s.follower.api, swarm: s.follower.swarm, source: s.follower.source, now: s.now });
   shown = true; await restarted.tick(); s.advance(); await restarted.tick();
   assert.equal(s.enqueues().length, 13); assert.equal(restarted.pending.size, 13);
+});
+
+test('completed receipts reach the dashboard while the browser is absent or a new address is settling', async () => {
+  for (const nextURL of [null, 'https://curtbrag.com/shop/']) {
+    let shown = 'https://curtbrag.com/gallery/';
+    const s = setup({ url: () => shown });
+    await s.follower.tick(); s.advance(); await s.follower.tick();
+    const job = s.enqueues().at(-1).body.job;
+    s.snapshot.results.push({ device_id: 'RenderRig', job_id: job.id, exit_code: 0, stdout: JSON.stringify({ kind: 'website-browser-open', url: shown, state: 'launch-requested', launch_requested: true, visible_screen_verified: false }) });
+    shown = nextURL; s.advance(); await s.follower.tick();
+    assert.equal(s.follow.runner.status, 'waiting');
+    assert.equal(s.follow.current_url, 'https://curtbrag.com/gallery/');
+    assert.equal(s.follow.current_navigation.units.at(-1).status, 'launch-requested');
+    assert.equal(s.follower.pending.has('RenderRig'), false);
+    assert.equal(s.enqueues().length, 13);
+  }
 });
 
 test('new navigation preserves earlier pending IDs even for busy/offline units across restart', async () => {
