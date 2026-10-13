@@ -37,6 +37,15 @@
 [build.environment]
   NODE_VERSION = "20"
 
+# Password entry is checked before routing, redirects, assets and functions.
+[[edge_functions]]
+  function = "site-login-limit"
+  path = "/_site/login"
+
+[[edge_functions]]
+  function = "site-lock"
+  path = "/*"
+
 # Host-based routing: teathetruth.com serves Tea's site via edge function
 [[edge_functions]]
   function = "tea-router"
@@ -183,3 +192,4 @@
   for = "/*.html"
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
+
