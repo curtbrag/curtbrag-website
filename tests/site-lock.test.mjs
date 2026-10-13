@@ -10,7 +10,7 @@ const HOST = 'https://curtbrag.com';
 function setup() {
   const entries = new Map(); let password = 'fixture-password', time = 100000, calls = 0;
   const store = { get: async key => entries.get(key) || null, setJSON: async (key, value) => entries.set(key, value), delete: async key => entries.delete(key) };
-  const handler = createSiteLock({ getPassword: async () => password, getSessions: () => store, now: () => time });
+  const handler = createSiteLock({ getPassword: async () => password, getSessions: () => store, getAPIKey: async () => 'fixture-worker-key', now: () => time });
   const context = { next: async () => { calls++; return new Response('private-content', { headers: { 'cache-control': 'public, max-age=31536000', 'surrogate-control': 'max-age=3600' } }); } };
   return { handler, context, entries, store, calls: () => calls, advance: ms => time += ms, password: value => password = value };
 }
@@ -105,4 +105,16 @@ test('browser submit can use JSON with a secure cookie, a safe destination and a
   const gate = await s.handler(new Request(HOST),s.context); const html = await gate.text();
   const nonce = /<script nonce="([a-f0-9]+)"/.exec(html)[1]; assert.ok(gate.headers.get('content-security-policy').includes("script-src 'nonce-"+nonce+"'"));
   assert.ok(gate.headers.get('content-security-policy').includes("connect-src 'self'"));
+});
+test('verified existing service credentials preserve API access without opening pages or files', async () => {
+  const s = setup();
+  for (const path of ['/api/cluster', '/.netlify/functions/swarm-core']) {
+    for (const headers of [{authorization:'Bearer fixture-worker-key'}, {'x-agent-token':'fixture-worker-key'}, {'x-cluster-key':'fixture-worker-key'}, {authorization:'Bearer fixture-password'}]) {
+      assert.equal((await s.handler(new Request(HOST + path,{headers}),s.context)).status,200);
+    }
+    assert.equal((await s.handler(new Request(HOST + path,{headers:{authorization:'Bearer wrong'}}),s.context)).status,401);
+  }
+  for (const path of ['/', '/gallery/', '/assets/logo_header.png', '/.netlify/images?url=/assets/logo_header.png']) {
+    assert.equal((await s.handler(new Request(HOST + path,{headers:{authorization:'Bearer fixture-worker-key'}}),s.context)).status,401);
+  }
 });

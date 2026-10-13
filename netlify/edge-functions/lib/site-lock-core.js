@@ -35,9 +35,9 @@ function cookie(value, seconds) {
 function response(body, status, extra = {}) {
   return new Response(body, { status, headers: { ...PRIVATE_HEADERS, ...extra } });
 }
-const SUBMIT_SCRIPT = `document.querySelector('form').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget,button=form.querySelector('button'),message=document.getElementById('sign-in-message');button.disabled=true;button.textContent='Openingâ€¦';message.hidden=true;try{const res=await fetch(form.action,{method:'POST',credentials:'same-origin',headers:{Accept:'application/json'},body:new URLSearchParams(new FormData(form))});const result=await res.json();if(!res.ok||result.ok!==true)throw new Error(result.error||'Unable to sign in. Please try again.');window.location.assign(result.redirect);}catch(error){message.textContent=error.message||'Unable to sign in. Please try again.';message.hidden=false;button.disabled=false;button.textContent='Enter site';}});`;
+const SUBMIT_SCRIPT = `document.querySelector('form').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget,button=form.querySelector('button'),message=document.getElementById('sign-in-message');button.disabled=true;button.textContent='Opening…';message.hidden=true;try{const res=await fetch(form.action,{method:'POST',credentials:'same-origin',headers:{Accept:'application/json'},body:new URLSearchParams(new FormData(form))});const result=await res.json();if(!res.ok||result.ok!==true)throw new Error(result.error||'Unable to sign in. Please try again.');window.location.assign(result.redirect);}catch(error){message.textContent=error.message||'Unable to sign in. Please try again.';message.hidden=false;button.disabled=false;button.textContent='Enter site';}});`;
 function page(target, message = '', nonce = '') {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>CurtBrag Â· Private site</title><style>body{margin:0;min-height:100svh;display:grid;place-items:center;background:#101113;color:#f5f5f5;font:16px system-ui,sans-serif}main{width:min(360px,calc(100% - 72px));padding:30px;background:#1b1c20;border:1px solid #34353a;border-radius:18px}h1{margin:0 0 12px;font-size:28px}p{color:#c5c7cb;line-height:1.5}label{display:block;margin-top:24px}input,button{box-sizing:border-box;width:100%;margin-top:10px;padding:14px;border-radius:9px;font:inherit}input{background:#101113;color:white;border:1px solid #62646a}button{background:#e51e2a;color:white;border:0;font-weight:700;cursor:pointer}.error{color:#ff9ea5}input:focus,button:focus{outline:3px solid #ffb1b6;outline-offset:3px}</style></head><body><main><h1>CurtBrag</h1><p>This site is private. Enter the password to continue.</p><p id="sign-in-message" class="error" role="alert"${message ? '' : ' hidden'}>${escape(message)}</p><form method="post" action="${LOGIN}"><input type="hidden" name="return" value="${escape(safeReturn(target))}"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required autofocus maxlength="256"><button type="submit">Enter site</button></form></main><script nonce="${nonce}">${SUBMIT_SCRIPT}</script></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>CurtBrag · Private site</title><style>body{margin:0;min-height:100svh;display:grid;place-items:center;background:#101113;color:#f5f5f5;font:16px system-ui,sans-serif}main{width:min(360px,calc(100% - 72px));padding:30px;background:#1b1c20;border:1px solid #34353a;border-radius:18px}h1{margin:0 0 12px;font-size:28px}p{color:#c5c7cb;line-height:1.5}label{display:block;margin-top:24px}input,button{box-sizing:border-box;width:100%;margin-top:10px;padding:14px;border-radius:9px;font:inherit}input{background:#101113;color:white;border:1px solid #62646a}button{background:#e51e2a;color:white;border:0;font-weight:700;cursor:pointer}.error{color:#ff9ea5}input:focus,button:focus{outline:3px solid #ffb1b6;outline-offset:3px}</style></head><body><main><h1>CurtBrag</h1><p>This site is private. Enter the password to continue.</p><p id="sign-in-message" class="error" role="alert"${message ? '' : ' hidden'}>${escape(message)}</p><form method="post" action="${LOGIN}"><input type="hidden" name="return" value="${escape(safeReturn(target))}"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required autofocus maxlength="256"><button type="submit">Enter site</button></form></main><script nonce="${nonce}">${SUBMIT_SCRIPT}</script></body></html>`;
 }
 function prompt(target, message = '', status = 401) {
   const nonce = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
@@ -61,7 +61,7 @@ function sameOrigin(request, url) {
   return request.headers.get('origin') === url.origin;
 }
 
-export function createSiteLock({ getPassword, getSessions, now = () => Date.now() }) {
+export function createSiteLock({ getPassword, getSessions, getAPIKey = async () => null, now = () => Date.now() }) {
   return async function siteLock(request, context) {
     const url = new URL(request.url);
     // Tea's separately hosted domain serves its own page, not CurtBrag content.
@@ -95,11 +95,24 @@ export function createSiteLock({ getPassword, getSessions, now = () => Date.now(
         if (wantsJSON) return response(JSON.stringify({ ok: true, redirect: destination }), 200, { 'content-type': 'application/json', 'set-cookie': cookie(newToken, SESSION_SECONDS) });
         return response(null, 303, { location: destination, 'set-cookie': cookie(newToken, SESSION_SECONDS) });
       }
-      if (!token) return prompt(target);
-      const session = await getSessions().get(await digest(token), { type: 'json', consistency: 'strong' });
-      if (!session || session.version !== 1 || session.host !== url.hostname || !Number.isFinite(session.expires) || session.expires <= now() || session.expires > now() + SESSION_SECONDS * 1000) return prompt(target);
-      const password = await getPassword();
-      if (!password || !await equal(session.passwordRevision, await digest(password))) return prompt(target);
+      // Existing authenticated service callers may reach APIs, never public pages or assets.
+      const isAPI = url.pathname.startsWith('/api/') || url.pathname.startsWith('/.netlify/functions/');
+      const auth = request.headers.get('authorization') || '';
+      const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+      const machineToken = bearer || request.headers.get('x-cluster-key') || request.headers.get('x-agent-token') || '';
+      let machineAuthorized = false;
+      if (isAPI && machineToken && machineToken.length <= 512) {
+        const password = bearer ? await getPassword() : null;
+        const key = await getAPIKey();
+        machineAuthorized = Boolean((password && await equal(bearer, password)) || (key && await equal(machineToken, key)));
+      }
+      if (!machineAuthorized) {
+        if (!token) return prompt(target);
+        const session = await getSessions().get(await digest(token), { type: 'json', consistency: 'strong' });
+        if (!session || session.version !== 1 || session.host !== url.hostname || !Number.isFinite(session.expires) || session.expires <= now() || session.expires > now() + SESSION_SECONDS * 1000) return prompt(target);
+        const password = await getPassword();
+        if (!password || !await equal(session.passwordRevision, await digest(password))) return prompt(target);
+      }
       const downstream = await context.next();
       const headers = new Headers(downstream.headers);
       for (const [name, value] of Object.entries(PRIVATE_HEADERS)) headers.set(name, value);
