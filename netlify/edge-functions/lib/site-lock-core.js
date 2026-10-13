@@ -75,6 +75,7 @@ export function createSiteLock({ getPassword, getSessions, getAPIKey = async () 
         if (!sameOrigin(request, url)) return response('Forbidden', 403);
         if (url.pathname === LOGOUT) {
           if (token) await getSessions().delete(await digest(token));
+          if (request.headers.get('accept')?.includes('application/json')) return response(JSON.stringify({ ok: true, redirect: '/' }), 200, { 'content-type': 'application/json', 'set-cookie': cookie('', 0) });
           return response(null, 303, { location: '/', 'set-cookie': cookie('', 0) });
         }
         if (!request.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded')) return response('Unsupported form', 415);

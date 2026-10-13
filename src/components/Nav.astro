@@ -1,245 +1,134 @@
 ---
-const currentPath = Astro.url.pathname;
-
-const navLinks = [
-  { href: '/', label: 'Home' },
-  { href: '/gallery', label: 'Gallery' },
-  { href: '/shop', label: 'Shop' },
-  { href: '/rig', label: 'Rig' },
-  { href: '/cluster', label: 'Cluster' },
-  { href: '/contact', label: 'Contact' },
+const path = Astro.url.pathname;
+const links = [
+  { href: '/', label: 'Home' }, { href: '/gallery/', label: 'Gallery' },
+  { href: '/shop/', label: 'Shop' }, { href: '/rig/', label: 'Rig' },
+  { href: '/cluster/', label: 'Cluster' }, { href: '/contact/', label: 'Contact' },
 ];
-
-function isActive(href: string): boolean {
-  if (href === '/') {
-    return currentPath === '/';
-  }
-  return currentPath.startsWith(href);
-}
+const pages = [
+  ...links.map(link => ({ ...link, detail: ({Home:'Your starting point',Gallery:'Cars, tools and builds',Shop:'Trading cards on eBay',Rig:'CYBERDYNE build and photos',Cluster:'Fleet overview',Contact:'Call, text or send a message'} as Record<string,string>)[link.label] })),
+  { href: '/cluster/dashboard/', label: 'Work dashboard', detail: 'Workers, assignments and results' },
+  { href: '/cluster/control/', label: 'Phone controller', detail: 'Cluster controls on your phone' },
+  { href: '/gallery/cars/', label: 'Cars gallery', detail: 'Customer cars and trucks' },
+  { href: '/gallery/snapon/', label: 'Snap-on gallery', detail: 'Tools, truck and memories' },
+  { href: '/addyourride/', label: 'Add your ride', detail: 'Submit a car or truck' },
+  { href: '/zelle/', label: 'Payment details', detail: 'Zelle payment information' },
+  { href: '/yougood/', label: 'You Good?', detail: 'Take a moment for yourself' },
+];
+const active = (href:string) => href === '/' ? path === '/' : path.replace(/\/$/,'') === href.replace(/\/$/,'') || path.startsWith(href);
 ---
-
-<header class="fixed top-0 left-0 right-0 z-50 bg-bg/80 backdrop-blur-xl border-b border-transparent">
-  <nav class="max-w-7xl mx-auto px-4 sm:px-6">
-    <div class="flex items-center justify-between h-16">
-      <!-- Logo -->
-      <a href="/" class="flex-shrink-0">
-        <img
-          src="/assets/logo_icon.png"
-          alt="CurtBrag Logo"
-          class="h-10 w-auto"
-          loading="eager"
-        />
-      </a>
-
-      <!-- Desktop Navigation -->
-      <div class="hidden md:flex items-center gap-1">
-        {navLinks.map((link) => (
-          <a
-            href={link.href}
-            class:list={[
-              'px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200',
-              isActive(link.href)
-                ? 'text-brand'
-                : 'text-text-secondary hover:text-brand',
-            ]}
-            aria-current={isActive(link.href) ? 'page' : undefined}
-          >
-            {link.label}
-          </a>
-        ))}
-      </div>
-
-      <!-- Mobile Hamburger Button -->
-      <button
-        type="button"
-        id="mobile-menu-open"
-        class="md:hidden relative w-10 h-10 flex items-center justify-center rounded-lg text-text-secondary hover:text-text hover:bg-panel transition-colors duration-200"
-        aria-label="Open navigation menu"
-        aria-expanded="false"
-        aria-controls="mobile-menu"
-      >
-        <div class="flex flex-col items-center justify-center gap-1.5">
-          <span class="block w-5 h-0.5 bg-current transition-transform duration-200"></span>
-          <span class="block w-5 h-0.5 bg-current transition-opacity duration-200"></span>
-          <span class="block w-5 h-0.5 bg-current transition-transform duration-200"></span>
-        </div>
-      </button>
+<header class="site-header">
+  <nav class="site-nav" aria-label="Main navigation">
+    <a class="site-brand" href="/" aria-label="CurtBrag home"><img src="/assets/logo_icon.png" alt="" width="66" height="50" loading="eager" /><span>CURTBRAG<small>TOOLS. BUILDS. IDEAS.</small></span></a>
+    <div class="site-desktop-links">{links.map(link => <a href={link.href} aria-current={active(link.href) ? 'page' : undefined}>{link.label}</a>)}</div>
+    <div class="site-nav-actions">
+      <button class="site-icon-button" type="button" data-open-site-search aria-label="Find a page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button>
+      <button class="site-lock-button" type="button" data-site-lock><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>Lock site</span></button>
+      <button id="mobile-menu-open" class="site-icon-button site-menu-toggle" type="button" aria-label="Open navigation menu" aria-expanded="false" aria-controls="mobile-menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
     </div>
   </nav>
-  <div class="nav-gradient-line"></div>
+  <p id="site-lock-error" class="site-lock-error" role="alert" hidden></p>
 </header>
-
-<!-- Spacer to account for fixed header -->
-<div class="h-16"></div>
-
-<!-- Mobile Menu Overlay -->
-<div
-  id="mobile-menu"
-  hidden
-  class="fixed inset-0 z-[60] overflow-hidden pointer-events-none opacity-0 transition-opacity duration-300 md:hidden"
-  aria-hidden="true"
-  role="dialog"
-  aria-modal="true"
-  aria-label="Navigation menu"
->
-  <!-- Dark Backdrop -->
-  <div
-    id="mobile-menu-backdrop"
-    class="absolute inset-0 bg-black/60 backdrop-blur-sm"
-  ></div>
-
-  <!-- Slide-in Panel -->
-  <div
-    id="mobile-menu-panel"
-    class="absolute top-0 right-0 h-full w-full max-w-sm bg-bg border-l border-border translate-x-full transition-transform duration-300 ease-out"
-  >
-    <!-- Mobile Menu Header -->
-    <div class="flex items-center justify-between h-16 px-4 sm:px-6 border-b border-border">
-      <a href="/" class="flex-shrink-0">
-        <img
-          src="/assets/logo_icon.png"
-          alt="CurtBrag Logo"
-          class="h-8 w-auto"
-          loading="lazy"
-        />
-      </a>
-      <button
-        type="button"
-        id="mobile-menu-close"
-        class="w-10 h-10 flex items-center justify-center rounded-lg text-text-secondary hover:text-text hover:bg-panel transition-colors duration-200"
-        aria-label="Close navigation menu"
-      >
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
-
-    <!-- Mobile Menu Links -->
-    <div class="px-4 sm:px-6 py-6">
-      <div class="flex flex-col gap-1">
-        {navLinks.map((link) => (
-          <a
-            href={link.href}
-            class:list={[
-              'flex items-center px-4 py-3.5 rounded-xl text-base font-medium transition-colors duration-200',
-              isActive(link.href)
-                ? 'text-brand bg-brand-glow'
-                : 'text-text-secondary hover:text-text hover:bg-panel',
-            ]}
-            aria-current={isActive(link.href) ? 'page' : undefined}
-          >
-            {link.label}
-          </a>
-        ))}
-      </div>
-
-      <!-- Mobile Menu Footer -->
-      <div class="mt-8 pt-6 border-t border-border">
-        <div class="flex items-center gap-4 px-4">
-          <a
-            href="https://www.instagram.com/curtbrag"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-muted hover:text-brand transition-colors duration-200"
-            aria-label="Instagram"
-          >
-            <i class="fa-brands fa-instagram text-xl"></i>
-          </a>
-          <a
-            href="https://www.tiktok.com/@curtbrag"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-muted hover:text-brand transition-colors duration-200"
-            aria-label="TikTok"
-          >
-            <i class="fa-brands fa-tiktok text-xl"></i>
-          </a>
-          <a
-            href="https://www.facebook.com/curtbrag"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-muted hover:text-brand transition-colors duration-200"
-            aria-label="Facebook"
-          >
-            <i class="fa-brands fa-facebook text-xl"></i>
-          </a>
-          <a
-            href="https://www.youtube.com/@curtbrag"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-muted hover:text-brand transition-colors duration-200"
-            aria-label="YouTube"
-          >
-            <i class="fa-brands fa-youtube text-xl"></i>
-          </a>
-        </div>
-        <div class="mt-4 px-4">
-          <a
-            href="tel:+17814170692"
-            class="text-sm text-muted hover:text-text-secondary transition-colors duration-200"
-          >
-            <i class="fa-solid fa-phone mr-2"></i>781-417-0692
-          </a>
-        </div>
-      </div>
-    </div>
+<div id="mobile-menu" class="site-mobile-menu" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="Navigation menu">
+  <div id="mobile-menu-backdrop" class="site-menu-backdrop"></div>
+  <div id="mobile-menu-panel" class="site-menu-panel">
+    <div class="site-menu-heading"><span class="site-eyebrow">YOUR WORKSPACE</span><button id="mobile-menu-close" type="button" class="site-icon-button" aria-label="Close navigation menu">×</button></div>
+    <nav aria-label="Mobile navigation">{links.map(link => <a href={link.href} aria-current={active(link.href) ? 'page' : undefined}>{link.label}<span aria-hidden="true">↗</span></a>)}</nav>
+    <div class="site-menu-shortcuts"><a href="/cluster/dashboard/">Work dashboard →</a><a href="/cluster/control/">Phone controller →</a></div>
+    <p class="site-menu-note">Private access · Curtis Bragdon<br/><a href="tel:+17814170692">781-417-0692</a></p>
   </div>
 </div>
-
+<dialog id="site-search" class="site-search-dialog" aria-labelledby="site-search-title">
+  <div class="site-search-top"><h2 id="site-search-title">Find your next stop.</h2><button type="button" class="site-icon-button" data-close-site-search aria-label="Close page search">×</button></div>
+  <label class="sr-only" for="site-search-input">Search pages</label>
+  <input id="site-search-input" type="search" placeholder="Search pages, galleries, controls…" autocomplete="off" />
+  <p id="site-search-count" class="site-search-count" role="status"></p>
+  <div class="site-search-results">{pages.map(page => <a href={page.href} data-site-search-item data-search-text={`${page.label} ${page.detail}`}><span>{page.label}<small>{page.detail}</small></span><span aria-hidden="true">↗</span></a>)}</div>
+  <p class="site-search-empty" hidden>No matching pages. Try “gallery”, “tools” or “dashboard”.</p>
+  <div class="site-search-bottom"><span>Type to filter · Enter to open</span><span>Esc to close</span></div>
+</dialog>
 <script>
-  function initializeMobileMenu() {
-    const menu = document.getElementById('mobile-menu') as HTMLElement | null;
-    const panel = document.getElementById('mobile-menu-panel') as HTMLElement | null;
-    const backdrop = document.getElementById('mobile-menu-backdrop') as HTMLElement | null;
-    const openBtn = document.getElementById('mobile-menu-open') as HTMLButtonElement | null;
-    const closeBtn = document.getElementById('mobile-menu-close') as HTMLButtonElement | null;
-
-    if (!menu || !panel || !backdrop || !openBtn || !closeBtn) return;
-
-    if (openBtn.dataset.menuReady === '1') return;
-    openBtn.dataset.menuReady = '1';
-
-    function openMenu() {
-      menu!.hidden = false;
-      menu!.classList.remove('pointer-events-none', 'opacity-0');
-      menu!.classList.add('pointer-events-auto', 'opacity-100');
-      menu!.setAttribute('aria-hidden', 'false');
-      panel!.classList.remove('translate-x-full');
-      panel!.classList.add('translate-x-0');
-      openBtn!.setAttribute('aria-expanded', 'true');
-      document.body.style.overflow = 'hidden';
+  function initializeSiteNavigation() {
+    const menu = document.getElementById('mobile-menu');
+    const open = document.getElementById('mobile-menu-open');
+    const close = document.getElementById('mobile-menu-close');
+    const panel = document.getElementById('mobile-menu-panel');
+    const dialog = document.getElementById('site-search') as HTMLDialogElement | null;
+    const input = document.getElementById('site-search-input') as HTMLInputElement | null;
+    if (!menu || !open || !close || !panel || !dialog || !input || open.dataset.ready) return;
+    open.dataset.ready = '1';
+    let previousOverflow = '';
+    let background: Array<[HTMLElement, boolean]> = [];
+    function closeMenu(restoreFocus = true) {
+      if (menu!.hidden) return;
+      menu!.hidden = true; menu!.setAttribute('aria-hidden','true'); open!.setAttribute('aria-expanded','false');
+      document.body.style.overflow = previousOverflow;
+      background.forEach(([element, previous]) => { element.inert = previous; });
+      background = [];
+      if (restoreFocus) open!.focus();
     }
-
-    function closeMenu() {
-      menu!.hidden = true;
-      panel!.classList.remove('translate-x-0');
-      panel!.classList.add('translate-x-full');
-      menu!.classList.remove('pointer-events-auto', 'opacity-100');
-      menu!.classList.add('pointer-events-none', 'opacity-0');
-      menu!.setAttribute('aria-hidden', 'true');
-      openBtn!.setAttribute('aria-expanded', 'false');
-      document.body.style.overflow = '';
+    open.addEventListener('click', () => {
+      previousOverflow = document.body.style.overflow; menu.hidden = false;
+      menu.setAttribute('aria-hidden','false'); open.setAttribute('aria-expanded','true');
+      document.body.style.overflow = 'hidden'; close.focus();
+      background = Array.from(document.querySelectorAll<HTMLElement>('.site-header, #main-content, .site-footer')).map(element => [element, element.inert]);
+      background.forEach(([element]) => { element.inert = true; });
+    });
+    close.addEventListener('click', () => closeMenu());
+    document.getElementById('mobile-menu-backdrop')?.addEventListener('click', () => closeMenu());
+    panel.querySelectorAll('a').forEach(link => link.addEventListener('click', () => closeMenu(false)));
+    menu.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); closeMenu(); }
+      if (event.key !== 'Tab') return;
+      const targets = Array.from(panel.querySelectorAll<HTMLElement>('a,button')).filter(el => !el.hasAttribute('disabled'));
+      const first = targets[0], last = targets.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    });
+    window.matchMedia('(min-width: 960px)').addEventListener('change', event => { if (event.matches) closeMenu(false); });
+    const results = Array.from(dialog.querySelectorAll<HTMLAnchorElement>('[data-site-search-item]'));
+    function filter() {
+      const query = input!.value.trim().toLocaleLowerCase(); let count = 0;
+      results.forEach(link => { link.hidden = !link.dataset.searchText?.toLocaleLowerCase().includes(query); if (!link.hidden) count++; });
+      const countEl = document.getElementById('site-search-count');
+      if (countEl) countEl.textContent = `${count} ${count === 1 ? 'page' : 'pages'}`;
+      const empty = dialog!.querySelector<HTMLElement>('.site-search-empty'); if (empty) empty.hidden = count !== 0;
     }
-
-    openBtn.addEventListener('click', openMenu);
-    closeBtn.addEventListener('click', closeMenu);
-    backdrop.addEventListener('click', closeMenu);
-
-    // Close on Escape key
-    document.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && menu.getAttribute('aria-hidden') === 'false') {
-        closeMenu();
-      }
+    function showSearch() { closeMenu(false); input!.value = ''; filter(); dialog!.showModal(); input!.focus(); }
+    document.querySelectorAll('[data-open-site-search]').forEach(button => button.addEventListener('click', showSearch));
+    dialog.querySelector('[data-close-site-search]')?.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', event => { if (event.target === dialog) { const r = dialog.getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) dialog.close(); } });
+    input.addEventListener('input', filter);
+    input.addEventListener('keydown', event => {
+      const visible = results.filter(link => !link.hidden);
+      if (event.key === 'ArrowDown') { event.preventDefault(); visible[0]?.focus(); }
+      if (event.key === 'Enter' && visible.length) { event.preventDefault(); window.location.assign(visible[0].href); }
     });
-
-    // Close when clicking a link inside the mobile menu
-    const menuLinks = menu.querySelectorAll('a');
-    menuLinks.forEach((link) => {
-      link.addEventListener('click', closeMenu);
+    dialog.addEventListener('keydown', event => {
+      if (!['ArrowDown','ArrowUp'].includes(event.key) || document.activeElement === input) return;
+      const visible = results.filter(link => !link.hidden); const i = visible.indexOf(document.activeElement as HTMLAnchorElement);
+      if (i !== -1) { event.preventDefault(); visible[(i + (event.key === 'ArrowDown' ? 1 : -1) + visible.length) % visible.length]?.focus(); }
     });
+    document.addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); if (dialog.open) dialog.close(); else showSearch(); } });
+    document.querySelector<HTMLFormElement>('.site-shop-search')?.addEventListener('submit', event => {
+      const form = event.currentTarget as HTMLFormElement;
+      if (!form.checkValidity()) return;
+      event.preventDefault();
+      const url = new URL(form.action);
+      new FormData(form).forEach((value, key) => { if (typeof value === 'string') url.searchParams.set(key, value); });
+      window.open(url.toString(), '_blank', 'noopener,noreferrer');
+    });
+    document.querySelectorAll<HTMLButtonElement>('[data-site-lock]').forEach(button => button.addEventListener('click', async () => {
+      const error = document.getElementById('site-lock-error'); button.disabled = true;
+      try {
+        const response = await fetch('/_site/logout', { method:'POST', credentials:'same-origin', headers:{Accept:'application/json'} });
+        const result = await response.json();
+        if (!response.ok || result.ok !== true) throw new Error('Could not lock the site. Please try again.');
+        window.location.assign('/');
+      } catch (_) { if (error) { error.hidden = false; error.textContent = 'Could not lock the site. Please try again.'; } button.disabled = false; }
+    }));
   }
-  document.addEventListener('astro:page-load', initializeMobileMenu);
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeMobileMenu, { once: true });
-  else initializeMobileMenu();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeSiteNavigation, { once:true });
+  else initializeSiteNavigation();
+  document.addEventListener('astro:page-load', initializeSiteNavigation);
 </script>
