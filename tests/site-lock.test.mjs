@@ -95,3 +95,14 @@ test('login attempts use platform rate limits; Tea is routed only to its own pag
   assert.equal((await tea(req, s.context)).toString(), 'https://teathetruth.com/teathetruth/index.html');
   assert.equal(await tea(new Request(HOST), s.context), undefined);
 });
+test('browser submit can use JSON with a secure cookie, a safe destination and actionable errors', async () => {
+  const s = setup();
+  const req = post('/_site/login', {password:'fixture-password',return:'//evil.example'}); req.headers.set('accept','application/json');
+  const result = await s.handler(req, s.context); assert.equal(result.status,200); assert.match(result.headers.get('set-cookie'),/HttpOnly; Secure/);
+  assert.deepEqual(await result.json(),{ok:true,redirect:'/'});
+  const bad = post('/_site/login', {password:'wrong'}); bad.headers.set('accept','application/json');
+  const failure = await s.handler(bad,s.context); assert.equal(failure.status,401); assert.equal((await failure.json()).ok,false);
+  const gate = await s.handler(new Request(HOST),s.context); const html = await gate.text();
+  const nonce = /<script nonce="([a-f0-9]+)"/.exec(html)[1]; assert.ok(gate.headers.get('content-security-policy').includes("script-src 'nonce-"+nonce+"'"));
+  assert.ok(gate.headers.get('content-security-policy').includes("connect-src 'self'"));
+});
