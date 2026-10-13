@@ -115,7 +115,16 @@ const basePath = '/gallery/cars/';
     var lbPrev = document.getElementById("lb-prev");
     var lbNext = document.getElementById("lb-next");
 
+    var background = [];
+    var previousOverflow = '';
     function openLightbox(idx) {
+      previousOverflow = document.body.style.overflow;
+      background = [];
+      for (var branch = lightbox; branch && branch !== document.body; branch = branch.parentElement) {
+        Array.from(branch.parentElement.children).forEach(function(element) {
+          if (element !== branch && element instanceof HTMLElement) { background.push([element, element.inert]); element.inert = true; }
+        });
+      }
       currentIndex = idx;
       updateLightboxImage();
       lightbox.classList.remove("hidden");
@@ -128,7 +137,9 @@ const basePath = '/gallery/cars/';
     function closeLightbox() {
       lightbox.classList.add("hidden");
       lightbox.classList.remove("flex");
-      document.body.style.overflow = "";
+      document.body.style.overflow = previousOverflow;
+      background.forEach(function(entry) { entry[0].inert = entry[1]; });
+      background = [];
       lightbox.setAttribute("aria-hidden", "true");
       grid.querySelector(`[data-index="${currentIndex}"]`)?.focus();
     }

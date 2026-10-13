@@ -109,7 +109,13 @@ const active = (href:string) => href === '/' ? path === '/' : path.replace(/\/$/
       const visible = results.filter(link => !link.hidden); const i = visible.indexOf(document.activeElement as HTMLAnchorElement);
       if (i !== -1) { event.preventDefault(); visible[(i + (event.key === 'ArrowDown' ? 1 : -1) + visible.length) % visible.length]?.focus(); }
     });
-    document.addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); if (dialog.open) dialog.close(); else showSearch(); } });
+    document.addEventListener('keydown', event => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        if (document.querySelector('#lightbox[aria-hidden="false"]')) return;
+        if (dialog.open) dialog.close(); else showSearch();
+      }
+    });
     document.querySelector<HTMLFormElement>('.site-shop-search')?.addEventListener('submit', event => {
       const form = event.currentTarget as HTMLFormElement;
       if (!form.checkValidity()) return;
