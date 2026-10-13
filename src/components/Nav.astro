@@ -58,16 +58,21 @@ const active = (href:string) => href === '/' ? path === '/' : path.replace(/\/$/
     if (!menu || !open || !close || !panel || !dialog || !input || open.dataset.ready) return;
     open.dataset.ready = '1';
     let previousOverflow = '';
+    let background: Array<[HTMLElement, boolean]> = [];
     function closeMenu(restoreFocus = true) {
       if (menu!.hidden) return;
       menu!.hidden = true; menu!.setAttribute('aria-hidden','true'); open!.setAttribute('aria-expanded','false');
       document.body.style.overflow = previousOverflow;
+      background.forEach(([element, previous]) => { element.inert = previous; });
+      background = [];
       if (restoreFocus) open!.focus();
     }
     open.addEventListener('click', () => {
       previousOverflow = document.body.style.overflow; menu.hidden = false;
       menu.setAttribute('aria-hidden','false'); open.setAttribute('aria-expanded','true');
       document.body.style.overflow = 'hidden'; close.focus();
+      background = Array.from(document.querySelectorAll<HTMLElement>('.site-header, #main-content, .site-footer')).map(element => [element, element.inert]);
+      background.forEach(([element]) => { element.inert = true; });
     });
     close.addEventListener('click', () => closeMenu());
     document.getElementById('mobile-menu-backdrop')?.addEventListener('click', () => closeMenu());
