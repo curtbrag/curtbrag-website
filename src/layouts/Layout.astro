@@ -76,6 +76,8 @@ const structuredData = {
     {clusterControlPage && <link rel="stylesheet" href="/styles/cluster-personal-control.css?v=4" />}
     {clusterDashboardPage && <link rel="stylesheet" href="/styles/cluster-phone-follow.css?v=1" />}
 
+    <link rel="stylesheet" href="/styles/site-upgrade.css?v=1" />
+
     <!-- Theme Color -->
     <meta name="theme-color" content="#ed232a" />
 
@@ -120,29 +122,28 @@ const structuredData = {
 
     <Footer />
 
-    <!-- Scroll Reveal Observer -->
+    <!-- Optional motion never hides content before its observer is ready. -->
     <script>
-      document.addEventListener('DOMContentLoaded', () => {
-        const revealElements = document.querySelectorAll('.reveal, .reveal-left, .reveal-right, .reveal-scale');
-        if (!revealElements.length) return;
-
-        const observer = new IntersectionObserver(
-          (entries) => {
-            entries.forEach((entry) => {
-              if (entry.isIntersecting) {
-                entry.target.classList.add('visible');
-                // Also trigger staggered children
-                const children = entry.target.querySelectorAll('.reveal, .reveal-left, .reveal-right, .reveal-scale');
-                children.forEach((child) => child.classList.add('visible'));
-                observer.unobserve(entry.target);
-              }
+      function initializeReveal() {
+        if (!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const items = document.querySelectorAll('.reveal, .reveal-left, .reveal-right, .reveal-scale');
+        if (!items.length) return;
+        try {
+          const observer = new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+              if (!entry.isIntersecting) return;
+              entry.target.classList.add('visible');
+              entry.target.querySelectorAll('.reveal, .reveal-left, .reveal-right, .reveal-scale').forEach(child => child.classList.add('visible'));
+              observer.unobserve(entry.target);
             });
-          },
-          { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
-        );
-
-        revealElements.forEach((el) => observer.observe(el));
-      });
+          }, { threshold: 0.05, rootMargin: '0px 0px 30px 0px' });
+          items.forEach(item => observer.observe(item));
+          document.documentElement.classList.add('has-reveal-motion');
+        } catch (_) { document.documentElement.classList.remove('has-reveal-motion'); }
+      }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeReveal, {once:true});
+      else initializeReveal();
+      document.addEventListener('astro:page-load', initializeReveal);
     </script>
 
     <link rel="stylesheet" href="/styles/cluster-controls.css?v=3" />
@@ -152,3 +153,4 @@ const structuredData = {
     {clusterDashboardPage && <script is:inline src="/scripts/cluster-phone-follow.js?v=2"></script>}
   </body>
 </html>
+

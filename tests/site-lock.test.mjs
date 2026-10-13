@@ -119,3 +119,13 @@ test('verified existing service credentials preserve API access without opening 
     assert.equal((await s.handler(new Request(HOST + path,{headers:{authorization:'Bearer fixture-worker-key'}}),s.context)).status,401);
   }
 });
+test('the visible Lock site control revokes its session before confirming JSON success', async () => {
+  const s = setup(); const a = await login(s);
+  const request = post('/_site/logout', {}); request.headers.set('cookie', a.cookie); request.headers.set('accept','application/json');
+  const result = await s.handler(request,s.context); assert.equal(result.status,200);
+  assert.deepEqual(await result.json(),{ok:true,redirect:'/'}); assert.match(result.headers.get('set-cookie'),/Max-Age=0/);
+  assert.equal(s.entries.size,0);
+  assert.equal((await s.handler(new Request(HOST,{headers:{cookie:a.cookie}}),s.context)).status,401);
+  const csrf = post('/_site/logout',{},'https://evil.example'); csrf.headers.set('accept','application/json');
+  assert.equal((await s.handler(csrf,s.context)).status,403);
+});

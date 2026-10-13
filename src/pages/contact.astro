@@ -80,7 +80,7 @@ import Layout from '../layouts/Layout.astro';
           id="copy-phone-btn"
           class="inline-flex items-center gap-2 px-4 py-2 bg-bg border border-border rounded-lg text-text text-sm hover:border-brand hover:bg-brand/10 hover:scale-105 transition-all duration-200 cursor-pointer"
         >
-          <i class="fa-solid fa-copy"></i>Copy #
+          <i class="fa-solid fa-copy"></i>Copy number
         </button>
       </div>
 
@@ -106,7 +106,7 @@ import Layout from '../layouts/Layout.astro';
           <input
             type="text"
             id="name"
-            name="name"
+            name="name" autocomplete="name"
             required
             class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200 outline-none"
           />
@@ -117,7 +117,7 @@ import Layout from '../layouts/Layout.astro';
           <input
             type="email"
             id="email"
-            name="email"
+            name="email" autocomplete="email"
             required
             class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200 outline-none"
           />
@@ -174,7 +174,7 @@ import Layout from '../layouts/Layout.astro';
         copyBtn.querySelector('i')?.nextSibling && (copyBtn.lastChild!.textContent = 'Copied!');
         setTimeout(() => {
           if (icon && originalClass) icon.className = originalClass;
-          if (copyBtn.lastChild) copyBtn.lastChild.textContent = 'Copy #';
+          if (copyBtn.lastChild) copyBtn.lastChild.textContent = 'Copy number';
         }, 2000);
       } catch {
         // Fallback for older browsers
@@ -203,3 +203,4 @@ import Layout from '../layouts/Layout.astro';
     });
   }
 </script>
+

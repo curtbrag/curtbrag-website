@@ -14,7 +14,7 @@ const workloads = [
 const workers = ['phone173', 'phone174', 'phone176', 'phone177', 'phone191', 'phone195', 'phone253', 'phone254', 'Alina', 'Nexus', 'SteamDeck', 'viki', 'RenderRig'];
 ---
 
-<Layout title="Compute Cluster - Curtis Bragdon" description="Explore Curtis Bragdon's 13-device compute fleet: eight Android phones, four Linux systems and one Windows workstation working together on research, browser audits and media production.">
+<Layout title="Compute Cluster - Curtis Bragdon" description="Explore Curtis Bragdon's 13-device compute fleet: eight phone workers, four Linux systems and one Windows workstation working together on research, browser audits and media production.">
   <section class="cluster-hero">
     <div class="cluster-wrap hero-grid">
       <div>
@@ -27,12 +27,12 @@ const workers = ['phone173', 'phone174', 'phone176', 'phone177', 'phone191', 'ph
         </div>
         <p class="dashboard-note"><i class="fa-solid fa-lock" aria-hidden="true"></i> Dashboard sign-in required for worker status, assignments and reports.</p>
       </div>
-      <div class="fleet-visual" aria-label="Fleet composition: eight Android phones, four Linux systems and one Windows workstation">
+      <div class="fleet-visual" aria-label="Fleet composition: eight phone workers, four Linux systems and one Windows workstation">
         <div class="visual-header"><span>FLEET COMPOSITION</span><span class="visual-tag">13 DEVICES</span></div>
         <div class="device-matrix" aria-hidden="true">
           {Array.from({ length: 13 }, (_, i) => <div class:list={['device-tile', i < 8 ? 'phone' : i < 12 ? 'linux' : 'windows']}><i class={i < 8 ? 'fa-solid fa-mobile-screen-button' : i < 12 ? 'fa-solid fa-laptop' : 'fa-solid fa-desktop'}></i></div>)}
         </div>
-        <div class="visual-legend"><span><b class="text-green">8</b> Android</span><span><b class="text-blue">4</b> Linux</span><span><b class="text-brand">1</b> Windows</span></div>
+        <div class="visual-legend"><span><b class="text-green">8</b> Phones</span><span><b class="text-blue">4</b> Linux</span><span><b class="text-brand">1</b> Windows</span></div>
         <p class="visual-footnote">Device inventory · live availability is in the dashboard</p>
       </div>
     </div>
