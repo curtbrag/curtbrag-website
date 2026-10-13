@@ -102,9 +102,8 @@ export function createSiteLock({ getPassword, getSessions, getAPIKey = async () 
       const machineToken = bearer || request.headers.get('x-cluster-key') || request.headers.get('x-agent-token') || '';
       let machineAuthorized = false;
       if (isAPI && machineToken && machineToken.length <= 512) {
-        const password = bearer ? await getPassword() : null;
         const key = await getAPIKey();
-        machineAuthorized = Boolean((password && await equal(bearer, password)) || (key && await equal(machineToken, key)));
+        machineAuthorized = Boolean(key && await equal(machineToken, key));
       }
       if (!machineAuthorized) {
         if (!token) return prompt(target);

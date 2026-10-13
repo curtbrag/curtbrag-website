@@ -109,10 +109,11 @@ test('browser submit can use JSON with a secure cookie, a safe destination and a
 test('verified existing service credentials preserve API access without opening pages or files', async () => {
   const s = setup();
   for (const path of ['/api/cluster', '/.netlify/functions/swarm-core']) {
-    for (const headers of [{authorization:'Bearer fixture-worker-key'}, {'x-agent-token':'fixture-worker-key'}, {'x-cluster-key':'fixture-worker-key'}, {authorization:'Bearer fixture-password'}]) {
+    for (const headers of [{authorization:'Bearer fixture-worker-key'}, {'x-agent-token':'fixture-worker-key'}, {'x-cluster-key':'fixture-worker-key'}]) {
       assert.equal((await s.handler(new Request(HOST + path,{headers}),s.context)).status,200);
     }
     assert.equal((await s.handler(new Request(HOST + path,{headers:{authorization:'Bearer wrong'}}),s.context)).status,401);
+    assert.equal((await s.handler(new Request(HOST + path,{headers:{authorization:'Bearer fixture-password'}}),s.context)).status,401);
   }
   for (const path of ['/', '/gallery/', '/assets/logo_header.png', '/.netlify/images?url=/assets/logo_header.png']) {
     assert.equal((await s.handler(new Request(HOST + path,{headers:{authorization:'Bearer fixture-worker-key'}}),s.context)).status,401);
