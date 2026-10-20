@@ -1,5 +1,6 @@
 import {getStore} from '@netlify/blobs';
 import crypto from 'node:crypto';
+import {issueDisplayTicket} from '../edge-functions/lib/display-access.js';
 const phones=new Set(['phone173','phone174','phone176','phone177','phone191','phone195','phone253','phone254']);
 const units=new Set([...phones,'Alina','Nexus','SteamDeck','viki','RenderRig']);
 const modes=new Set(['home','clock','visuals','test','dashboard','activity']);
@@ -42,12 +43,17 @@ async function handle(event){
   const a=Buffer.from(supplied),b=Buffer.from(password||'');
   if(!password||a.length!==b.length||!crypto.timingSafeEqual(a,b))return response(401,{error:'Sign in required'});
   let body;try{body=JSON.parse(event.body||'{}');}catch{return response(400,{error:'Invalid JSON'});}
-  if(!phones.has(body.phone)||!modes.has(body.mode))return response(400,{error:'Invalid display selection'});
+  if(!phones.has(body.phone)||!modes.has(body.mode)||(body.connect!==undefined&&typeof body.connect!=='boolean'))return response(400,{error:'Invalid display selection'});
   const value={mode:body.mode,revision:crypto.randomUUID()};await store('phone-display').setJSON(body.phone,value);
-  return response(200,{ok:true,...value});
+  let display_url;
+  if(body.connect===true){
+   const ticket=await issueDisplayTicket({store:store('device-display-sessions','strong'),phone:body.phone,host:event.host,password});
+   display_url='https://'+event.host+'/cluster/display.html?mode='+encodeURIComponent(body.mode)+'&name='+body.phone+'&immersive=1&display_ticket='+ticket;
+  }
+  return response(200,{ok:true,...value,...(display_url?{display_url}: {})});
  }catch{return response(503,{error:'Display service unavailable'});}
 };
 export default async request=>{
- const event={httpMethod:request.method,headers:Object.fromEntries(request.headers),queryStringParameters:Object.fromEntries(new URL(request.url).searchParams),body:request.method==='POST'?await request.text():''};
+ const event={httpMethod:request.method,host:new URL(request.url).hostname,headers:Object.fromEntries(request.headers),queryStringParameters:Object.fromEntries(new URL(request.url).searchParams),body:request.method==='POST'?await request.text():''};
  const r=await handle(event);return new Response(r.body,{status:r.statusCode,headers:r.headers});
 };

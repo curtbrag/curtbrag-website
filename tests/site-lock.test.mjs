@@ -90,6 +90,7 @@ test('return destinations cannot inject HTML or redirect off-site', async () => 
 });
 test('login attempts use platform rate limits; Tea is routed only to its own page', async () => {
   assert.equal(limit(), undefined); assert.equal(limitConfig.rateLimit.windowLimit, 10);
+  assert.equal(limitConfig.method, 'POST', 'Loading the sign-in page must not exhaust the password-attempt allowance');
   const s = setup(); const req = new Request('https://teathetruth.com/');
   assert.equal((await s.handler(req, s.context)).status, 200);
   assert.equal((await tea(req, s.context)).toString(), 'https://teathetruth.com/teathetruth/index.html');

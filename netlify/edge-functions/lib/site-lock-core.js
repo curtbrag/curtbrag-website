@@ -1,3 +1,4 @@
+import { authorizeDisplay } from './display-access.js';
 export const COOKIE = '__Host-curtbrag_access';
 export const LOGIN = '/_site/login';
 export const LOGOUT = '/_site/logout';
@@ -61,7 +62,7 @@ function sameOrigin(request, url) {
   return request.headers.get('origin') === url.origin;
 }
 
-export function createSiteLock({ getPassword, getSessions, getAPIKey = async () => null, now = () => Date.now() }) {
+export function createSiteLock({ getPassword, getSessions, getDisplaySessions = null, getAPIKey = async () => null, now = () => Date.now() }) {
   return async function siteLock(request, context) {
     const url = new URL(request.url);
     // Tea's separately hosted domain serves its own page, not CurtBrag content.
@@ -96,6 +97,12 @@ export function createSiteLock({ getPassword, getSessions, getAPIKey = async () 
         if (wantsJSON) return response(JSON.stringify({ ok: true, redirect: destination }), 200, { 'content-type': 'application/json', 'set-cookie': cookie(newToken, SESSION_SECONDS) });
         return response(null, 303, { location: destination, 'set-cookie': cookie(newToken, SESSION_SECONDS) });
       }
+      let displayAuthorized = false;
+      if(getDisplaySessions && (url.searchParams.has('display_ticket') || request.headers.get('cookie')?.includes('__Host-curtbrag_display='))) {
+        const access = await authorizeDisplay({request,store:getDisplaySessions(),password:await getPassword(),now:now()});
+        if(access?.redirect) return response(null,303,{'location':access.redirect,'set-cookie':access.cookie});
+        displayAuthorized = access?.authorized === true;
+      }
       // Existing authenticated service callers may reach APIs, never public pages or assets.
       const isAPI = url.pathname.startsWith('/api/') || url.pathname.startsWith('/.netlify/functions/');
       const auth = request.headers.get('authorization') || '';
@@ -106,7 +113,7 @@ export function createSiteLock({ getPassword, getSessions, getAPIKey = async () 
         const key = await getAPIKey();
         machineAuthorized = Boolean(key && await equal(machineToken, key));
       }
-      if (!machineAuthorized) {
+      if (!machineAuthorized && !displayAuthorized) {
         if (!token) return prompt(target);
         const session = await getSessions().get(await digest(token), { type: 'json', consistency: 'strong' });
         if (!session || session.version !== 1 || session.host !== url.hostname || !Number.isFinite(session.expires) || session.expires <= now() || session.expires > now() + SESSION_SECONDS * 1000) return prompt(target);
@@ -116,7 +123,8 @@ export function createSiteLock({ getPassword, getSessions, getAPIKey = async () 
       const downstream = await context.next();
       const headers = new Headers(downstream.headers);
       for (const [name, value] of Object.entries(PRIVATE_HEADERS)) headers.set(name, value);
-      headers.set('x-curtbrag-access', 'authenticated');
+      headers.set('x-curtbrag-access', displayAuthorized ? 'device-display' : 'authenticated');
+      if(['/cluster/display.html','/cluster/eyecandy.html'].includes(url.pathname)) headers.set('x-frame-options','SAMEORIGIN');
       headers.delete('surrogate-control');
       return new Response(downstream.body, { status: downstream.status, statusText: downstream.statusText, headers });
     } catch (_) {
