@@ -2,8 +2,8 @@
 // Receives status updates from cluster and serves to website
 // Uses Netlify Blobs for persistence across cold starts
 
-const { getStore, connectLambda } = require("@netlify/blobs");
-const crypto = require("crypto");
+import {getStore, connectLambda} from "@netlify/blobs";
+import crypto from "node:crypto";
 
 // Timing-safe string comparison to prevent timing attacks on credentials
 function safeCompare(a, b) {
@@ -213,7 +213,7 @@ function getCorsOrigin(event) {
   return ALLOWED_ORIGINS.includes(origin) ? origin : null;
 }
 
-exports.handler = async function(event, context) {
+export const handler = async function(event, context) {
   const corsOrigin = getCorsOrigin(event);
   const headers = {
     'Content-Type': 'application/json',

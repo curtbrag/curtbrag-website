@@ -1,7 +1,7 @@
 // Universal distributed job queue for the Curt Cluster.
 // Operator endpoints use CLUSTER_WEB_PASSWORD; agents use CLUSTER_API_KEY.
-const { connectLambda, getStore } = require("@netlify/blobs");
-const crypto = require("crypto");
+import {connectLambda, getStore} from "@netlify/blobs";
+import crypto from "node:crypto";
 
 const NODES = ["phone173","phone174","phone176","phone177","phone191","phone195","phone253","phone254","Alina","Nexus","SteamDeck"];
 const TEMPLATES = {
@@ -71,7 +71,7 @@ function publicJob(job) {
 }
 function parseBody(event) { try { return JSON.parse(event.body||"{}"); } catch { return {}; } }
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   connectLambda(event);
   const h=headers(event.headers.origin||"");
   if (event.httpMethod==="OPTIONS") return {statusCode:204,headers:h,body:""};

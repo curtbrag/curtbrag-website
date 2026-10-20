@@ -15,9 +15,10 @@ const fleetExpression=source.match(/const FLEET = (\[[\s\S]*?\]);/)[1];
 
 function harness(options={}){
   const elements={'display-send':{disabled:false},'display-state':{textContent:''},'display-target':{value:options.target||'phone253'},'display-mode':{value:options.mode||'activity'}};
+  elements['display-connect']={checked:options.connect===true};
   const events=[],saves=[],enqueues=[];let loads=0;
   const context=vm.createContext({
-    document:{getElementById:id=>elements[id]},TextEncoder,btoa:value=>Buffer.from(value,'binary').toString('base64'),
+    document:{getElementById:id=>elements[id]},URL,location:{origin:'https://curtbrag.com'},TextEncoder,btoa:value=>Buffer.from(value,'binary').toString('base64'),
     PHONE_IDS:new Set(phones),token:()=> 'test-operator-session',
     swarmApi:async(...args)=>{events.push({kind:'availability',args});if(options.api)return options.api(...args);return {nodes:options.nodes||[{id:'phone253',online:true,busy:false}],jobs:[],results:[]};},
     fetch:async(url,request)=>{const body=JSON.parse(request.body);saves.push({url,request,body});events.push({kind:'save',phone:body.phone});return options.fetch?options.fetch(url,request,body):{ok:true};},
@@ -100,4 +101,22 @@ test('an uncertain enqueue preserves the saved mode, stops the batch and restore
 
 test('a non-phone target causes no mode save or browser launch',async()=>{
   const h=harness({target:'Nexus'});await h.apply();assert.equal(h.saves.length,0);assert.equal(h.enqueues.length,0);assert.match(h.elements['display-state'].textContent,/Select a phone/);
+});
+
+test('private display access is explicitly selected and launches only the matching same-site receipt',async()=>{
+  const display_url='https://curtbrag.com/cluster/display.html?mode=activity&name=phone253&immersive=1&display_ticket='+'a'.repeat(64);
+  const h=harness({connect:true,fetch:async()=>({ok:true,json:async()=>({ok:true,display_url})})});await h.apply();
+  assert.deepEqual(h.saves[0].body,{phone:'phone253',mode:'activity',connect:true});
+  assert.equal(launchUrl(h.enqueues[0]).href,display_url);
+  assert.match(h.elements['display-state'].textContent,/expire in 24 hours/);
+});
+test('private display access rejects missing, cross-site and wrong-unit receipts before launching',async()=>{
+  for(const display_url of [undefined,'https://evil.example/cluster/display.html?name=phone253&display_ticket='+'a'.repeat(64),'https://curtbrag.com/cluster/display.html?name=phone191&display_ticket='+'a'.repeat(64)]){
+    const h=harness({connect:true,fetch:async()=>({ok:true,json:async()=>({display_url})})});await h.apply();
+    assert.equal(h.enqueues.length,0);assert.match(h.elements['display-state'].textContent,/connection receipt/);
+  }
+});
+test('private connection selection does not issue access for busy or offline phones',async()=>{
+  const h=harness({connect:true,target:'all',nodes:phones.map(id=>({id,online:false,busy:false}))});await h.apply();
+  assert.equal(h.saves.length,8);assert.ok(h.saves.every(s=>s.body.connect===undefined));assert.equal(h.enqueues.length,0);
 });

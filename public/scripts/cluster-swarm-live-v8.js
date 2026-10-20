@@ -324,29 +324,34 @@
   function ensureDisplayControls(){
     const panel=document.getElementById('cluster-view-fleet');if(!panel||document.getElementById('cluster-display-control'))return;
     const card=document.createElement('section');card.id='cluster-display-control';card.className='cluster-control-card';
-    card.innerHTML='<h3>Phone screens</h3><p>Choose what each phone shows remotely. Connected displays update automatically every 10 seconds.</p><label for="display-target">Phone</label><select id="display-target"><option value="all">All phones</option>'+Array.from(PHONE_IDS).map(p=>'<option>'+p+'</option>').join('')+'</select> <label for="display-mode">Display</label><select id="display-mode"><option value="activity">This unit’s activity</option><option value="visuals">Animations</option><option value="clock">Clock</option><option value="test">Screen test</option><option value="dashboard">Unit activity dashboard</option><option value="home">Display overview</option></select><div class="cluster-action-row"><button id="display-send" type="button" class="cluster-primary-action">Apply to phone screens</button><a id="display-open" href="/cluster/display.html" target="_blank" rel="noopener">Open display hub</a><button id="display-results" type="button">View launch results</button></div><p id="display-state" role="status"></p>';
+    card.innerHTML='<h3>Phone screens</h3><p>Choose what each phone shows remotely. Connected displays update automatically every 10 seconds.</p><label for="display-target">Phone</label><select id="display-target"><option value="all">All phones</option>'+Array.from(PHONE_IDS).map(p=>'<option>'+p+'</option>').join('')+'</select> <label for="display-mode">Display</label><select id="display-mode"><option value="activity">This unit’s activity</option><option value="visuals">Animations</option><option value="clock">Clock</option><option value="test">Screen test</option><option value="dashboard">Unit activity dashboard</option><option value="home">Display overview</option></select><p><label><input type="checkbox" id="display-connect"> Connect these phone displays privately for 24 hours (view only)</label><br>Lets each phone show its own activity, clock and animations without entering the site password. It cannot open private pages or use dashboard controls.</p><div class="cluster-action-row"><button id="display-send" type="button" class="cluster-primary-action">Apply to phone screens</button><a id="display-open" href="/cluster/display.html" target="_blank" rel="noopener">Open display hub</a><button id="display-results" type="button">View launch results</button></div><p id="display-state" role="status"></p>';
     panel.insertBefore(card,panel.children[1]);
     const updateDisplayLink=()=>{const phone=document.getElementById('display-target').value,mode=document.getElementById('display-mode').value;document.getElementById('display-open').href='/cluster/display.html?mode='+encodeURIComponent(mode)+(PHONE_IDS.has(phone)?'&name='+encodeURIComponent(phone):'');};
     document.getElementById('display-target').onchange=updateDisplayLink;document.getElementById('display-mode').onchange=updateDisplayLink;updateDisplayLink();
     document.getElementById('display-results').onclick=()=>setControlView('results',true);
     document.getElementById('display-send').onclick=async()=>{
       const button=document.getElementById('display-send'),state=document.getElementById('display-state');button.disabled=true;
-      const saved=[],launched=[],skipped=[];state.textContent='Checking phone availability…';try{
+      const saved=[],launched=[],skipped=[],connect=document.getElementById('display-connect')?.checked===true;state.textContent='Checking phone availability…';try{
         const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes))throw new Error('Worker availability could not be verified.');
         const fresh=canonicalize(raw),selected=document.getElementById('display-target').value,mode=document.getElementById('display-mode').value;
         const phones=selected==='all'?Array.from(PHONE_IDS):PHONE_IDS.has(selected)?[selected]:[];
         if(!phones.length)throw new Error('Select a phone');
         for(const phone of phones){
           state.textContent='Saving display for '+phone+'…';
-          const response=await fetch('/.netlify/functions/phone-display',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:JSON.stringify({phone,mode})});
+          const node=fresh.nodes.find(n=>n.id===phone),connecting=connect&&node?.online&&!node.busy;
+          const response=await fetch('/.netlify/functions/phone-display',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:JSON.stringify({phone,mode,...(connecting?{connect:true}:{})})});
           if(!response.ok)throw new Error('Could not save display mode for '+phone);saved.push(phone);
-          const node=fresh.nodes.find(n=>n.id===phone);
           if(node?.online&&!node.busy){
-            const url='https://curtbrag.com/cluster/display.html?mode='+encodeURIComponent(mode)+'&name='+encodeURIComponent(phone)+'&immersive=1&v=63';
+            let url='https://curtbrag.com/cluster/display.html?mode='+encodeURIComponent(mode)+'&name='+encodeURIComponent(phone)+'&immersive=1&v=63';
+            if(connecting){
+              const receipt=await response.json();let parsed;try{parsed=new URL(receipt.display_url);}catch{throw Error('Private display connection receipt missing for '+phone);}
+              if(parsed.origin!==location.origin||parsed.pathname!=='/cluster/display.html'||parsed.searchParams.get('name')!==phone||!/^[a-f0-9]{64}$/.test(parsed.searchParams.get('display_ticket')||''))throw Error('Invalid private display connection receipt for '+phone);
+              url=parsed.href;
+            }
             await enqueueSwarm('shell',browserOpenCommand(url),[phone]);launched.push(phone);
           }else skipped.push(phone+' ('+(node?.online?'busy':'offline')+')');
         }
-        state.textContent='Display mode saved for '+saved.join(', ')+'. '+(launched.length?'Browser launch queued for '+launched.join(', ')+'. ':'')+(skipped.length?'Browser launch skipped: '+skipped.join(', ')+'. ':'')+'Connected displays also update automatically within 10 seconds.';
+        state.textContent='Display mode saved for '+saved.join(', ')+'. '+(launched.length?'Browser launch queued for '+launched.join(', ')+'. ':'')+(skipped.length?'Browser launch skipped: '+skipped.join(', ')+'. ':'')+'Connected displays also update automatically within 10 seconds.'+(connect?' Private view-only connections expire in 24 hours.':' If a phone asks for the site password, select the private display connection option.');
         await load(true);
       }catch(e){state.textContent=(saved.length?'Display mode saved: '+saved.join(', ')+'. ':'')+(launched.length?'Browser launch queued: '+launched.join(', ')+'. ':'')+e.message;}finally{button.disabled=false;}
     };
