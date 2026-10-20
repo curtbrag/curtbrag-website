@@ -140,7 +140,7 @@ async function callClaude(message, conversationHistory = []) {
   }
 }
 
-exports.handler = async function(event, context) {
+export const handler = async function(event, context) {
   const origin = (event.headers?.origin || '');
   const allowedOrigin = origin.endsWith('curtbrag.com') ? origin : 'https://www.curtbrag.com';
 
