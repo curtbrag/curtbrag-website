@@ -9,7 +9,8 @@
   if (!report || !Array.isArray(report.phones) || report.phones.length !== PHONES.size ||
       new Set(report.phones.map(p => p?.unit)).size !== PHONES.size ||
       report.phones.some(p => !PHONES.has(p?.unit) || typeof p.state !== 'string') ||
-      !Number.isFinite(Date.parse(report.checked_at)) || typeof report.job_id !== 'string') report = null;
+      !Number.isFinite(Date.parse(report.checked_at)) || Date.parse(report.checked_at) > Date.now()+5000 ||
+      typeof report.job_id !== 'string' || !/^phone-control-check-[A-Za-z0-9-]{1,80}$/.test(report.job_id)) report = null;
 
   async function api(action, body) {
     const password = sessionStorage.getItem('cp_password');
@@ -36,16 +37,17 @@
     if (!report?.checked_at || !Array.isArray(report.phones)) { output.textContent = 'Not checked. Online workers do not prove screen control is available.'; return; }
     const age = Date.now() - Date.parse(report.checked_at), stale = !Number.isFinite(age) || age < 0 || age > MAX_AGE;
     const lines = report.phones.filter(p => PHONES.has(p.unit)).map(p => {
-      const labels = {required:'Needs Android approval: allow Termux to display over other apps',allowed:'Background launch permission allowed; screen switching is not verified',unknown:'Permission could not be verified',queued:'Checkingâ€¦',unconfirmed:'Submission unconfirmed; checking results before any retry',offline:'Worker offline; screen access unknown',busy:'Worker busy; check skipped',failed:'Check failed; screen access unknown',expired:'No result received; check again'};
-      return p.unit + ' Â· ' + (stale ? 'Previous check expired; check again' : labels[p.state] || labels.unknown);
+      const labels = {required:'Needs Android approval: allow Termux to display over other apps',allowed:'Background launch permission allowed; screen switching is not verified',unknown:'Permission could not be verified',queued:'Checking\u2026',unconfirmed:'Submission unconfirmed; checking results before any retry',offline:'Worker offline; screen access unknown',busy:'Worker busy; check skipped',failed:'Check failed; screen access unknown',expired:'No result received; check again'};
+      return p.unit + ' \u00b7 ' + (stale ? 'Previous check expired; check again' : labels[p.state] || labels.unknown);
     });
     output.textContent = 'Checked ' + new Date(report.checked_at).toLocaleString() + '\n\n' + lines.join('\n\n');
   }
   function collect(data) {
-    if (!Array.isArray(data?.results) || !report?.job_id) return;
+    if (!report?.job_id) return;
+    const results = Array.isArray(data?.results) ? data.results : [];
     for (const phone of report.phones) {
       if (!['queued','unconfirmed'].includes(phone.state)) continue;
-      const result = data.results.find(r => r.job_id === report.job_id && r.device_id === phone.unit);
+      const result = results.find(r => r.job_id === report.job_id && r.device_id === phone.unit);
       if (!result) continue;
       let value; try { value = JSON.parse(result.stdout); } catch {}
       const valid = Number(result.exit_code) === 0 && value?.kind === 'phone-control-readiness' &&
@@ -65,12 +67,13 @@
   }
   async function check() {
     if (busy || pending()) return;
-    busy = true; message = ''; render();
+    busy = true; message = 'Checking available phones...'; render();
     try {
       const data = await api('queue-status');
       if (!Array.isArray(data?.nodes)) throw Error('Worker availability is unverified.');
       const nodes = new Map(data.nodes.map(n => [n.id, n]));
       const targets = [...PHONES].filter(id => nodes.get(id)?.online === true && !nodes.get(id)?.busy);
+      message = '';
       report = {checked_at:new Date().toISOString(), job_id:'phone-control-check-' + crypto.randomUUID(),
         phones:[...PHONES].map(unit => ({unit,state:targets.includes(unit)?'queued':nodes.get(unit)?.online===true?'busy':'offline'}))};
       save(); render();
@@ -89,7 +92,7 @@
     const fleet = document.getElementById('cluster-view-fleet');
     if (!fleet || document.getElementById('cluster-phone-controls')) return;
     const card = document.createElement('section');card.id='cluster-phone-controls';card.className='cluster-control-card';
-    card.innerHTML='<h3>Phone screen controls</h3><p>Check all eight worker phones without moving their screens. Worker access and permission to switch apps are separate.</p><button id="phone-control-check" type="button" class="cluster-primary-action">Check phone controls</button><pre id="phone-control-status" role="status" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:340px;overflow:auto"></pre><details><summary>One-time Android setup</summary><p>On each affected phone: Settings â†’ Apps â†’ Special app access â†’ Display over other apps â†’ Termux â†’ Allow. This permission lets Termux open websites while another app is visible. Then check again here. Back and verified Return to Termux also need the PCâ€™s authorized wireless debugging connection.</p><p>This check does not grant permissions, pair devices, install software or prove that a physical screen changed.</p></details>';
+    card.innerHTML='<h3>Phone screen controls</h3><p>Check all eight worker phones without moving their screens. Worker access and permission to switch apps are separate.</p><button id="phone-control-check" type="button" class="cluster-primary-action">Check phone controls</button><pre id="phone-control-status" role="status" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:340px;overflow:auto"></pre><details><summary>One-time Android setup</summary><p>On each affected phone: Settings \u2192 Apps \u2192 Special app access \u2192 Display over other apps \u2192 Termux \u2192 Allow. This permission lets Termux open websites while another app is visible. Then check again here. Back and verified Return to Termux also need the PC\u2019s authorized wireless debugging connection.</p><p>This check does not grant permissions, pair devices, install software or prove that a physical screen changed.</p></details>';
     fleet.prepend(card);card.querySelector('#phone-control-check').onclick=check;render();
     if (pending()) { poll=setInterval(refresh,5000);void refresh(); }
   }
