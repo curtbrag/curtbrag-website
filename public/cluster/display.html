@@ -14,13 +14,28 @@
 <section id="clock" class="panel clock" hidden><span class="label" data-label>Cluster screen</span><time id="time"></time><p id="date"></p><p id="screen-state" role="status" aria-live="polite"></p></section>
 <section id="test" class="panel" hidden><h2>Screen test</h2><div id="metrics" class="grid"></div><p>These readings describe this browser and its current screen; they do not detect cables or other monitors.</p><label>Test pattern <select id="pattern"><option value="">Color bars</option><option value="checker">Checkerboard</option><option value="gray">Grayscale</option></select></label><div class="pattern" id="test-pattern" style="margin-top:16px"></div></section>
 </main><footer id="message" role="status" aria-live="polite">Ready</footer><script>
-const $=id=>document.getElementById(id),modes=['home','dashboard','visuals','clock','test','activity'];let mode='home',lock=null,wantsAwake=false,wakeRequestPending=false,wakeRetryTimer=null;
-function save(){try{localStorage.setItem('curt-display-v1',JSON.stringify({mode,name:$('name').value,animation:$('animation').value,keepAwake:wantsAwake}));}catch{$('message').textContent='Browser storage unavailable; settings apply for this session.';}}
+const $=id=>document.getElementById(id),modes=['home','dashboard','visuals','clock','test','activity'];let mode='home',lock=null,wantsAwake=false,wakeRequestPending=false,wakeRetryTimer=null,sleepTestUntil=0,sleepTestRestoreAwake=false;
+function save(){try{localStorage.setItem('curt-display-v1',JSON.stringify({mode,name:$('name').value,animation:$('animation').value,keepAwake:sleepTestUntil?sleepTestRestoreAwake:wantsAwake}));}catch{$('message').textContent='Browser storage unavailable; settings apply for this session.';}}
 function show(value){mode=modes.includes(value)?value:'home';for(const id of modes)$(id).hidden=id!==mode;document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)));const dash=$('dashboard').querySelector('iframe'),visual=$('visuals').querySelector('iframe');if(mode==='dashboard'){const unit=$('name').value.trim();const target=/^(phone(173|174|176|177|191|195|253|254)|Alina|Nexus|SteamDeck|viki|RenderRig)$/.test(unit)?'/cluster/display.html?mode=activity&name='+encodeURIComponent(unit)+'&immersive=1&embedded=1&v=55':dash.dataset.src;if(dash.getAttribute('src')!==target)dash.src=target;}else dash.removeAttribute('src');if(mode==='visuals')visual.src='/cluster/eyecandy.html#'+($('animation').value?$('animation').value+'+lock':'');else visual.removeAttribute('src');save();}
 function labels(){document.querySelectorAll('[data-label]').forEach(el=>el.textContent=$('name').value.trim()||'Cluster screen');save();}
 function tick(){const now=new Date();$('time').textContent=now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});$('time').dateTime=now.toISOString();$('activity-time').textContent=now.toLocaleTimeString();activityAge();$('date').textContent=now.toLocaleDateString([], {weekday:'long',year:'numeric',month:'long',day:'numeric'});const values=[['Browser area',innerWidth+' × '+innerHeight],['Screen',screen.width+' × '+screen.height],['Pixel ratio',String(devicePixelRatio)],['Orientation',screen.orientation?.type||(innerWidth>innerHeight?'landscape':'portrait')]];$('metrics').replaceChildren(...values.map(([label,value])=>{const d=document.createElement('div');d.className='metric';const s=document.createElement('strong');s.textContent=value;d.append(s,document.createTextNode(label));return d;}));}
 function wakeStatus(text){$('screen-state').textContent=text;$('activity-screen-state').textContent=text;}
+function finishSleepTest(){
+ if(!sleepTestUntil)return;
+ sleepTestUntil=0;wantsAwake=sleepTestRestoreAwake;sleepTestRestoreAwake=false;save();
+ if(wantsAwake)awake();else wakeStatus('Normal screen sleep enabled.');
+}
+function startSleepTest(){
+ if(sleepTestUntil)return;
+ sleepTestRestoreAwake=wantsAwake;sleepTestUntil=Date.now()+120000;wantsAwake=false;
+ clearTimeout(wakeRetryTimer);wakeRetryTimer=null;
+ const previous=lock;lock=null;if(previous)previous.release();
+ $('awake').setAttribute('aria-pressed','false');
+ wakeStatus('Remote wake test: allowing normal screen sleep for up to two minutes.');
+ setTimeout(finishSleepTest,120000);
+}
 async function awake(){
+ if(sleepTestUntil){if(Date.now()>=sleepTestUntil)finishSleepTest();return;}
  if(!wantsAwake||document.hidden||wakeRequestPending||(lock&&!lock.released))return;
  wakeRequestPending=true;
  try{
@@ -42,6 +57,7 @@ async function awake(){
  }finally{wakeRequestPending=false;}
 }
 $('awake').onclick=async()=>{
+ if(sleepTestUntil){finishSleepTest();return;}
  wantsAwake=!wantsAwake;clearTimeout(wakeRetryTimer);wakeRetryTimer=null;save();
  if(wantsAwake)await awake();
  else{const previous=lock;lock=null;if(previous)await previous.release();$('awake').setAttribute('aria-pressed','false');wakeStatus('Normal screen sleep enabled.');}
@@ -49,7 +65,7 @@ $('awake').onclick=async()=>{
 $('full').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch{$('message').textContent='Fullscreen unavailable; use your browser’s fullscreen control.';}};document.addEventListener('fullscreenchange',()=>{$('full').textContent=document.fullscreenElement?'Exit fullscreen':'Fullscreen';});
 $('focus').onclick=()=>document.body.classList.add('immersive');$('exit').onclick=()=>document.body.classList.remove('immersive');document.addEventListener('keydown',e=>{if(e.key==='Escape')document.body.classList.remove('immersive');});document.addEventListener('visibilitychange',()=>{if(!document.hidden)awake();});
 document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>show(b.dataset.mode));$('name').oninput=()=>{labels();displayRevision=null;syncDisplay();};$('animation').onchange=()=>show('visuals');$('pattern').onchange=()=>$('test-pattern').className='pattern '+$('pattern').value;
-try{const saved=JSON.parse(localStorage.getItem('curt-display-v1')||'{}');$('name').value=String(saved.name||'').slice(0,60);if([...$('animation').options].some(o=>o.value===saved.animation))$('animation').value=saved.animation;mode=saved.mode||'home';if(typeof saved.keepAwake==='boolean')wantsAwake=saved.keepAwake;else wantsAwake=Boolean(saved.name);}catch{}const params=new URLSearchParams(location.search);if(modes.includes(params.get('mode')))mode=params.get('mode');if(params.has('name')){$('name').value=params.get('name').slice(0,60);wantsAwake=true;}if(params.get('immersive')==='1')document.body.classList.add('immersive');labels();show(mode);awake();setInterval(awake,30000);
+try{const saved=JSON.parse(localStorage.getItem('curt-display-v1')||'{}');$('name').value=String(saved.name||'').slice(0,60);if([...$('animation').options].some(o=>o.value===saved.animation))$('animation').value=saved.animation;mode=saved.mode||'home';if(typeof saved.keepAwake==='boolean')wantsAwake=saved.keepAwake;else wantsAwake=Boolean(saved.name);}catch{}const params=new URLSearchParams(location.search);if(modes.includes(params.get('mode')))mode=params.get('mode');if(params.has('name')){$('name').value=params.get('name').slice(0,60);wantsAwake=true;}if(params.get('sleep_test')==='1'&&/^phone(173|174|176|177|191|195|253|254)$/.test($('name').value.trim()))startSleepTest();if(params.get('immersive')==='1')document.body.classList.add('immersive');labels();show(mode);awake();setInterval(awake,30000);
 
 let displayRevision=null,displayPolling=false,activityData=null,activityReceived=0;
 const unitPattern=/^(phone(173|174|176|177|191|195|253|254)|Alina|Nexus|SteamDeck|viki|RenderRig)$/;
