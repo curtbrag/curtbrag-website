@@ -923,7 +923,7 @@
     const busy=browserOpenBusy||termuxReturnBusy;
     document.getElementById('browser-open-run').disabled=busy;
     document.getElementById('browser-open-close').disabled=busy||!browserOpenReport||!!browserOpenReport.closed_at;
-    document.getElementById('termux-return-run').disabled=busy||!termuxControllerReady;
+    document.getElementById('termux-return-run').disabled=busy||(document.getElementById('termux-return-route')?.value==='pc-controller'&&!termuxControllerReady);
     document.getElementById('termux-return-close').disabled=busy||!termuxReturnReport||!!termuxReturnReport.closed_at;
   }
   function validateBrowserOpenUrl(value){
@@ -937,8 +937,8 @@
   function ensureBrowserOpen(){
     const fleet=document.getElementById('cluster-view-fleet');if(!fleet||document.getElementById('cluster-browser-open'))return;
     const card=document.createElement('section');card.id='cluster-browser-open';card.className='cluster-control-card';
-    card.innerHTML='<h3>Open website on device screens</h3><p>Request a browser to open a website once on your selected devices. Browser launch requests do not verify screen or page visibility.</p><label for="browser-open-url">Website to open on device screens</label><input id="browser-open-url" type="url" maxlength="2048" value="https://curtbrag.com/" style="display:block;width:100%;box-sizing:border-box;margin:8px 0;padding:10px"><label for="browser-open-target">Devices</label> <select id="browser-open-target"><option value="all">All available units</option><option value="computers">Computers &amp; laptops</option>'+FLEET.map(([id])=>'<option value="'+id+'">'+({Alina:'ASUS laptop (Alina)',Nexus:'Dell laptop (Nexus)',viki:'Small desktop (viki)',RenderRig:'Main PC (RenderRig)'}[id]||id)+'</option>').join('')+'</select><div class="cluster-action-row"><button id="browser-open-run" type="button" class="cluster-primary-action">Open website in device browsers</button><button id="browser-open-close" type="button" disabled>Close report</button></div><p>Busy and offline units are skipped. Close report preserves the record without cancelling or retrying jobs.</p><p id="browser-open-state" role="status" aria-live="polite">Ready. No browser launch requested.</p><pre id="browser-open-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto"></pre><h4>Return phones to Termux</h4><p>Use the PC controller to return selected phones to Termux. Each phone needs an authorized Android connection. Results check the foreground app; physical screen visibility remains unverified.</p><div class="cluster-action-row"><button id="termux-return-run" type="button" disabled>Return selected phones to Termux</button><button id="termux-return-close" type="button" disabled>Close return report</button></div><p id="termux-return-state" role="status" aria-live="polite">Checking the PC controller. No return requested.</p><pre id="termux-return-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto"></pre>';
-    fleet.prepend(card);card.querySelector('#browser-open-run').onclick=dispatchBrowserOpen;card.querySelector('#browser-open-close').onclick=closeBrowserOpen;card.querySelector('#termux-return-run').onclick=dispatchTermuxReturn;card.querySelector('#termux-return-close').onclick=closeTermuxReturn;
+    card.innerHTML='<h3>Open website on device screens</h3><p>Request a browser to open a website once on your selected devices. Browser launch requests do not verify screen or page visibility.</p><label for="browser-open-url">Website to open on device screens</label><input id="browser-open-url" type="url" maxlength="2048" value="https://curtbrag.com/" style="display:block;width:100%;box-sizing:border-box;margin:8px 0;padding:10px"><label for="browser-open-target">Devices</label> <select id="browser-open-target"><option value="all">All available units</option><option value="computers">Computers &amp; laptops</option>'+FLEET.map(([id])=>'<option value="'+id+'">'+({Alina:'ASUS laptop (Alina)',Nexus:'Dell laptop (Nexus)',viki:'Small desktop (viki)',RenderRig:'Main PC (RenderRig)'}[id]||id)+'</option>').join('')+'</select><div class="cluster-action-row"><button id="browser-open-run" type="button" class="cluster-primary-action">Open website in device browsers</button><button id="browser-open-close" type="button" disabled>Close report</button></div><p>Busy and offline units are skipped. Close report preserves the record without cancelling or retrying jobs.</p><p id="browser-open-state" role="status" aria-live="polite">Ready. No browser launch requested.</p><pre id="browser-open-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto"></pre><h4>Return phones to Termux</h4><p>Request Termux through each phone’s existing connection. A paired PC controller can also verify the foreground app. Neither method proves the display is awake.</p><label for="termux-return-route">Return method</label> <select id="termux-return-route"><option value="phone-worker">Existing phone connection</option><option value="pc-controller">Paired PC controller (verify foreground)</option></select><div class="cluster-action-row"><button id="termux-return-run" type="button" disabled>Return selected phones to Termux</button><button id="termux-return-close" type="button" disabled>Close return report</button></div><p id="termux-return-state" role="status" aria-live="polite">Ready. No return requested. A sleeping display may stay dark.</p><pre id="termux-return-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto"></pre>';
+    fleet.prepend(card);card.querySelector('#browser-open-run').onclick=dispatchBrowserOpen;card.querySelector('#browser-open-close').onclick=closeBrowserOpen;card.querySelector('#termux-return-run').onclick=dispatchTermuxReturn;card.querySelector('#termux-return-close').onclick=closeTermuxReturn;card.querySelector('#termux-return-route').onchange=()=>{renderTermuxReturn(current?.results||[]);updateBrowserButtons();};
     if(browserOpenReport?.url)card.querySelector('#browser-open-url').value=browserOpenReport.url;
     if(['all','computers'].includes(browserOpenReport?.target)||IDS.has(browserOpenReport?.target))card.querySelector('#browser-open-target').value=browserOpenReport.target;
     renderBrowserOpen(current?.results||[]);renderTermuxReturn(current?.results||[]);updateBrowserButtons();
@@ -1018,7 +1018,7 @@
   function renderTermuxReturn(results,commands=null){
     const state=document.getElementById('termux-return-state');if(!state)return;
     if(commands&&Array.isArray(commands.queue)&&Array.isArray(commands.history))termuxControllerCommands=commands;
-    if(!termuxReturnReport){state.textContent=termuxControllerReady?'PC controller ready. Each phone still requires an authorized Android connection.':'Remote return unavailable: the PC controller is offline or needs an update. Phone worker connectivity alone cannot return apps.';updateBrowserButtons();return;}
+    if(!termuxReturnReport){state.textContent=document.getElementById('termux-return-route')?.value!=='pc-controller'?'Ready to request Termux through the existing phone connection. Screen wake and foreground changes are unverified.':termuxControllerReady?'PC controller ready. Foreground verification needs a paired Android connection.':'Remote return unavailable: the PC controller is offline or needs an update. Choose Existing phone connection to send an unverified request.';updateBrowserButtons();return;}
     const controller=termuxReturnReport.transport==='pc-controller';
     for(const task of termuxReturnReport.tasks){
       if(['return-requested','termux-foreground','failed','closed'].includes(task.state))continue;
@@ -1040,7 +1040,7 @@
     }
     saveTermuxReturn();
     const tasks=termuxReturnReport.tasks,requested=tasks.filter(t=>t.state==='return-requested').length,foreground=tasks.filter(t=>t.state==='termux-foreground').length,failed=tasks.filter(t=>t.state==='failed').length,closed=tasks.filter(t=>t.state==='closed').length;
-    state.textContent=(tasks.length?'':'No available selected phones. ')+`${requested+foreground+failed}/${tasks.length} return results · ${foreground} Termux foreground verified · ${requested} older requests accepted without foreground verification · ${failed} failed · ${closed} closed · ${termuxReturnReport.skipped.length} skipped. Screen visibility is unverified.`;
+    state.textContent=(tasks.length?'':'No available selected phones. ')+`${requested+foreground+failed}/${tasks.length} return results · ${foreground} Termux foreground verified · ${requested} requests accepted without foreground verification · ${failed} failed · ${closed} closed · ${termuxReturnReport.skipped.length} skipped. Screen visibility is unverified.`;
     const labels={'return-requested':'request accepted; screen unconfirmed','termux-foreground':'Termux foreground verified; physical screen unconfirmed'};
     document.getElementById('termux-return-report').textContent=tasks.map(t=>`${t.unit} · ${labels[t.state]||t.state}${t.error?'\n'+t.error:''}`).join('\n\n')+(termuxReturnReport.skipped.length?'\n\nSkipped: '+termuxReturnReport.skipped.map(n=>n.unit+' ('+n.reason+')').join(', '):'');
     updateBrowserButtons();
@@ -1049,27 +1049,37 @@
     if(browserOpenBusy||termuxReturnBusy)return;termuxReturnBusy=true;updateBrowserButtons();
     try{
       const target=document.getElementById('browser-open-target').value;
+      const route=document.getElementById('termux-return-route')?.value||'phone-worker';
+      if(!['phone-worker','pc-controller'].includes(route))throw Error('Choose a supported return method.');
       if(!['all','computers'].includes(target)&&!IDS.has(target))throw Error('Select a canonical cluster unit.');
       if(target==='computers'||PC_IDS.has(target))throw Error('Return to Termux is available for phones only. Select all units or a phone.');
       if(browserRequestsPending(browserOpenReport))throw Error('Launch requests are pending. Review Queue & results before returning phones.');
       if(browserRequestsPending(termuxReturnReport))throw Error('Previous return requests are pending. Review the return report before trying again.');
-      document.getElementById('termux-return-state').textContent='Checking the PC controller…';
-      const bridge=await controlApi('bridge-status');updateTermuxController(bridge,null);
-      if(!termuxControllerReady)throw Error('Remote return unavailable: online PC controller 2.5.0 required.');
+      if(route==='pc-controller'){
+        document.getElementById('termux-return-state').textContent='Checking the PC controller…';
+        const bridge=await controlApi('bridge-status');updateTermuxController(bridge,null);
+        if(!termuxControllerReady)throw Error('Remote return unavailable: online PC controller 2.5.0 required.');
+      }else document.getElementById('termux-return-state').textContent='Checking the existing phone connection…';
       const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes))throw Error('Worker availability could not be verified.');
       const fleet=canonicalize(raw),selected=fleet.nodes.filter(n=>PHONE_IDS.has(n.id)&&(target==='all'||n.id===target)),ready=selected.filter(n=>n.online&&!n.busy);
       const id='termux-return-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
-      termuxReturnReport={id,target,transport:'pc-controller',created_at:new Date().toISOString(),tasks:ready.map(n=>({unit:n.id,command_id:null,state:'planned'})),skipped:selected.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:!n.online?'offline':'busy'}))};saveTermuxReturn();renderTermuxReturn(current?.results||[]);
+      termuxReturnReport={id,target,transport:route,created_at:new Date().toISOString(),tasks:ready.map((n,i)=>route==='pc-controller'?{unit:n.id,command_id:null,state:'planned'}:{unit:n.id,job_id:id+'-'+i,state:'planned'}),skipped:selected.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:!n.online?'offline':'busy'}))};saveTermuxReturn();renderTermuxReturn(current?.results||[]);
       for(const task of termuxReturnReport.tasks){
         task.state='submitting';saveTermuxReturn();renderTermuxReturn(current?.results||[]);
         try{
-          const queued=await controlApi('queue-command','POST',{target:task.unit,type:'phone-return-termux',payload:{}});
-          if(!queued?.ok||typeof queued.command_id!=='string'||!queued.command_id)throw Error('Command receipt missing');
-          task.command_id=queued.command_id;task.state='queued';
-        }catch{task.state='unconfirmed';saveTermuxReturn();throw Error('Controller return submission is unconfirmed. Review the return report before retrying.');}
+          if(route==='pc-controller'){
+            const queued=await controlApi('queue-command','POST',{target:task.unit,type:'phone-return-termux',payload:{}});
+            if(!queued?.ok||typeof queued.command_id!=='string'||!queued.command_id)throw Error('Command receipt missing');
+            task.command_id=queued.command_id;
+          }else{
+            const cmd=browserRequestCommand({action:'return-termux'});
+            await swarmApi('enqueue','POST',{job:{id:task.job_id,type:'shell',cmd,command:cmd},target_device_ids:[task.unit]});
+          }
+          task.state='queued';
+        }catch{task.state='unconfirmed';saveTermuxReturn();throw Error('Return submission is unconfirmed. Review the return report before retrying.');}
         saveTermuxReturn();renderTermuxReturn(current?.results||[]);
       }
-      if(ready.length){const commands=await controlApi('commands');renderTermuxReturn(current?.results||[],commands);}
+      if(ready.length){if(route==='pc-controller'){const commands=await controlApi('commands');renderTermuxReturn(current?.results||[],commands);}else await load(true);}
     }catch(error){document.getElementById('termux-return-state').textContent=error.message;}
     finally{termuxReturnBusy=false;updateBrowserButtons();saveTermuxReturn();}
   }
