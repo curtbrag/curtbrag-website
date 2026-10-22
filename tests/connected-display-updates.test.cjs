@@ -18,7 +18,7 @@ function harness({target='all',mode='activity',connect=false,nodes=[],failAvaila
   enqueueSwarm:async(type,cmd,targets)=>jobs.push({type,cmd,targets}),load:async force=>loads.push(force),
  });
  vm.runInContext(source.slice(start,end)+'\nensureDisplayControls();',context);
- return {el:elements,requests,jobs,statusCalls,loads,release,update:()=>elements['display-update'].onclick(),open:()=>elements['display-send'].onclick()};
+ return {el:elements,requests,jobs,statusCalls,loads,release,update:()=>elements['display-update'].onclick(),open:()=>elements['display-send'].onclick(),sleep:()=>elements['display-sleep'].onclick()};
 }
 
 test('connected updates save exactly eight phone modes without browser jobs or new display credentials',async()=>{
@@ -32,6 +32,13 @@ test('connected updates save exactly eight phone modes without browser jobs or n
 test('one selected phone changes without touching other devices or requiring a fresh worker heartbeat',async()=>{
  const h=harness({target:'phone253',mode:'clock',failAvailability:true});await h.update();
  assert.deepEqual(h.requests.map(r=>r.body),[{phone:'phone253',mode:'clock'}]);assert.equal(h.jobs.length,0);
+});
+
+test('sleep test uses connected pages only and cannot issue credentials or browser jobs',async()=>{
+ const h=harness({target:'phone253',mode:'clock',connect:true,failAvailability:true});await h.sleep();
+ assert.deepEqual(h.requests.map(r=>r.body),[{phone:'phone253',mode:'dashboard',sleepTest:true}]);assert.equal(h.jobs.length,0);assert.equal(h.statusCalls.length,0);
+ assert.match(h.el['display-state'].textContent,/does not force screens off or verify a wake/);
+ assert.equal(h.el['display-sleep'].disabled,false);
 });
 test('partial configuration failures name saved phones and do not dispatch fallback browser launches',async()=>{
  const h=harness({failPhone:'phone176'});await h.update();

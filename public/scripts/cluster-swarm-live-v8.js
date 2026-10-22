@@ -324,18 +324,18 @@
   function ensureDisplayControls(){
     const panel=document.getElementById('cluster-view-fleet');if(!panel||document.getElementById('cluster-display-control'))return;
     const card=document.createElement('section');card.id='cluster-display-control';card.className='cluster-control-card';
-    card.innerHTML='<h3>Phone screens</h3><p>Change what the open phone displays show. Connected pages update automatically every 10 seconds. Use Open / reconnect displays when a phone is showing another app.</p><label for="display-target">Phone</label><select id="display-target"><option value="all">All phones</option>'+Array.from(PHONE_IDS).map(p=>'<option>'+p+'</option>').join('')+'</select> <label for="display-mode">Display</label><select id="display-mode"><option value="activity">This unit’s activity</option><option value="visuals">Animations</option><option value="clock">Clock</option><option value="test">Screen test</option><option value="dashboard">Unit activity dashboard</option><option value="home">Display overview</option></select><p><label><input type="checkbox" id="display-connect"> Connect these phone displays privately for 24 hours (view only)</label><br>Lets each phone show its own activity, clock and animations without entering the site password. It cannot open private pages or use dashboard controls.</p><div class="cluster-action-row"><button id="display-update" type="button" class="cluster-primary-action">Update connected screens</button><button id="display-send" type="button">Open / reconnect displays</button><a id="display-open" href="/cluster/display.html" target="_blank" rel="noopener">Open display hub</a><button id="display-results" type="button">View launch results</button></div><p id="display-state" role="status"></p>';
+    card.innerHTML='<h3>Phone screens</h3><p>Change what the open phone displays show. Connected pages update automatically every 10 seconds. Use Open / reconnect displays when a phone is showing another app.</p><label for="display-target">Phone</label><select id="display-target"><option value="all">All phones</option>'+Array.from(PHONE_IDS).map(p=>'<option>'+p+'</option>').join('')+'</select> <label for="display-mode">Display</label><select id="display-mode"><option value="activity">This unit’s activity</option><option value="visuals">Animations</option><option value="clock">Clock</option><option value="test">Screen test</option><option value="dashboard">Unit activity dashboard</option><option value="home">Display overview</option></select><p><label><input type="checkbox" id="display-connect"> Connect these phone displays privately for 24 hours (view only)</label><br>Lets each phone show its own activity, clock and animations without entering the site password. It cannot open private pages or use dashboard controls.</p><div class="cluster-action-row"><button id="display-update" type="button" class="cluster-primary-action">Update connected screens</button><button id="display-send" type="button">Open / reconnect displays</button><button id="display-sleep" type="button">Allow sleep for 2 minutes</button><a id="display-open" href="/cluster/display.html" target="_blank" rel="noopener">Open display hub</a><button id="display-results" type="button">View launch results</button></div><p id="display-state" role="status"></p>';
     panel.insertBefore(card,panel.children[1]);
     const updateDisplayLink=()=>{const phone=document.getElementById('display-target').value,mode=document.getElementById('display-mode').value;document.getElementById('display-open').href='/cluster/display.html?mode='+encodeURIComponent(mode)+(PHONE_IDS.has(phone)?'&name='+encodeURIComponent(phone):'');};
     document.getElementById('display-target').onchange=updateDisplayLink;document.getElementById('display-mode').onchange=updateDisplayLink;updateDisplayLink();
     document.getElementById('display-results').onclick=()=>setControlView('results',true);
     let displayBusy=false;
-    const applyDisplay=async(launch)=>{
+    const applyDisplay=async(launch,sleepTest=false)=>{
       if(displayBusy)return;
       displayBusy=true;
-      const controls=['display-update','display-send','display-target','display-mode','display-connect'].map(id=>document.getElementById(id));
+      const controls=['display-update','display-send','display-sleep','display-target','display-mode','display-connect'].map(id=>document.getElementById(id));
       controls.forEach(control=>control.disabled=true);
-      const state=document.getElementById('display-state'),selected=document.getElementById('display-target').value,mode=document.getElementById('display-mode').value;
+      const state=document.getElementById('display-state'),selected=document.getElementById('display-target').value,mode=sleepTest?'dashboard':document.getElementById('display-mode').value;
       const saved=[],launched=[],skipped=[],connect=launch&&document.getElementById('display-connect')?.checked===true;
       state.textContent=launch?'Checking phone availability…':'Updating connected displays…';try{
         if(!['activity','visuals','clock','test','dashboard','home'].includes(mode))throw new Error('Select a display mode');
@@ -349,7 +349,7 @@
         for(const phone of phones){
           state.textContent='Saving display for '+phone+'…';
           const node=fresh?.nodes.find(n=>n.id===phone),connecting=connect&&node?.online&&!node.busy;
-          const response=await fetch('/.netlify/functions/phone-display',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:JSON.stringify({phone,mode,...(connecting?{connect:true}:{})})});
+          const response=await fetch('/.netlify/functions/phone-display',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:JSON.stringify({phone,mode,...(sleepTest?{sleepTest:true}:{}),...(connecting?{connect:true}:{})})});
           if(!response.ok)throw new Error('Could not save display mode for '+phone);saved.push(phone);
           if(!launch)continue;
           if(node?.online&&!node.busy){
@@ -362,12 +362,13 @@
             await enqueueSwarm('shell',browserOpenCommand(url),[phone]);launched.push(phone);
           }else skipped.push(phone+' ('+(node?.online?'busy':'offline')+')');
         }
-        state.textContent='Display mode saved for '+saved.join(', ')+'. '+(launched.length?'Browser launch queued for '+launched.join(', ')+'. ':'')+(skipped.length?'Browser launch skipped: '+skipped.join(', ')+'. ':'')+(launch?'Connected displays also update automatically within 10 seconds.':'Open display pages will update within 10 seconds. For phones showing another app, use Open / reconnect displays.')+(connect?' Private view-only connections expire in 24 hours.':'');
+        state.textContent=sleepTest?'Sleep test saved for '+saved.join(', ')+'. Connected displays will allow normal screen sleep for up to two minutes, then return to activity. This does not force screens off or verify a wake.':'Display mode saved for '+saved.join(', ')+'. '+(launched.length?'Browser launch queued for '+launched.join(', ')+'. ':'')+(skipped.length?'Browser launch skipped: '+skipped.join(', ')+'. ':'')+(launch?'Connected displays also update automatically within 10 seconds.':'Open display pages will update within 10 seconds. For phones showing another app, use Open / reconnect displays.')+(connect?' Private view-only connections expire in 24 hours.':'');
         if(launch)await load(true);
       }catch(e){state.textContent=(saved.length?'Display mode saved: '+saved.join(', ')+'. ':'')+(launched.length?'Browser launch queued: '+launched.join(', ')+'. ':'')+e.message;}finally{displayBusy=false;controls.forEach(control=>control.disabled=false);}
     };
     document.getElementById('display-update').onclick=()=>applyDisplay(false);
     document.getElementById('display-send').onclick=()=>applyDisplay(true);
+    document.getElementById('display-sleep').onclick=()=>applyDisplay(false,true);
   }
 
   function ensureControlLayout(){

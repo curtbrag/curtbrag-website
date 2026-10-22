@@ -86,6 +86,29 @@ function renderActivity(data){
  const result=data.lastResult;$('unit-result').textContent=result?'Last result: '+result.label+' · '+(result.success?'Completed successfully':'Failed'):'No completed task recorded';
  $('unit-connection').textContent='Live updates every 10 seconds';activityAge();
 }
+
+// New embedded pages can cooperate with an already-open, same-origin display.
+// This releases only our own browser wake locks; it never sends Android input.
+let remoteSleepTestId=null,parentSleepTestActive=false;
+function restoreParentSleepTest(){
+ if(!parentSleepTestActive)return;
+ parentSleepTestActive=false;
+ try{window.parent.finishSleepTest();}catch{}
+}
+function applyRemoteSleepTest(data){
+ const test=data.sleepTest,now=Date.now();
+ if(!test){if(remoteSleepTestId){finishSleepTest();restoreParentSleepTest();}return;}
+ if(data.mode!=='dashboard'||!/^phone(173|174|176|177|191|195|253|254)$/.test($('name').value.trim())||typeof test.id!=='string'||!/^[a-f0-9-]{36}$/.test(test.id)||!Number.isFinite(test.expiresAt)||test.expiresAt<=now||test.expiresAt>now+120000||remoteSleepTestId===test.id)return;
+ remoteSleepTestId=test.id;startSleepTest();
+ if(params.get('embedded')!=='1'||window.parent===window)return;
+ try{
+  const parent=window.parent,url=new URL(parent.location.href);
+  if(url.origin!==location.origin||url.pathname!=='/cluster/display.html'||parent.document.getElementById('name')?.value.trim()!==$('name').value.trim()||parent.document.getElementById('dashboard')?.querySelector('iframe')!==window.frameElement||typeof parent.startSleepTest!=='function'||typeof parent.finishSleepTest!=='function')return;
+  parent.startSleepTest();parentSleepTestActive=true;
+ }catch{}
+}
+window.addEventListener('pagehide',restoreParentSleepTest);
+
 async function syncDisplay(){
  const phone=$('name').value.trim();
  if(!unitPattern.test(phone)||displayPolling||document.hidden)return;
@@ -94,7 +117,7 @@ async function syncDisplay(){
   const r=await fetch('/.netlify/functions/phone-display?phone='+encodeURIComponent(phone)+'&activity=1',{cache:'no-store',signal:controller.signal});
   if(!r.ok)throw Error();const d=await r.json();
   if(phone!==$('name').value.trim())return;
-  renderActivity(d.activity);
+  renderActivity(d.activity);applyRemoteSleepTest(d);
   if(params.get('embedded')!=='1'&&d.revision&&d.revision!==displayRevision&&modes.includes(d.mode)){displayRevision=d.revision;show(d.mode);$('message').textContent='Remote display updated';}
  }catch{
   $('message').textContent='Display connection unavailable; keeping current mode';

@@ -32,9 +32,13 @@ async function handle(event){
 
   if(event.httpMethod==='GET'){
    const phone=event.queryStringParameters?.phone;if(!units.has(phone))return response(400,{error:'Invalid unit'});
-   const desired=await store('phone-display').get(phone,{type:'json'});
+   const desired=await store('phone-display','strong').get(phone,{type:'json'});
+   const test=desired?.sleepTest,now=Date.now();
+   const testActive=!!(test&&typeof test.id==='string'&&/^[a-f0-9-]{36}$/.test(test.id)&&Number.isFinite(test.expiresAt)&&test.expiresAt>now&&test.expiresAt<=now+120000);
+   const selected=test?(testActive?'dashboard':'activity'):desired?.mode||null;
+   const revision=desired?.revision?(desired.revision+(test&&!testActive?':expired':'')):null;
    const view=event.queryStringParameters?.activity==='1'?await activity(phone):undefined;
-   return response(200,{mode:desired?.mode==='activity'&&event.queryStringParameters?.activity!=='1'?'dashboard':desired?.mode||null,revision:desired?.revision||null,...(view?{activity:view}:{})});
+   return response(200,{mode:selected==='activity'&&event.queryStringParameters?.activity!=='1'?'dashboard':selected,revision,...(testActive?{sleepTest:test}:{}),...(view?{activity:view}:{})});
   }
   if(event.httpMethod!=='POST')return response(405,{error:'Method not allowed'});
   const auth=event.headers?.authorization||event.headers?.Authorization||'';
@@ -43,8 +47,10 @@ async function handle(event){
   const a=Buffer.from(supplied),b=Buffer.from(password||'');
   if(!password||a.length!==b.length||!crypto.timingSafeEqual(a,b))return response(401,{error:'Sign in required'});
   let body;try{body=JSON.parse(event.body||'{}');}catch{return response(400,{error:'Invalid JSON'});}
-  if(!phones.has(body.phone)||!modes.has(body.mode)||(body.connect!==undefined&&typeof body.connect!=='boolean'))return response(400,{error:'Invalid display selection'});
-  const value={mode:body.mode,revision:crypto.randomUUID()};await store('phone-display').setJSON(body.phone,value);
+  if(!phones.has(body.phone)||!modes.has(body.mode)||(body.connect!==undefined&&typeof body.connect!=='boolean')||(body.sleepTest!==undefined&&typeof body.sleepTest!=='boolean')||(body.sleepTest===true&&(body.mode!=='dashboard'||body.connect===true)))return response(400,{error:'Invalid display selection'});
+  const value={mode:body.mode,revision:crypto.randomUUID()};
+  if(body.sleepTest===true)value.sleepTest={id:value.revision,expiresAt:Date.now()+120000};
+  await store('phone-display').setJSON(body.phone,value);
   let display_url;
   if(body.connect===true){
    const ticket=await issueDisplayTicket({store:store('device-display-sessions','strong'),phone:body.phone,host:event.host,password});
