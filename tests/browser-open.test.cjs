@@ -20,6 +20,7 @@ function harness(options={}){
     'browser-open-url':{value:'https://curtbrag.com/'},'browser-open-target':{value:'all'},
     'browser-open-state':{textContent:''},'browser-open-report':{textContent:''},
     'termux-return-run':{disabled:false},'termux-return-close':{disabled:true},
+    'termux-return-route':{value:options.returnRoute||'pc-controller'},
     'termux-return-state':{textContent:''},'termux-return-report':{textContent:''},
   };
   let loads=0;
@@ -361,4 +362,68 @@ test('closing return reports refuses active jobs and closes old missing jobs wit
   assert.equal(h.api.getReturn().tasks[0].state,'closed');assert.ok(h.api.getReturn().closed_at);assert.equal(h.calls.length,1);assert.equal(h.calls[0][0],'queue-status');
   const young=harness();const recent=returnReport('unconfirmed');recent.created_at=new Date().toISOString();young.api.setReturn(recent);await young.api.closeTermuxReturn();
   assert.equal(young.api.getReturn().closed_at,undefined);assert.match(young.elements['termux-return-state'].textContent,/at least two minutes/);
+});
+
+test('the default visible return method uses the existing phone connection',()=>{
+  assert.match(source,/<select id="termux-return-route"><option value="phone-worker">Existing phone connection<\/option><option value="pc-controller">/);
+  assert.match(source,/Neither method proves the display is awake/);
+});
+
+test('phone return targets only the selected idle phone without requiring a PC controller',async()=>{
+  const h=harness({returnRoute:'phone-worker',nodes:[{id:'phone191',online:true,busy:false},{id:'phone253',online:true,busy:false}],controlApi:async()=>{throw Error('PC unavailable');}});
+  h.elements['browser-open-target'].value='phone253';
+  await h.api.dispatchTermuxReturn();
+  assert.equal(h.api.getReturn().transport,'phone-worker');
+  assert.equal(h.calls.some(c=>c[3]==='control'),false);
+  const calls=h.calls.filter(c=>c[0]==='enqueue');assert.equal(calls.length,1);
+  const request=JSON.parse(JSON.stringify(calls[0][2]));
+  assert.deepEqual(request.target_device_ids,['phone253']);assert.equal(request.job.type,'shell');
+  assert.equal(request.job.cmd,request.job.command);
+  const encoded=request.job.cmd.match(/--settings-b64 '([A-Za-z0-9+/=]+)'/)[1];
+  assert.deepEqual(JSON.parse(Buffer.from(encoded,'base64').toString()),{action:'return-termux'});
+  assert.equal(h.api.getReturn().tasks[0].job_id,request.job.id);
+  assert.equal(h.api.getReturn().tasks[0].state,'queued');assert.equal(h.loads(),1);
+});
+
+test('phone return skips busy, offline, PC and unregistered units',async()=>{
+  const h=harness({returnRoute:'phone-worker',nodes:[{id:'phone191',online:true,busy:false},{id:'phone253',online:true,busy:true},{id:'phone174',online:false,busy:false},{id:'Nexus',online:true,busy:false},{id:'phone999',online:true,busy:false}]});
+  await h.api.dispatchTermuxReturn();
+  assert.deepEqual(h.calls.filter(c=>c[0]==='enqueue').map(c=>Array.from(c[2].target_device_ids)),[['phone191']]);
+  assert.ok(h.api.getReturn().skipped.some(t=>t.unit==='phone253'&&t.reason==='busy'));
+  assert.ok(h.api.getReturn().skipped.some(t=>t.unit==='phone174'&&t.reason==='offline'));
+  for(const target of ['computers','Nexus','phone253;id']){
+    const bad=harness({returnRoute:'phone-worker'});bad.elements['browser-open-target'].value=target;
+    await bad.api.dispatchTermuxReturn();assert.equal(bad.calls.length,0);
+  }
+});
+
+test('phone return remains available when the paired PC controller is offline',()=>{
+  const h=harness({returnRoute:'phone-worker'});
+  h.api.updateTermuxController(null,null);h.api.renderTermuxReturn([]);
+  assert.equal(h.elements['termux-return-run'].disabled,false);
+  assert.match(h.elements['termux-return-state'].textContent,/existing phone connection/);
+  h.elements['termux-return-route'].value='pc-controller';h.api.renderTermuxReturn([]);
+  assert.equal(h.elements['termux-return-run'].disabled,true);
+});
+
+test('unknown return methods cannot submit jobs or commands',async()=>{
+  const h=harness({returnRoute:'unknown-route'});await h.api.dispatchTermuxReturn();
+  assert.equal(h.calls.length,0);assert.equal(h.api.getReturn(),null);
+});
+
+test('an ambiguous phone return submission never replays or sends the next phone',async()=>{
+  const h=harness({returnRoute:'phone-worker',nodes:[{id:'phone191',online:true,busy:false},{id:'phone253',online:true,busy:false}],api:async action=>{if(action==='queue-status')return {nodes:[{id:'phone191',online:true,busy:false},{id:'phone253',online:true,busy:false}],jobs:[],results:[]};throw Error('Receipt lost');}});
+  await h.api.dispatchTermuxReturn();assert.equal(h.api.getReturn().tasks[0].state,'unconfirmed');
+  assert.equal(h.api.getReturn().tasks[1].state,'planned');
+  await h.api.dispatchTermuxReturn();await h.api.dispatchBrowserOpen();
+  assert.equal(h.calls.filter(c=>c[0]==='enqueue').length,1);
+});
+
+test('accepted phone-return results never claim screen wake or verified foreground',()=>{
+  const h=harness({returnRoute:'phone-worker'}),saved=returnReport();saved.transport='phone-worker';h.api.setReturn(saved);
+  h.api.renderTermuxReturn([returnResult()]);
+  assert.equal(h.api.getReturn().tasks[0].state,'return-requested');
+  assert.match(h.elements['termux-return-state'].textContent,/0 Termux foreground verified/);
+  assert.match(h.elements['termux-return-state'].textContent,/1 requests accepted without foreground verification/);
+  assert.match(h.elements['termux-return-report'].textContent,/screen unconfirmed/);
 });

@@ -32,7 +32,8 @@ test('busy and offline phones are skipped; availability errors remain visible',a
 });
 test('missing permission appears as required, never as control or screen success',async()=>{
  const h=harness({nodes});await h.api.check();const r=h.api.get();h.api.collect({results:units.map(u=>result(r.job_id,u))});
- assert.equal(h.api.pending(),false);assert.match(h.el['phone-control-status'].textContent,/Needs Android approval/);
+ assert.equal(h.api.pending(),false);assert.match(h.el['phone-control-status'].textContent,/Overlay access is off; webpage requests may still work/);
+ assert.doesNotMatch(h.el['phone-control-status'].textContent,/Needs Android approval/);
  assert.equal(h.el['phone-control-check'].disabled,false);
 });
 test('mismatched and forged results cannot mark a phone as ready',async()=>{
