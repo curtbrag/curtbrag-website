@@ -6,6 +6,10 @@
   const spinner = form.querySelector('#submit-spinner');
   if (!button || !label || !spinner) return;
   const idleLabel = label.textContent;
+  const subject = form.querySelector('#subject');
+  if (subject && !subject.value) {
+    subject.value = (new URLSearchParams(window.location.search).get('subject') || '').slice(0, 120);
+  }
   let submitting = false;
   function setSubmitting(value) {
     submitting = value;

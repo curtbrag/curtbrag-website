@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '../public/scripts/site-forms.js'), 'utf8');
 
-function setup(kind = 'ride') {
+function setup(kind = 'ride', search = '') {
   function element(id) {
     const classes = new Set();
     return {
@@ -25,11 +25,13 @@ function setup(kind = 'ride') {
   const ids = ['submit-text', 'submit-spinner', 'image-preview', 'preview-img', 'file-error', 'photo', 'description', 'char-count'];
   const nodes = Object.fromEntries(ids.map(id => [id, element(id)]));
   const form = element(kind + '-form'), button = element('submit'), window = element('window');
+  window.location = { search };
   nodes['submit-text'].textContent = kind === 'ride' ? 'Submit Your Ride' : 'Send Message';
   nodes['submit-spinner'].classList.add('hidden');
   nodes['image-preview'].classList.add('hidden');
   form.querySelector = selector => selector === 'button[type="submit"]' ? button : nodes[selector.slice(1)];
   if (kind === 'contact') for (const key of ids.slice(2)) delete nodes[key];
+  if (kind === 'contact') nodes.subject = element('subject');
   const readers = [], timers = [];
   class FileReader {
     constructor() { this.readyState = 0; readers.push(this); }
@@ -39,7 +41,7 @@ function setup(kind = 'ride') {
     fail() { this.readyState = 2; this.onerror(); }
   }
   vm.runInNewContext(source, { document: { getElementById: id => id === form.id ? form : null }, window,
-    FileReader, setTimeout: fn => timers.push(fn) });
+    FileReader, URLSearchParams, setTimeout: fn => timers.push(fn) });
   return { form, button, window, readers, nodes, timers,
     select(file) { nodes.photo.files = file ? [file] : []; nodes.photo.emit('change'); } };
 }
@@ -99,6 +101,14 @@ test('prevented submissions do not leave loading UI behind', () => {
   const s = setup('contact');
   s.form.emit('submit', { defaultPrevented: true });
   assert.equal(s.button.disabled, false);
+});
+
+test('service links prefill the subject as bounded plain text without submitting', () => {
+  const s = setup('contact', '?subject=Warranty%20help');
+  assert.equal(s.nodes.subject.value, 'Warranty help');
+  assert.equal(s.button.disabled, false);
+  const long = setup('contact', '?subject=' + 'x'.repeat(200));
+  assert.equal(long.nodes.subject.value.length, 120);
 });
 
 test('reset cancels pending image reads, clears errors and updates the counter after native reset', () => {
