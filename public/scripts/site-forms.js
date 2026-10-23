@@ -18,7 +18,9 @@
     button.classList.toggle('cursor-not-allowed', value);
     label.textContent = value ? (form.id === 'ride-form' ? 'Submitting...' : 'Sending...') : idleLabel;
     spinner.classList.toggle('hidden', !value);
+    spinner.style.display = value ? 'inline-block' : 'none';
   }
+  setSubmitting(false);
   form.addEventListener('submit', (event) => {
     if (event.defaultPrevented) return;
     if (submitting) { event.preventDefault(); return; }
