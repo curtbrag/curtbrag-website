@@ -1,0 +1,53 @@
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),crypto=require('node:crypto');
+const source=fs.readFileSync(path.join(__dirname,'../netlify/functions/swarm-core/index.mjs'),'utf8');
+function harness({count=1200,failList=null,failRead=null}={}) {
+  const values=new Map([['migration--v2',{done:true}],['node--phone253',{id:'phone253',last_seen:Date.now()}]]),reads=[],lists=[],writes=[];
+  for(let i=0;i<count;i++) values.set(`result--${String(1700000000000+i).padStart(13,'0')}--old-${i}--phone253`,{job_id:`old-${i}`,device_id:'phone253',completed_at:1700000000000+i,exit_code:0});
+  const store={
+    get:async key=>{reads.push(key);if(key===failRead)throw Error('Storage read unavailable');return values.get(key)||null;},
+    list:async({prefix})=>{lists.push(prefix);if(prefix===failList)throw Error('Storage list unavailable');return {blobs:[...values.keys()].filter(k=>k.startsWith(prefix)).map(key=>({key}))};},
+    setJSON:async(key,value)=>{values.set(key,value);writes.push(key);},delete:async key=>values.delete(key),
+  };
+  const context=vm.createContext({getStore:()=>store,crypto,console,Response,URL,Buffer,Date,process:{env:{CLUSTER_WEB_PASSWORD:'fixture'}}});
+  vm.runInContext(source.replace(/^import .*;\r?\n/gm,'').replace('export default async (request) => {','globalThis.handler = async (request) => {'),context);
+  const call=async(action,body)=>{
+    const r=await context.handler({url:'https://curtbrag.com/api/cluster?action='+action,method:body?'POST':'GET',headers:new Headers({authorization:'Bearer fixture'}),json:async()=>body});
+    return {status:r.status,data:await r.json()};
+  };
+  return {call,values,reads,lists,writes};
+}
+test('status reads fifty recent result bodies as history grows, preserving the full completed count',async()=>{
+  const h=harness();const r=await h.call('queue-status');
+  assert.equal(r.status,200);assert.equal(r.data.total_completed,1200);assert.equal(r.data.results.length,50);
+  assert.equal(h.reads.filter(k=>k.startsWith('result--')).length,50);
+  assert.equal(r.data.results[0].job_id,'old-1199');assert.equal(r.data.results[49].job_id,'old-1150');
+  assert.equal(r.data.nodes[0].online,true);assert.equal(h.writes.length,0);
+});
+test('queued-job progress includes older completions beyond the fifty-result window',async()=>{
+  const h=harness();h.values.set('job--old-1',{id:'old-1',target_count:2});
+  h.values.set('assignment--old-1--phone174',{job_id:'old-1',device_id:'phone174'});
+  const r=await h.call('queue-status');assert.equal(r.data.jobs[0].completed_count,1);
+  assert.equal(r.data.jobs[0].progress,'1/2');assert.equal(r.data.jobs[0].pending_count,1);
+  assert.equal(h.reads.filter(k=>k.startsWith('result--')).length,51);
+});
+test('command acknowledgment does not depend on any historical result listing or reads',async()=>{
+  const h=harness({failList:'result--'});const r=await h.call('enqueue',{job:{id:'status-test',type:'status'},target_device_ids:['phone253']});
+  assert.equal(r.status,200);assert.equal(r.data.enqueued,true);assert.deepEqual(r.data.target_device_ids,['phone253']);
+  assert.equal(h.lists.includes('result--'),false);assert.equal(h.reads.some(k=>k.startsWith('result--')),false);
+  assert.ok(h.values.has('assignment--status-test--phone253'));
+  const again=await h.call('enqueue',{job:{id:'status-test',type:'status'},target_device_ids:['phone253']});
+  assert.equal(again.data.already_present,true);assert.equal(h.writes.filter(k=>k==='assignment--status-test--phone253').length,1);
+});
+test('status storage failures produce an unavailable response instead of reporting an empty offline fleet',async()=>{
+  for(const config of [{failList:'node--'},{failList:'assignment--'},{failList:'result--'},{failRead:'node--phone253'},{failRead:'result--1700000001199--old-1199--phone253'}]){
+    const h=harness(config),r=await h.call('queue-status');assert.equal(r.status,503);
+    assert.equal(r.data.ok,false);assert.equal(r.data.nodes,undefined);assert.equal(h.writes.length,0);
+  }
+});
+test('small and empty histories retain the same status contract',async()=>{
+  for(const count of [0,1,49,50]){
+    const h=harness({count}),r=await h.call('queue-status');assert.equal(r.status,200);
+    assert.equal(r.data.results.length,count);assert.equal(r.data.total_completed,count);assert.equal(r.data.nodes.length,1);
+  }
+});
