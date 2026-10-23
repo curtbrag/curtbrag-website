@@ -13,7 +13,7 @@ import Layout from '../layouts/Layout.astro';
         <h1>Built for work.<br/><span>Wired for more.</span></h1>
         <p>From the Snap-on route to a custom rig and a fleet of connected devices. This is where the tools, projects and next ideas come together.</p>
         <div class="home-hero-actions"><a class="site-primary-link" href="/cluster/dashboard/">Open dashboard <span aria-hidden="true">↗</span></a><a class="site-secondary-link" href="sms:+17814170692">Text Curtis <span aria-hidden="true">↗</span></a></div>
-        <div class="home-hero-meta"><a href="https://otis.curtbrag.com/curtschedule" target="_blank" rel="noopener noreferrer">Book a truck stop ↗</a><span>Boston metro area</span><a href="/contact/">Get in touch ↗</a></div>
+        <div class="home-hero-meta"><a href="/contact/?subject=Schedule%20a%20stop">Request a truck stop ↗</a><span>Boston metro area</span><a href="/contact/">Get in touch ↗</a></div>
       </div>
       <figure class="home-hero-media"><img src="/assets/pc/01_full_dual_system_rgb.webp" alt="Curtis’s custom dual-system PC build with illuminated components" width="700" height="600" loading="eager" fetchpriority="high"/><figcaption class="home-media-caption"><div><small>THE CUSTOM RIG</small><strong>CYBERDYNE</strong></div><a href="/rig/">Explore the build ↗</a></figcaption></figure>
     </div>
@@ -37,24 +37,20 @@ import Layout from '../layouts/Layout.astro';
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6 stagger-children">
         <!-- Schedule Stop -->
         <a
-          href="https://otis.curtbrag.com/curtschedule"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="/contact/?subject=Schedule%20a%20stop"
           class="card-glow p-6 block group"
         >
           <div class="text-3xl mb-4 text-green card-icon">
             <i class="fa-solid fa-calendar-check"></i>
           </div>
           <h3 class="text-lg font-semibold mb-2 group-hover:text-brand transition">Schedule Stop</h3>
-          <p class="text-text-secondary text-sm mb-3">Book a tool truck visit at your shop or location.</p>
-          <span class="inline-flex items-center gap-1 text-brand text-sm font-semibold group-hover:gap-2 transition-all"><i class="fa-solid fa-arrow-right text-xs"></i> Book Now</span>
+          <p class="text-text-secondary text-sm mb-3">Request a tool truck visit at your shop or location.</p>
+          <span class="inline-flex items-center gap-1 text-brand text-sm font-semibold group-hover:gap-2 transition-all"><i class="fa-solid fa-arrow-right text-xs"></i> Request a Stop</span>
         </a>
 
         <!-- Request a Tool -->
         <a
-          href="https://otis.curtbrag.com/curtrequest"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="/contact/?subject=Tool%20request"
           class="card-glow p-6 block group"
         >
           <div class="text-3xl mb-4 text-amber-500 card-icon">
@@ -67,9 +63,7 @@ import Layout from '../layouts/Layout.astro';
 
         <!-- Warranty / RA Help -->
         <a
-          href="https://otis.curtbrag.com/curtwarranty"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="/contact/?subject=Warranty%20help"
           class="card-glow p-6 block group"
         >
           <div class="text-3xl mb-4 text-blue card-icon">
@@ -77,7 +71,7 @@ import Layout from '../layouts/Layout.astro';
           </div>
           <h3 class="text-lg font-semibold mb-2 group-hover:text-brand transition">Warranty / RA Help</h3>
           <p class="text-text-secondary text-sm mb-3">Broken tool? Start a warranty or return authorization.</p>
-          <span class="inline-flex items-center gap-1 text-brand text-sm font-semibold group-hover:gap-2 transition-all"><i class="fa-solid fa-arrow-right text-xs"></i> Start Claim</span>
+          <span class="inline-flex items-center gap-1 text-brand text-sm font-semibold group-hover:gap-2 transition-all"><i class="fa-solid fa-arrow-right text-xs"></i> Get Warranty Help</span>
         </a>
       </div>
     </div>
@@ -186,7 +180,7 @@ import Layout from '../layouts/Layout.astro';
         <h2 class="text-2xl font-bold">Alina &mdash; <span class="gradient-text">AI Command Center</span></h2>
       </div>
       <p class="text-text-secondary text-sm mb-3 max-w-2xl">
-        Alina is a GPT-powered assistant that can help you schedule a truck stop, answer questions about tools and services, share current promotions, assist with warranty claims, and provide contact info. Just type a question below.
+        Alina can help you find tools and services, scheduling and warranty links, payment options, and contact information. Just type a question below.
       </p>
       <p class="text-muted text-xs mb-6">
         Questions about tools, services or scheduling? Start here.
@@ -403,7 +397,8 @@ import Layout from '../layouts/Layout.astro';
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
 
-        if (data.success && data.teams) {
+        if (!data.success || !data.teams) throw new Error('Scores unavailable');
+        if (data.teams) {
           teamIds.forEach((team) => {
             const el = document.getElementById(`score-${team}`);
             if (el && data.teams[team]) {
@@ -415,16 +410,17 @@ import Layout from '../layouts/Layout.astro';
           loaded = true;
           if (statusEl) {
             const now = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-            statusEl.textContent = 'Last checked ' + now;
+            statusEl.textContent = (data.unavailable?.length ? 'Some scores unavailable. Last checked ' : 'Last checked ') + now;
           }
         }
       } catch {
+        if (loaded && statusEl) statusEl.textContent = 'Update failed. Showing the last loaded scores; retrying automatically.';
         if (!loaded) {
           teamIds.forEach((team) => {
             const el = document.getElementById(`score-${team}`);
-            if (el) el.textContent = 'No game scheduled';
+            if (el) el.textContent = 'Scores temporarily unavailable';
           });
-          if (statusEl) statusEl.textContent = '';
+          if (statusEl) statusEl.textContent = 'Scores could not be loaded. Retrying automatically.';
         }
       }
     }

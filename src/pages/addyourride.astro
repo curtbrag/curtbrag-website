@@ -100,18 +100,18 @@ import Layout from '../layouts/Layout.astro';
             name="photo"
             required
             accept="image/*"
+            aria-describedby="file-error"
             class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-text file:mr-3 file:px-3 file:py-1 file:rounded-md file:border-0 file:bg-brand file:text-white file:text-sm file:font-semibold file:cursor-pointer focus:border-brand focus:ring-1 focus:ring-brand/30 transition outline-none"
           />
           <p class="text-xs text-muted mt-1">Max file size: 10MB</p>
           <div id="image-preview" class="mt-3 hidden">
             <img
               id="preview-img"
-              src=""
               alt="Preview"
               class="w-full max-h-64 object-cover rounded-lg border border-border"
             />
           </div>
-          <p id="file-error" class="text-xs text-red-500 mt-1" style="display:none">
+          <p id="file-error" role="status" aria-live="polite" class="text-xs text-red-500 mt-1" style="display:none">
             File size exceeds 10MB. Please choose a smaller image.
           </p>
         </div>
@@ -129,71 +129,4 @@ import Layout from '../layouts/Layout.astro';
   </section>
 </Layout>
 
-<script>
-  // Character counter
-  const description = document.getElementById('description') as HTMLTextAreaElement;
-  const charCount = document.getElementById('char-count');
-
-  if (description && charCount) {
-    description.addEventListener('input', () => {
-      charCount.textContent = String(description.value.length);
-    });
-  }
-
-  // Image preview with file size validation
-  const photoInput = document.getElementById('photo') as HTMLInputElement;
-  const imagePreview = document.getElementById('image-preview');
-  const previewImg = document.getElementById('preview-img') as HTMLImageElement;
-  const fileError = document.getElementById('file-error');
-  const submitBtn = document.getElementById('ride-submit') as HTMLButtonElement;
-
-  if (photoInput && imagePreview && previewImg && fileError) {
-    photoInput.addEventListener('change', () => {
-      const file = photoInput.files?.[0];
-      if (!file) {
-        imagePreview.classList.add('hidden');
-        fileError.style.display = 'none';
-        return;
-      }
-
-      const maxSize = 10 * 1024 * 1024; // 10MB
-      if (file.size > maxSize) {
-        fileError.style.display = '';
-        imagePreview.classList.add('hidden');
-        photoInput.value = '';
-        if (submitBtn) {
-          submitBtn.setAttribute('disabled', 'true');
-          submitBtn.classList.add('opacity-70', 'cursor-not-allowed');
-        }
-        return;
-      }
-
-      fileError.style.display = 'none';
-      if (submitBtn) {
-        submitBtn.removeAttribute('disabled');
-        submitBtn.classList.remove('opacity-70', 'cursor-not-allowed');
-      }
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        previewImg.src = e.target?.result as string;
-        imagePreview.classList.remove('hidden');
-      };
-      reader.readAsDataURL(file);
-    });
-  }
-
-  // Form loading state
-  const form = document.getElementById('ride-form') as HTMLFormElement;
-  const submitText = document.getElementById('submit-text');
-  const submitSpinner = document.getElementById('submit-spinner');
-
-  if (form && submitBtn && submitText && submitSpinner) {
-    form.addEventListener('submit', () => {
-      submitBtn.setAttribute('disabled', 'true');
-      submitBtn.classList.add('opacity-70', 'cursor-not-allowed');
-      submitText.textContent = 'Submitting...';
-      submitSpinner.classList.remove('hidden');
-    });
-  }
-</script>
+<script is:inline src="/scripts/site-forms.js?v=1"></script>
