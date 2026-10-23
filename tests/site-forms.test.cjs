@@ -84,15 +84,18 @@ for (const kind of ['contact', 'ride']) {
   test(`${kind} form restores native submission controls after browser Back`, () => {
     const s = setup(kind);
     const initial = s.nodes['submit-text'].textContent;
+    assert.equal(s.nodes['submit-spinner'].style.display, 'none', 'hide idle icons even when icon CSS overrides hidden');
     const first = s.form.emit('submit');
     assert.equal(first.defaultPrevented, false, 'preserve the native form POST');
     assert.equal(s.button.disabled, true);
     assert.equal(s.nodes['submit-spinner'].classList.contains('hidden'), false);
+    assert.equal(s.nodes['submit-spinner'].style.display, 'inline-block');
     assert.equal(s.form.emit('submit').defaultPrevented, true, 'block duplicate submissions');
     s.window.emit('pageshow', { persisted: true });
     assert.equal(s.button.disabled, false);
     assert.equal(s.nodes['submit-text'].textContent, initial);
     assert.equal(s.nodes['submit-spinner'].classList.contains('hidden'), true);
+    assert.equal(s.nodes['submit-spinner'].style.display, 'none');
     assert.equal(s.form.emit('submit').defaultPrevented, false);
   });
 }
