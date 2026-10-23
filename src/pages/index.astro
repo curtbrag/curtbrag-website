@@ -186,7 +186,7 @@ import Layout from '../layouts/Layout.astro';
         <h2 class="text-2xl font-bold">Alina &mdash; <span class="gradient-text">AI Command Center</span></h2>
       </div>
       <p class="text-text-secondary text-sm mb-3 max-w-2xl">
-        Alina is a GPT-powered assistant that can help you schedule a truck stop, answer questions about tools and services, share current promotions, assist with warranty claims, and provide contact info. Just type a question below.
+        Alina can help you find tools and services, scheduling and warranty links, payment options, and contact information. Just type a question below.
       </p>
       <p class="text-muted text-xs mb-6">
         Questions about tools, services or scheduling? Start here.
@@ -403,7 +403,8 @@ import Layout from '../layouts/Layout.astro';
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
 
-        if (data.success && data.teams) {
+        if (!data.success || !data.teams) throw new Error('Scores unavailable');
+        if (data.teams) {
           teamIds.forEach((team) => {
             const el = document.getElementById(`score-${team}`);
             if (el && data.teams[team]) {
@@ -415,16 +416,17 @@ import Layout from '../layouts/Layout.astro';
           loaded = true;
           if (statusEl) {
             const now = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-            statusEl.textContent = 'Last checked ' + now;
+            statusEl.textContent = (data.unavailable?.length ? 'Some scores unavailable. Last checked ' : 'Last checked ') + now;
           }
         }
       } catch {
+        if (loaded && statusEl) statusEl.textContent = 'Update failed. Showing the last loaded scores; retrying automatically.';
         if (!loaded) {
           teamIds.forEach((team) => {
             const el = document.getElementById(`score-${team}`);
-            if (el) el.textContent = 'No game scheduled';
+            if (el) el.textContent = 'Scores temporarily unavailable';
           });
-          if (statusEl) statusEl.textContent = '';
+          if (statusEl) statusEl.textContent = 'Scores could not be loaded. Retrying automatically.';
         }
       }
     }

@@ -188,19 +188,5 @@ import Layout from '../layouts/Layout.astro';
     });
   }
 
-  // Form loading state
-  const form = document.getElementById('contact-form') as HTMLFormElement;
-  const submitBtn = document.getElementById('contact-submit');
-  const submitText = document.getElementById('submit-text');
-  const submitSpinner = document.getElementById('submit-spinner');
-
-  if (form && submitBtn && submitText && submitSpinner) {
-    form.addEventListener('submit', () => {
-      submitBtn.setAttribute('disabled', 'true');
-      submitBtn.classList.add('opacity-70', 'cursor-not-allowed');
-      submitText.textContent = 'Sending...';
-      submitSpinner.classList.remove('hidden');
-    });
-  }
 </script>
-
+<script is:inline src="/scripts/site-forms.js?v=1"></script>

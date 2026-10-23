@@ -14,26 +14,26 @@ async function fetchScoreboard(league) {
   try {
     const sport = getLeagueSport(league);
     const url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard`;
-    const res = await fetch(url);
-    if (!res.ok) return [];
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) return null;
     const data = await res.json();
-    return data.events || [];
+    return Array.isArray(data.events) ? data.events : null;
   } catch (e) {
     console.error(`Error fetching ${league}:`, e);
-    return [];
+    return null;
   }
 }
 
 async function fetchMLSScoreboard() {
   try {
     const url = 'https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/scoreboard';
-    const res = await fetch(url);
-    if (!res.ok) return [];
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) return null;
     const data = await res.json();
-    return data.events || [];
+    return Array.isArray(data.events) ? data.events : null;
   } catch (e) {
     console.error('Error fetching MLS:', e);
-    return [];
+    return null;
   }
 }
 
@@ -47,8 +47,8 @@ function findTeamGame(events, teamNames) {
       const shortName = (c.team?.shortDisplayName || '').toLowerCase();
       const abbrev = (c.team?.abbreviation || '').toLowerCase();
       return teamNames.some(tn =>
-        name.includes(tn.toLowerCase()) ||
-        shortName.includes(tn.toLowerCase()) ||
+        (tn.length > 3 && name.includes(tn.toLowerCase())) ||
+        (tn.length > 3 && shortName.includes(tn.toLowerCase())) ||
         abbrev === tn.toLowerCase()
       );
     });
@@ -80,7 +80,7 @@ function formatGame(event) {
 
   if (state === 'pre') {
     const gameDate = new Date(event.date);
-    const options = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+    const options = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York', timeZoneName: 'short' };
     return `Next: ${awayName} @ ${homeName} - ${gameDate.toLocaleDateString('en-US', options)}`;
   }
 
@@ -91,7 +91,7 @@ async function fetchTeamRecord(league, teamId) {
   try {
     const sport = getLeagueSport(league);
     const url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/teams/${teamId}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
     if (!res.ok) return '';
     const data = await res.json();
     const record = data.team?.record?.items?.[0]?.summary;
@@ -129,11 +129,11 @@ export async function handler(event, context) {
     const revolutionGame = findTeamGame(mlsGames, ['Revolution', 'New England', 'NE']);
 
     const results = {
-      redsox: formatGame(redsoxGame),
-      patriots: formatGame(patriotsGame),
-      celtics: formatGame(celticsGame),
-      bruins: formatGame(bruinsGame),
-      revolution: formatGame(revolutionGame)
+      redsox: mlbGames === null ? 'Scores temporarily unavailable' : formatGame(redsoxGame),
+      patriots: nflGames === null ? 'Scores temporarily unavailable' : formatGame(patriotsGame),
+      celtics: nbaGames === null ? 'Scores temporarily unavailable' : formatGame(celticsGame),
+      bruins: nhlGames === null ? 'Scores temporarily unavailable' : formatGame(bruinsGame),
+      revolution: mlsGames === null ? 'Scores temporarily unavailable' : formatGame(revolutionGame)
     };
 
     return {
@@ -142,7 +142,8 @@ export async function handler(event, context) {
       body: JSON.stringify({
         success: true,
         updated: new Date().toISOString(),
-        teams: results
+        teams: results,
+        unavailable: Object.keys(results).filter(team => results[team] === 'Scores temporarily unavailable')
       })
     };
   } catch (error) {
