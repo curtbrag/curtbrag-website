@@ -83,29 +83,36 @@ async function deleteKey(key) {
   try { await store().delete(key); } catch {}
 }
 
-async function listEntries(prefix) {
+async function readEntries(entries, strict = false) {
+  const out = [];
+  for (let offset = 0; offset < entries.length; offset += 16) {
+    const batch = await Promise.all(entries.slice(offset, offset + 16).map(async entry => {
+      const value = strict
+        ? await store().get(entry.key, { type: "json" })
+        : await getJson(entry.key, null);
+      return value ? { key: entry.key, value } : null;
+    }));
+    out.push(...batch.filter(Boolean));
+  }
+  return out;
+}
+
+async function listEntries(prefix, strict = false) {
   try {
     const listing = await store().list({ prefix });
-    const out = [];
     // Fleet status includes result history. Serial blob reads can exceed the
     // Windows bridge's 20-second timeout as that history grows. Limit parallel
     // reads to avoid an unbounded burst while retaining listing order.
     const entries = listing.blobs || [];
-    for (let offset = 0; offset < entries.length; offset += 16) {
-      const batch = await Promise.all(entries.slice(offset, offset + 16).map(async entry => {
-        const value = await getJson(entry.key, null);
-        return value ? { key: entry.key, value } : null;
-      }));
-      out.push(...batch.filter(Boolean));
-    }
-    return out;
-  } catch {
+    return await readEntries(entries, strict);
+  } catch (error) {
+    if (strict) throw error;
     return [];
   }
 }
 
-async function readNodes() {
-  const entries = await listEntries("node--");
+async function readNodes(strict = false) {
+  const entries = await listEntries("node--", strict);
   const nodes = {};
   for (const entry of entries) {
     const n = entry.value;
@@ -228,12 +235,26 @@ async function migrateLegacy() {
 }
 
 async function queueSnapshot() {
-  const [jobEntries, assignmentEntries, resultEntries, nodes] = await Promise.all([
-    listEntries("job--"),
-    listEntries("assignment--"),
-    listEntries("result--"),
-    readNodes()
+  const [jobEntries, assignmentEntries, resultListing, nodes] = await Promise.all([
+    listEntries("job--", true),
+    listEntries("assignment--", true),
+    store().list({ prefix: "result--" }),
+    readNodes(true)
   ]);
+
+  // Result keys include a fixed-width completion timestamp. Read only the
+  // newest history plus results needed to count currently queued jobs. Old
+  // result bodies must not delay worker availability or a command receipt.
+  const resultKeys = resultListing.blobs || [];
+  const newest = [...resultKeys].sort((a, b) => b.key.localeCompare(a.key));
+  const selected = new Map(newest.slice(0, 50).map(entry => [entry.key, entry]));
+  for (const entry of resultKeys) {
+    const tail = entry.key.replace(/^result--\d{13}--/, "");
+    if (jobEntries.some(job => tail.startsWith(safePart(job.value.id) + "--"))) {
+      selected.set(entry.key, entry);
+    }
+  }
+  const resultEntries = await readEntries([...selected.values()], true);
 
   const jobs = jobEntries.map(entry => {
     const job = entry.value;
@@ -267,7 +288,8 @@ async function queueSnapshot() {
     jobs,
     assignments: assignmentEntries.map(x => x.value),
     nodes: nodeList,
-    results
+    results,
+    total_completed: resultKeys.length
   };
 }
 
@@ -313,7 +335,8 @@ export default async (request) => {
 
     try {
       const created = await createV2Job(job, body.target_device_ids || null);
-      const snap = await queueSnapshot();
+      // The job and its assignments are durable at this point. Do not make
+      // acknowledgment depend on an unrelated full history/status read.
       return jsonResponse(200, {
         ok: true,
         action: "enqueue",
@@ -321,9 +344,7 @@ export default async (request) => {
         already_present: !created.enqueued,
         job_id: created.job.id,
         target_count: created.job.target_count,
-        target_device_ids: created.job.target_device_ids,
-        queue_count: snap.jobs.length,
-        assignments_pending: snap.assignments.length
+        target_device_ids: created.job.target_device_ids
       });
     } catch (error) {
       return jsonResponse(409, { ok: false, error: error?.message || "enqueue failed" });
@@ -421,7 +442,11 @@ export default async (request) => {
   }
 
   if (request.method === "GET" && action === "queue-status") {
-    const snap = await queueSnapshot();
+    let snap;
+    try { snap = await queueSnapshot(); }
+    catch {
+      return jsonResponse(503, { ok: false, error: "Worker status is temporarily unavailable. No offline state was inferred." });
+    }
     return jsonResponse(200, {
       ok: true,
       action: "queue-status",
@@ -432,7 +457,7 @@ export default async (request) => {
       nodes_online: snap.nodes.filter(n => n.online).length,
       nodes_busy: snap.nodes.filter(n => n.busy).length,
       results: snap.results.slice(0, 50),
-      total_completed: snap.results.length,
+      total_completed: snap.total_completed,
       schema: AGENT_SCHEMA,
       auth_enforced: true,
       worker_auth_enforced: process.env.SWARM_ENFORCE_AUTH === "1"
