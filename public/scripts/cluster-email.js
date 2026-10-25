@@ -6,6 +6,8 @@
   card.style.cssText='background:var(--color-panel);border:1px solid var(--color-border);border-radius:12px;padding:20px;margin:20px 0;overflow:auto';
   card.innerHTML='<h2 style="font-size:20px;font-weight:bold">Fleet email</h2><p>Each unit has its own @curtbrag.com inbox and outgoing login. Device checks run through the main PC. No passwords are shown here.</p><div style="display:flex;gap:10px;margin:12px 0;flex-wrap:wrap"><button id="mail-refresh" type="button">Refresh email status</button><button id="mail-check-all" type="button">Check connected mailboxes</button><button id="mail-test-all" type="button">Send one test to each connected mailbox</button></div><p id="mail-state" role="status" aria-live="polite">Email status has not been checked.</p><table style="width:100%;text-align:left"><thead><tr><th>Unit / address</th><th>Device setup</th><th>Last result</th><th>Controls</th></tr></thead><tbody id="mail-units"></tbody></table><p>Checks do not read email contents. Tests send only to the unit’s own address. Sending accepted is separate from delivery confirmation. Offline devices are skipped. A test is never automatically retried.</p>';
   panel.append(card);
+  const shortcut=document.createElement('a');shortcut.href='#fleet-email-controls';shortcut.textContent='Fleet email';shortcut.style.cssText='display:inline-block;margin-top:8px;text-decoration:underline';
+  panel.querySelector('h1')?.parentElement.append(shortcut);
   let snapshot=null, busy=false;
   const state=card.querySelector('#mail-state');
   async function api(action,body) {
@@ -46,6 +48,7 @@
   }
   async function submit(units,action) {
     if(busy) return;
+    if(!units.length){state.textContent='No connected mailboxes are available for this request.';return;}
     if(action==='test' && !confirm('Send one test email to each of these '+units.length+' selected units’ own inboxes?')) return;
     busy=true;render();
     card.querySelectorAll('button').forEach(b=>b.disabled=true);
@@ -63,3 +66,4 @@
   card.querySelector('#mail-test-all').onclick=()=>submit(connected(),'test');
   refresh();setInterval(()=>{if(!document.hidden&&!busy)refresh();},30000);
 })();
+
