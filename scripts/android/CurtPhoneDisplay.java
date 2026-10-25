@@ -17,6 +17,25 @@ public final class CurtPhoneDisplay {
     private static boolean interactive(Class<?> type, Object power) throws Exception {
         return (Boolean) invoke(type, power, "isInteractive", new Class<?>[0]);
     }
+    interface DisplayStateReader {
+        boolean interactive() throws Exception;
+        int displayState() throws Exception;
+    }
+    interface Sleeper { void sleep(long milliseconds) throws Exception; }
+    // Keep the bounded lock held until the panel is ON, not merely interactive.
+    static boolean awaitDisplayOn(DisplayStateReader reader, Sleeper sleeper) throws Exception {
+        for (int attempt = 0; attempt <= 24; attempt++) {
+            if (reader.interactive() && reader.displayState() == 2) return true;
+            if (attempt < 24) sleeper.sleep(100);
+        }
+        return false;
+    }
+    private static int displayState(Class<?> contextType, Object context) throws Exception {
+        Object manager = invoke(contextType, context, "getSystemService", new Class<?>[]{String.class}, "display");
+        Object display = invoke(Class.forName("android.hardware.display.DisplayManager"), manager,
+            "getDisplay", new Class<?>[]{int.class}, 0);
+        return (Integer) invoke(Class.forName("android.view.Display"), display, "getState", new Class<?>[0]);
+    }
     public static void main(String[] arguments) {
         Object lock = null;
         Class<?> lockType = null;
@@ -91,14 +110,15 @@ public final class CurtPhoneDisplay {
                 invoke(lockType, lock, "setReferenceCounted", new Class<?>[]{boolean.class}, false);
                 invoke(lockType, lock, "acquire", new Class<?>[]{long.class}, 3000L);
                 result.append(",\"wake_request_accepted\":true,\"maximum_lock_ms\":3000");
-                for (int attempt = 0; attempt < 12 && !interactive(powerType, power); attempt++) Thread.sleep(100);
+                final Object appContext = context;
+                awaitDisplayOn(new DisplayStateReader() {
+                    public boolean interactive() throws Exception { return CurtPhoneDisplay.interactive(powerType, power); }
+                    public int displayState() throws Exception { return CurtPhoneDisplay.displayState(contextType, appContext); }
+                }, milliseconds -> Thread.sleep(milliseconds));
             }
             boolean after = interactive(powerType, power);
             result.append(",\"interactive_after\":").append(after);
-            Object displayManager = invoke(contextType, context, "getSystemService", new Class<?>[]{String.class}, "display");
-            Object display = invoke(Class.forName("android.hardware.display.DisplayManager"), displayManager,
-                "getDisplay", new Class<?>[]{int.class}, 0);
-            int state = (Integer) invoke(Class.forName("android.view.Display"), display, "getState", new Class<?>[0]);
+            int state = displayState(contextType, context);
             result.append(",\"display_state\":").append(state);
             result.append(",\"off_to_on_verified\":").append(!arguments[0].equals("inspect") && !before && after && state == 2);
             if (!arguments[0].equals("inspect") && (!after || state != 2)) {
