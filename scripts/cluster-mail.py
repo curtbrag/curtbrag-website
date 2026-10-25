@@ -17,11 +17,18 @@ def run(config, spec):
     if action not in ('check', 'test'):
         raise ValueError('Only connection checks and tests to this mailbox are supported')
     address = config['address']
+    ident = str(spec.get('id', ''))
+    if (action == 'test' or spec.get('verify_test') is True) and (not ident or len(ident) > 80 or not all(c.isalnum() or c == '-' for c in ident)):
+        raise ValueError('Invalid self-test ID')
     result = {'address': address, 'action': action, 'checked_at': datetime.now(timezone.utc).isoformat()}
     context = ssl.create_default_context()
     with imaplib.IMAP4_SSL('imap.foundermail.mx', 993, ssl_context=context, timeout=15) as client:
         client.login(address, config['imap_password'])
         result['imap_verified'] = client.noop()[0] == 'OK'
+        if spec.get('verify_test') is True:
+            client.select('INBOX', readonly=True)
+            status, matches = client.search(None, 'HEADER', 'Message-ID', '"<fleet-' + ident + '@curtbrag.com>"')
+            result['delivery_verified'] = status == 'OK' and bool(matches[0].strip())
     with smtplib.SMTP('mail.smtp2go.com', 587, timeout=15) as client:
         client.ehlo()
         client.starttls(context=context)
@@ -29,9 +36,6 @@ def run(config, spec):
         client.login(config['smtp_username'], config['smtp_password'])
         result['smtp_verified'] = True
         if action == 'test':
-            ident = str(spec.get('id', ''))
-            if not ident or len(ident) > 80 or not all(c.isalnum() or c == '-' for c in ident):
-                raise ValueError('Invalid self-test ID')
             message = EmailMessage()
             message['From'] = address
             message['To'] = address

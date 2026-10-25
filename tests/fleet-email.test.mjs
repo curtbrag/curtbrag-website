@@ -27,4 +27,6 @@ test('a queued test is claimed once and completing it is idempotent',async()=>{
   await f.request('complete',{id:job.id,result:{ok:true,accepted:true,password:'must-not-persist'}});
   await f.request('complete',{id:job.id,result:{ok:false}});
   const saved=f.records.get('job-'+job.id);assert.equal(saved.status,'complete');assert.equal(saved.result.password,undefined);assert.equal((await(await f.request('poll',{})).json()).job,null);
+  await f.request('complete',{id:job.id,result:{delivery_verified:true,ok:false,address:'wrong@example.com'}});
+  const confirmed=f.records.get('job-'+job.id);assert.equal(confirmed.result.delivery_verified,true);assert.equal(confirmed.result.ok,true);assert.equal(confirmed.result.address,undefined);
 });
