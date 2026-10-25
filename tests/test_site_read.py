@@ -1,4 +1,4 @@
-import base64, importlib.util, json, pathlib, tempfile, types, unittest
+import base64, gzip, hashlib, importlib.util, json, pathlib, random, tempfile, types, unittest
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from unittest.mock import patch
@@ -82,6 +82,18 @@ class ProtectedSiteTests(unittest.TestCase):
             result=snapshot.snapshot('/')
         self.assertEqual(result['title'],'Actual');self.assertEqual(result['text'],'Worker page');self.assertEqual(len(result['sha256']),64)
         with self.assertRaises(ValueError):snapshot.snapshot('/cluster/control/')
+    def test_snapshot_receipt_keeps_full_long_unicode_text_inside_the_worker_limit(self):
+        text=('Complete 日本語 🔧 lines\n'*1600)
+        value={'kind':'page-snapshot','path':'/cluster/','url':reader.ORIGIN+'/cluster/','title':'Compute Cluster','text':text,'sha256':hashlib.sha256(text.encode()).hexdigest(),'checked_at':'2026-10-25T00:00:00+00:00','scope':'HTML text'}
+        encoded=snapshot.snapshot_receipt(value);self.assertLessEqual(len(encoded.encode()),3800)
+        wire=json.loads(encoded);self.assertEqual(wire['text_encoding'],'gzip-base64');self.assertNotIn('text',wire)
+        original=gzip.decompress(base64.b64decode(wire['text_gzip'])).decode();self.assertEqual(original,text);self.assertEqual(hashlib.sha256(original.encode()).hexdigest(),wire['sha256']);self.assertEqual(wire['text_bytes'],len(text.encode()));self.assertEqual(wire['text_chars'],len(text.encode('utf-16-le'))//2)
+        short={**value,'text':'Short page','sha256':hashlib.sha256(b'Short page').hexdigest()}
+        self.assertEqual(json.loads(snapshot.snapshot_receipt(short)),short)
+    def test_incompressible_snapshot_returns_an_explicit_limit_error_before_worker_truncation(self):
+        rng=random.Random(3);text=''.join(rng.choice('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789') for _ in range(20000))
+        value={'kind':'page-snapshot','path':'/cluster/','url':reader.ORIGIN+'/cluster/','title':'Compute Cluster','text':text,'sha256':hashlib.sha256(text.encode()).hexdigest()}
+        with self.assertRaisesRegex(ValueError,'cannot fit the worker result limit'):snapshot.snapshot_receipt(value)
     def test_browser_receives_only_content_never_reader_credentials(self):
         class Request:
             url=reader.ORIGIN+'/';method='GET'

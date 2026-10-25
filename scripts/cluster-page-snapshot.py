@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Bounded text snapshot of one public CurtBrag page; no login or form actions."""
-import argparse, hashlib, importlib.util, json, pathlib, re
+import argparse, base64, gzip, hashlib, importlib.util, json, pathlib, re
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from urllib.request import Request, urlopen
@@ -39,9 +39,22 @@ def snapshot(path):
             'sha256':hashlib.sha256(text.encode()).hexdigest(),'checked_at':datetime.now(timezone.utc).isoformat(),
             'scope':'HTML text only; scripts, images, styling and dynamic browser content are excluded.'}
 
+def snapshot_receipt(report):
+    """Keep a complete verifiable snapshot inside the worker's 4000-byte receipt."""
+    encode=lambda value:json.dumps(value,ensure_ascii=True,separators=(',',':'))
+    encoded=encode(report)
+    if len(encoded.encode('utf-8'))<=3800: return encoded
+    text=report['text'];raw=text.encode('utf-8')
+    if len(raw)>240000 or len(text.encode('utf-16-le'))//2>60000: raise ValueError('Page text exceeds the snapshot display limit')
+    compact={key:value for key,value in report.items() if key!='text'}
+    compact.update(text_encoding='gzip-base64',text_gzip=base64.b64encode(gzip.compress(raw,mtime=0)).decode('ascii'),text_bytes=len(raw),text_chars=len(text.encode('utf-16-le'))//2)
+    encoded=encode(compact)
+    if len(encoded.encode('utf-8'))>3800: raise ValueError('Complete page text cannot fit the worker result limit; reduce the monitored page text before retrying')
+    return encoded
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--path',required=True);args=parser.parse_args()
-    try: print(json.dumps(snapshot(args.path)))
+    try: print(snapshot_receipt(snapshot(args.path)))
     except Exception as error:
         print(json.dumps({'kind':'page-snapshot-error','path':args.path,'error':str(error)}));raise SystemExit(1)
 
