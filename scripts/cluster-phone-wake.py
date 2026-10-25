@@ -8,8 +8,8 @@ import stat
 import subprocess
 import sys
 
-HELPER = pathlib.Path('/data/data/com.termux/files/home/cluster/control/display-wake-20261022/curt-display-487d30c5747e.dex')
-SHA256 = '487d30c5747eec90f506b12e081f48a51815dcd83020321b39b95dfd675bccf4'
+HELPER = pathlib.Path('/data/data/com.termux/files/home/cluster/control/display-wake-20261022/curt-display-3f387f25f6e8.dex')
+SHA256 = '3f387f25f6e895e296aaa48206b5bd147cf6c51ddfe14e4cfa8014c1b7a0d3ae'
 
 
 def wake():
@@ -18,7 +18,7 @@ def wake():
     info = HELPER.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
         raise ValueError('The private display helper has unexpected ownership or access.')
-    if info.st_size != 8192 or hashlib.sha256(HELPER.read_bytes()).hexdigest() != SHA256:
+    if info.st_size != 9884 or hashlib.sha256(HELPER.read_bytes()).hexdigest() != SHA256:
         raise ValueError('The installed display helper does not match the reviewed version.')
     result = subprocess.run(
         ['/system/bin/app_process', '/', 'CurtPhoneDisplay', 'wake'],
