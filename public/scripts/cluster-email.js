@@ -18,19 +18,23 @@
     if(!response.ok) throw Error(data.error||'Email connection unavailable');
     return data;
   }
+  function resultText(job) {
+    if(!job) return 'Not checked on device';
+    if(job.action==='test' && job.result?.accepted===true) return job.result.delivery_verified?'Test sent and received':'Test accepted; delivery unconfirmed';
+    if(job.status==='interrupted') return job.action==='test'?'Interrupted; sending outcome unconfirmed. It was not replayed.':'Check interrupted; run Check again.';
+    if(job.status==='expired') return 'Expired before execution';
+    if(job.result) return job.result.ok?'Incoming and outgoing login verified':'Failed: '+(job.result.error||'connection error');
+    if(job.status==='running' && Date.now()-job.started_at>120000) return 'Still running; interrupted requests unlock after five minutes';
+    return job.status;
+  }
   function render() {
     const tbody=card.querySelector('#mail-units'); tbody.replaceChildren();
-    const live=Date.now()-(snapshot.bridge?.at||0)<120000;
+    const age=Date.now()-(snapshot.bridge?.at||0), live=age>=0&&age<120000;
     for(const unit of snapshot.units) {
       const tr=document.createElement('tr');
       const latest=snapshot.jobs.filter(j=>j.unit===unit.unit).sort((a,b)=>b.created_at-a.created_at)[0];
       const active=snapshot.jobs.some(j=>j.unit===unit.unit && ['queued','running'].includes(j.status));
-      let result='Not checked on device';
-      if(latest) {
-        result=latest.status;
-        if(latest.status==='running' && Date.now()-latest.started_at>120000) result='Interrupted or still running; verify before retrying';
-        if(latest.result) result=latest.result.ok?(latest.action==='test'?(latest.result.delivery_verified?'Test sent and received':'Test accepted; delivery unconfirmed'):'Incoming and outgoing login verified'):'Failed: '+(latest.result.error||'connection error');
-      }
+      const result=resultText(latest);
       for(const text of [unit.unit+' · '+unit.address,unit.installed?(live&&unit.connected?'Installed · connected':'Installed · disconnected'):'Setup pending',result]) {
         const td=document.createElement('td');td.style.cssText='padding:10px 6px;border-top:1px solid var(--color-border);overflow-wrap:anywhere';td.textContent=text;tr.append(td);
       }
@@ -40,6 +44,9 @@
       }
       tr.append(controls);tbody.append(tr);
     }
+    const available=live&&snapshot.units.some(unit=>unit.installed&&unit.connected&&!snapshot.jobs.some(job=>job.unit===unit.unit&&['queued','running'].includes(job.status)));
+    card.querySelector('#mail-check-all').disabled=busy||!available;
+    card.querySelector('#mail-test-all').disabled=busy||!available;
     state.textContent=live?'Main PC email connection is online.':'Main PC email connection is offline or not installed. No requests will be queued.';
   }
   async function refresh() {
@@ -49,7 +56,9 @@
   async function submit(units,action) {
     if(busy) return;
     if(!units.length){state.textContent='No connected mailboxes are available for this request.';return;}
-    if(action==='test' && !confirm('Send one test email to each of these '+units.length+' selected units’ own inboxes?')) return;
+    const uncertain=units.some(unit=>{const latest=snapshot.jobs.filter(job=>job.unit===unit&&job.action==='test').sort((a,b)=>b.created_at-a.created_at)[0];return latest?.status==='interrupted'&&latest.result?.delivery_verified!==true;});
+    const notice=uncertain?'An earlier test has an unconfirmed sending outcome. This sends a new test; it does not retry the earlier request. ':'';
+    if(action==='test' && !confirm(notice+'Send one test email to each of these '+units.length+' selected units’ own inboxes?')) return;
     busy=true;render();
     card.querySelectorAll('button').forEach(b=>b.disabled=true);
     const outcomes=[];
@@ -58,7 +67,7 @@
         try {await api('enqueue',{id:crypto.randomUUID(),unit,action});outcomes.push(unit+': queued');}
         catch(error) {outcomes.push(unit+': '+error.message);}
       }
-    } finally {busy=false;card.querySelectorAll('button').forEach(b=>b.disabled=false);await refresh();state.textContent=outcomes.join(' · ');}
+    } finally {busy=false;card.querySelector('#mail-refresh').disabled=false;await refresh();if(snapshot)render();state.textContent=outcomes.join(' · ');}
   }
   const connected=()=>snapshot?.units.filter(u=>u.installed&&u.connected&&!snapshot.jobs.some(j=>j.unit===u.unit&&['queued','running'].includes(j.status))).map(u=>u.unit)||[];
   card.querySelector('#mail-refresh').onclick=refresh;

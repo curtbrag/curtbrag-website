@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Bounded text snapshot of one public CurtBrag page; no login or form actions."""
-import argparse, hashlib, json, re
+import argparse, hashlib, importlib.util, json, pathlib, re
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from urllib.request import Request, urlopen
 from urllib.parse import urlsplit
+
+_spec=importlib.util.spec_from_file_location('curt_site_read',pathlib.Path(__file__).with_name('cluster-site-read.py'))
+site_read=importlib.util.module_from_spec(_spec);_spec.loader.exec_module(site_read)
 
 class TextPage(HTMLParser):
     def __init__(self):
@@ -23,16 +26,11 @@ class TextPage(HTMLParser):
         else: self.parts.append(value)
 
 def snapshot(path):
-    if not re.fullmatch(r'/(?!/)[A-Za-z0-9/_-]*',path) or path.startswith('/cluster/dashboard'):
-        raise ValueError('Use a public site path; dashboard pages are excluded.')
+    if path not in site_read.PUBLIC_PATHS: raise ValueError('Use an allowed CurtBrag page path; dashboards and controls are excluded.')
     url='https://curtbrag.com'+path
-    with urlopen(Request(url,headers={'User-Agent':'CurtClusterChangeMonitor/1.0'}),timeout=15) as response:
-        final=urlsplit(response.url)
-        if final.scheme!='https' or final.hostname!='curtbrag.com': raise ValueError('Page redirected outside this site.')
-        if 'text/html' not in response.headers.get('Content-Type',''): raise ValueError('Page is not HTML.')
-        raw=response.read(300001)
-        if len(raw)>300000: raise ValueError('Page exceeds snapshot size limit.')
-        parser=TextPage();parser.feed(raw.decode(response.headers.get_content_charset() or 'utf-8',errors='replace'))
+    result=site_read.page(path)
+    if len(result['html'].encode('utf-8'))>300000: raise ValueError('Page exceeds snapshot size limit.')
+    parser=TextPage();parser.feed(result['html'])
     lines=[' '.join(line.split()) for line in ''.join(parser.parts).splitlines()]
     text='\n'.join(line for line in lines if line)
     if len(text)>60000: raise ValueError('Page text exceeds snapshot size limit.')

@@ -913,7 +913,7 @@
       const id='change-monitor-'+Date.now();changeMonitor.batch={id,created_at:new Date().toISOString(),scope:'Public CurtBrag HTML text; manual checks; baselines saved in this browser.',tasks:paths.map((path,i)=>({path,worker:workers[i%workers.length].id,job_id:id+'-'+i,state:'planned'}))};
       saveChangeMonitor();
       for(const task of changeMonitor.batch.tasks){
-        const cmd=`curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-page-snapshot.py' -o "$HOME/cluster-page-snapshot.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-page-snapshot.py" --path '${task.path}'; }`;
+        const cmd=`curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-site-read.py' -o "$HOME/cluster-site-read.py" && curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-page-snapshot.py' -o "$HOME/cluster-page-snapshot.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-page-snapshot.py" --path '${task.path}'; }`;
         task.state='submitting';saveChangeMonitor();
         try{await swarmApi('enqueue','POST',{job:{id:task.job_id,type:'shell',cmd,command:cmd},target_device_ids:[task.worker]});task.state='queued';}
         catch{task.state='unconfirmed';saveChangeMonitor();throw Error('Submission is unconfirmed. Review Queue & results before retrying.');}
@@ -1354,7 +1354,7 @@
   function browserCommand(path,prepare=false){
     if(!prepare&&(typeof path!=='string'||!/^\/(?!\/)[A-Za-z0-9/_-]*$/.test(path)))throw new Error('Invalid browser audit path');
     const python=prepare?'python3':'"$HOME/cluster/browser-audit-venv/bin/python"';
-    return `curl -fLsS --max-time 20 '${BROWSER_SCRIPT}' -o "$HOME/cluster-browser-audit.py" && ${python} "$HOME/cluster-browser-audit.py" ${prepare?'--prepare':`--path '${path}'`}`;
+    return `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-site-read.py' -o "$HOME/cluster-site-read.py" && curl -fLsS --max-time 20 '${BROWSER_SCRIPT}' -o "$HOME/cluster-browser-audit.py" && ${python} "$HOME/cluster-browser-audit.py" ${prepare?'--prepare':`--path '${path}'`}`;
   }
   async function prepareBrowserAudit(){
     const button=document.getElementById('cluster-browser-prepare');button.disabled=true;
@@ -1513,7 +1513,7 @@
       auditRecord={http_batch:auditBatch,browser_batch:browserAuditBatch,created_at:new Date().toISOString(),settings:{...spec,paths:[...new Set(spec.paths)],browser_workers:browserIds},tasks:[]};
       for(const [i,path] of [...new Set(spec.paths)].entries()) {
         const node=nodes[i%nodes.length];
-        const cmd=`curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-web-audit.py' -o "$HOME/cluster-web-audit.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-web-audit.py" --path '${path}'; }`;
+        const cmd=`curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-site-read.py' -o "$HOME/cluster-site-read.py" && curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/cluster-web-audit.py' -o "$HOME/cluster-web-audit.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-web-audit.py" --path '${path}'; }`;
         auditRecord.tasks.push({job_id:`${auditBatch}-${i}`,worker:node.id,path,mode:'HTTP/HTML',cmd,status:'unsent'});
       }
       for(const [i,path] of browserIds.length?[...new Set(spec.paths)].entries():[]){

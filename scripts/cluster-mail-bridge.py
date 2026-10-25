@@ -24,6 +24,7 @@ UNITS = {'phone173','phone174','phone176','phone177','phone191','phone195','phon
 SESSION = None
 SESSION_AT = 0
 DELIVERY_CHECKS = {}
+NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
 
 class Blob(ctypes.Structure):
@@ -102,7 +103,7 @@ def execute(unit, spec):
     payload = base64.b64encode(json.dumps(request).encode()).decode()
     remote = shlex.quote(unit['python']) + ' "$HOME/cluster/email/cluster-mail.py" ' + shlex.quote(payload)
     try:
-        result = subprocess.run(ssh_args(unit) + [remote], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=90)
+        result = subprocess.run(ssh_args(unit) + [remote], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=90, creationflags=NO_WINDOW)
         return json.loads(result.stdout) if result.stdout.strip() else {'ok': False, 'error': 'Device connection unavailable'}
     except Exception as error:
         return {'ok': False, 'error': type(error).__name__}
@@ -118,19 +119,50 @@ def inspect(item):
     else:
         try:
             result = subprocess.run(ssh_args(unit) + ['test -r "$HOME/cluster/email/mailbox.json" -a -r "$HOME/cluster/email/cluster-mail.py"'],
-                stdin=subprocess.DEVNULL, capture_output=True, timeout=8)
+                stdin=subprocess.DEVNULL, capture_output=True, timeout=8, creationflags=NO_WINDOW)
             value['connected'] = result.returncode == 0
         except Exception:
             pass
     return name, value
 
 
+def save_record(path, value):
+    temporary = path.with_suffix('.tmp')
+    with temporary.open('w', encoding='utf-8') as stream:
+        json.dump(value, stream)
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary.replace(path)
+
+
+def finish_pending(pending, inflight):
+    value = json.loads(pending.read_text(encoding='utf-8'))
+    api('complete', value)
+    # Keep the completed result until its matching intent is removed. A crash
+    # anywhere here can only upload the same receipt again, never send again.
+    if inflight.exists():
+        intent = json.loads(inflight.read_text(encoding='utf-8'))
+        if intent.get('id') == value.get('id'):
+            inflight.unlink()
+    pending.unlink()
+
+
 def cycle(inventory, devices):
     api('heartbeat', {'devices': devices})
     pending = ROOT / 'pending-result.json'
+    inflight = ROOT / 'inflight-request.json'
     if pending.exists():
-        api('complete', json.loads(pending.read_text()))
-        pending.unlink()
+        finish_pending(pending, inflight)
+        return True
+    if inflight.exists():
+        intent = json.loads(inflight.read_text(encoding='utf-8'))
+        message = ('Previous request interrupted; sending outcome is unconfirmed. It was not replayed.'
+            if intent.get('action') == 'test' else 'Previous connection check interrupted. It was not replayed.')
+        save_record(pending, {'id': intent['id'], 'result': {
+            'ok': False, 'interrupted': True,
+            'delivery_unconfirmed': intent.get('action') == 'test',
+            'error': message}})
+        finish_pending(pending, inflight)
         return True
     job = api('poll', {})['job']
     if not job:
@@ -152,13 +184,12 @@ def cycle(inventory, devices):
                 api('complete', {'id':ident, 'result':{'delivery_verified':True}})
             break
         return False
+    # Record the intent before executing. After a restart its outcome is
+    # uncertain, so finish it as interrupted rather than replaying the action.
+    save_record(inflight, {key: job[key] for key in ('id', 'unit', 'action')})
     result = execute(inventory.get(job['unit']), job)
-    # Persist the result before uploading; uncertain uploads never repeat a send.
-    temporary = pending.with_suffix('.tmp')
-    temporary.write_text(json.dumps({'id': job['id'], 'result': result}))
-    temporary.replace(pending)
-    api('complete', {'id': job['id'], 'result': result})
-    pending.unlink()
+    save_record(pending, {'id': job['id'], 'result': result})
+    finish_pending(pending, inflight)
     if result.get('error') in ('Device connection unavailable', 'TimeoutExpired'):
         devices[job['unit']]['connected'] = False
     return True

@@ -110,14 +110,29 @@ function Invoke-Phone([string]$IP, [string]$Remote, [string]$User=$phoneUser, [i
         "$User@$IP",
         $Remote
     )
+    $start = [Diagnostics.ProcessStartInfo]::new()
+    $start.FileName = $ssh; $start.UseShellExecute = $false; $start.CreateNoWindow = $true
+    $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
+    foreach ($argument in $args) { [void]$start.ArgumentList.Add([string]$argument) }
+    $process = [Diagnostics.Process]::new(); $process.StartInfo = $start
     try {
-        $out = @(& $ssh @args 2>&1 | ForEach-Object { "$_" })
-        $code = $LASTEXITCODE
-        return [pscustomobject]@{ Exit = $code; Output = $out }
+        [void]$process.Start()
+        $stdout = $process.StandardOutput.ReadToEndAsync(); $stderr = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit(90000)) {
+            try { $process.Kill($true) } catch {}
+            [void]$process.WaitForExit(3000)
+            return [pscustomobject]@{ Exit = 124; Output = @('SSH command timed out') }
+        }
+        if (-not [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdout,$stderr),3000)) {
+            return [pscustomobject]@{ Exit = 124; Output = @('SSH output timed out') }
+        }
+        $out = @(($stdout.Result + $stderr.Result) -split '\r?\n' | Where-Object { $_ })
+        return [pscustomobject]@{ Exit = $process.ExitCode; Output = $out }
     }
     catch {
-        return [pscustomobject]@{ Exit = 1; Output = @($_.Exception.Message) }
+        return [pscustomobject]@{ Exit = 1; Output = @('SSH invocation failed: ' + $_.Exception.GetType().Name) }
     }
+    finally { $process.Dispose() }
 }
 
 function Get-Devices {

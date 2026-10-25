@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Read-only HTTP/HTML audit of curtbrag.com; bounded public-page checks."""
-import argparse, concurrent.futures, json, time
+import argparse, concurrent.futures, importlib.util, json, pathlib, time
 from html.parser import HTMLParser
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 from urllib.parse import urljoin, urlsplit, urldefrag
 
 ORIGIN = 'https://curtbrag.com'
+_spec=importlib.util.spec_from_file_location('curt_site_read',pathlib.Path(__file__).with_name('cluster-site-read.py'))
+site_read=importlib.util.module_from_spec(_spec);_spec.loader.exec_module(site_read)
 class Page(HTMLParser):
     def __init__(self):
         super().__init__(); self.title = ''; self.in_title = False
@@ -34,21 +36,16 @@ def owned(url):
 def fetch(url):
     start=time.monotonic()
     try:
-        # Redirects are checked before following, including link checks.
-        from urllib.request import HTTPRedirectHandler, build_opener
-        class Redirect(HTTPRedirectHandler):
-            def redirect_request(self, req, fp, code, msg, headers, newurl):
-                if not owned(newurl): raise ValueError('redirect outside audit site')
-                return super().redirect_request(req,fp,code,msg,headers,newurl)
-        with build_opener(Redirect()).open(Request(url,headers={'User-Agent':'CurtClusterAudit/1.0'}),timeout=8) as r:
-            body=r.read(1048577)
-            return {'url':r.url,'status':r.status,'ms':round((time.monotonic()-start)*1000),'body':body[:1048576].decode('utf-8','replace'),'truncated':len(body)>1048576,'html':'text/html' in r.headers.get('Content-Type','')}
+        parsed=urlsplit(url)
+        if not owned(url) or parsed.query or parsed.fragment: raise ValueError('Only allowed CurtBrag page URLs can be read')
+        result=site_read.page(parsed.path)
+        return {'url':result['url'],'status':result['status'],'ms':round((time.monotonic()-start)*1000),'body':result['html'],'truncated':False,'html':True}
     except HTTPError as e: return {'url':url,'status':e.code,'ms':round((time.monotonic()-start)*1000),'error':'HTTP error'}
-    except Exception as e: return {'url':url,'status':0,'error':str(e)[:160]}
+    except Exception: return {'url':url,'status':0,'error':'Authenticated page read was unavailable. Check the existing worker connection.'}
 
 def audit(path, max_links=8):
     url=urljoin(ORIGIN,path)
-    if not owned(url): raise ValueError('Only HTTPS curtbrag.com pages can be audited')
+    if not owned(url) or urlsplit(url).path not in site_read.PUBLIC_PATHS or urlsplit(url).query or urlsplit(url).fragment: raise ValueError('Only allowed CurtBrag page paths can be audited')
     r=fetch(url); issues=[]; checks=[]
     if r['status'] != 200: issues.append('Page did not return HTTP 200')
     if r.get('body') and r.get('html'):
@@ -61,9 +58,11 @@ def audit(path, max_links=8):
         urls=[]
         for link in p.links:
             u=urldefrag(urljoin(r['url'],link))[0]
-            if owned(u) and len(u) <= 200 and not urlsplit(u).query and u not in urls and not urlsplit(u).path.startswith('/api/'):
+            if owned(u) and len(u) <= 200 and not urlsplit(u).query and u not in urls and urlsplit(u).path in site_read.PUBLIC_PATHS:
                 urls.append(u)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        # Keep each worker's protected reads sequential so an eight-phone batch
+        # does not create dozens of simultaneous server sign-in sessions.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             for result in pool.map(fetch,urls[:max_links]):
                 item={k:result[k] for k in ('url','status','ms','error') if k in result}; checks.append(item)
                 if result['status']>=400: issues.append('Broken internal link: '+result['url'])
