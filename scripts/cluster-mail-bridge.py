@@ -23,6 +23,7 @@ SSH_KEY = Path.home() / '.ssh/id_ed25519'
 UNITS = {'phone173','phone174','phone176','phone177','phone191','phone195','phone253','phone254','Alina','Nexus','SteamDeck','viki','RenderRig','s26ultra'}
 SESSION = None
 SESSION_AT = 0
+DELIVERY_CHECKS = {}
 
 
 class Blob(ctypes.Structure):
@@ -86,6 +87,8 @@ def execute(unit, spec):
         return {'ok': False, 'error': 'Invalid email request'}
     # Rebuild only the permitted fields, so neither remote code nor recipients come from the site.
     request = {'action': spec['action'], 'id': spec['id']}
+    if spec['action'] == 'check' and spec.get('verify_test') is True:
+        request['verify_test'] = True
     if unit.get('local'):
         module_spec = importlib.util.spec_from_file_location('fleet_mail', ROOT / 'cluster-mail.py')
         module = importlib.util.module_from_spec(module_spec)
@@ -131,6 +134,23 @@ def cycle(inventory, devices):
         return True
     job = api('poll', {})['job']
     if not job:
+        # SMTP acceptance precedes arrival. Confirm only our exact prior test,
+        # without sending again or fetching any inbox message contents.
+        status = api('status')
+        for previous in status.get('jobs', []):
+            ident = previous['id']
+            elapsed = time.time() * 1000 - previous.get('finished_at', 0)
+            result = previous.get('result', {})
+            if previous.get('action') != 'test' or previous.get('status') != 'complete' or not result.get('accepted') or result.get('delivery_verified') or not 15000 < elapsed < 1800000:
+                continue
+            count, last = DELIVERY_CHECKS.get(ident, (0, 0))
+            if count >= 3 or time.time() - last < 30:
+                continue
+            DELIVERY_CHECKS[ident] = (count + 1, time.time())
+            result = execute(inventory.get(previous['unit']), {**previous, 'action':'check', 'verify_test':True})
+            if result.get('delivery_verified') is True:
+                api('complete', {'id':ident, 'result':{'delivery_verified':True}})
+            break
         return False
     result = execute(inventory.get(job['unit']), job)
     # Persist the result before uploading; uncertain uploads never repeat a send.
@@ -175,4 +195,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

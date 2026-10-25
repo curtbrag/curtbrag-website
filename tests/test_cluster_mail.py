@@ -42,5 +42,16 @@ class MailTests(unittest.TestCase):
             inbox.fetch.assert_not_called()
             smtp.return_value.__enter__.return_value.send_message.assert_not_called()
 
+    def test_delayed_confirmation_reads_only_exact_test_header_and_never_sends(self):
+        with patch.object(mail.imaplib,'IMAP4_SSL') as imap, patch.object(mail.smtplib,'SMTP') as smtp:
+            inbox=imap.return_value.__enter__.return_value
+            inbox.noop.return_value=('OK',[])
+            inbox.search.return_value=('OK',[b'456'])
+            result=mail.run(self.config,{'action':'check','id':'test-12345678','verify_test':True})
+            self.assertTrue(result['delivery_verified'])
+            inbox.search.assert_called_with(None,'HEADER','Message-ID','"<fleet-test-12345678@curtbrag.com>"')
+            inbox.fetch.assert_not_called()
+            smtp.return_value.__enter__.return_value.send_message.assert_not_called()
+
 
 if __name__=='__main__':unittest.main()

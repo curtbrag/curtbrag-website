@@ -59,7 +59,12 @@ export function createHandler({store, password, now=()=>Date.now()}) {
         if(!ID.test(body.id||'')) throw Error('Invalid job ID');
         const job=await get('job-'+body.id);
         if(!job || !['running','complete','failed'].includes(job.status)) return json(409,{error:'Job is not running'});
-        if(job.status!=='running') return json(200,{ok:true});
+        if(job.status!=='running') {
+          // A later read-only check may confirm arrival, never replay or alter a send.
+          if(job.status==='complete' && job.action==='test' && job.result?.accepted===true && job.result.delivery_verified!==true && body.result?.delivery_verified===true)
+            await store.setJSON('job-'+job.id,{...job,result:{...job.result,delivery_verified:true},delivery_checked_at:now()});
+          return json(200,{ok:true});
+        }
         const result=body.result;
         if(!result || typeof result!=='object') throw Error('Invalid result');
         const clean={};
