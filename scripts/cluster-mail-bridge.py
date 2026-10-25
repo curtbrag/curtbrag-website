@@ -3,6 +3,7 @@ import base64
 import concurrent.futures
 import ctypes
 import importlib.util
+import http.cookiejar
 import json
 import os
 from pathlib import Path
@@ -13,11 +14,15 @@ import subprocess
 import sys
 import time
 import urllib.request
+import urllib.parse
+import urllib.error
 
 ROOT = Path(__file__).resolve().parent
 API = 'https://curtbrag.com/.netlify/functions/fleet-email'
 SSH_KEY = Path.home() / '.ssh/id_ed25519'
 UNITS = {'phone173','phone174','phone176','phone177','phone191','phone195','phone253','phone254','Alina','Nexus','SteamDeck','viki','RenderRig','s26ultra'}
+SESSION = None
+SESSION_AT = 0
 
 
 class Blob(ctypes.Structure):
@@ -38,14 +43,33 @@ def decrypt(value):
 
 
 def api(action, body=None):
+    global SESSION, SESSION_AT
     cfg = json.loads((Path(os.environ['LOCALAPPDATA']) / 'CurtCluster/bridge-config.json').read_text(encoding='utf-8-sig'))
     token = decrypt(cfg['password_cipher'])
+    if SESSION is None or time.time() - SESSION_AT > 23 * 3600:
+        jar = http.cookiejar.CookieJar()
+        candidate = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar),
+            urllib.request.HTTPSHandler(context=ssl.create_default_context()))
+        login = urllib.request.Request('https://curtbrag.com/_site/login',
+            data=urllib.parse.urlencode({'password': token, 'return': '/'}).encode(),
+            headers={'Origin':'https://curtbrag.com', 'Accept':'application/json',
+                'Content-Type':'application/x-www-form-urlencoded'})
+        with candidate.open(login, timeout=20) as response:
+            reply = json.load(response)
+        if reply.get('ok') is not True or not any(cookie.name == '__Host-curtbrag_access' for cookie in jar):
+            raise OSError('Normal site sign-in failed')
+        SESSION, SESSION_AT = candidate, time.time()
     request = urllib.request.Request(API + '?action=' + action,
         data=json.dumps(body).encode() if body is not None else None,
         headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
     token = None
-    with urllib.request.urlopen(request, timeout=20, context=ssl.create_default_context()) as response:
-        return json.load(response)
+    try:
+        with SESSION.open(request, timeout=20) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        if error.code == 401:
+            SESSION = None
+        raise
 
 
 def ssh_args(unit):
@@ -151,3 +175,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
