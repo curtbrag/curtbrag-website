@@ -31,12 +31,18 @@ function mobileRules() {
   return css.slice(begin + 1, end - 1);
 }
 
-test('Layout retains released controller versions and each route-scoped integration once', () => {
+test('Layout loads one versioned workload client and each route-scoped integration once', () => {
   // Site-wide layout improvements may change the shell. Keep the controller
   // contract explicit instead of freezing unrelated markup with a full-file hash.
   let original = layout.replace(/\r\n/g, '\n').replace(/\n$/, '');
-  assert.equal(original.split('/scripts/cluster-swarm-live-v8.js?v=72').length, 2);
-  original = original.replace('/scripts/cluster-swarm-live-v8.js?v=72', '/scripts/cluster-swarm-live-v8.js?v=70');
+  const workloadScripts=[...original.matchAll(/<script\b[^>]*\bsrc="([^"]+)"[^>]*>/g)]
+    .map(match=>({tag:match[0],url:new URL(match[1],origin)}))
+    .filter(script=>script.url.pathname==='/scripts/cluster-swarm-live-v8.js');
+  assert.equal(workloadScripts.length,1,'The workload client must be loaded exactly once');
+  assert.equal(workloadScripts[0].url.origin,origin);
+  assert.deepEqual([...workloadScripts[0].url.searchParams.keys()],['v']);
+  assert.match(workloadScripts[0].url.searchParams.get('v'),/^[1-9]\d*$/,'The released client needs a cache-busting version');
+  assert.match(workloadScripts[0].tag,/\bis:inline\b/);
   const route = "const clusterControlPage = /^\\/cluster\\/(?:dashboard|control)\\/?$/.test(Astro.url.pathname);";
   for (const addition of [
     "const clusterDashboardPage = /^\\/cluster\\/dashboard\\/?$/.test(Astro.url.pathname);\n",

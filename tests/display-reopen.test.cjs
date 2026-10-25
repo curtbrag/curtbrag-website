@@ -7,8 +7,7 @@ const {TextEncoder}=require('node:util');
 const source=fs.readFileSync(path.join(__dirname,'../public/scripts/cluster-swarm-live-v8.js'),'utf8').replace(/\r\n/g,'\n');
 const phones=['phone173','phone174','phone176','phone177','phone191','phone195','phone253','phone254'];
 function section(start,end){const a=source.indexOf(start),b=source.indexOf(end,a);assert.ok(a>=0&&b>a,'Actual candidate section must exist: '+start);return source.slice(a,b);}
-const handlerStart="document.getElementById('display-send').onclick=async()=>{";
-const handler=section(handlerStart,'\n    };\n  }').slice(handlerStart.indexOf('async()=>'))+'\n    }';
+const displayControls=section('  function ensureDisplayControls(){','\n  function ensureControlLayout()');
 const canonicalize=section('  function canonicalize(raw) {','\n  function ensureStateNote()');
 const browserCommand=section('  function browserOpenCommand(url){','\n  async function dispatchBrowserOpen()');
 const fleetExpression=source.match(/const FLEET = (\[[\s\S]*?\]);/)[1];
@@ -16,17 +15,19 @@ const fleetExpression=source.match(/const FLEET = (\[[\s\S]*?\]);/)[1];
 function harness(options={}){
   const elements={'display-send':{disabled:false},'display-state':{textContent:''},'display-target':{value:options.target||'phone253'},'display-mode':{value:options.mode||'activity'}};
   elements['display-connect']={checked:options.connect===true};
+  const element=id=>elements[id]||=( {id,disabled:false,value:'',textContent:'',href:''} );
+  elements['cluster-view-fleet']={children:[{}],insertBefore(card){elements[card.id]=card;}};
   const events=[],saves=[],enqueues=[];let loads=0;
   const context=vm.createContext({
-    document:{getElementById:id=>elements[id]},URL,location:{origin:'https://curtbrag.com'},TextEncoder,btoa:value=>Buffer.from(value,'binary').toString('base64'),
+    document:{getElementById:id=>elements[id]||null,createElement(){return {set innerHTML(html){for(const match of html.matchAll(/id="([^"]+)"/g))element(match[1]);}};}},URL,location:{origin:'https://curtbrag.com'},TextEncoder,btoa:value=>Buffer.from(value,'binary').toString('base64'),
     PHONE_IDS:new Set(phones),token:()=> 'test-operator-session',
     swarmApi:async(...args)=>{events.push({kind:'availability',args});if(options.api)return options.api(...args);return {nodes:options.nodes||[{id:'phone253',online:true,busy:false}],jobs:[],results:[]};},
     fetch:async(url,request)=>{const body=JSON.parse(request.body);saves.push({url,request,body});events.push({kind:'save',phone:body.phone});return options.fetch?options.fetch(url,request,body):{ok:true};},
     enqueueSwarm:async(type,cmd,targets)=>{const launch={type,cmd,targets:Array.from(targets)};enqueues.push(launch);events.push({kind:'launch',phone:launch.targets[0]});if(options.enqueue)return options.enqueue(launch);return {ok:true};},
     load:async force=>{loads++;events.push({kind:'load',force});},
   });
-  vm.runInContext('const FLEET='+fleetExpression+';const IDS=new Set(FLEET.map(([id])=>id));\n'+canonicalize+'\n'+browserCommand+'\nglobalThis.applyDisplay='+handler+';',context);
-  return {apply:context.applyDisplay,elements,events,saves,enqueues,loads:()=>loads};
+  vm.runInContext('const FLEET='+fleetExpression+';const IDS=new Set(FLEET.map(([id])=>id));\n'+canonicalize+'\n'+browserCommand+'\n'+displayControls+'\nensureDisplayControls();',context);
+  return {apply:()=>elements['display-send'].onclick(),elements,events,saves,enqueues,loads:()=>loads};
 }
 function launchUrl(launch){
   const match=launch.cmd.match(/--settings-b64 '([A-Za-z0-9+/=]+)'/);assert.ok(match,'Candidate launch must use the actual base64 helper command');

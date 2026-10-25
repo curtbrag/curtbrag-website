@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 """Public-site Chromium checks; isolated profile, no form submissions."""
 import argparse
+import importlib.util
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, unquote
 
 ORIGIN = 'https://curtbrag.com'
+_spec=importlib.util.spec_from_file_location('curt_site_read',Path(__file__).with_name('cluster-site-read.py'))
+site_read=importlib.util.module_from_spec(_spec);_spec.loader.exec_module(site_read)
 RUNTIME = Path.home() / 'cluster' / 'browser-audit-venv'
 VIEWPORTS = [('desktop', 1366, 900), ('mobile', 390, 844)]
 
 def page_url(path):
-    if not isinstance(path, str) or not re.fullmatch(r'/(?!/)[A-Za-z0-9/_-]*', path):
-        raise ValueError('Use a public curtbrag.com path starting with /')
+    if path not in site_read.PUBLIC_PATHS:
+        raise ValueError('Use an allowed CurtBrag page path; dashboards and controls are excluded')
     return ORIGIN + path
 
 def allowed_request(url, method, navigation=False):
@@ -22,9 +25,39 @@ def allowed_request(url, method, navigation=False):
     allowed = {'curtbrag.com', 'www.curtbrag.com', 'fonts.googleapis.com',
                'fonts.gstatic.com', 'cdnjs.cloudflare.com', 'cdn.jsdelivr.net',
                'images.unsplash.com', 'i.ytimg.com', 'www.youtube.com'}
-    return (method in ('GET', 'HEAD') and p.scheme == 'https' and p.hostname in allowed
-            and not p.username and p.port in (None, 443)
-            and (not navigation or p.hostname in ('curtbrag.com', 'www.curtbrag.com')))
+    try:
+        if method not in ('GET','HEAD') or p.scheme!='https' or p.hostname not in allowed or p.username or p.password or p.port not in (None,443): return False
+    except ValueError: return False
+    if p.hostname in ('curtbrag.com','www.curtbrag.com'):
+        if p.hostname!='curtbrag.com' or p.query or p.fragment: return False
+        kind=site_read.allowed_resource(unquote(p.path))
+        return kind=='page' if navigation else bool(kind)
+    return not navigation
+
+def protected_routes(blocked, resource_errors, cache, read_resource=None):
+    read_resource=site_read.resource if read_resource is None else read_resource
+    def handle(route):
+        request=route.request; parsed=urlsplit(request.url); resource_path=unquote(parsed.path)
+        # Cache versions are omitted only for static assets; query data is never
+        # sent to the protected reader and page query/navigation is excluded.
+        cache_query=bool(parsed.query) and bool(site_read.allowed_resource(resource_path)=='asset') and bool(re.fullmatch(r'v=[A-Za-z0-9._-]{1,64}',parsed.query))
+        clean_url=parsed._replace(query='').geturl() if cache_query else request.url
+        if not allowed_request(clean_url,request.method,request.is_navigation_request()):
+            blocked.append(parsed.hostname or 'unknown');route.abort();return
+        if parsed.hostname!='curtbrag.com': route.continue_();return
+        try:
+            if resource_path not in cache:
+                used=sum(len(item[1]) for item in cache.values())
+                if len(cache)>=160 or used>=33554432: raise ValueError('Browser resource budget exceeded')
+                result,data=read_resource(resource_path)
+                if used+len(data)>33554432: raise ValueError('Browser resource budget exceeded')
+                cache[resource_path]=(result,data)
+            result,data=cache[resource_path]
+            route.fulfill(status=200,body=b'' if request.method=='HEAD' else data,headers={'content-type':result['content_type'],'cache-control':'private, no-store'})
+        except Exception:
+            resource_errors.append(resource_path+' could not be read through the protected site connection')
+            route.abort()
+    return handle
 
 def suggestions(metrics, errors):
     findings = []
@@ -84,20 +117,15 @@ def audit(path):
     from playwright.sync_api import sync_playwright
     url = page_url(path)
     reports = []
+    resources = {}
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, chromium_sandbox=True)
         try:
             for name, width, height in VIEWPORTS:
                 context = browser.new_context(viewport={'width': width, 'height': height}, service_workers='block')
                 blocked = []
-                def route_handler(route):
-                    request = route.request
-                    if allowed_request(request.url, request.method, request.is_navigation_request()):
-                        route.continue_()
-                    else:
-                        blocked.append(urlsplit(request.url).hostname or 'unknown')
-                        route.abort()
-                context.route('**/*', route_handler)
+                resource_errors = []
+                context.route('**/*', protected_routes(blocked,resource_errors,resources))
                 page = context.new_page()
                 errors = []
                 page.on('pageerror', lambda error: errors.append(str(error)))
@@ -117,6 +145,8 @@ def audit(path):
                     if item['status'] != 200:
                         item['findings'].append({'check': 'http-status', 'evidence': str(item['status']), 'proposal': 'Check the route and hosting response.'})
                     item['blocked_resource_hosts'] = sorted(set(blocked))[:4]
+                    item['resource_errors'] = sorted(set(resource_errors))[:8]
+                    if resource_errors: item['findings'].append({'check':'incomplete-protected-resources','evidence':'; '.join(sorted(set(resource_errors))[:3]),'proposal':'Restore the protected site connection for these resources and repeat the audit before treating layout findings as complete.'})
                 except Exception as error:
                     item.update(error=str(error)[:220], findings=[{'check': 'incomplete-browser-check', 'evidence': str(error)[:160], 'proposal': 'Resolve the browser/navigation error and rerun; no layout conclusion is available.'}])
                 finally:
@@ -125,7 +155,7 @@ def audit(path):
         finally:
             browser.close()
     return {'v': 1, 'kind': 'website-browser-audit', 'page': {'url': url, 'viewports': reports,
-            'scope': 'Public Chromium desktop/mobile checks, bounded lazy-image scrolling and in-page navigation targets; no clicks, login or form submissions. Timings are single-run observations, not Core Web Vitals.'}}
+            'scope': 'Chromium desktop/mobile checks of approved CurtBrag pages through the protected read connection, bounded lazy-image scrolling and in-page targets. Credentials stay outside the browser. No clicks or form submissions. Timings are single-run observations, not Core Web Vitals.'}}
 
 def main():
     parser = argparse.ArgumentParser()

@@ -29,32 +29,42 @@ def run(config, spec):
             client.select('INBOX', readonly=True)
             status, matches = client.search(None, 'HEADER', 'Message-ID', '"<fleet-' + ident + '@curtbrag.com>"')
             result['delivery_verified'] = status == 'OK' and bool(matches[0].strip())
-    with smtplib.SMTP('mail.smtp2go.com', 587, timeout=15) as client:
-        client.ehlo()
-        client.starttls(context=context)
-        client.ehlo()
-        client.login(config['smtp_username'], config['smtp_password'])
-        result['smtp_verified'] = True
-        if action == 'test':
-            message = EmailMessage()
-            message['From'] = address
-            message['To'] = address
-            message['Subject'] = 'Fleet mail test ' + ident
-            message['Message-ID'] = '<fleet-' + ident + '@curtbrag.com>'
-            message.set_content('Email connection test from this fleet device to its own mailbox.')
-            result['accepted'] = not client.send_message(message)
-            result['delivery_verified'] = False
+    try:
+        with smtplib.SMTP('mail.smtp2go.com', 587, timeout=15) as client:
+            client.ehlo()
+            client.starttls(context=context)
+            client.ehlo()
+            client.login(config['smtp_username'], config['smtp_password'])
+            result['smtp_verified'] = True
+            if action == 'test':
+                message = EmailMessage()
+                message['From'] = address
+                message['To'] = address
+                message['Subject'] = 'Fleet mail test ' + ident
+                message['Message-ID'] = '<fleet-' + ident + '@curtbrag.com>'
+                message.set_content('Email connection test from this fleet device to its own mailbox.')
+                result['accepted'] = not client.send_message(message)
+                result['delivery_verified'] = False
+    except Exception as error:
+        # A failed QUIT cannot revoke the server's successful send response.
+        if result.get('accepted') is not True:
+            raise
+        result['delivery_error'] = type(error).__name__
     if action == 'test' and result.get('accepted'):
-        with imaplib.IMAP4_SSL('imap.foundermail.mx', 993, ssl_context=context, timeout=15) as client:
-            client.login(address, config['imap_password'])
-            client.select('INBOX', readonly=True)
-            for attempt in range(4):
-                status, matches = client.search(None, 'HEADER', 'Message-ID', '"<fleet-' + ident + '@curtbrag.com>"')
-                if status == 'OK' and matches[0].strip():
-                    result['delivery_verified'] = True
-                    break
-                if attempt < 3:
-                    time.sleep(2)
+        try:
+            with imaplib.IMAP4_SSL('imap.foundermail.mx', 993, ssl_context=context, timeout=15) as client:
+                client.login(address, config['imap_password'])
+                client.select('INBOX', readonly=True)
+                for attempt in range(4):
+                    status, matches = client.search(None, 'HEADER', 'Message-ID', '"<fleet-' + ident + '@curtbrag.com>"')
+                    if status == 'OK' and matches[0].strip():
+                        result['delivery_verified'] = True
+                        break
+                    if attempt < 3:
+                        time.sleep(2)
+        except Exception as error:
+            result['delivery_error'] = type(error).__name__
+        result['delivery_unconfirmed'] = not result['delivery_verified']
     return result
 
 

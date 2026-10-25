@@ -77,7 +77,24 @@ function Install-ProductionTools {
 function Get-GpuInfo {
     $nvidia = Get-CommandPath 'nvidia-smi.exe'
     if ($nvidia) {
-        $rows = & $nvidia --query-gpu=index,name,memory.total,utilization.gpu,temperature.gpu,power.draw --format=csv,noheader,nounits 2>$null
+        $start = [Diagnostics.ProcessStartInfo]::new()
+        $start.FileName = $nvidia; $start.UseShellExecute = $false; $start.CreateNoWindow = $true
+        $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
+        [void]$start.ArgumentList.Add('--query-gpu=index,name,memory.total,utilization.gpu,temperature.gpu,power.draw')
+        [void]$start.ArgumentList.Add('--format=csv,noheader,nounits')
+        $process = [Diagnostics.Process]::new(); $process.StartInfo = $start
+        try {
+            [void]$process.Start()
+            $stdout = $process.StandardOutput.ReadToEndAsync(); $stderr = $process.StandardError.ReadToEndAsync()
+            if (-not $process.WaitForExit(5000)) {
+                try { $process.Kill($true) } catch {}
+                [void]$process.WaitForExit(3000)
+                return @()
+            }
+            if ($process.ExitCode -ne 0 -or -not [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdout,$stderr),3000)) { return @() }
+            $rows = @($stdout.Result -split '\r?\n' | Where-Object { $_ })
+        } catch { return @() }
+        finally { $process.Dispose() }
         return @($rows | ForEach-Object {
             $p = $_ -split ',\s*'
             [ordered]@{ index=$p[0]; name=$p[1]; memory_mib=$p[2]; utilization_pct=$p[3]; temperature_c=$p[4]; watts=$p[5] }
