@@ -8,8 +8,13 @@
   panel.append(card);
   const shortcut=document.createElement('a');shortcut.href='#fleet-email-controls';shortcut.textContent='Fleet email';shortcut.style.cssText='display:inline-block;margin-top:8px;text-decoration:underline';
   panel.querySelector('h1')?.parentElement.append(shortcut);
-  let snapshot=null, busy=false;
+  let snapshot=null, busy=false, pendingTests=null;
   const state=card.querySelector('#mail-state');
+  const confirmation=document.createElement('div');
+  confirmation.id='mail-confirmation';confirmation.hidden=true;
+  confirmation.style.cssText='border:1px solid var(--color-border);border-radius:8px;padding:12px;margin:12px 0';
+  confirmation.innerHTML='<p id="mail-confirm-message"></p><p id="mail-confirm-units" style="white-space:pre-wrap;overflow-wrap:anywhere"></p><button id="mail-confirm-send" type="button">Send test emails</button> <button id="mail-confirm-cancel" type="button">Cancel</button>';
+  state.before(confirmation);
   async function api(action,body) {
     const token=sessionStorage.getItem('cp_password');
     if(!token) throw Error('Sign in to use email controls');
@@ -40,7 +45,7 @@
       }
       const controls=document.createElement('td');
       for(const [action,label] of [['check','Check'],['test','Test to self']]) {
-        const button=document.createElement('button');button.type='button';button.textContent=label;button.disabled=busy||!live||!unit.installed||!unit.connected||active;button.style.margin='4px';button.onclick=()=>submit([unit.unit],action);controls.append(button);
+        const button=document.createElement('button');button.type='button';button.textContent=label;button.disabled=busy||!live||!unit.installed||!unit.connected||active;button.style.margin='4px';button.onclick=()=>request([unit.unit],action);controls.append(button);
       }
       tr.append(controls);tbody.append(tr);
     }
@@ -53,12 +58,23 @@
     if(!sessionStorage.getItem('cp_password')) return;
     try {snapshot=await api('status');render();} catch(error) {state.textContent=error.message;}
   }
-  async function submit(units,action) {
+  function clearTestConfirmation() {pendingTests=null;confirmation.hidden=true;}
+  function request(units,action) {
     if(busy) return;
     if(!units.length){state.textContent='No connected mailboxes are available for this request.';return;}
+    if(action!=='test'){clearTestConfirmation();return submit(units,action);}
+    pendingTests=[...new Set(units)];
     const uncertain=units.some(unit=>{const latest=snapshot.jobs.filter(job=>job.unit===unit&&job.action==='test').sort((a,b)=>b.created_at-a.created_at)[0];return latest?.status==='interrupted'&&latest.result?.delivery_verified!==true;});
     const notice=uncertain?'An earlier test has an unconfirmed sending outcome. This sends a new test; it does not retry the earlier request. ':'';
-    if(action==='test' && !confirm(notice+'Send one test email to each of these '+units.length+' selected units’ own inboxes?')) return;
+    confirmation.querySelector('#mail-confirm-message').textContent=notice+'Send one test email to each of these '+pendingTests.length+' units’ own inboxes?';
+    confirmation.querySelector('#mail-confirm-units').textContent=pendingTests.map(name=>name+' → '+snapshot.units.find(unit=>unit.unit===name)?.address).join('\n');
+    confirmation.querySelector('#mail-confirm-send').textContent='Send '+pendingTests.length+' test email'+(pendingTests.length===1?'':'s');
+    confirmation.querySelector('#mail-confirm-send').disabled=false;
+    confirmation.querySelector('#mail-confirm-cancel').disabled=false;
+    confirmation.hidden=false;
+  }
+  async function submit(units,action) {
+    if(busy) return;
     busy=true;render();
     card.querySelectorAll('button').forEach(b=>b.disabled=true);
     const outcomes=[];
@@ -70,9 +86,11 @@
     } finally {busy=false;card.querySelector('#mail-refresh').disabled=false;await refresh();if(snapshot)render();state.textContent=outcomes.join(' · ');}
   }
   const connected=()=>snapshot?.units.filter(u=>u.installed&&u.connected&&!snapshot.jobs.some(j=>j.unit===u.unit&&['queued','running'].includes(j.status))).map(u=>u.unit)||[];
+  confirmation.querySelector('#mail-confirm-cancel').onclick=()=>{clearTestConfirmation();state.textContent='Test cancelled. No email was queued.';};
+  confirmation.querySelector('#mail-confirm-send').onclick=()=>{if(busy||!pendingTests)return;const units=pendingTests;clearTestConfirmation();return submit(units,'test');};
   card.querySelector('#mail-refresh').onclick=refresh;
-  card.querySelector('#mail-check-all').onclick=()=>submit(connected(),'check');
-  card.querySelector('#mail-test-all').onclick=()=>submit(connected(),'test');
+  card.querySelector('#mail-check-all').onclick=()=>request(connected(),'check');
+  card.querySelector('#mail-test-all').onclick=()=>request(connected(),'test');
   refresh();setInterval(()=>{if(!document.hidden&&!busy)refresh();},30000);
 })();
 
