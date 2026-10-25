@@ -877,16 +877,43 @@
     return {added:[...next].filter(line=>!previous.has(line)),removed:[...previous].filter(line=>!next.has(line)),
       reordered:before!==after&&previous.size===next.size&&[...previous].every(line=>next.has(line))};
   }
-  function renderChangeMonitor(results){
+  async function decodeChangeSnapshot(result,task){
+    let report;try{report=JSON.parse(result.stdout||'');}catch{throw Error('Worker returned incomplete snapshot JSON. Run a new check to collect a complete snapshot.');}
+    if(Number(result.exit_code)!==0)throw Error(String(report?.error||result.stderr||'Worker snapshot failed').slice(0,1000));
+    if(report?.kind!=='page-snapshot'||report.path!==task.path||report.url!=='https://curtbrag.com'+task.path||!/^[a-f0-9]{64}$/.test(report.sha256||''))throw Error('Worker returned an invalid page snapshot identity.');
+    let text=report.text;
+    if(report.text_encoding==='gzip-base64'){
+      if(typeof text!=='undefined'||typeof report.text_gzip!=='string'||report.text_gzip.length>3800||!/^[A-Za-z0-9+/]+={0,2}$/.test(report.text_gzip)||!Number.isInteger(report.text_bytes)||report.text_bytes<1||report.text_bytes>240000||!Number.isInteger(report.text_chars)||report.text_chars<1||report.text_chars>60000)throw Error('Worker returned invalid compressed snapshot metadata.');
+      if(typeof DecompressionStream!=='function')throw Error('This browser cannot expand compressed snapshots. Open the dashboard in a current browser.');
+      const bytes=Uint8Array.from(atob(report.text_gzip),value=>value.charCodeAt(0));
+      const reader=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')).getReader(),chunks=[];let length=0;
+      try{while(true){const next=await reader.read();if(next.done)break;length+=next.value.byteLength;if(length>240000||length>report.text_bytes){await reader.cancel();throw Error('Expanded snapshot exceeded its result limit.');}chunks.push(next.value);}}finally{reader.releaseLock();}
+      if(length!==report.text_bytes)throw Error('Expanded snapshot did not match its byte count.');
+      const decoded=new Uint8Array(length);let offset=0;for(const chunk of chunks){decoded.set(chunk,offset);offset+=chunk.byteLength;}
+      text=new TextDecoder('utf-8',{fatal:true}).decode(decoded);
+      if(text.length!==report.text_chars)throw Error('Expanded snapshot did not match its character count.');
+    }else if(typeof report.text_encoding!=='undefined')throw Error('Worker returned an unsupported snapshot format.');
+    if(typeof text!=='string'||!text||text.length>60000)throw Error('Worker returned an invalid page snapshot text.');
+    const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),value=>value.toString(16).padStart(2,'0')).join('');
+    if(digest!==report.sha256)throw Error('Page snapshot checksum did not match the received text.');
+    const {text_gzip,...expanded}=report;return {...expanded,text};
+  }
+  let changeRenderSequence=0;
+  async function renderChangeMonitor(results){
     const state=document.getElementById('change-state'),batch=changeMonitor.batch;if(!state||!batch)return;
-    for(const task of batch.tasks){
-      if(task.state==='complete'||task.state==='failed')continue;
-      const result=results.find(r=>r.job_id===task.job_id&&r.device_id===task.worker);if(!result)continue;
-      let report;try{report=JSON.parse(result.stdout||'');}catch{}
-      if(Number(result.exit_code)===0&&report?.kind==='page-snapshot'&&report.path===task.path&&typeof report.text==='string'&&report.text.length<=60000&&/^[a-f0-9]{64}$/.test(report.sha256||'')){
+    const sequence=++changeRenderSequence;
+    const decoded=await Promise.all(batch.tasks.map(async task=>{
+      if(task.state==='complete'||task.state==='failed')return null;
+      const result=results.find(r=>r.job_id===task.job_id&&r.device_id===task.worker);if(!result)return null;
+      try{return {task,report:await decodeChangeSnapshot(result,task)};}catch(error){return {task,error:String(error.message||'Invalid page snapshot').slice(0,1000)};}
+    }));
+    if(sequence!==changeRenderSequence||batch!==changeMonitor.batch)return;
+    for(const value of decoded){
+      if(!value)continue;const {task,report,error}=value;
+      if(report){
         task.state='complete';task.report=report;
         if(!changeMonitor.baselines[task.path]){changeMonitor.baselines[task.path]=report;task.firstBaseline=true;}
-      }else{task.state='failed';task.error=String(report?.error||result.stderr||'Invalid page snapshot').slice(0,1000);}
+      }else{task.state='failed';task.error=error;}
     }
     for(const task of batch.tasks)if(task.report){const baseline=changeMonitor.baselines[task.path];task.changes=pageChanges(baseline.text,task.report.text);task.changed=baseline.sha256!==task.report.sha256;}
     saveChangeMonitor();
