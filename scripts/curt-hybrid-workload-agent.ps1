@@ -279,9 +279,11 @@ function Invoke-Workload([string]$Type, [string]$Command) {
         'network-check' {
             $timer = [Diagnostics.Stopwatch]::StartNew()
             try {
-                $reply = Invoke-WebRequest -Uri 'https://curtbrag.com/' -Method Head -TimeoutSec 12
+                $reply = Invoke-WebRequest -Uri 'https://curtbrag.com/' -Method Head -TimeoutSec 12 -SkipHttpErrorCheck
                 $timer.Stop()
-                $check = [ordered]@{ site='curtbrag.com'; http=[int]$reply.StatusCode; total_ms=$timer.ElapsedMilliseconds }
+                $http = [int]$reply.StatusCode
+                if ($http -ge 400 -and $http -ne 401) { throw "HTTP $http" }
+                $check = [ordered]@{ site='curtbrag.com'; http=$http; total_ms=$timer.ElapsedMilliseconds; reachable=$true; protected=($http -eq 401) }
                 return [ordered]@{ exit_code=0; stdout=($check | ConvertTo-Json -Compress); stderr='' }
             } catch {
                 $timer.Stop()
