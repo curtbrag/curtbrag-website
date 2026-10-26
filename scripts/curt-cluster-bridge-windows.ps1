@@ -95,6 +95,7 @@ function Invoke-ApiPost([string]$Action, $Body) {
 }
 
 function Invoke-Phone([string]$IP, [string]$Remote, [string]$User=$phoneUser, [int]$Port=$phonePort) {
+    $Remote = $Remote.Replace("`r`n", "`n")
     $args = @(
         '-n', '-p', "$Port",
         '-i', $key,
