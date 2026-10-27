@@ -25,6 +25,7 @@ const CANONICAL_HOSTNAME_MAP = new Map(
   CANONICAL_HOSTNAMES.map((name) => [name.toLowerCase(), name])
 );
 const PHONE_RETURN_COMMAND = "phone-return-termux";
+const PHONE_NATIVE_ACTIONS = new Map([["phone-back", "back"], ["phone-open-website", "open-website"]]);
 const PHONE_RETURN_TARGETS = new Set(
   CANONICAL_HOSTNAMES.filter((name) => /^phone\d+$/.test(name))
 );
@@ -37,6 +38,46 @@ function phoneReturnBridgeReady(bridge, now) {
   const parts = version.split(".").map(Number);
   return parts.every(Number.isSafeInteger) &&
     (parts[0] > 2 || (parts[0] === 2 && parts[1] >= 5));
+}
+
+function phoneNativeBridgeReady(bridge, now) {
+  if (!phoneReturnBridgeReady(bridge, now)) return false;
+  const [major, minor] = bridge.bridge_version.split(".").map(Number);
+  return major > 2 || major === 2 && minor >= 6;
+}
+
+function phoneNativeUrl(value) {
+  if (typeof value !== "string" || value.length > 2048 || /[\u0000-\u0020\u007f\\]/.test(value)) return null;
+  let url;
+  try { url = new URL(value); } catch { return null; }
+  if (url.protocol !== "https:" || url.username || url.password || url.port || url.href.length > 2048) return null;
+  const host = url.hostname.toLowerCase();
+  if (host.endsWith(".") || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(host) ||
+      /^[\d.]+$/.test(host) || /^\d+$/.test(host.split(".").at(-1)) ||
+      ["localhost", "local", "localdomain", "lan", "internal", "test", "invalid", "onion", "example", "home"].some(s => host === s || host.endsWith("." + s))) return null;
+  return url.href;
+}
+
+function phoneNativeReport(output, command, status) {
+  if (typeof output !== "string" || output.length > 4096 || !PHONE_RETURN_TARGETS.has(command.target)) return null;
+  let report;
+  try { report = JSON.parse(output); } catch { return null; }
+  const action = PHONE_NATIVE_ACTIONS.get(command.type), successState = action === "back" ? "back-requested" : "launch-requested";
+  if (!report || Array.isArray(report) || typeof report !== "object" || !action ||
+      report.kind !== "phone-controller-action" || report.unit !== command.target || report.action !== action ||
+      report.foreground_app_verified !== false || report.visible_screen_verified !== false ||
+      typeof report.request_accepted !== "boolean" || ![successState, "failed"].includes(report.state) ||
+      typeof report.controller_state !== "string" || !/^[a-z][a-z0-9-]{0,39}$/.test(report.controller_state) ||
+      !(report.error === null || typeof report.error === "string") ||
+      (action === "open-website" ? report.url !== command.payload?.url : Object.hasOwn(report, "url"))) return null;
+  const succeeded = report.state === successState;
+  if (status !== (succeeded ? "completed" : "failed") || report.request_accepted !== succeeded ||
+      succeeded && (report.controller_state !== "connected" || report.error !== null)) return null;
+  return JSON.stringify({kind: "phone-controller-action", action, unit: command.target,
+    ...(action === "open-website" ? {url: command.payload.url} : {}), state: report.state,
+    request_accepted: succeeded, foreground_app_verified: false, visible_screen_verified: false,
+    controller_state: report.controller_state,
+    error: report.error === null ? null : report.error.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 500)});
 }
 
 function phoneReturnReport(output, target, status) {
@@ -836,7 +877,7 @@ return async (event, context) => {
         "disable-mining","quarantine","clear-quarantine",
         "run-diagnostic","switch-profile","force-binary-redeploy",
         "reset-restart-count","fresh-connect","swarm-recover","fleet-check","fleet-diagnose","swarm-recover-pcs","fleet-discover",
-        PHONE_RETURN_COMMAND,
+        PHONE_RETURN_COMMAND, ...PHONE_NATIVE_ACTIONS.keys(),
       ];
 
       const target = body.target || "all";
@@ -862,6 +903,24 @@ return async (event, context) => {
           return json(400, hdrs, { error: "Phone return accepts no command settings" });
         if (!phoneReturnBridgeReady(await getBridgeHeartbeat(), Date.now()))
           return json(409, hdrs, { error: "Phone return requires online Windows bridge 2.5.0" });
+      }
+
+      if (PHONE_NATIVE_ACTIONS.has(type)) {
+        if (!PHONE_RETURN_TARGETS.has(target))
+          return json(400, hdrs, { error: "Native phone controls require one canonical worker phone" });
+        if (!requestId(body))
+          return json(400, hdrs, { error: "Native phone controls require an explicit request ID" });
+        const payload = body.payload;
+        if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+            (type === "phone-back" ? Object.keys(payload).length !== 0 : Object.keys(payload).length !== 1 || !Object.hasOwn(payload, "url")))
+          return json(400, hdrs, { error: "Provide only the fixed phone action settings" });
+        if (type === "phone-open-website") {
+          const url = phoneNativeUrl(payload.url);
+          if (url === null) return json(400, hdrs, { error: "Provide a public HTTPS website without credentials, local addresses, custom ports, spaces or control characters" });
+          body.payload = {url};
+        }
+        if (!phoneNativeBridgeReady(await getBridgeHeartbeat(), Date.now()))
+          return json(409, hdrs, { error: "Native phone controls require online Windows bridge 2.6.0" });
       }
 
       if (["fleet-diagnose", "swarm-recover-pcs", "fleet-discover"].includes(type)) {
@@ -902,11 +961,15 @@ return async (event, context) => {
         started_at: null,
         finished_at: null,
         result_summary: null,
+        ...(PHONE_NATIVE_ACTIONS.has(type) ? {request_id: requestId(body)} : {}),
       };
 
       const accepted = await enqueueCommand(commandStore(), cmd, requestId(body), (queue) => {
         if (type === PHONE_RETURN_COMMAND && queue.some(c => c.type === type && c.target === target))
           throw new CommandStoreError("already_queued", "A return request is already queued for this phone", 409);
+        if ((PHONE_NATIVE_ACTIONS.has(type) || type === PHONE_RETURN_COMMAND) &&
+            queue.some(c => c.target === target && (PHONE_NATIVE_ACTIONS.has(c.type) || PHONE_NATIVE_ACTIONS.has(type) && c.type === PHONE_RETURN_COMMAND)))
+          throw new CommandStoreError("already_queued", "A phone screen action is already queued for this phone", 409);
         const diagnostics = ["fleet-diagnose", "swarm-recover-pcs", "fleet-discover"];
         if (diagnostics.includes(type) && queue.some(c => diagnostics.includes(c.type)))
           throw new CommandStoreError("already_queued", "Fleet diagnostics or PC recovery already running", 409);
@@ -944,6 +1007,12 @@ return async (event, context) => {
           throw new CommandStoreError("wrong_executor", "This completion belongs to another command executor", 409);
         if (previous.status === "cancelled")
           throw new CommandStoreError("cancelled", "This command was cancelled", 409);
+        if (PHONE_NATIVE_ACTIONS.has(previous.type)) {
+          const safeOutput = phoneNativeReport(output, previous, body.status);
+          if (type !== previous.type || target !== previous.target || !safeOutput || safeOutput !== previous.output || body.status !== previous.status)
+            throw new CommandStoreError("completion_mismatch", "Native phone completion differs from its saved report", 409);
+          return { ok: true, replayed: true };
+        }
         if (previous.type === PHONE_RETURN_COMMAND) {
           const safeOutput = phoneReturnReport(output, target, body.status);
           if (type !== previous.type || target !== previous.target || !safeOutput ||
@@ -963,6 +1032,14 @@ return async (event, context) => {
         throw new CommandStoreError("wrong_executor", "This command is unavailable to the bridge", 409);
       if (cmd.type !== type || cmd.target !== target)
         throw new CommandStoreError("completion_mismatch", "Completion does not match its queued command", 400);
+      if (PHONE_NATIVE_ACTIONS.has(type)) {
+        const safeOutput = phoneNativeReport(output, cmd, body.status);
+        if (!safeOutput) throw new CommandStoreError("invalid_report", "Invalid native phone controller report", 400);
+        history.push({...cmd, status: body.status, output: safeOutput, finished_at: Date.now(),
+          result_summary: body.status === "failed" ? "Native phone control failed" : type === "phone-back" ? "Back input requested; resulting screen unverified" : "Browser launch requested; page visibility unverified"});
+        queue.splice(idx, 1);
+        return { ok: true };
+      }
       if (type === PHONE_RETURN_COMMAND || cmd.type === PHONE_RETURN_COMMAND) {
         if (cmd.type !== PHONE_RETURN_COMMAND || type !== cmd.type || target !== cmd.target || !PHONE_RETURN_TARGETS.has(target))
           throw new CommandStoreError("completion_mismatch", "Phone return completion does not match its queued command", 400);

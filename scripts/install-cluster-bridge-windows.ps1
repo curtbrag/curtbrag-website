@@ -16,19 +16,41 @@ Write-Host ' CURT CLUSTER - WINDOWS LIVE BRIDGE INSTALLER'
 Write-Host '============================================================'
 Write-Host ''
 
-Write-Host 'Downloading current bridge...'
-Invoke-WebRequest -Uri $RepoRaw -OutFile $bridge -UseBasicParsing
-if (-not (Test-Path $bridge) -or (Get-Item $bridge).Length -lt 1000) { throw 'Bridge download failed or was unexpectedly small.' }
-
-# Refuse to schedule malformed PowerShell.
-$tokens = $null
-$parseErrors = $null
-[void][System.Management.Automation.Language.Parser]::ParseFile($bridge, [ref]$tokens, [ref]$parseErrors)
-if ($parseErrors.Count) {
-    $parseErrors | ForEach-Object { Write-Host ("PARSE ERROR line {0}: {1}" -f $_.Extent.StartLineNumber, $_.Message) }
-    throw "Downloaded bridge has $($parseErrors.Count) PowerShell parse error(s)."
+function Install-ClusterBridgeCode {
+    param([Parameter(Mandatory)][string]$Source, [Parameter(Mandatory)][string]$Directory)
+    $helperSource = [uri]::new([uri]$Source, 'cluster-site-session.ps1').AbsoluteUri
+    $files = @(
+        @{Name='cluster-site-session.ps1'; Uri=$helperSource; Minimum=500},
+        @{Name='curt-cluster-bridge-windows.ps1'; Uri=$Source; Minimum=1000}
+    )
+    try {
+        # Validate both downloads before replacing either installed file. A
+        # failed download must not leave a running bridge without its helper.
+        foreach ($file in $files) {
+            $file.Stage = Join-Path $Directory ('.bridge-download-' + [Guid]::NewGuid().ToString('N') + '.ps1')
+            Invoke-WebRequest -Uri $file.Uri -OutFile $file.Stage -UseBasicParsing -ErrorAction Stop
+            if (-not (Test-Path -LiteralPath $file.Stage) -or (Get-Item -LiteralPath $file.Stage).Length -lt $file.Minimum) {
+                throw "Download failed or was unexpectedly small: $($file.Name)"
+            }
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($file.Stage, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors.Count) { throw "Downloaded $($file.Name) has $($parseErrors.Count) PowerShell parse error(s)." }
+        }
+        foreach ($file in $files) {
+            Move-Item -LiteralPath $file.Stage -Destination (Join-Path $Directory $file.Name) -Force
+        }
+    } finally {
+        foreach ($file in $files) {
+            if ($file.Stage -and (Test-Path -LiteralPath $file.Stage)) { Remove-Item -LiteralPath $file.Stage -Force }
+        }
+    }
 }
-Write-Host 'Bridge syntax check: OK'
+
+Write-Host 'Downloading current bridge and site session helper...'
+Install-ClusterBridgeCode -Source $RepoRaw -Directory $base
+. (Join-Path $base 'cluster-site-session.ps1')
+Write-Host 'Bridge and session helper syntax checks: OK'
 
 $sshKey = Join-Path $env:USERPROFILE '.ssh\id_ed25519'
 if (-not (Test-Path $sshKey)) { throw "SSH key missing: $sshKey" }
@@ -59,7 +81,7 @@ $headers = @{ Authorization = "Bearer $plain"; 'Content-Type' = 'application/jso
 $api = if ($config.api_url) { [string]$config.api_url } else { 'https://curtbrag.com/.netlify/functions/cluster-api' }
 
 $summaryUri = "$($api)?action=summary&_=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"
-try { $null = Invoke-RestMethod -Uri $summaryUri -Headers $headers -Method Get -TimeoutSec 15 }
+try { $null = Invoke-CurtClusterRequest -Request @{Uri=$summaryUri;Headers=$headers;Method='Get';TimeoutSec=15} -Password $plain }
 catch { throw "Dashboard authentication/API check failed: $($_.Exception.Message)" }
 Write-Host 'Dashboard API authentication: OK'
 
@@ -83,7 +105,7 @@ Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
 $pwsh = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
 if (-not $pwsh) { $pwsh = (Get-Command powershell.exe).Source }
 
-$action = New-ScheduledTaskAction -Execute $pwsh -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$bridge`" -ConfigPath `"$configPath`""
+$action = New-ScheduledTaskAction -Execute $pwsh -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$bridge`" -ConfigPath `"$configPath`" -NoMining"
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
@@ -103,7 +125,7 @@ for ($i=1; $i -le 18; $i++) {
     Start-Sleep -Seconds 3
     try {
         $uri = "$($api)?action=bridge-status&_=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"
-        $b = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -TimeoutSec 10
+        $b = Invoke-CurtClusterRequest -Request @{Uri=$uri;Headers=$headers;Method='Get';TimeoutSec=10} -Password $plain
         Write-Host ("[{0}/18] alive={1} host={2} last={3}" -f $i,$b.alive,$b.hostname,$b.last_seen_at)
         if ($b.alive -eq $true -and $b.hostname -eq $env:COMPUTERNAME) { $ok=$true; break }
     } catch { Write-Host "Heartbeat check failed: $($_.Exception.Message)" }

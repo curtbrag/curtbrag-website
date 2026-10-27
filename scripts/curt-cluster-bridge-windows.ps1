@@ -1,5 +1,7 @@
 param(
-    [string]$ConfigPath = "$env:LOCALAPPDATA\CurtCluster\bridge-config.json"
+    [string]$ConfigPath = "$env:LOCALAPPDATA\CurtCluster\bridge-config.json",
+    [switch]$MonitorOnly,
+    [switch]$NoMining
 )
 
 $ErrorActionPreference = 'Stop'
@@ -32,7 +34,7 @@ catch {
 
 $api = if ($config.api_url) { [string]$config.api_url } else { 'https://curtbrag.com/.netlify/functions/cluster-api' }
 $swarmApi = 'https://curtbrag.com/api/cluster'
-$bridgeVersion = '2.5.0'
+$bridgeVersion = '2.6.0'
 $wallet = [string]$config.wallet
 $poolHost = if ($config.pool_host) { [string]$config.pool_host } else { 'gulf.moneroocean.stream' }
 $poolPort = if ($config.pool_port) { [int]$config.pool_port } else { 10128 }
@@ -68,6 +70,8 @@ $phones = @(
 
 $headers = @{ Authorization = "Bearer $password"; 'Content-Type' = 'application/json' }
 
+. (Join-Path $PSScriptRoot 'cluster-site-session.ps1')
+
 function Get-ApiUri([string]$Action) {
     $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     return "$($api)?action=$([uri]::EscapeDataString($Action))&_=$stamp"
@@ -75,7 +79,7 @@ function Get-ApiUri([string]$Action) {
 
 function Invoke-ApiGet([string]$Action) {
     try {
-        return Invoke-RestMethod -Uri (Get-ApiUri $Action) -Headers $headers -Method Get -TimeoutSec 20
+        return Invoke-CurtClusterRequest -Password $password -Request @{Uri=(Get-ApiUri $Action);Headers=$headers;Method='Get';TimeoutSec=20}
     }
     catch {
         Write-Log "API GET $Action failed: $($_.Exception.Message)"
@@ -86,7 +90,7 @@ function Invoke-ApiGet([string]$Action) {
 function Invoke-ApiPost([string]$Action, $Body) {
     try {
         $json = $Body | ConvertTo-Json -Depth 12 -Compress
-        return Invoke-RestMethod -Uri (Get-ApiUri $Action) -Headers $headers -Method Post -Body $json -TimeoutSec 20
+        return Invoke-CurtClusterRequest -Password $password -Request @{Uri=(Get-ApiUri $Action);Headers=$headers;Method='Post';Body=$json;TimeoutSec=20}
     }
     catch {
         Write-Log "API POST $Action failed: $($_.Exception.Message)"
@@ -280,6 +284,7 @@ function Get-DeviceForHost([string]$Hostname) {
 }
 
 function Start-Phone($p, [bool]$Force=$false) {
+    if ($MonitorOnly -or $NoMining) { return [pscustomobject]@{Exit=2;Output=@('Mining is disabled by operator policy')} }
     $d = Get-DeviceForHost $p.Hostname
     if (-not $d) { return [pscustomobject]@{ Exit=2; Output=@('DEVICE_NOT_REGISTERED') } }
 
@@ -489,7 +494,7 @@ exit 1
 
 function Get-SwarmNodes {
     $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-    $status = Invoke-RestMethod -Uri "$($swarmApi)?action=queue-status&_=$stamp" -Headers $headers -Method Get -TimeoutSec 20
+    $status = Invoke-CurtClusterRequest -Password $password -Request @{Uri="$($swarmApi)?action=queue-status&_=$stamp";Headers=$headers;Method='Get';TimeoutSec=20}
     if (-not $status.nodes -or @($status.nodes).Count -lt $phones.Count) {
         throw 'Swarm API did not return the phone roster; recovery was not started.'
     }
@@ -604,6 +609,7 @@ function Resolve-Targets([string]$Target) {
 }
 
 function Apply-Desired($p, [bool]$Force=$false) {
+    if ($MonitorOnly -or $NoMining) { return }
     $d = Get-DeviceForHost $p.Hostname
     if (-not $d) { return }
 
@@ -651,7 +657,7 @@ function Read-PhoneControllerExact([IO.Stream]$Stream, [int]$Count, $Watch) {
 }
 
 function Write-PhoneControllerService([IO.Stream]$Stream, [string]$Service, $Watch) {
-    $payload = [Text.Encoding]::ASCII.GetBytes($Service)
+    $payload = [Text.Encoding]::UTF8.GetBytes($Service)
     if ($payload.Length -eq 0 -or $payload.Length -gt 4096) { throw 'CONTROLLER_SERVICE_LIMIT' }
     $remaining = Get-PhoneControllerRemaining $Watch
     if ($Stream.CanTimeout) { $Stream.WriteTimeout = $remaining }
@@ -704,7 +710,15 @@ function Read-PhoneControllerShell([IO.Stream]$Stream, $Watch) {
     } finally { $stdout.Dispose(); $stderr.Dispose() }
 }
 
-function Get-FixedPhoneControllerShell([string]$Operation) {
+function Get-FixedPhoneControllerShell([string]$Operation, [string]$Url='') {
+    if ($Operation -cne 'open-website' -and $Url) { throw 'CONTROLLER_PAYLOAD_INVALID' }
+    if ($Operation -ceq 'back') { return '/system/bin/input keyevent 4' }
+    if ($Operation -ceq 'open-website') {
+        $null = Assert-PhoneControllerPublicUrl $Url
+        # A public URL is data in one POSIX-shell argument, never shell syntax.
+        $quoted = "'" + $Url.Replace("'", "'\''") + "'"
+        return '/system/bin/am start -W --user 0 -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d ' + $quoted
+    }
     if ($Operation -ceq 'return') {
         return 'am start --user 0 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n com.termux/.app.TermuxActivity -f 0x10000000'
     }
@@ -725,12 +739,13 @@ function Test-PhoneControllerOverrides {
     return $false
 }
 
-function Invoke-ExistingPhoneController([string]$Operation, [string]$Transport='', $DeadlineWatch=$null) {
-    if ($Operation -cnotin @('devices','discovery','return','foreground')) { throw 'CONTROLLER_OPERATION_UNAVAILABLE' }
-    $shell = $Operation -cin @('return','foreground')
+function Invoke-ExistingPhoneController([string]$Operation, [string]$Transport='', $DeadlineWatch=$null, [string]$Url='') {
+    if ($Operation -cnotin @('devices','discovery','return','foreground','back','open-website')) { throw 'CONTROLLER_OPERATION_UNAVAILABLE' }
+    if ($Operation -cne 'open-website' -and $Url) { throw 'CONTROLLER_PAYLOAD_INVALID' }
+    $shell = $Operation -cin @('return','foreground','back','open-website')
     if ($shell -and $Transport -cnotmatch '^[A-Za-z0-9._:-]{1,200}$') { throw 'CONTROLLER_TRANSPORT_INVALID' }
     if (-not $shell -and $Transport) { throw 'CONTROLLER_TRANSPORT_INVALID' }
-    $command = if ($shell) { Get-FixedPhoneControllerShell $Operation } else { $null }
+    $command = if ($shell) { Get-FixedPhoneControllerShell $Operation $Url } else { $null }
     $ownWatch = $null -eq $DeadlineWatch
     $watch = if ($ownWatch) { [Diagnostics.Stopwatch]::StartNew() } else { $DeadlineWatch }
     $client = [Net.Sockets.TcpClient]::new()
@@ -867,12 +882,216 @@ function Invoke-PhoneControllerReturn($Command) {
     return [pscustomobject]$report
 }
 
+function Assert-PhoneControllerPublicUrl($Url) {
+    if ($Url -isnot [string] -or $Url.Length -lt 1 -or $Url.Length -gt 2048 -or $Url -match '[\x00-\x20\x7f\\]') { throw 'CONTROLLER_URL_INVALID' }
+    $uri = $null
+    if (-not [Uri]::TryCreate($Url, [UriKind]::Absolute, [ref]$uri) -or
+        $uri.Scheme -cne 'https' -or $uri.UserInfo -or -not $uri.IsDefaultPort -or
+        $uri.HostNameType -ne [UriHostNameType]::Dns) { throw 'CONTROLLER_URL_INVALID' }
+    $hostName = $uri.DnsSafeHost.ToLowerInvariant()
+    if ($hostName.EndsWith('.') -or
+        $hostName -cnotmatch '^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$' -or
+        $hostName -match '^[\d.]+$' -or ($hostName.Split('.')[-1] -match '^\d+$')) { throw 'CONTROLLER_URL_INVALID' }
+    foreach ($suffix in @('localhost','local','localdomain','lan','internal','test','invalid','onion','example','home')) {
+        if ($hostName -ceq $suffix -or $hostName.EndsWith('.' + $suffix, [StringComparison]::Ordinal)) { throw 'CONTROLLER_URL_INVALID' }
+    }
+    # Keep the API-validated URL byte-for-byte in receipts. .NET and browser
+    # URL serializers need not produce identical query-string escaping.
+    return $Url
+}
+
+function New-PhoneControllerActionReport([string]$Unit, [string]$Action, [string]$Url='') {
+    $report = [ordered]@{
+        kind='phone-controller-action'; action=$Action; unit=$Unit; state='failed'
+        request_accepted=$false; foreground_app_verified=$false; visible_screen_verified=$false
+        controller_state='disconnected'; error=$null
+    }
+    if ($Action -ceq 'open-website') { $report.url = $Url }
+    return $report
+}
+
+function Get-PhoneControllerActionRequest($Command) {
+    $unit = [string]$Command.target
+    if ($unit -cnotin @('phone173','phone174','phone176','phone177','phone191','phone195','phone253','phone254')) { throw 'CONTROLLER_TARGET_INVALID' }
+    if ([string]$Command.type -cnotin @('phone-back','phone-open-website')) { throw 'CONTROLLER_OPERATION_UNAVAILABLE' }
+    if ([string]$Command.id -cnotmatch '^[a-f0-9]{32}$') { throw 'CONTROLLER_COMMAND_ID_INVALID' }
+    foreach ($name in @('cmd','command','url','serial','component','flags','settings','endpoint','operation')) {
+        $property = $Command.PSObject.Properties[$name]
+        if ($property -and $null -ne $property.Value) { throw 'CONTROLLER_PAYLOAD_INVALID' }
+    }
+    $payload = $Command.payload
+    if ($payload -is [Collections.IDictionary]) { $keys = @($payload.Keys) }
+    elseif ($payload -is [pscustomobject]) { $keys = @($payload.PSObject.Properties | ForEach-Object Name) }
+    else { throw 'CONTROLLER_PAYLOAD_INVALID' }
+    $action = if ($Command.type -ceq 'phone-back') { 'back' } else { 'open-website' }
+    $url = ''
+    if ($action -ceq 'back') {
+        if ($keys.Count -ne 0) { throw 'CONTROLLER_PAYLOAD_INVALID' }
+    } else {
+        if ($keys.Count -ne 1 -or $keys[0] -cne 'url') { throw 'CONTROLLER_PAYLOAD_INVALID' }
+        $url = Assert-PhoneControllerPublicUrl $payload.url
+    }
+    return [pscustomobject]@{Id=[string]$Command.id;Unit=$unit;Action=$action;Url=$url}
+}
+
+function Get-PhoneNativeCommandPath([string]$Id) {
+    if ($Id -cnotmatch '^[a-f0-9]{32}$') { throw 'CONTROLLER_COMMAND_ID_INVALID' }
+    $directory = Join-Path $base 'phone-native-command-once'
+    if (-not (Test-Path -LiteralPath $directory)) { $null = [IO.Directory]::CreateDirectory($directory) }
+    $item = Get-Item -LiteralPath $directory -Force
+    if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'CONTROLLER_ONCE_STORE_UNAVAILABLE' }
+    # Never prune records silently: forgetting an input could allow a stale
+    # queued command to be executed again. At the bound, fail without input.
+    $path = Join-Path $directory ($Id + '.json')
+    if (-not (Test-Path -LiteralPath $path) -and @(Get-ChildItem -LiteralPath $directory -File -Filter '*.json' | Select-Object -First 4096).Count -ge 4096) { throw 'CONTROLLER_ONCE_STORE_FULL' }
+    return $path
+}
+
+function Get-PhoneNativeRequestDigest($Request) {
+    $data = [Text.Encoding]::UTF8.GetBytes((([ordered]@{id=$Request.Id;unit=$Request.Unit;action=$Request.Action;url=$Request.Url}) | ConvertTo-Json -Compress))
+    $hash = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($hash.ComputeHash($data))).Replace('-','').ToLowerInvariant() }
+    finally { $hash.Dispose() }
+}
+
+function Write-PhoneNativeRecord([string]$Path, $Record, [bool]$CreateOnly) {
+    $bytes = [Text.Encoding]::UTF8.GetBytes(($Record | ConvertTo-Json -Depth 8 -Compress))
+    if ($bytes.Length -gt 8192) { throw 'CONTROLLER_ONCE_STORE_UNAVAILABLE' }
+    if ($CreateOnly) {
+        $stream = [IO.File]::Open($Path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        try { $stream.Write($bytes,0,$bytes.Length); $stream.Flush($true) } finally { $stream.Dispose() }
+    } else {
+        $temporary = $Path + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+        try {
+            $stream = [IO.File]::Open($temporary, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+            try { $stream.Write($bytes,0,$bytes.Length); $stream.Flush($true) } finally { $stream.Dispose() }
+            # The durable intent already exists. Replace is atomic and its
+            # three-argument overload is also available on .NET Framework.
+            [IO.File]::Replace($temporary,$Path,[NullString]::Value)
+        } finally { if (Test-Path -LiteralPath $temporary) { [IO.File]::Delete($temporary) } }
+    }
+}
+
+function Read-PhoneNativeRecord([string]$Path, [string]$Digest) {
+    $item = Get-Item -LiteralPath $Path -Force
+    if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $item.Length -gt 8192) { throw 'CONTROLLER_ONCE_STORE_UNAVAILABLE' }
+    $record = [IO.File]::ReadAllText($Path) | ConvertFrom-Json
+    if ($record.version -ne 1 -or $record.request_digest -cne $Digest) { throw 'CONTROLLER_ONCE_RECORD_CONFLICT' }
+    return $record
+}
+
+function Invoke-PhoneControllerAction($Command) {
+    $action = if ($Command.type -ceq 'phone-open-website') { 'open-website' } else { 'back' }
+    $report = New-PhoneControllerActionReport ([string]$Command.target) $action
+    $recordPath = $null; $digest = $null; $claimed = $false
+    try {
+        $request = Get-PhoneControllerActionRequest $Command
+        $report = New-PhoneControllerActionReport $request.Unit $request.Action $request.Url
+        if (Test-PhoneControllerOverrides) { throw 'CONTROLLER_OVERRIDE_PRESENT' }
+        $recordPath = Get-PhoneNativeCommandPath $request.Id
+        $digest = Get-PhoneNativeRequestDigest $request
+        $record = [ordered]@{version=1;request_digest=$digest;created_at=[DateTimeOffset]::UtcNow.ToString('o');report=$null}
+        try { Write-PhoneNativeRecord $recordPath $record $true; $claimed = $true }
+        catch [IO.IOException] {
+            if (-not (Test-Path -LiteralPath $recordPath)) { throw }
+            $previous = Read-PhoneNativeRecord $recordPath $digest
+            if ($null -ne $previous.report) { return $previous.report }
+            throw 'CONTROLLER_COMMAND_ALREADY_STARTED'
+        }
+        $devices = [string](Invoke-ExistingPhoneController 'devices')
+        $discovery = ''
+        if ($devices -match '(?m)^(?!192\.168\.1\.\d+:)[A-Za-z0-9._:-]+\s+(device|offline|unauthorized)\b') {
+            try { $discovery = [string](Invoke-ExistingPhoneController 'discovery') } catch {}
+        }
+        $resolved = Resolve-PhoneControllerTransport $request.Unit $devices $discovery
+        $report.controller_state = $resolved.ControllerState
+        if (-not $resolved.Transport) { throw 'CONTROLLER_NO_AUTHORIZED_TRANSPORT' }
+        $result = Invoke-ExistingPhoneController $request.Action $resolved.Transport $null $request.Url
+        $stdout = [string]$result.Output
+        $stderr = [string]$result.ErrorOutput
+        if ($result.ExitCode -ne 0 -or ($stdout + "`n" + $stderr) -match '(?im)^\s*(?:error(?:\s|:|$)|exception(?:\s|:|$)|(?:java|android)\.[A-Za-z0-9.$]+Exception\b|permission denial\b|no activity found\b|unable to resolve intent\b|background activity start[^\n]*(?:denied|blocked|not allowed)|(?:START_)?ABORT(?:ED)?\b)') { throw 'CONTROLLER_ACTIVITY_REJECTED' }
+        if ($request.Action -ceq 'open-website') {
+            $statuses = @([regex]::Matches($stdout, '(?m)^Status:[^\r\n]*$'))
+            if ($statuses.Count -ne 1 -or $statuses[0].Value -cnotmatch '^Status:\s*ok\s*$' -or $stderr.Trim()) { throw 'CONTROLLER_LAUNCH_UNCONFIRMED' }
+            $report.state = 'launch-requested'
+        } else {
+            if ($stdout.Trim() -or $stderr.Trim()) { throw 'CONTROLLER_INPUT_UNCONFIRMED' }
+            $report.state = 'back-requested'
+        }
+        $report.request_accepted = $true
+    } catch {
+        switch -Exact ($_.Exception.Message) {
+            'CONTROLLER_TARGET_INVALID' { $report.error = 'Choose one of the eight configured worker phones.' }
+            'CONTROLLER_PAYLOAD_INVALID' { $report.error = 'This action accepts only its fixed request payload.' }
+            'CONTROLLER_URL_INVALID' { $report.error = 'Choose a public HTTPS URL without credentials, local addresses, whitespace or a custom port.' }
+            'CONTROLLER_COMMAND_ID_INVALID' { $report.error = 'The command identity is invalid; no phone request was sent.' }
+            'CONTROLLER_OVERRIDE_PRESENT' { $report.error = 'Controller overrides are present; the existing default controller was not used.' }
+            'CONTROLLER_TRANSPORT_AMBIGUOUS' { $report.controller_state='failed'; $report.error = 'More than one matching controller connection was found; no input was sent.' }
+            'CONTROLLER_NO_AUTHORIZED_TRANSPORT' { $report.error = 'No already-authorized controller connection exists for this phone. No pairing, reconnection or phone input was attempted.' }
+            'CONTROLLER_ACTIVITY_REJECTED' { $report.error = 'The authorized controller did not accept the fixed phone request. No retry was sent.' }
+            'CONTROLLER_LAUNCH_UNCONFIRMED' { $report.error = 'The controller did not return an accepted website-launch receipt. The outcome is unconfirmed; no retry was sent.' }
+            'CONTROLLER_INPUT_UNCONFIRMED' { $report.error = 'The controller did not return a conclusive Back input receipt. No retry was sent.' }
+            'CONTROLLER_COMMAND_ALREADY_STARTED' { $report.controller_state='unconfirmed'; $report.error = 'This command previously started but its result was not saved. Its outcome is unconfirmed; it will not be sent again.' }
+            'CONTROLLER_ONCE_STORE_FULL' { $report.controller_state='failed'; $report.error = 'The local command receipt store is full. No phone request was sent.' }
+            'CONTROLLER_ONCE_RECORD_CONFLICT' { $report.controller_state='failed'; $report.error = 'This command identity already belongs to another request. No phone request was sent.' }
+            default { $report.error = 'The controller or local receipt store was unavailable, rejected the request, or timed out. The outcome is unconfirmed; no retry was sent.' }
+        }
+    }
+    if ($claimed) {
+        try {
+            Write-PhoneNativeRecord $recordPath ([ordered]@{version=1;request_digest=$digest;report=[pscustomobject]$report}) $false
+        } catch {
+            # The durable intent still suppresses another attempt after a lost
+            # acknowledgement or a process restart.
+            $report.state='failed'; $report.request_accepted=$false
+            $report.controller_state='unconfirmed'
+            $report.error='The phone request result could not be saved. Its outcome is unconfirmed; it will not be sent again.'
+        }
+    }
+    return [pscustomobject]$report
+}
+
+function Get-HeldBridgeCommandIds {
+    # This historical reconcile request is permanently held. A missing policy
+    # file must never turn it back into an executable command.
+    $ids = @('112fe487d5ea83a1f265a74a72486ad6')
+    $policyPath = Join-Path $base 'control-restore-policy.json'
+    if (Test-Path -LiteralPath $policyPath) {
+        $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
+        $property = $policy.PSObject.Properties['held_bridge_command_ids']
+        if (-not $property) { throw 'BRIDGE_HOLD_POLICY_INVALID' }
+        foreach ($id in @($property.Value)) {
+            if ($id -isnot [string] -or $id -notmatch '^[a-fA-F0-9]{32}$') { throw 'BRIDGE_HOLD_POLICY_INVALID' }
+            $ids += $id
+        }
+    }
+    return @($ids | Select-Object -Unique)
+}
+
+function Select-BridgeControlCommand($Queue, $HeldIds) {
+    $excluded = @('112fe487d5ea83a1f265a74a72486ad6') + @($HeldIds)
+    return @($Queue | Where-Object { $_.id -notin $excluded }) | Select-Object -First 1
+}
+
 function Process-Command {
+    if ($MonitorOnly) { return $false }
     $c = Invoke-ApiGet 'commands'
     if (-not $c -or -not $c.queue -or @($c.queue).Count -eq 0) { return $false }
 
-    $cmd = @($c.queue)[0]
+    $heldIds = @(Get-HeldBridgeCommandIds)
+    $cmd = Select-BridgeControlCommand $c.queue $heldIds
+    if (-not $cmd) { return $false }
     $type = [string]$cmd.type
+    if ($type -cin @('phone-back','phone-open-website')) {
+        $report = Invoke-PhoneControllerAction $cmd
+        $accepted = $report.request_accepted -eq $true -and $report.state -cin @('back-requested','launch-requested')
+        Invoke-ApiPost 'bridge-complete' @{
+            id=$cmd.id; target=$cmd.target; type=$type
+            status=$(if($accepted){'completed'}else{'failed'})
+            output=($report | ConvertTo-Json -Depth 4 -Compress)
+        } | Out-Null
+        return $true
+    }
     if ($type -ceq 'phone-return-termux') {
         $report = Invoke-PhoneControllerReturn $cmd
         $verified = $report.state -ceq 'termux-foreground' -and $report.foreground_app_verified -eq $true
@@ -918,6 +1137,7 @@ function Process-Command {
         $output.Add("TARGET_UNAVAILABLE: $($cmd.target)")
     }
 
+    $commandFailed = ($targets.Count -eq 0)
     foreach ($p in $targets) {
         switch -Regex ($type) {
             '^(mining-start|fresh-connect|start)$' { $r = Start-Phone $p $false; break }
@@ -930,6 +1150,7 @@ function Process-Command {
             }
             '^run-diagnostic$' { $r = Diagnose-Phone $p; break }
             '^reconcile$' {
+                if ($NoMining) { $r = [pscustomobject]@{Exit=2;Output=@('Desired-state reconciliation is disabled by operator policy')}; break }
                 Apply-Desired $p $true
                 $s = Get-PhoneState $p
                 $r = [pscustomobject]@{ Exit=0; Output=@($(if ($s) { $s.raw } else { 'UNREACHABLE' })) }
@@ -940,6 +1161,7 @@ function Process-Command {
             default { $r = [pscustomobject]@{ Exit=2; Output=@("UNSUPPORTED $type") } }
         }
 
+        if ($r.Exit -ne 0) { $commandFailed = $true }
         $output.Add("===== $($p.Hostname) / $type =====")
         foreach ($line in @($r.Output)) { $output.Add("$line") }
         Push-PhoneState $p | Out-Null
@@ -949,7 +1171,8 @@ function Process-Command {
         id = $cmd.id
         target = $cmd.target
         type = $type
-        result_summary = "completed $type -> $($cmd.target)"
+        status = $(if($commandFailed){'failed'}else{'completed'})
+        result_summary = "$(if($commandFailed){'failed'}else{'completed'}) $type -> $($cmd.target)"
         output = ($output -join "`n")
     } | Out-Null
 
@@ -964,7 +1187,7 @@ Invoke-ApiPost 'bridge-heartbeat' @{
     summary = 'Windows live bridge starting'
 } | Out-Null
 
-Reconcile-Registry
+if (-not $MonitorOnly -and -not $NoMining) { Reconcile-Registry }
 Write-Log "Windows bridge online. Fleet: $($phones.IP -join ', ')"
 $lastRefresh = [DateTime]::MinValue
 $lastHeartbeat = Get-Date
@@ -981,17 +1204,18 @@ while ($true) {
             Invoke-ApiPost 'bridge-heartbeat' @{
                 hostname = $env:COMPUTERNAME
                 bridge_version = $bridgeVersion
-                summary = 'Windows live bridge polling 13-device fleet'
+                summary = $(if($MonitorOnly){'Windows bridge: monitoring only; device commands paused'}elseif($NoMining){'Dashboard controls active; mining disabled; previous reconcile request held'}else{'Windows live bridge polling 13-device fleet'})
                 fleet_connections = $fleetConnections
             } | Out-Null
             $lastHeartbeat = Get-Date
         }
 
-        $didWork = Process-Command
+        $didWork = $false
+        if (-not $MonitorOnly) { $didWork = Process-Command }
 
         if ((Get-Date) - $lastRefresh -gt [TimeSpan]::FromSeconds(90)) {
             foreach ($p in $phones) {
-                Apply-Desired $p $false
+                if (-not $MonitorOnly) { Apply-Desired $p $false }
                 Push-PhoneState $p | Out-Null
             }
             $lastRefresh = Get-Date
