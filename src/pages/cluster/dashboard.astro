@@ -419,11 +419,21 @@ function toast(msg, type = 'ok') {
 async function fetchDashboardApi(url, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12000);
+  const action=new URLSearchParams(String(url).split('?')[1]||'').get('action');
+  const retryRead=String(options.method||'GET').toUpperCase()==='GET'&&options.body==null&&String(url).split('?')[0]===API&&
+    ['summary','devices','alerts','commands','events','bridge-status','fleet-analytics','thermal-report','profiles','groups','device-logs'].includes(action);
   try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    let data = {};
-    try { data = await response.json(); } catch (error) { if (controller.signal.aborted) throw error; }
-    return { ok: response.ok, status: response.status, data };
+    for(let attempt=0;attempt<2;attempt++){
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      let data = {};
+      try { data = await response.json(); } catch (error) { if (controller.signal.aborted) throw error; }
+      if(retryRead&&attempt===0&&[502,503,504].includes(response.status)){
+        await new Promise(resolve=>setTimeout(resolve,200));
+        if(controller.signal.aborted)throw new Error('Connection timed out. Please retry.');
+        continue;
+      }
+      return { ok: response.ok, status: response.status, data };
+    }
   } catch (error) {
     if (controller.signal.aborted) throw new Error('Connection timed out. Please retry.');
     throw error;
