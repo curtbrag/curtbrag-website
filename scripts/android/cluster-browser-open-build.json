@@ -1,0 +1,18 @@
+{
+  "source": "scripts/android/CurtStartActivityWait.java",
+  "source_sha256": "4d6914e0ab4ddcae72e369ebee039df7a3bcbf545b3c1da6f6fcc245cd9aa56b",
+  "source_hash_normalization": "UTF-8 with LF line endings",
+  "embedded_in": "scripts/cluster-browser-open.py",
+  "dex_sha256": "3fe09e4ae5563c15eaad3b9a4ce54607b79ce5d75b541ef3872db3aec0a9f37a",
+  "dex_bytes": 11084,
+  "javac_release": 8,
+  "jdk_version": "17.0.20.1+1",
+  "d8_min_api": 35,
+  "r8_jar_sha256": "59753e70a74f918389cc87f1b7d66b5c0862932559167425708ded159e3de439",
+  "build_commands": [
+    "javac --release 8 -d CLASSES scripts/android/CurtStartActivityWait.java",
+    "java -cp R8_JAR com.android.tools.r8.D8 --min-api 35 --output DEX CLASSES/*.class"
+  ],
+  "apk_install_required": false,
+  "native_activity_requests_per_invocation": 1
+}

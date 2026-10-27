@@ -158,6 +158,18 @@ test('worker launch errors, nonzero exits and malformed output remain failures',
   }
 });
 
+test('Android abort overrides a zero worker exit or an inconsistent launch receipt',()=>{
+  for(const extra of [{error_code:'android-background-launch-blocked'},{android_start:{raw_start_result:102}}]){
+    const h=harness();h.api.set(report());
+    const parsed={kind:'website-browser-open',url:'https://curtbrag.com/',platform:'android',state:'launch-requested',launch_requested:true,visible_screen_verified:false,...extra};
+    h.api.renderBrowserOpen([result({exit_code:0,stdout:JSON.stringify(parsed)})]);
+    assert.equal(h.api.get().tasks[0].state,'failed');
+    assert.match(h.elements['browser-open-report'].textContent,/Android blocked website opening/);
+    assert.match(h.elements['browser-open-state'].textContent,/0 launch requested/);
+    assert.equal(h.calls.length,0);
+  }
+});
+
 test('persisted queued or ambiguous requests block a new batch without replay',async()=>{
   for(const state of ['queued','submitting','unconfirmed']){
     const h=harness({storage:new Map([[key,JSON.stringify(report(state))]])});await h.api.dispatchBrowserOpen();
@@ -431,6 +443,17 @@ test('return acceptance requires matching job, phone, contract and zero exit wit
   ]){const bad=harness();bad.api.setReturn(returnReport());bad.api.renderTermuxReturn([returnResult({stdout:JSON.stringify(parsed)})]);assert.equal(bad.api.getReturn().tasks[0].state,'failed');}
   const failed=harness();failed.api.setReturn(returnReport());failed.api.renderTermuxReturn([returnResult({exit_code:1})]);assert.equal(failed.api.getReturn().tasks[0].state,'failed');
   const pc=harness();const injected=returnReport();injected.tasks[0].unit='Nexus';pc.api.setReturn(injected);pc.api.renderTermuxReturn([returnResult({device_id:'Nexus'})]);assert.equal(pc.api.getReturn().tasks[0].state,'failed');
+});
+
+test('Android abort cannot become a successful Return to Termux receipt',()=>{
+  for(const extra of [{error_code:'android-background-launch-blocked'},{android_start:{raw_start_result:102}}]){
+    const h=harness();h.api.setReturn(returnReport());
+    const parsed={kind:'phone-termux-return',state:'return-requested',return_requested:true,request_completed:true,visible_screen_verified:false,...extra};
+    h.api.renderTermuxReturn([returnResult({exit_code:0,stdout:JSON.stringify(parsed)})]);
+    assert.equal(h.api.getReturn().tasks[0].state,'failed');
+    assert.match(h.elements['termux-return-report'].textContent,/Android blocked the return/);
+    assert.equal(h.calls.length,0);
+  }
 });
 
 test('closing return reports refuses active jobs and closes old missing jobs without cancellation or retry',async()=>{

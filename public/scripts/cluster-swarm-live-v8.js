@@ -1000,8 +1000,9 @@
       const result=results.find(r=>r.job_id===task.job_id&&r.device_id===task.unit);if(!result)continue;
       let report;try{report=JSON.parse(result.stdout||'');}catch{}
       if(report?.kind==='website-browser-open'&&report.url===browserOpenReport.url&&typeof report.launch_requested==='boolean'&&report.visible_screen_verified===false){
-        task.report=report;task.state=Number(result.exit_code)===0&&report.launch_requested===true&&report.state==='launch-requested'?'launch-requested':'failed';
-        task.error=task.state==='failed'?String(report.error||result.stderr||'The worker did not report a successful browser launch request.').slice(0,500):'';
+        const blocked=report.error_code==='android-background-launch-blocked'||report.android_start?.raw_start_result===102;
+        task.report=report;task.state=!blocked&&Number(result.exit_code)===0&&report.launch_requested===true&&report.state==='launch-requested'?'launch-requested':'failed';
+        task.error=task.state==='failed'?String(blocked?'Android blocked website opening from the background. This request did not open the page; retrying this connection cannot grant phone-control permission.':report.error||result.stderr||'The worker did not report a successful browser launch request.').slice(0,500):'';
       }else{task.state='failed';task.error=String(result.stderr||'Worker returned an invalid browser launch report.').slice(0,500);}
     }
     saveBrowserOpen();
@@ -1104,8 +1105,9 @@
         const result=results.find(r=>r.job_id===task.job_id&&r.device_id===task.unit);if(!result)continue;
         let report;try{report=JSON.parse(result.stdout||'');}catch{}
         if(PHONE_IDS.has(task.unit)&&report?.kind==='phone-termux-return'&&typeof report.return_requested==='boolean'&&report.visible_screen_verified===false){
-          task.report=report;task.state=Number(result.exit_code)===0&&report.return_requested===true&&report.request_completed===true&&report.state==='return-requested'?'return-requested':'failed';
-          task.error=task.state==='failed'?String(report.error||result.stderr||'The worker did not accept the return request.').slice(0,500):'';
+          const blocked=report.error_code==='android-background-launch-blocked'||report.android_start?.raw_start_result===102;
+          task.report=report;task.state=!blocked&&Number(result.exit_code)===0&&report.return_requested===true&&report.request_completed===true&&report.state==='return-requested'?'return-requested':'failed';
+          task.error=task.state==='failed'?String(blocked?'Android blocked the return to Termux. This request did not press Back or close the browser.':report.error||result.stderr||'The worker did not accept the return request.').slice(0,500):'';
         }else{task.state='failed';task.error=String(result.stderr||'Worker returned an invalid return report.').slice(0,500);}
       }
     }
