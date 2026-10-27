@@ -4,11 +4,13 @@ $sourcePath = Join-Path $PSScriptRoot '../scripts/curt-cluster-bridge-windows.ps
 $tokens = $null; $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($sourcePath,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw 'Bridge source does not parse.' }
-$names = @('Get-FixedPhoneControllerShell','Assert-PhoneControllerPublicUrl','New-PhoneControllerActionReport','Get-PhoneControllerActionRequest','Get-PhoneNativeCommandPath','Get-PhoneNativeRequestDigest','Write-PhoneNativeRecord','Read-PhoneNativeRecord','Invoke-PhoneControllerAction','Resolve-PhoneControllerTransport','Process-Command')
+$names = @('Get-FixedPhoneControllerShell','Assert-PhoneControllerPublicUrl','New-PhoneControllerActionReport','Get-PhoneControllerActionRequest','Get-PhoneNativeCommandPath','Get-PhoneNativeRequestDigest','Write-PhoneNativeRecord','Read-PhoneNativeRecord','Invoke-PhoneControllerAction','Resolve-PhoneControllerTransport','Get-HeldBridgeCommandIds','Select-BridgeControlCommand','Process-Command')
 $functions = @($ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst]},$true) | Where-Object Name -In $names)
 if ($functions.Count -ne $names.Count) { throw 'Missing isolated native-controller function.' }
 foreach ($function in $functions) { . ([scriptblock]::Create($function.Extent.Text)) }
 $script:cases = 0
+$MonitorOnly = $false
+$NoMining = $false
 $testRoot = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) ('curt-native-controller-tests-' + [Guid]::NewGuid().ToString('N'))))
 $tempParent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 if (-not $testRoot.StartsWith($tempParent,[StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetFileName($testRoot) -notmatch '^curt-native-controller-tests-[a-f0-9]{32}$') { throw 'Test temporary path did not verify.' }
@@ -91,14 +93,20 @@ try {
         $python = Get-Command python -ErrorAction Stop
         $start=[Diagnostics.ProcessStartInfo]::new();$start.FileName=$python.Source;$start.UseShellExecute=$false;$start.CreateNoWindow=$true
         $start.RedirectStandardInput=$true;$start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true
-        [void]$start.ArgumentList.Add('-c');[void]$start.ArgumentList.Add('import json,shlex,sys;print(json.dumps(shlex.split(sys.stdin.read())))')
+        if ($start.PSObject.Properties['ArgumentList']) {
+            [void]$start.ArgumentList.Add('-c');[void]$start.ArgumentList.Add('import json,shlex,sys;print(json.dumps(shlex.split(sys.stdin.read())))')
+        } else {
+            # Fixed test-only parser arguments for .NET Framework; URL data
+            # still travels exclusively through standard input.
+            $start.Arguments='-c "import json,shlex,sys;print(json.dumps(shlex.split(sys.stdin.read())))"'
+        }
         $process=[Diagnostics.Process]::new();$process.StartInfo=$start
         try {
             [void]$process.Start();$process.StandardInput.Write($shell);$process.StandardInput.Close()
             $output=$process.StandardOutput.ReadToEnd();$errorText=$process.StandardError.ReadToEnd()
             if(-not $process.WaitForExit(5000)){ $process.Kill();throw 'Local argument parser timed out' }
             Assert-Equal $process.ExitCode 0 'Local argument parser must finish.'
-            $argv=@($output | ConvertFrom-Json)
+            $argv=$output | ConvertFrom-Json
             Assert-Equal $argv.Count 11 'The fixed launch has one URL argument.'
             Assert-Equal $argv[-1] $url 'Shell quoting must round-trip every URL character.'
             Assert-Equal $argv[-2] '-d' 'URL remains data for the fixed data flag.'

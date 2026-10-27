@@ -1,5 +1,7 @@
 param(
-    [string]$ConfigPath = "$env:LOCALAPPDATA\CurtCluster\bridge-config.json"
+    [string]$ConfigPath = "$env:LOCALAPPDATA\CurtCluster\bridge-config.json",
+    [switch]$MonitorOnly,
+    [switch]$NoMining
 )
 
 $ErrorActionPreference = 'Stop'
@@ -68,6 +70,8 @@ $phones = @(
 
 $headers = @{ Authorization = "Bearer $password"; 'Content-Type' = 'application/json' }
 
+. (Join-Path $PSScriptRoot 'cluster-site-session.ps1')
+
 function Get-ApiUri([string]$Action) {
     $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     return "$($api)?action=$([uri]::EscapeDataString($Action))&_=$stamp"
@@ -75,7 +79,7 @@ function Get-ApiUri([string]$Action) {
 
 function Invoke-ApiGet([string]$Action) {
     try {
-        return Invoke-RestMethod -Uri (Get-ApiUri $Action) -Headers $headers -Method Get -TimeoutSec 20
+        return Invoke-CurtClusterRequest -Password $password -Request @{Uri=(Get-ApiUri $Action);Headers=$headers;Method='Get';TimeoutSec=20}
     }
     catch {
         Write-Log "API GET $Action failed: $($_.Exception.Message)"
@@ -86,7 +90,7 @@ function Invoke-ApiGet([string]$Action) {
 function Invoke-ApiPost([string]$Action, $Body) {
     try {
         $json = $Body | ConvertTo-Json -Depth 12 -Compress
-        return Invoke-RestMethod -Uri (Get-ApiUri $Action) -Headers $headers -Method Post -Body $json -TimeoutSec 20
+        return Invoke-CurtClusterRequest -Password $password -Request @{Uri=(Get-ApiUri $Action);Headers=$headers;Method='Post';Body=$json;TimeoutSec=20}
     }
     catch {
         Write-Log "API POST $Action failed: $($_.Exception.Message)"
@@ -280,6 +284,7 @@ function Get-DeviceForHost([string]$Hostname) {
 }
 
 function Start-Phone($p, [bool]$Force=$false) {
+    if ($MonitorOnly -or $NoMining) { return [pscustomobject]@{Exit=2;Output=@('Mining is disabled by operator policy')} }
     $d = Get-DeviceForHost $p.Hostname
     if (-not $d) { return [pscustomobject]@{ Exit=2; Output=@('DEVICE_NOT_REGISTERED') } }
 
@@ -489,7 +494,7 @@ exit 1
 
 function Get-SwarmNodes {
     $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-    $status = Invoke-RestMethod -Uri "$($swarmApi)?action=queue-status&_=$stamp" -Headers $headers -Method Get -TimeoutSec 20
+    $status = Invoke-CurtClusterRequest -Password $password -Request @{Uri="$($swarmApi)?action=queue-status&_=$stamp";Headers=$headers;Method='Get';TimeoutSec=20}
     if (-not $status.nodes -or @($status.nodes).Count -lt $phones.Count) {
         throw 'Swarm API did not return the phone roster; recovery was not started.'
     }
@@ -604,6 +609,7 @@ function Resolve-Targets([string]$Target) {
 }
 
 function Apply-Desired($p, [bool]$Force=$false) {
+    if ($MonitorOnly -or $NoMining) { return }
     $d = Get-DeviceForHost $p.Hostname
     if (-not $d) { return }
 
@@ -959,7 +965,9 @@ function Write-PhoneNativeRecord([string]$Path, $Record, [bool]$CreateOnly) {
         try {
             $stream = [IO.File]::Open($temporary, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
             try { $stream.Write($bytes,0,$bytes.Length); $stream.Flush($true) } finally { $stream.Dispose() }
-            [IO.File]::Move($temporary,$Path,$true)
+            # The durable intent already exists. Replace is atomic and its
+            # three-argument overload is also available on .NET Framework.
+            [IO.File]::Replace($temporary,$Path,[NullString]::Value)
         } finally { if (Test-Path -LiteralPath $temporary) { [IO.File]::Delete($temporary) } }
     }
 }
@@ -1043,11 +1051,36 @@ function Invoke-PhoneControllerAction($Command) {
     return [pscustomobject]$report
 }
 
+function Get-HeldBridgeCommandIds {
+    # This historical reconcile request is permanently held. A missing policy
+    # file must never turn it back into an executable command.
+    $ids = @('112fe487d5ea83a1f265a74a72486ad6')
+    $policyPath = Join-Path $base 'control-restore-policy.json'
+    if (Test-Path -LiteralPath $policyPath) {
+        $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
+        $property = $policy.PSObject.Properties['held_bridge_command_ids']
+        if (-not $property) { throw 'BRIDGE_HOLD_POLICY_INVALID' }
+        foreach ($id in @($property.Value)) {
+            if ($id -isnot [string] -or $id -notmatch '^[a-fA-F0-9]{32}$') { throw 'BRIDGE_HOLD_POLICY_INVALID' }
+            $ids += $id
+        }
+    }
+    return @($ids | Select-Object -Unique)
+}
+
+function Select-BridgeControlCommand($Queue, $HeldIds) {
+    $excluded = @('112fe487d5ea83a1f265a74a72486ad6') + @($HeldIds)
+    return @($Queue | Where-Object { $_.id -notin $excluded }) | Select-Object -First 1
+}
+
 function Process-Command {
+    if ($MonitorOnly) { return $false }
     $c = Invoke-ApiGet 'commands'
     if (-not $c -or -not $c.queue -or @($c.queue).Count -eq 0) { return $false }
 
-    $cmd = @($c.queue)[0]
+    $heldIds = @(Get-HeldBridgeCommandIds)
+    $cmd = Select-BridgeControlCommand $c.queue $heldIds
+    if (-not $cmd) { return $false }
     $type = [string]$cmd.type
     if ($type -cin @('phone-back','phone-open-website')) {
         $report = Invoke-PhoneControllerAction $cmd
@@ -1104,6 +1137,7 @@ function Process-Command {
         $output.Add("TARGET_UNAVAILABLE: $($cmd.target)")
     }
 
+    $commandFailed = ($targets.Count -eq 0)
     foreach ($p in $targets) {
         switch -Regex ($type) {
             '^(mining-start|fresh-connect|start)$' { $r = Start-Phone $p $false; break }
@@ -1116,6 +1150,7 @@ function Process-Command {
             }
             '^run-diagnostic$' { $r = Diagnose-Phone $p; break }
             '^reconcile$' {
+                if ($NoMining) { $r = [pscustomobject]@{Exit=2;Output=@('Desired-state reconciliation is disabled by operator policy')}; break }
                 Apply-Desired $p $true
                 $s = Get-PhoneState $p
                 $r = [pscustomobject]@{ Exit=0; Output=@($(if ($s) { $s.raw } else { 'UNREACHABLE' })) }
@@ -1126,6 +1161,7 @@ function Process-Command {
             default { $r = [pscustomobject]@{ Exit=2; Output=@("UNSUPPORTED $type") } }
         }
 
+        if ($r.Exit -ne 0) { $commandFailed = $true }
         $output.Add("===== $($p.Hostname) / $type =====")
         foreach ($line in @($r.Output)) { $output.Add("$line") }
         Push-PhoneState $p | Out-Null
@@ -1135,7 +1171,8 @@ function Process-Command {
         id = $cmd.id
         target = $cmd.target
         type = $type
-        result_summary = "completed $type -> $($cmd.target)"
+        status = $(if($commandFailed){'failed'}else{'completed'})
+        result_summary = "$(if($commandFailed){'failed'}else{'completed'}) $type -> $($cmd.target)"
         output = ($output -join "`n")
     } | Out-Null
 
@@ -1150,7 +1187,7 @@ Invoke-ApiPost 'bridge-heartbeat' @{
     summary = 'Windows live bridge starting'
 } | Out-Null
 
-Reconcile-Registry
+if (-not $MonitorOnly -and -not $NoMining) { Reconcile-Registry }
 Write-Log "Windows bridge online. Fleet: $($phones.IP -join ', ')"
 $lastRefresh = [DateTime]::MinValue
 $lastHeartbeat = Get-Date
@@ -1167,17 +1204,18 @@ while ($true) {
             Invoke-ApiPost 'bridge-heartbeat' @{
                 hostname = $env:COMPUTERNAME
                 bridge_version = $bridgeVersion
-                summary = 'Windows live bridge polling 13-device fleet'
+                summary = $(if($MonitorOnly){'Windows bridge: monitoring only; device commands paused'}elseif($NoMining){'Dashboard controls active; mining disabled; previous reconcile request held'}else{'Windows live bridge polling 13-device fleet'})
                 fleet_connections = $fleetConnections
             } | Out-Null
             $lastHeartbeat = Get-Date
         }
 
-        $didWork = Process-Command
+        $didWork = $false
+        if (-not $MonitorOnly) { $didWork = Process-Command }
 
         if ((Get-Date) - $lastRefresh -gt [TimeSpan]::FromSeconds(90)) {
             foreach ($p in $phones) {
-                Apply-Desired $p $false
+                if (-not $MonitorOnly) { Apply-Desired $p $false }
                 Push-PhoneState $p | Out-Null
             }
             $lastRefresh = Get-Date

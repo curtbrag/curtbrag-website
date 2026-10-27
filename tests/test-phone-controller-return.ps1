@@ -6,10 +6,15 @@ $tokens = $null
 $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($sourcePath, [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw 'Bridge source does not parse.' }
-$names = @('Get-PhoneControllerRemaining','Read-PhoneControllerExact','Write-PhoneControllerService','Read-PhoneControllerString','Read-PhoneControllerStatus','Read-PhoneControllerShell','Get-FixedPhoneControllerShell','Test-PhoneControllerOverrides','Invoke-ExistingPhoneController','Resolve-PhoneControllerTransport','Invoke-PhoneControllerReturn','Process-Command')
+$names = @('Get-PhoneControllerRemaining','Read-PhoneControllerExact','Write-PhoneControllerService','Read-PhoneControllerString','Read-PhoneControllerStatus','Read-PhoneControllerShell','Get-FixedPhoneControllerShell','Test-PhoneControllerOverrides','Invoke-ExistingPhoneController','Resolve-PhoneControllerTransport','Invoke-PhoneControllerReturn','Get-HeldBridgeCommandIds','Select-BridgeControlCommand','Process-Command')
 $functions = @($ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $true) | Where-Object Name -In $names)
 if ($functions.Count -ne $names.Count) { throw 'Missing isolated controller function.' }
 foreach ($function in $functions) { . ([scriptblock]::Create($function.Extent.Text)) }
+# Policy lookups in these function-only tests use a nonexistent fixture root,
+# never the installed bridge's private policy or credential directory.
+$base = Join-Path ([IO.Path]::GetTempPath()) ('curt-return-no-policy-' + [Guid]::NewGuid().ToString('N'))
+$MonitorOnly = $false
+$NoMining = $false
 $originalRemaining = (Get-Item Function:Get-PhoneControllerRemaining).ScriptBlock
 $originalSocket = (Get-Item Function:Invoke-ExistingPhoneController).ScriptBlock
 $script:cases = 0
