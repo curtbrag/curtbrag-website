@@ -955,6 +955,14 @@
   let browserOpenReport=null,browserOpenBusy=false;
   try{const saved=JSON.parse(localStorage.getItem('curt-browser-open-v1'));if(saved&&Array.isArray(saved.tasks)&&Array.isArray(saved.skipped)&&typeof saved.url==='string')browserOpenReport=saved;}catch{}
   function saveBrowserOpen(){try{localStorage.setItem('curt-browser-open-v1',JSON.stringify(browserOpenReport));}catch{}}
+  function markUnsubmittedBrowserTasks(report){
+    for(const task of report?.tasks||[])if(task.state==='planned'){
+      task.state='not-submitted';task.error='Not sent: this batch stopped before submitting this device.';
+    }
+  }
+  // Submitting is saved before enqueue. A saved planned task never reached the
+  // server, so release it without retrying or changing any submitted request.
+  markUnsubmittedBrowserTasks(browserOpenReport);saveBrowserOpen();
   let termuxReturnReport=null,termuxReturnBusy=false,termuxControllerReady=false;
   let termuxControllerCommands={queue:[],history:[]};
   try{const saved=JSON.parse(localStorage.getItem('curt-termux-return-v1'));if(saved&&Array.isArray(saved.tasks)&&Array.isArray(saved.skipped))termuxReturnReport=saved;}catch{}
@@ -963,6 +971,7 @@
   function updateBrowserButtons(){
     const busy=browserOpenBusy||termuxReturnBusy;
     document.getElementById('browser-open-run').disabled=busy;
+    const refresh=document.getElementById('browser-open-refresh');if(refresh)refresh.disabled=busy||!browserOpenReport||!!browserOpenReport.closed_at;
     document.getElementById('browser-open-close').disabled=busy||!browserOpenReport||!!browserOpenReport.closed_at;
     document.getElementById('termux-return-run').disabled=busy||(document.getElementById('termux-return-route')?.value==='pc-controller'&&!termuxControllerReady);
     document.getElementById('termux-return-close').disabled=busy||!termuxReturnReport||!!termuxReturnReport.closed_at;
@@ -978,8 +987,8 @@
   function ensureBrowserOpen(){
     const fleet=document.getElementById('cluster-view-fleet');if(!fleet||document.getElementById('cluster-browser-open'))return;
     const card=document.createElement('section');card.id='cluster-browser-open';card.className='cluster-control-card';
-    card.innerHTML='<h3>Open website on device screens</h3><p>Request a browser to open a website once on your selected devices. Browser launch requests do not verify screen or page visibility.</p><label for="browser-open-url">Website to open on device screens</label><input id="browser-open-url" type="url" maxlength="2048" value="https://curtbrag.com/" style="display:block;width:100%;box-sizing:border-box;margin:8px 0;padding:10px"><label for="browser-open-target">Devices</label> <select id="browser-open-target"><option value="all">All available units</option><option value="computers">Computers &amp; laptops</option>'+FLEET.map(([id])=>'<option value="'+id+'">'+({Alina:'ASUS laptop (Alina)',Nexus:'Dell laptop (Nexus)',viki:'Small desktop (viki)',RenderRig:'Main PC (RenderRig)'}[id]||id)+'</option>').join('')+'</select><div class="cluster-action-row"><button id="browser-open-run" type="button" class="cluster-primary-action">Open website in device browsers</button><button id="browser-open-close" type="button" disabled>Close report</button></div><p>Busy and offline units are skipped. Close report preserves the record without cancelling or retrying jobs.</p><p id="browser-open-state" role="status" aria-live="polite">Ready. No browser launch requested.</p><pre id="browser-open-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto"></pre><h4>Return phones to Termux</h4><p>Request Termux through each phone’s existing connection. A paired PC controller can also verify the foreground app. Neither method proves the display is awake.</p><label for="termux-return-route">Return method</label> <select id="termux-return-route"><option value="phone-worker">Existing phone connection</option><option value="pc-controller">Paired PC controller (verify foreground)</option></select><div class="cluster-action-row"><button id="termux-return-run" type="button" disabled>Return selected phones to Termux</button><button id="termux-return-close" type="button" disabled>Close return report</button></div><p id="termux-return-state" role="status" aria-live="polite">Ready. No return requested. A sleeping display may stay dark.</p><pre id="termux-return-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto"></pre>';
-    fleet.prepend(card);card.querySelector('#browser-open-run').onclick=dispatchBrowserOpen;card.querySelector('#browser-open-close').onclick=closeBrowserOpen;card.querySelector('#termux-return-run').onclick=dispatchTermuxReturn;card.querySelector('#termux-return-close').onclick=closeTermuxReturn;card.querySelector('#termux-return-route').onchange=()=>{renderTermuxReturn(current?.results||[]);updateBrowserButtons();};
+    card.innerHTML='<h3>Open website on device screens</h3><p>Request a browser to open a website once on your selected devices. Browser launch requests do not verify screen or page visibility.</p><label for="browser-open-url">Website to open on device screens</label><input id="browser-open-url" type="url" maxlength="2048" value="https://curtbrag.com/" style="display:block;width:100%;box-sizing:border-box;margin:8px 0;padding:10px"><label for="browser-open-target">Devices</label> <select id="browser-open-target"><option value="all">All available units</option><option value="computers">Computers &amp; laptops</option>'+FLEET.map(([id])=>'<option value="'+id+'">'+({Alina:'ASUS laptop (Alina)',Nexus:'Dell laptop (Nexus)',viki:'Small desktop (viki)',RenderRig:'Main PC (RenderRig)'}[id]||id)+'</option>').join('')+'</select><div class="cluster-action-row"><button id="browser-open-run" type="button" class="cluster-primary-action">Open website in device browsers</button><button id="browser-open-refresh" type="button" disabled>Refresh launch results</button><button id="browser-open-close" type="button" disabled>Close report</button></div><p>Busy and offline units are skipped. Refresh looks up this report’s receipts without opening pages again. Close report preserves the record without cancelling or retrying jobs.</p><p id="browser-open-state" role="status" aria-live="polite">Ready. No browser launch requested.</p><pre id="browser-open-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto"></pre><h4>Return phones to Termux</h4><p>Request Termux through each phone’s existing connection. A paired PC controller can also verify the foreground app. Neither method proves the display is awake.</p><label for="termux-return-route">Return method</label> <select id="termux-return-route"><option value="phone-worker">Existing phone connection</option><option value="pc-controller">Paired PC controller (verify foreground)</option></select><div class="cluster-action-row"><button id="termux-return-run" type="button" disabled>Return selected phones to Termux</button><button id="termux-return-close" type="button" disabled>Close return report</button></div><p id="termux-return-state" role="status" aria-live="polite">Ready. No return requested. A sleeping display may stay dark.</p><pre id="termux-return-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto"></pre>';
+    fleet.prepend(card);card.querySelector('#browser-open-run').onclick=dispatchBrowserOpen;card.querySelector('#browser-open-refresh').onclick=refreshBrowserOpen;card.querySelector('#browser-open-close').onclick=closeBrowserOpen;card.querySelector('#termux-return-run').onclick=dispatchTermuxReturn;card.querySelector('#termux-return-close').onclick=closeTermuxReturn;card.querySelector('#termux-return-route').onchange=()=>{renderTermuxReturn(current?.results||[]);updateBrowserButtons();};
     if(browserOpenReport?.url)card.querySelector('#browser-open-url').value=browserOpenReport.url;
     if(['all','computers'].includes(browserOpenReport?.target)||IDS.has(browserOpenReport?.target))card.querySelector('#browser-open-target').value=browserOpenReport.target;
     renderBrowserOpen(current?.results||[]);renderTermuxReturn(current?.results||[]);updateBrowserButtons();
@@ -987,7 +996,7 @@
   function renderBrowserOpen(results){
     const state=document.getElementById('browser-open-state');if(!state||!browserOpenReport)return;
     for(const task of browserOpenReport.tasks){
-      if(['launch-requested','failed','closed'].includes(task.state))continue;
+      if(['launch-requested','failed','closed','not-submitted'].includes(task.state))continue;
       const result=results.find(r=>r.job_id===task.job_id&&r.device_id===task.unit);if(!result)continue;
       let report;try{report=JSON.parse(result.stdout||'');}catch{}
       if(report?.kind==='website-browser-open'&&report.url===browserOpenReport.url&&typeof report.launch_requested==='boolean'&&report.visible_screen_verified===false){
@@ -996,8 +1005,8 @@
       }else{task.state='failed';task.error=String(result.stderr||'Worker returned an invalid browser launch report.').slice(0,500);}
     }
     saveBrowserOpen();
-    const tasks=browserOpenReport.tasks,requested=tasks.filter(t=>t.state==='launch-requested').length,failed=tasks.filter(t=>t.state==='failed').length,closed=tasks.filter(t=>t.state==='closed').length;
-    state.textContent=(tasks.length?'':'No available selected devices. ')+`${requested+failed}/${tasks.length} launch results · ${requested} launch requested · ${failed} failed · ${closed} closed · ${browserOpenReport.skipped.length} skipped. `+(requested?'Browser launch requested; screen/page visibility unverified.':'Screen/page visibility is unverified.');
+    const tasks=browserOpenReport.tasks,requested=tasks.filter(t=>t.state==='launch-requested').length,failed=tasks.filter(t=>t.state==='failed').length,closed=tasks.filter(t=>t.state==='closed').length,notSubmitted=tasks.filter(t=>t.state==='not-submitted').length;
+    state.textContent=(tasks.length?'':'No available selected devices. ')+`${requested+failed}/${tasks.length} launch results · ${requested} launch requested · ${failed} failed · ${closed} closed · ${notSubmitted} not sent · ${browserOpenReport.skipped.length} skipped. `+(requested?'Browser launch requested; screen/page visibility unverified.':'Screen/page visibility is unverified.');
     updateBrowserButtons();
     document.getElementById('browser-open-report').textContent=browserOpenReport.url+'\n\n'+tasks.map(t=>`${t.unit} · ${t.state}${t.report?.launcher?' · '+String(t.report.launcher):''}${t.error?'\n'+t.error:''}`).join('\n\n')+(browserOpenReport.skipped.length?'\n\nSkipped: '+browserOpenReport.skipped.map(n=>n.unit+' ('+n.reason+')').join(', '):'');
   }
@@ -1010,10 +1019,11 @@
   }
   async function dispatchBrowserOpen(){
     if(browserOpenBusy||termuxReturnBusy)return;browserOpenBusy=true;updateBrowserButtons();
+    let submittedBatch=null;
     try{
       const url=validateBrowserOpenUrl(document.getElementById('browser-open-url').value),target=document.getElementById('browser-open-target').value;
       if(!['all','computers'].includes(target)&&!IDS.has(target))throw Error('Select a canonical cluster unit.');
-      if(browserRequestsPending(browserOpenReport))throw Error('Previous launch requests are pending. Review Queue & results before opening another batch.');
+      if(browserRequestsPending(browserOpenReport))throw Error('Previous launch requests are pending. Refresh launch results, or close the old report after checking the queue, before opening another batch.');
       if(browserRequestsPending(termuxReturnReport))throw Error('Return requests are pending. Review Queue & results before opening another website.');
       document.getElementById('browser-open-state').textContent='Checking available devices…';
       const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes))throw Error('Worker availability could not be verified.');
@@ -1021,13 +1031,33 @@
       const ready=selected.filter(n=>n.online&&!n.busy&&(n.id!=='RenderRig'||versionAtLeast(n.agent_version,'3.7.2')));
       const id='browser-open-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
       browserOpenReport={id,url,target,created_at:new Date().toISOString(),scope:'One browser launch request per selected available unit; physical screen and target page visibility are unverified.',tasks:ready.map((n,i)=>({unit:n.id,job_id:id+'-'+i,state:'planned'})),skipped:selected.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:!n.online?'offline':n.busy?'busy':'agent update required'}))};saveBrowserOpen();renderBrowserOpen(current?.results||[]);
+      submittedBatch=browserOpenReport;
       for(const task of browserOpenReport.tasks){
         const windows=task.unit==='RenderRig',cmd=windows?JSON.stringify({url}):browserOpenCommand(url);task.state='submitting';saveBrowserOpen();renderBrowserOpen(current?.results||[]);
         try{await swarmApi('enqueue','POST',{job:{id:task.job_id,type:windows?'website-open':'shell',cmd,command:cmd},target_device_ids:[task.unit]});task.state='queued';}
-        catch{task.state='unconfirmed';saveBrowserOpen();throw Error('Browser launch submission is unconfirmed. Review Queue & results before retrying.');}
+        catch{task.state='unconfirmed';task.error='Submission receipt missing. Refresh launch results; this request will not be sent again automatically.';saveBrowserOpen();throw Error('Browser launch submission is unconfirmed. Refresh launch results before retrying. Remaining devices were not sent.');}
         saveBrowserOpen();renderBrowserOpen(current?.results||[]);
       }
       if(ready.length)await load(true);
+    }catch(error){
+      if(submittedBatch){markUnsubmittedBrowserTasks(submittedBatch);saveBrowserOpen();renderBrowserOpen(current?.results||[]);}
+      document.getElementById('browser-open-state').textContent=error.message;
+    }
+    finally{browserOpenBusy=false;updateBrowserButtons();saveBrowserOpen();}
+  }
+  async function refreshBrowserOpen(){
+    if(browserOpenBusy||termuxReturnBusy||!browserOpenReport||browserOpenReport.closed_at)return;
+    browserOpenBusy=true;updateBrowserButtons();
+    try{
+      const requests=browserOpenReport.tasks.filter(t=>['queued','submitting','unconfirmed'].includes(t.state)).map(t=>({job_id:t.job_id,device_id:t.unit}));
+      if(!requests.length){renderBrowserOpen(current?.results||[]);return;}
+      const receipt=await swarmApi('job-results','POST',{requests});
+      if(!Array.isArray(receipt?.results)||!Array.isArray(receipt.pending)||!Array.isArray(receipt.missing)||typeof receipt.complete!=='boolean')throw Error('Launch receipt lookup is incomplete. No requests were sent again.');
+      renderBrowserOpen(receipt.results);
+      const unresolved=browserOpenReport.tasks.filter(t=>['queued','submitting','unconfirmed'].includes(t.state));
+      if(unresolved.length)document.getElementById('browser-open-state').textContent+=receipt.complete
+        ?' Some receipts are still pending or unavailable. Check the queue before closing this report; nothing was sent again.'
+        :' Older receipt history reached its lookup limit. Missing receipts remain unconfirmed; nothing was sent again.';
     }catch(error){document.getElementById('browser-open-state').textContent=error.message;}
     finally{browserOpenBusy=false;updateBrowserButtons();saveBrowserOpen();}
   }
@@ -1041,7 +1071,7 @@
       if(fresh.jobs.some(job=>ids.has(jobId(job))&&!terminal.has(String(job.status??job.state??'').toLowerCase()))||fresh.nodes.some(node=>(node.active_jobs||[]).some(job=>ids.has(jobId(job)))))throw Error('Launch requests still appear queued or running. Review Queue & results before closing.');
       const age=Date.now()-Date.parse(browserOpenReport.created_at);
       if(browserOpenReport.tasks.some(t=>['queued','submitting','unconfirmed'].includes(t.state))&&(!Number.isFinite(age)||age<120000))throw Error('Wait at least two minutes after submission, then review Queue & results before closing missing launch requests.');
-      for(const task of browserOpenReport.tasks)if(!['launch-requested','failed','closed'].includes(task.state))task.state='closed';
+      for(const task of browserOpenReport.tasks)if(!['launch-requested','failed','closed','not-submitted'].includes(task.state))task.state='closed';
       browserOpenReport.closed_at=new Date().toISOString();saveBrowserOpen();renderBrowserOpen(fresh.results);
     }catch(error){document.getElementById('browser-open-state').textContent=error.message;}
     finally{browserOpenBusy=false;updateBrowserButtons();}

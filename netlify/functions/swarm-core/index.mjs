@@ -6,6 +6,8 @@ const ONLINE_MS = 90_000;
 const MAX_STDOUT = 4000;
 const MAX_CMD = 4000;
 const AGENT_SCHEMA = 2;
+const MAX_RESULT_LOOKUPS = 16;
+const MAX_RESULT_LOOKUP_KEYS = 5000;
 
 function jsonResponse(statusCode, body) {
   return new Response(JSON.stringify(body), {
@@ -65,6 +67,102 @@ const keyJob = id => `job--${safePart(id)}`;
 const keyAssignment = (jobId, deviceId) => `assignment--${safePart(jobId)}--${safePart(deviceId)}`;
 const keyNode = id => `node--${safePart(id)}`;
 const keyResult = (ts, jobId, deviceId) => `result--${String(ts).padStart(13, "0")}--${safePart(jobId)}--${safePart(deviceId)}`;
+const keyResultIndex = (jobId, deviceId) => `result-index--${safePart(jobId)}--${safePart(deviceId)}`;
+
+function resultLookupRequests(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+      Object.keys(body).length !== 1 || !Array.isArray(body.requests) ||
+      body.requests.length < 1 || body.requests.length > MAX_RESULT_LOOKUPS) return null;
+  const requests = [];
+  const seen = new Set();
+  for (const entry of body.requests) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry) ||
+        Object.keys(entry).length !== 2 ||
+        ![entry.job_id, entry.device_id].every(value => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,95}$/.test(value))) return null;
+    const identity = JSON.stringify([entry.job_id, entry.device_id]);
+    if (!seen.has(identity)) {
+      seen.add(identity);
+      requests.push({ job_id: entry.job_id, device_id: entry.device_id });
+    }
+  }
+  return requests;
+}
+
+function matchingResultKey(key, request) {
+  return typeof key === "string" && /^result--\d{13}--/.test(key) &&
+    key.endsWith(`--${request.job_id}--${request.device_id}`);
+}
+
+function resultForRequest(value, request) {
+  if (!value || value.job_id !== request.job_id || value.device_id !== request.device_id) return null;
+  // A launch report needs its receipt, not the original shell command. Return
+  // only the fields consumed by the dashboard for the explicitly named pair.
+  return {
+    job_id: value.job_id, device_id: value.device_id,
+    type: String(value.type || "").slice(0, 96),
+    exit_code: Number.isFinite(Number(value.exit_code)) ? Number(value.exit_code) : null,
+    stdout: String(value.stdout || "").slice(0, MAX_STDOUT),
+    stderr: String(value.stderr || "").slice(0, MAX_STDOUT),
+    completed_at: Number(value.completed_at) || null,
+    schema: AGENT_SCHEMA
+  };
+}
+
+async function lookupJobResults(requests) {
+  const database = store();
+  const found = new Map();
+  const identity = entry => JSON.stringify([entry.job_id, entry.device_id]);
+  const missingIndex = [];
+  await Promise.all(requests.map(async entry => {
+    const index = await database.get(keyResultIndex(entry.job_id, entry.device_id), { type: "json" });
+    if (index?.job_id === entry.job_id && index?.device_id === entry.device_id && matchingResultKey(index.result_key, entry)) {
+      const value = resultForRequest(await database.get(index.result_key, { type: "json" }), entry);
+      if (value) { found.set(identity(entry), value); return; }
+    }
+    missingIndex.push(entry);
+  }));
+
+  let examined = 0;
+  let complete = true;
+  if (missingIndex.length) {
+    // Old receipts predate the per-pair index. Bound this compatibility scan to
+    // key metadata; never fetch unrelated result bodies or auto-page all history.
+    const candidates = new Map();
+    history: for await (const page of database.list({ prefix: "result--", paginate: true })) {
+      for (const blob of page.blobs || []) {
+        if (examined >= MAX_RESULT_LOOKUP_KEYS) { complete = false; break history; }
+        examined++;
+        for (const entry of missingIndex) {
+          if (matchingResultKey(blob.key, entry)) {
+            const id = identity(entry);
+            if (!candidates.has(id) || blob.key > candidates.get(id)) candidates.set(id, blob.key);
+          }
+        }
+      }
+      if (examined >= MAX_RESULT_LOOKUP_KEYS) { complete = false; break; }
+    }
+    await Promise.all(missingIndex.map(async entry => {
+      const key = candidates.get(identity(entry));
+      if (!key) return;
+      const value = resultForRequest(await database.get(key, { type: "json" }), entry);
+      if (value) found.set(identity(entry), value);
+    }));
+  }
+
+  const pending = [], missing = [];
+  await Promise.all(requests.filter(entry => !found.has(identity(entry))).map(async entry => {
+    const assignment = await database.get(keyAssignment(entry.job_id, entry.device_id), { type: "json" });
+    (assignment?.job_id === entry.job_id && assignment?.device_id === entry.device_id ? pending : missing).push(entry);
+  }));
+  return { results: requests.map(entry => found.get(identity(entry))).filter(Boolean),
+    pending, missing, complete, history_keys_examined: examined, lookup_limit: MAX_RESULT_LOOKUPS };
+}
+
+function lookupResponse(status, body) {
+  const response = jsonResponse(status, body);
+  response.headers.set("cache-control", "no-store");
+  return response;
+}
 
 async function getJson(key, fallback = null) {
   try {
@@ -305,8 +403,6 @@ export default async (request) => {
     });
   }
 
-  await migrateLegacy();
-
   const url = new URL(request.url);
   const action = url.searchParams.get("action") || "";
 
@@ -318,7 +414,7 @@ export default async (request) => {
   }
 
   const workerActions = new Set(["swarm-poll", "job-complete", "job-update", "heartbeat"]);
-  const operatorActions = new Set(["enqueue", "queue-status", "cancel-job", "flush-queue", "clear-results"]);
+  const operatorActions = new Set(["enqueue", "queue-status", "job-results", "cancel-job", "flush-queue", "clear-results"]);
 
   if (workerActions.has(action) && !(await authorized(request, "worker"))) {
     return jsonResponse(401, { ok: false, error: "unauthorized worker" });
@@ -326,6 +422,21 @@ export default async (request) => {
   if (operatorActions.has(action) && !(await authorized(request, "operator"))) {
     return jsonResponse(401, { ok: false, error: "unauthorized operator" });
   }
+
+  if (action === "job-results") {
+    if (request.method !== "POST") return lookupResponse(405, { ok: false, error: "Use POST for explicit job result lookups." });
+    const requests = resultLookupRequests(body);
+    if (!requests) return lookupResponse(400, { ok: false, error: "Provide one to sixteen exact job_id/device_id request pairs." });
+    try {
+      return lookupResponse(200, { ok: true, action, ...await lookupJobResults(requests), schema: AGENT_SCHEMA });
+    } catch {
+      return lookupResponse(503, { ok: false, error: "Launch results are temporarily unavailable. No request was sent or retried." });
+    }
+  }
+
+  // Receipt reconciliation is read-only, including on a store awaiting legacy
+  // migration. Other actions retain their existing migration behavior.
+  await migrateLegacy();
 
   if (request.method === "POST" && action === "enqueue") {
     const job = body.job;
@@ -397,6 +508,16 @@ export default async (request) => {
     };
 
     await setJson(keyResult(completedAt, jobId, deviceId), result);
+    try {
+      await setJson(keyResultIndex(jobId, deviceId), {
+        job_id: jobId, device_id: deviceId, completed_at: completedAt,
+        result_key: keyResult(completedAt, jobId, deviceId), schema: AGENT_SCHEMA
+      });
+    } catch {
+      // The receipt is already durable. An index outage must not repeat device
+      // work; the bounded metadata fallback can still retrieve the receipt.
+      console.warn("swarm result index unavailable; receipt remains in history");
+    }
     await deleteKey(keyAssignment(jobId, deviceId));
     await updateNode(deviceId, {
       last_job: jobId,
@@ -504,6 +625,8 @@ export default async (request) => {
   if (request.method === "POST" && action === "clear-results") {
     const results = await listEntries("result--");
     for (const entry of results) await deleteKey(entry.key);
+    const indexes = await listEntries("result-index--");
+    for (const entry of indexes) await deleteKey(entry.key);
     return jsonResponse(200, {
       ok: true,
       action: "clear-results",
