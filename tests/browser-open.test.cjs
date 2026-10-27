@@ -16,7 +16,7 @@ const PC_IDS=new Set(FLEET.filter(([,kind])=>kind!=='worker').map(([id])=>id));
 function harness(options={}){
   const storage=options.storage||new Map(),calls=[];
   const elements={
-    'browser-open-run':{disabled:false},'browser-open-close':{disabled:true},
+    'browser-open-run':{disabled:false},'browser-open-refresh':{disabled:true},'browser-open-close':{disabled:true},
     'browser-open-url':{value:'https://curtbrag.com/'},'browser-open-target':{value:'all'},
     'browser-open-state':{textContent:''},'browser-open-report':{textContent:''},
     'termux-return-run':{disabled:false},'termux-return-close':{disabled:true},
@@ -34,7 +34,7 @@ function harness(options={}){
     controlApi:async(...args)=>{calls.push([args[0],args[1],args[2],'control']);if(options.controlApi)return options.controlApi(...args);if(args[0]==='bridge-status')return freshBridge();if(args[0]==='queue-command')return {ok:true,command_id:'controller-'+args[2].target};if(args[0]==='commands')return options.commands||{queue:[],history:[]};throw Error('Unexpected controller action');},
     load:async()=>{loads++;},
   });
-  vm.runInContext(source+'\nglobalThis.api={validateBrowserOpenUrl,browserOpenCommand,dispatchBrowserOpen,closeBrowserOpen,renderBrowserOpen,dispatchTermuxReturn,closeTermuxReturn,renderTermuxReturn,get:()=>browserOpenReport,set:value=>browserOpenReport=value,busy:()=>browserOpenBusy,updateTermuxController,termuxControllerAvailable,getReturn:()=>termuxReturnReport,setReturn:value=>termuxReturnReport=value,returnBusy:()=>termuxReturnBusy};',context);
+  vm.runInContext(source+'\nglobalThis.api={validateBrowserOpenUrl,browserOpenCommand,dispatchBrowserOpen,refreshBrowserOpen,closeBrowserOpen,renderBrowserOpen,dispatchTermuxReturn,closeTermuxReturn,renderTermuxReturn,get:()=>browserOpenReport,set:value=>browserOpenReport=value,busy:()=>browserOpenBusy,updateTermuxController,termuxControllerAvailable,getReturn:()=>termuxReturnReport,setReturn:value=>termuxReturnReport=value,returnBusy:()=>termuxReturnBusy};',context);
   return {api:context.api,elements,storage,calls,loads:()=>loads};
 }
 function report(state='queued'){
@@ -169,6 +169,86 @@ test('an enqueue connection failure persists ambiguity and blocks automatic resu
   const h=harness({api:async action=>{if(action==='queue-status')return {nodes:[{id:'phone191',online:true,busy:false}]};throw Error('Disconnected');}});
   await h.api.dispatchBrowserOpen();assert.equal(h.api.get().tasks[0].state,'unconfirmed');assert.equal(JSON.parse(h.storage.get(key)).tasks[0].state,'unconfirmed');
   await h.api.dispatchBrowserOpen();assert.equal(h.calls.filter(c=>c[0]==='enqueue').length,1);assert.match(h.elements['browser-open-state'].textContent,/pending/);
+});
+
+test('a partial batch keeps only attempted requests pending and never sends the remaining devices',async()=>{
+  let submissions=0;
+  const nodes=['phone173','phone174','phone176'].map(id=>({id,online:true,busy:false}));
+  const h=harness({api:async action=>{
+    if(action==='queue-status')return {nodes,jobs:[],results:[]};
+    if(action==='enqueue'&&++submissions===2)throw Error('Connection lost after submission');
+    return {ok:true};
+  }});
+  await h.api.dispatchBrowserOpen();
+  assert.deepEqual(Array.from(h.api.get().tasks,t=>t.state),['queued','unconfirmed','not-submitted']);
+  assert.equal(submissions,2);
+  assert.match(h.elements['browser-open-report'].textContent,/phone176 · not-submitted/);
+  const reload=harness({storage:h.storage});
+  assert.deepEqual(Array.from(reload.api.get().tasks,t=>t.state),['queued','unconfirmed','not-submitted']);
+  await reload.api.dispatchBrowserOpen();
+  assert.equal(reload.calls.length,0,'An ambiguous attempted request must not be replayed');
+});
+
+test('old saved planned tasks become not submitted without requests and do not lock the next explicit launch',async()=>{
+  const storage=new Map([[key,JSON.stringify(report('planned'))]]),h=harness({storage});
+  assert.equal(h.calls.length,0);
+  assert.equal(h.api.get().tasks[0].state,'not-submitted');
+  assert.equal(JSON.parse(storage.get(key)).tasks[0].state,'not-submitted');
+  h.api.renderBrowserOpen([result()]);
+  assert.equal(h.api.get().tasks[0].state,'not-submitted','A never-submitted task must not become a launch result');
+  await h.api.dispatchBrowserOpen();
+  assert.equal(h.calls.filter(c=>c[0]==='enqueue').length,1);
+});
+
+test('manual refresh resolves this report beyond recent results using scoped receipt lookup only',async()=>{
+  const h=harness({api:async(action,method,body)=>{
+    assert.equal(action,'job-results');assert.equal(method,'POST');
+    assert.deepEqual(JSON.parse(JSON.stringify(body)),{requests:[{job_id:'open-191',device_id:'phone191'}]});
+    return {ok:true,complete:true,pending:[],missing:[],results:[result({job_id:'unrelated'}),result()]};
+  }});
+  h.api.set(report('unconfirmed'));await h.api.refreshBrowserOpen();
+  assert.equal(h.api.get().tasks[0].state,'launch-requested');
+  assert.equal(h.calls.length,1);
+  assert.equal(h.calls.some(c=>c[0]==='enqueue'),false);
+  assert.equal(h.api.busy(),false);
+});
+
+test('bounded or failed receipt lookup preserves ambiguity without claiming missing requests never ran',async()=>{
+  for(const reply of [{ok:true,complete:false,pending:[],missing:[{job_id:'open-191',device_id:'phone191'}],results:[]},null]){
+    const h=harness({api:async()=>{if(reply===null)throw Error('Receipt storage unavailable');return reply;}});
+    h.api.set(report('unconfirmed'));await h.api.refreshBrowserOpen();
+    assert.equal(h.api.get().tasks[0].state,'unconfirmed');
+    assert.equal(h.calls.length,1);assert.equal(h.calls[0][0],'job-results');
+    assert.match(h.elements['browser-open-state'].textContent,reply===null?/storage unavailable/:/remain unconfirmed/);
+  }
+});
+
+test('incomplete receipt responses cannot settle a request or trigger a resend',async()=>{
+  const h=harness({api:async()=>({results:[result()],pending:[],missing:[]})});
+  h.api.set(report('unconfirmed'));await h.api.refreshBrowserOpen();
+  assert.equal(h.api.get().tasks[0].state,'unconfirmed');
+  assert.match(h.elements['browser-open-state'].textContent,/lookup is incomplete/);
+  assert.equal(h.calls.length,1);assert.equal(h.calls[0][0],'job-results');
+});
+
+test('an in-flight receipt refresh blocks duplicate refreshes and new browser or return commands',async()=>{
+  let release;const gate=new Promise(resolve=>release=resolve);
+  const h=harness({api:async()=>gate});h.api.set(report('unconfirmed'));
+  const pending=h.api.refreshBrowserOpen();
+  assert.equal(h.elements['browser-open-run'].disabled,true);
+  assert.equal(h.elements['browser-open-refresh'].disabled,true);
+  await h.api.refreshBrowserOpen();await h.api.dispatchBrowserOpen();await h.api.dispatchTermuxReturn();
+  assert.equal(h.calls.length,1);
+  release({ok:true,complete:true,results:[result()],pending:[],missing:[]});await pending;
+  assert.equal(h.api.get().tasks[0].state,'launch-requested');
+  assert.equal(h.elements['browser-open-run'].disabled,false);
+});
+
+test('manual refresh excludes never-submitted and settled tasks and does not mutate closed reports',async()=>{
+  const h=harness({api:async()=>{throw Error('No lookup expected');}}),saved=report('not-submitted');
+  h.api.set(saved);await h.api.refreshBrowserOpen();assert.equal(h.calls.length,0);
+  saved.tasks[0].state='unconfirmed';saved.closed_at=new Date().toISOString();
+  await h.api.refreshBrowserOpen();assert.equal(h.calls.length,0);assert.equal(saved.tasks[0].state,'unconfirmed');
 });
 
 test('closing refuses active, queued and unknown-status own jobs',async()=>{
