@@ -25,6 +25,8 @@ function harness(options={}){
     'termux-return-state':{textContent:''},'termux-return-report':{textContent:''},
     'phone-native-back':{disabled:true},'phone-native-refresh':{disabled:true},'phone-native-close':{disabled:true},
     'phone-native-state':{textContent:''},'phone-native-report':{textContent:''},
+    'phone-controller-availability':{textContent:''},'phone-controller-devices':{textContent:''},
+    'bridgeStatus':{textContent:''},
   };
   let loads=0;
   const context=vm.createContext({
@@ -323,7 +325,8 @@ function controllerReport(state='queued'){
 function controllerResult(overrides={}){
   return {id:'control-191',target:'phone191',type:'phone-return-termux',status:'completed',output:JSON.stringify({kind:'phone-controller-return',unit:'phone191',state:'termux-foreground',foreground_app_verified:true,visible_screen_verified:false,error:null,controller_state:'connected'}),...overrides};
 }
-function freshBridge(overrides={}){return {alive:true,bridge_version:'2.5.0',last_seen_at:new Date().toISOString(),...overrides};}
+function connectionSnapshot(states={}){return {schema:1,checked_at:new Date().toISOString(),server_state:'available',devices:[...PHONE_IDS].map(unit=>({unit,state:states[unit]||'connected'}))};}
+function freshBridge(overrides={}){return {alive:true,bridge_version:'2.5.0',last_seen_at:new Date().toISOString(),phone_controller:connectionSnapshot(),...overrides};}
 
 test('return uses one fixed PC-controller command per available phone without phone shell jobs',async()=>{
   const h=harness({nodes:[{id:'phone191',online:true,busy:false},{id:'phone253',online:true,busy:true},{id:'Nexus',online:true,busy:false}]});
@@ -676,6 +679,108 @@ test('native control can use an authorized controller when the Termux worker hea
   h.elements['browser-open-target'].value='phone253';await h.api.dispatchPhoneNative('back');
   assert.equal(h.calls.filter(c=>c[0]==='queue-command').length,1);assert.equal(h.api.getNative().skipped.length,0);
   assert.equal(h.api.getNative().tasks[0].state,'back-requested');assert.equal(h.api.getNative().tasks[0].report.controller_state,'connected');
+});
+
+test('online bridge with zero phone connections disables native buttons and submits no phone requests',async()=>{
+  const states=Object.fromEntries([...PHONE_IDS].map(unit=>[unit,'disconnected']));
+  const bridge={...nativeBridge(),phone_controller:connectionSnapshot(states)};
+  const h=harness({openRoute:'pc-controller',controlApi:async name=>name==='bridge-status'?bridge:{queue:[],history:[]}});
+  h.elements['browser-open-target'].value='phones';h.api.updateTermuxController(bridge);
+  for(const id of ['phone-native-back','browser-open-run','termux-return-run'])assert.equal(h.elements[id].disabled,true,id);
+  assert.match(h.elements['phone-controller-availability'].textContent,/0\/8 selected phone control connections/);
+  for(const unit of PHONE_IDS)assert.match(h.elements['phone-controller-devices'].textContent,new RegExp(unit+' · No active controller connection'));
+  await h.api.dispatchPhoneNative('back');await h.api.dispatchBrowserOpen();await h.api.dispatchTermuxReturn();
+  assert.equal(h.calls.filter(c=>['queue-command','enqueue'].includes(c[0])).length,0);
+  assert.equal(h.api.getNative(),null);assert.equal(h.api.getReturn(),null);
+  assert.match(h.elements['phone-native-state'].textContent,/No phone request was sent/);
+});
+
+test('missing, stale, future or malformed connection snapshots cannot enable native actions',async()=>{
+  const good=connectionSnapshot();
+  for(const snapshot of [undefined,null,{...good,checked_at:new Date(Date.now()-91000).toISOString()},
+    {...good,checked_at:new Date(Date.now()+31000).toISOString()},{...good,checked_at:Date.now()},
+    {...good,schema:'1'},{...good,devices:good.devices.slice(1)},
+    {...good,devices:[good.devices[0],...good.devices.slice(0,-1)]},
+    {...good,devices:good.devices.map((r,i)=>i? r:{unit:'s26ultra',state:'connected'})},
+    {...good,server_state:'unavailable'},{...good,devices:good.devices.map((r,i)=>i?r:{...r,state:'ready'})}]){
+    const bridge={...nativeBridge(),phone_controller:snapshot};
+    const h=harness({openRoute:'pc-controller',controlApi:async()=>bridge});h.api.updateTermuxController(bridge);
+    assert.equal(h.elements['phone-native-back'].disabled,true);assert.equal(h.elements['browser-open-run'].disabled,true);
+    await h.api.dispatchPhoneNative('back');assert.equal(h.calls.filter(c=>c[0]==='queue-command').length,0);
+    assert.match(h.elements['phone-controller-availability'].textContent,/unavailable or expired/);
+  }
+});
+
+test('selection uses only fresh connected phones and leaves unauthorized, disconnected and unknown phones unqueued',async()=>{
+  const states=Object.fromEntries([...PHONE_IDS].map(unit=>[unit,'disconnected']));
+  states.phone191='connected';states.phone253='unauthorized';states.phone254='unknown';
+  const bridge={...nativeBridge(),phone_controller:connectionSnapshot(states)};
+  const h=harness({controlApi:async(name,_method,body)=>name==='bridge-status'?bridge:name==='commands'?{queue:[],history:[]}:{ok:true,command_id:'native-'+body.target},nodes:[...PHONE_IDS].map(id=>({id,online:false,busy:false}))});
+  h.elements['browser-open-target'].value='phones';h.api.updateTermuxController(bridge);assert.equal(h.elements['phone-native-back'].disabled,false);
+  await h.api.dispatchPhoneNative('back');assert.deepEqual(h.calls.filter(c=>c[0]==='queue-command').map(c=>c[2].target),['phone191']);
+  assert.equal(h.api.getNative().skipped.length,7);
+  assert.ok(h.api.getNative().skipped.some(row=>row.unit==='phone253'&&row.reason==='controller-unauthorized'));
+  assert.ok(h.api.getNative().skipped.some(row=>row.unit==='phone254'&&row.reason==='controller-unknown'));
+});
+
+test('a connected unselected phone does not enable controls for a disconnected selected phone',()=>{
+  const states=Object.fromEntries([...PHONE_IDS].map(unit=>[unit,'disconnected']));states.phone191='connected';
+  const bridge={...nativeBridge(),phone_controller:connectionSnapshot(states)},h=harness({openRoute:'pc-controller'});
+  h.elements['browser-open-target'].value='phone253';h.api.updateTermuxController(bridge);
+  assert.equal(h.elements['phone-native-back'].disabled,true);assert.equal(h.elements['termux-return-run'].disabled,true);
+  h.elements['browser-open-target'].value='phone191';h.api.updateTermuxController(bridge);
+  assert.equal(h.elements['phone-native-back'].disabled,false);assert.equal(h.elements['browser-open-run'].disabled,false);
+});
+
+test('worker website opening remains available without a native controller snapshot',async()=>{
+  const h=harness({controlApi:async()=>({...nativeBridge(),phone_controller:null})});h.api.updateTermuxController({...nativeBridge(),phone_controller:null});
+  assert.equal(h.elements['browser-open-run'].disabled,false);h.elements['browser-open-target'].value='phone191';
+  await h.api.dispatchBrowserOpen();assert.equal(h.calls.filter(c=>c[0]==='enqueue').length,1);
+});
+
+test('fresh preflight prevents sending when an initially connected phone loses its controller connection',async()=>{
+  const disconnected=connectionSnapshot(Object.fromEntries([...PHONE_IDS].map(unit=>[unit,'disconnected'])));
+  const h=harness({controlApi:async()=>({...nativeBridge(),phone_controller:disconnected})});
+  h.elements['browser-open-target'].value='phone191';h.api.updateTermuxController(nativeBridge());assert.equal(h.elements['phone-native-back'].disabled,false);
+  await h.api.dispatchPhoneNative('back');assert.equal(h.calls.filter(c=>c[0]==='queue-command').length,0);assert.equal(h.elements['phone-native-back'].disabled,true);
+});
+
+test('connection display is limited to canonical state labels and never includes controller metadata',()=>{
+  const snapshot=connectionSnapshot();snapshot.secret='private';snapshot.devices[0].serial='do-not-show';snapshot.devices[0].endpoint='do-not-show';
+  const h=harness();h.elements['browser-open-target'].value='phones';h.api.updateTermuxController({...nativeBridge(),phone_controller:snapshot});
+  assert.match(h.elements['phone-controller-availability'].textContent,/8\/8/);
+  assert.equal((h.elements['phone-controller-availability'].textContent+h.elements['phone-controller-devices'].textContent).includes('do-not-show'),false);
+});
+
+test('connection loss during a native batch stops later phones and preserves the first request',async()=>{
+  let h,posts=0;
+  h=harness({nodes:[{id:'phone191',online:true,busy:false},{id:'phone253',online:true,busy:false}],controlApi:async(name,_method,body)=>{
+    if(name==='bridge-status')return nativeBridge();
+    if(name==='commands')return {queue:[],history:[]};
+    if(name==='queue-command'){posts++;h.api.updateTermuxController({...nativeBridge(),phone_controller:null});return {ok:true,command_id:'native-'+body.target};}
+  }});
+  h.elements['browser-open-target'].value='phones';await h.api.dispatchPhoneNative('back');
+  assert.equal(posts,1);assert.equal(h.api.getNative().tasks[0].state,'queued');
+  assert.ok(h.api.getNative().tasks.slice(1).every(t=>t.state==='not-submitted'));
+  const before=h.calls.length;await h.api.dispatchPhoneNative('back');assert.equal(h.calls.length,before);
+});
+
+test('connection loss during a paired Return batch does not submit the next phone',async()=>{
+  let h,posts=0;
+  h=harness({nodes:[{id:'phone191',online:true,busy:false},{id:'phone253',online:true,busy:false}],controlApi:async(name,_method,body)=>{
+    if(name==='bridge-status')return nativeBridge();
+    if(name==='commands')return {queue:[],history:[]};
+    if(name==='queue-command'){posts++;h.api.updateTermuxController({...nativeBridge(),phone_controller:null});return {ok:true,command_id:'return-'+body.target};}
+  }});
+  await h.api.dispatchTermuxReturn();assert.equal(posts,1);
+  assert.equal(h.api.getReturn().tasks[0].state,'queued');assert.equal(h.api.getReturn().tasks[1].state,'not-submitted');
+});
+
+test('existing controller refresh keeps the header current without a legacy telemetry batch',()=>{
+  const h=harness();h.api.updateTermuxController({...nativeBridge(),hostname:'fixture-pc'});
+  assert.match(h.elements.bridgeStatus.textContent,/Bridge: online/);assert.match(h.elements.bridgeStatus.textContent,/fixture-pc/);
+  h.api.updateTermuxController(null);assert.match(h.elements.bridgeStatus.textContent,/Bridge: offline/);assert.match(h.elements.bridgeStatus.textContent,/never/);
+  assert.equal(h.calls.length,0);
 });
 
 test('accepted phone-return results never claim screen wake or verified foreground',()=>{
