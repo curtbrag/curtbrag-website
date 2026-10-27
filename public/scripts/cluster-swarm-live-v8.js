@@ -110,24 +110,33 @@
     if (!pw) throw new Error('dashboard session is not authenticated');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 12000);
+    const retryRead=String(method).toUpperCase()==='GET'&&body==null&&
+      ((base===CONTROL_API&&['bridge-status','commands','devices'].includes(action))||(base===SWARM_API&&action==='queue-status'));
     try {
-      const response = await fetch(`${base}?action=${encodeURIComponent(action)}&_=${Date.now()}`, {
-        method,
-        headers: { Authorization: `Bearer ${pw}`, 'Content-Type': 'application/json' },
-        body: body == null ? undefined : JSON.stringify(body),
-        cache: 'no-store',
-        credentials: 'same-origin',
-        signal: controller.signal,
-      });
-      let data = {};
-      try { data = await response.json(); } catch (error) { if (controller.signal.aborted) throw error; }
-      if (response.status === 401) {
-        sessionStorage.removeItem('cp_password');
-        window.location.replace('/cluster/dashboard/?signedout=1');
-        throw new Error('Session expired. Sign in again.');
+      for(let attempt=0;attempt<2;attempt++){
+        const response = await fetch(`${base}?action=${encodeURIComponent(action)}&_=${Date.now()}`, {
+          method,
+          headers: { Authorization: `Bearer ${pw}`, 'Content-Type': 'application/json' },
+          body: body == null ? undefined : JSON.stringify(body),
+          cache: 'no-store',
+          credentials: 'same-origin',
+          signal: controller.signal,
+        });
+        let data = {};
+        try { data = await response.json(); } catch (error) { if (controller.signal.aborted) throw error; }
+        if (response.status === 401) {
+          sessionStorage.removeItem('cp_password');
+          window.location.replace('/cluster/dashboard/?signedout=1');
+          throw new Error('Session expired. Sign in again.');
+        }
+        if(retryRead&&attempt===0&&[502,503,504].includes(response.status)){
+          await new Promise(resolve=>setTimeout(resolve,200));
+          if(controller.signal.aborted)throw new Error('Connection timed out. Please retry.');
+          continue;
+        }
+        if (!response.ok || data.ok === false) throw new Error(data.error || `HTTP ${response.status}`);
+        return data;
       }
-      if (!response.ok || data.ok === false) throw new Error(data.error || `HTTP ${response.status}`);
-      return data;
     } catch (error) {
       if (controller.signal.aborted) throw new Error('Connection timed out. Please retry.');
       throw error;

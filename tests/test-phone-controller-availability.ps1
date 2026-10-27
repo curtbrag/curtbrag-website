@@ -151,8 +151,8 @@ Test-Case 'Startup and MonitorOnly polling publish read-only availability withou
     function Apply-Desired { throw 'MonitorOnly cannot reconcile devices.' }
     function Get-FleetConnections { throw 'A fresh existing fleet snapshot is already present.' }
     function Push-PhoneState { throw 'This fixture has no worker-state refresh due.' }
-    Assert-True ($ast.Extent.Text.Contains('$bridgeVersion = ''2.6.1''')) 'Updated telemetry is advertised by bridge2.6.1.'
-    $bridgeVersion='2.6.1';$MonitorOnly=$true;$NoMining=$false
+    Assert-True ($ast.Extent.Text.Contains('$bridgeVersion = ''2.6.2''')) 'Updated telemetry is advertised by bridge2.6.2.'
+    $bridgeVersion='2.6.2';$MonitorOnly=$true;$NoMining=$false
     $startup=@($ast.EndBlock.Statements | Where-Object {$_.Extent.Text -cmatch "^Invoke-ApiPost 'bridge-heartbeat'"})
     Assert-Equal $startup.Count 1 'One startup heartbeat is present.'
     . ([scriptblock]::Create($startup[0].Extent.Text))

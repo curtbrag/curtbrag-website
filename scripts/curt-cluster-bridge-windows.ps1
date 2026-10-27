@@ -34,7 +34,7 @@ catch {
 
 $api = if ($config.api_url) { [string]$config.api_url } else { 'https://curtbrag.com/.netlify/functions/cluster-api' }
 $swarmApi = 'https://curtbrag.com/api/cluster'
-$bridgeVersion = '2.6.1'
+$bridgeVersion = '2.6.2'
 $wallet = [string]$config.wallet
 $poolHost = if ($config.pool_host) { [string]$config.pool_host } else { 'gulf.moneroocean.stream' }
 $poolPort = if ($config.pool_port) { [int]$config.pool_port } else { 10128 }
@@ -260,10 +260,13 @@ function Get-PhoneState($p) {
 }
 
 function Push-PhoneState($p) {
+    # With mining disabled, swarm heartbeats and controller availability are
+    # authoritative. Do not probe xmrig or write the obsolete mining registry.
+    if ($NoMining) { return $false }
     $s = Get-PhoneState $p
     if (-not $s) { return $false }
 
-    Invoke-ApiPost 'bridge-touch-device' @{
+    $acknowledged = Invoke-ApiPost 'bridge-touch-device' @{
         hostname = $p.Hostname
         observed = @{
             xmrig_running = $s.running
@@ -275,8 +278,8 @@ function Push-PhoneState($p) {
             workload_enabled = $s.running
             preflight_status = 'ok'
         }
-    } | Out-Null
-    return $true
+    }
+    return ($acknowledged -and $acknowledged.ok -is [bool] -and $acknowledged.ok -eq $true)
 }
 
 function Get-DeviceForHost([string]$Hostname) {
