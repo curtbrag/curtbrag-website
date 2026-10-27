@@ -1016,7 +1016,7 @@
   }
   function browserRequestCommand(settings){
     const bytes=new TextEncoder().encode(JSON.stringify(settings));let binary='';bytes.forEach(b=>binary+=String.fromCharCode(b));const encoded=btoa(binary);
-    return `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/f6f01768fdda090564a3f7237d97606a8f01bf4e/scripts/cluster-browser-open.py' -o "$HOME/cluster-browser-open.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-browser-open.py" --settings-b64 '${encoded}'; }`;
+    return `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/1386b453e0dcc5030af44ecd62e9a83180dded71/scripts/cluster-browser-open.py' -o "$HOME/cluster-browser-open.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-browser-open.py" --settings-b64 '${encoded}'; }`;
   }
   async function dispatchBrowserOpen(){
     if(browserOpenBusy||termuxReturnBusy)return;browserOpenBusy=true;updateBrowserButtons();
