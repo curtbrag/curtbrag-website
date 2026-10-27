@@ -313,7 +313,7 @@ function browserJob(url, deviceId, jobId) {
   const checked = validateUrl(url);
   if (!FLEET.includes(deviceId) || typeof jobId !== 'string' || !/^[A-Za-z0-9._:-]{1,220}$/.test(jobId)) throw safeFailure();
   const windows = deviceId === 'RenderRig', encoded = Buffer.from(JSON.stringify({ url: checked })).toString('base64');
-  const cmd = windows ? JSON.stringify({ url: checked }) : `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/f6f01768fdda090564a3f7237d97606a8f01bf4e/scripts/cluster-browser-open.py' -o "$HOME/cluster-browser-open.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-browser-open.py" --settings-b64 '${encoded}'; }`;
+  const cmd = windows ? JSON.stringify({ url: checked }) : `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/1386b453e0dcc5030af44ecd62e9a83180dded71/scripts/cluster-browser-open.py' -o "$HOME/cluster-browser-open.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-browser-open.py" --settings-b64 '${encoded}'; }`;
   return { job: { id: jobId, type: windows ? 'website-open' : 'shell', cmd, command: cmd }, target_device_ids: [deviceId] };
 }
 

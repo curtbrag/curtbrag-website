@@ -99,7 +99,7 @@ test('one stable navigation queues at most the canonical13 once and preserves ex
   assert.equal(s.enqueues().some(call => call.body.target_device_ids.includes('curtis-s26-ultra')), false);
   const android = s.enqueues()[0].body.job;
   assert.equal(android.type, 'shell'); assert.equal(android.cmd, android.command);
-  assert.match(android.cmd, /f6f01768fdda090564a3f7237d97606a8f01bf4e\/scripts\/cluster-browser-open\.py/);
+  assert.match(android.cmd, /1386b453e0dcc5030af44ecd62e9a83180dded71\/scripts\/cluster-browser-open\.py/);
   assert.match(android.cmd, /--settings-b64 '[A-Za-z0-9+/=]+'/);
   const windows = s.enqueues().at(-1).body.job;
   assert.equal(windows.type, 'website-open'); assert.deepEqual(JSON.parse(windows.cmd), { url: 'https://curtbrag.com/gallery/' });

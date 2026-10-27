@@ -1,9 +1,11 @@
 """Browser-opening safety/reporting tests, with no real navigation or network."""
 
 import base64
+import hashlib
 import importlib.util
 import io
 import json
+import os
 import pathlib
 import stat
 import subprocess
@@ -22,11 +24,32 @@ TERMUX = {"PREFIX": "/data/data/com.termux/files/usr", "PATH": "/data/data/com.t
 AM = "/data/data/com.termux/files/usr/bin/am"
 
 
+def native_receipt(action="open-website", url=URL, raw=0, **changes):
+    receipt = {"kind": "cluster-android-start-result", "action": action, "uid": 10191,
+               "user_id": 0, "sdk": 35, "calling_package": "com.termux", "package_attribution_verified": True,
+               "caller_thread_is_null": True, "options_are_null": True, "maximum_activity_requests": 1,
+               "no_retry": True, "permissions_changed": False, "settings_changed": False,
+               "identity_changed": False, "visible_screen_verified": False, "activity_request_entered": True,
+               "wait_result_received": True, "raw_start_result": raw,
+               "classification": {0:"START_SUCCESS", 2:"START_TASK_TO_FRONT", 3:"START_DELIVERED_TO_TOP",102:"START_ABORTED"}.get(raw,"UNRECOGNIZED_RESULT"),
+               "wait_timed_out": False, "reported_component": "org.lineageos.jelly/.MainActivity" if action=="open-website" else "com.termux/.app.TermuxActivity",
+               "reported_total_time_ms": 10}
+    if action == "open-website": receipt["url"] = url
+    receipt.update(changes)
+    return receipt
+
+
 class BrowserOpenTests(unittest.TestCase):
-    def android(self, url=URL, completed=None, launcher=AM, run=None):
-        run = run or Mock(return_value=completed or subprocess.CompletedProcess([], 0, "Starting: Intent", ""))
-        report = helper.open_browser(url, environ=TERMUX, current_platform="linux", run=run, which=lambda *args, **kwargs: launcher)
+    def android(self, url=URL, completed=None, launcher=None, run=None):
+        try:
+            normalized = helper.validate_url(url)
+        except helper.LaunchError:
+            normalized = url
+        run = run or Mock(return_value=completed or subprocess.CompletedProcess([], 0, json.dumps(native_receipt(url=normalized)), ""))
+        report = helper.open_browser(url, environ=TERMUX, current_platform="linux", run=run,
+                                     uid=10191, native_prepare=lambda env, uid: "/private/pinned.dex")
         return report, run
+
 
     def linux(self, url=URL, environ=None, which=None, checker=None, proc_reader=None, completed=None):
         completed = completed or subprocess.CompletedProcess([], 0, "", "")
@@ -42,124 +65,19 @@ class BrowserOpenTests(unittest.TestCase):
                                      proc_reader=proc_reader, session_checker=checker)
         return report, launch
 
-    def test_android_uses_termux_wrapper_argument_array_and_bounded_run(self):
-        report, run = self.android()
-        self.assertTrue(report["launch_requested"])
-        self.assertEqual(report["state"], "launch-requested")
-        self.assertEqual(report["kind"], "website-browser-open")
-        self.assertFalse(report["visible_screen_verified"])
-        self.assertEqual(report["platform"], "android")
-        self.assertEqual(report["url"], URL)
-        args, options = run.call_args
-        self.assertEqual(args[0], [AM, "start", "--user", "0", "-a", "android.intent.action.VIEW",
-                                   "-f", "0x18000000", "-d", URL])
-        self.assertEqual(options["timeout"], 20)
-        self.assertFalse(options["shell"])
-        self.assertFalse(options["check"])
-        self.assertEqual(options["env"], TERMUX)
-        run.assert_called_once()
 
-    def test_android_permission_precheck_refusal_is_not_a_navigation_attempt(self):
-        # Actual TermuxAm 0.8.0 permission-preflight output from phone253.
-        denied = ('Error: The com.termux app requires the "Display over other apps" permission '
-                  'to start activities and services from background on Android >= 10.')
-        encoded = base64.b64encode(json.dumps({"url": "https://www.google.com/"}).encode()).decode()
-        run = Mock(return_value=subprocess.CompletedProcess([], 1, denied, ""))
-        with patch.dict(helper.os.environ, TERMUX, clear=True), \
-                patch.object(helper.subprocess, "run", run), \
-                patch.object(helper.shutil, "which", return_value=AM), \
-                patch("sys.argv", ["worker", "--settings-b64", encoded]), \
-                redirect_stdout(io.StringIO()) as output:
-            self.assertEqual(helper.main(), 1)
-        report = json.loads(output.getvalue())
-        self.assertFalse(report["launch_requested"])
-        self.assertEqual(report["state"], "failed")
-        self.assertFalse(report["visible_screen_verified"])
-        self.assertTrue(report["opener_completed"])
-        self.assertIn("before Android attempted navigation", report["error"])
-        run.assert_called_once()
-        self.assertEqual(run.call_args.args[0], [AM, "start",
-                                              "--user", "0", "-a", "android.intent.action.VIEW",
-                                              "-f", "0x18000000", "-d", "https://www.google.com/"])
 
-    def test_android_does_not_require_overlay_before_normal_activity_request(self):
-        # TermuxAm 0.8's optional precheck rejects without considering foreground
-        # state. Android itself must make the launch decision instead.
-        def existing_wrapper(command, **options):
-            if "--check-draw-over-apps-permission" in command:
-                return subprocess.CompletedProcess(command, 1, 'Error: The com.termux app requires the "Display over other apps" permission', "")
-            return subprocess.CompletedProcess(command, 0, "Starting: Intent { act=android.intent.action.VIEW }", "")
 
-        report, run = self.android(run=Mock(side_effect=existing_wrapper))
-        self.assertTrue(report["launch_requested"])
-        self.assertFalse(report["visible_screen_verified"])
-        self.assertNotIn("--check-draw-over-apps-permission", run.call_args.args[0])
-        run.assert_called_once()
 
-    def test_android_final_intent_flags_keep_new_task_and_multiple_task(self):
-        # TermuxAm IntentCmd.java: -f uses setFlags(), while the named option
-        # uses addFlags(). A later -f therefore erases previously added bits.
-        # Source: github.com/termux/TermuxAm app/.../IntentCmd.java lines239-281.
-        def termux_parser_flags(arguments):
-            flags = 0
-            for index, argument in enumerate(arguments):
-                if argument == "-f":
-                    flags = int(arguments[index + 1], 0)
-                elif argument == "--activity-multiple-task":
-                    flags |= 0x08000000
-            return flags
 
-        previous_arguments = ["--activity-multiple-task", "-f", "0x10000000"]
-        self.assertEqual(termux_parser_flags(previous_arguments), 0x10000000)
-        report, run = self.android()
-        flags = termux_parser_flags(run.call_args.args[0])
-        self.assertTrue(report["launch_requested"])
-        self.assertEqual(flags & 0x10000000, 0x10000000)
-        self.assertEqual(flags & 0x08000000, 0x08000000)
-        self.assertEqual(flags, 0x18000000)
 
-    def test_android_never_uses_system_am_or_installs_an_opener(self):
-        for launcher in (None, "/system/bin/am", "/usr/bin/am"):
-            with self.subTest(launcher=launcher):
-                report, run = self.android(launcher=launcher)
-                self.assertFalse(report["launch_requested"])
-                self.assertIn("Termux", report["error"])
-                run.assert_not_called()
 
-    def test_android_zero_exit_errors_are_failures(self):
-        messages = ["Error: Activity not started", "Error type 3", "java.lang.SecurityException: denied",
-                    "Permission Denial: starting intent", "No activity found", "Unable to resolve intent",
-                    "Background activity start denied"]
-        for message in messages:
-            with self.subTest(message=message):
-                report, run = self.android(completed=subprocess.CompletedProcess([], 0, message, ""))
-                self.assertFalse(report["launch_requested"])
-                self.assertEqual(report["state"], "failed")
-                self.assertFalse(report["visible_screen_verified"])
-                self.assertIsNotNone(report["error"])
-                run.assert_called_once()
-
-    def test_intent_delivered_warning_is_only_launch_requested(self):
-        report, _ = self.android(completed=subprocess.CompletedProcess([], 0, "Warning: Activity not started, intent has been delivered to currently running top-most instance.", ""))
-        self.assertTrue(report["launch_requested"])
-        self.assertFalse(report["visible_screen_verified"])
-
-    def test_opener_nonzero_and_timeout_do_not_retry(self):
-        report, run = self.android(completed=subprocess.CompletedProcess([], 1, "", "Browser unavailable"))
-        self.assertFalse(report["launch_requested"])
-        self.assertIn("exit 1", report["error"])
-        run.assert_called_once()
-        run = Mock(side_effect=subprocess.TimeoutExpired([AM], 20))
-        report, run = self.android(run=run)
-        self.assertFalse(report["launch_requested"])
-        self.assertIn("20 seconds", report["error"])
-        run.assert_called_once()
 
     def test_unsafe_urls_do_not_launch(self):
         urls = ["http://curtbrag.com/", "file:///tmp/test", "javascript:alert(1)", "https://user:pass@curtbrag.com/",
                 "https://curtbrag.com:8443/", "https://localhost/", "https://device.local/", "https://device.internal/",
                 "https://device.localdomain/", "https://device.home/", "https://device.lan/", "https://1.1.1.1/",
-                "https://127.0.0.1/", "https://192.168.1.191/", "https://169.254.169.254/", "https://[::1]/",
+                "https://127.0.0.1/", "https://127.1/", "https://0177.0.0.1/", "https://192.168.1.191/", "https://169.254.169.254/", "https://[::1]/",
                 "https://[::ffff:127.0.0.1]/", "https://curtbrag.com/\nextra", "https://curtbrag.com\\@other.com/",
                 "https://curtbrag.com./", "https://curtbrag.com/" + "a" * 2048,
                 "https://curtbrag.com/" + "\U0001f680" * 300]
@@ -334,50 +252,9 @@ class BrowserOpenTests(unittest.TestCase):
 
 
 class TermuxReturnTests(unittest.TestCase):
-    def android(self, completed=None, launcher=AM, run=None, environ=None):
-        run = run or Mock(return_value=completed or subprocess.CompletedProcess([], 0, "Starting: Intent", ""))
-        report = helper.return_termux(
-            environ=TERMUX if environ is None else environ, current_platform="linux",
-            run=run, which=lambda *args, **kwargs: launcher,
-        )
-        return report, run
 
-    def test_return_uses_one_fixed_existing_activity_with_a_bounded_argument_array(self):
-        report, run = self.android()
-        self.assertEqual(report["kind"], "phone-termux-return")
-        self.assertEqual(report["state"], "return-requested")
-        self.assertEqual(report["platform"], "android")
-        self.assertEqual(report["launcher"], AM)
-        self.assertTrue(report["return_requested"])
-        self.assertTrue(report["request_completed"])
-        self.assertFalse(report["visible_screen_verified"])
-        self.assertIsNone(report["error"])
-        self.assertNotIn("launch_requested", report)
-        self.assertNotIn("url", report)
-        self.assertIn("Browser is not closed", report["scope"])
-        run.assert_called_once_with(
-            [AM, "start", "--user", "0", "-a", "android.intent.action.MAIN",
-             "-c", "android.intent.category.LAUNCHER", "-n", "com.termux/com.termux.app.TermuxActivity",
-             "-f", "0x10000000"],
-            env=TERMUX, capture_output=True, text=True, timeout=20, check=False, shell=False,
-        )
 
-    def test_return_never_uses_system_am_or_an_unverified_wrapper(self):
-        for launcher in (None, "/system/bin/am", "/usr/bin/am", "/data/data/com.other/files/usr/bin/am"):
-            with self.subTest(launcher=launcher):
-                report, run = self.android(launcher=launcher)
-                self.assertEqual(report["state"], "failed")
-                self.assertFalse(report["return_requested"])
-                self.assertFalse(report["request_completed"])
-                self.assertFalse(report["visible_screen_verified"])
-                self.assertIn("Termux", report["error"])
-                run.assert_not_called()
 
-    def test_return_requires_termux_prefix_even_when_version_is_present(self):
-        report, run = self.android(environ={"TERMUX_VERSION": "0.118", "PREFIX": "/usr", "PATH": "/system/bin"})
-        self.assertFalse(report["return_requested"])
-        self.assertIn("existing am wrapper is required", report["error"])
-        run.assert_not_called()
 
     def test_desktop_return_does_not_open_or_close_any_program(self):
         for platform in ("linux", "linux2", "win32", "darwin"):
@@ -397,64 +274,10 @@ class TermuxReturnTests(unittest.TestCase):
                 opener.assert_not_called()
                 locator.assert_not_called()
 
-    def test_return_zero_exit_android_errors_are_failures(self):
-        messages = ["Error: Activity not started", "Error type 3", "java.lang.SecurityException: denied",
-                    "Permission Denial: starting intent", "No activity found", "Unable to resolve intent",
-                    "Background activity start denied", "Background activity start blocked",
-                    "Background activity start not allowed"]
-        for message in messages:
-            with self.subTest(message=message):
-                report, run = self.android(completed=subprocess.CompletedProcess([], 0, "", message))
-                self.assertEqual(report["state"], "failed")
-                self.assertFalse(report["return_requested"])
-                self.assertTrue(report["request_completed"])
-                self.assertFalse(report["visible_screen_verified"])
-                self.assertIn("Android did not accept", report["error"])
-                run.assert_called_once()
 
-    def test_return_overlay_precheck_failure_is_not_a_foreground_return(self):
-        message = 'Error: The com.termux app requires the "Display over other apps" permission'
-        report, run = self.android(completed=subprocess.CompletedProcess([], 1, message, ""))
-        self.assertFalse(report["return_requested"])
-        self.assertTrue(report["request_completed"])
-        self.assertFalse(report["visible_screen_verified"])
-        self.assertIn("before Android attempted the return", report["error"])
-        run.assert_called_once()
-        self.assertNotIn("--check-draw-over-apps-permission", run.call_args.args[0])
 
-    def test_return_intent_delivered_warning_is_only_a_request(self):
-        message = "Warning: Activity not started, intent has been delivered to currently running top-most instance."
-        report, run = self.android(completed=subprocess.CompletedProcess([], 0, message, ""))
-        self.assertEqual(report["state"], "return-requested")
-        self.assertTrue(report["return_requested"])
-        self.assertFalse(report["visible_screen_verified"])
-        self.assertIsNone(report["error"])
-        run.assert_called_once()
 
-    def test_return_failure_and_timeout_do_not_retry(self):
-        report, run = self.android(completed=subprocess.CompletedProcess([], 4, "", "Activity unavailable"))
-        self.assertFalse(report["return_requested"])
-        self.assertTrue(report["request_completed"])
-        self.assertFalse(report["visible_screen_verified"])
-        self.assertIn("exit 4", report["error"])
-        run.assert_called_once()
-        run = Mock(side_effect=subprocess.TimeoutExpired([AM], 20))
-        report, run = self.android(run=run)
-        self.assertFalse(report["return_requested"])
-        self.assertFalse(report["request_completed"])
-        self.assertFalse(report["visible_screen_verified"])
-        self.assertIn("20 seconds", report["error"])
-        run.assert_called_once()
 
-    def test_return_os_error_is_truthful_and_bounded(self):
-        run = Mock(side_effect=OSError("unavailable " + "x" * 1000))
-        report, run = self.android(run=run)
-        self.assertFalse(report["return_requested"])
-        self.assertFalse(report["request_completed"])
-        self.assertFalse(report["visible_screen_verified"])
-        self.assertTrue(report["error"].startswith("unavailable"))
-        self.assertLessEqual(len(report["error"]), 500)
-        run.assert_called_once()
 
     def test_cli_exact_return_settings_route_and_success_exit_contract(self):
         encoded = base64.b64encode(json.dumps({"action": "return-termux"}).encode()).decode()
@@ -520,6 +343,176 @@ class TermuxReturnTests(unittest.TestCase):
                 return_app.assert_not_called()
                 run.assert_not_called()
                 opener.assert_not_called()
+
+
+class AndroidNativeReceiptTests(unittest.TestCase):
+    def request(self, action="open-website", receipt=None, completed=None, run=None, prepare=None, **options):
+        if completed is None:
+            completed = subprocess.CompletedProcess([], 0, json.dumps(receipt if receipt is not None else native_receipt(action)), "")
+        run = run or Mock(return_value=completed)
+        prepare = prepare or Mock(return_value="/private/pinned.dex")
+        arguments = dict(environ=TERMUX, current_platform="linux", run=run, uid=10191,
+                         native_prepare=prepare)
+        arguments.update(options)
+        report = helper.open_browser(URL, **arguments) if action == "open-website" else helper.return_termux(**arguments)
+        return report, run, prepare
+
+    def test_same_uid_native_array_is_bounded_and_has_no_am_fallback_or_shell(self):
+        locator = Mock()
+        report, run, prepare = self.request(which=locator)
+        self.assertTrue(report["launch_requested"])
+        self.assertFalse(report["visible_screen_verified"])
+        self.assertEqual(run.call_args.args[0], ["/system/bin/app_process", "/", "CurtStartActivityWait", "open-website", URL])
+        options = run.call_args.kwargs
+        self.assertEqual(options["timeout"], 15)
+        self.assertEqual(options["stdin"], subprocess.DEVNULL)
+        self.assertEqual(options["env"]["CLASSPATH"], "/private/pinned.dex")
+        self.assertFalse(options["shell"])
+        self.assertFalse(options["check"])
+        run.assert_called_once()
+        prepare.assert_called_once_with(TERMUX, 10191)
+        locator.assert_not_called()
+
+    def test_both_actions_report_raw102_as_blocked_even_with_zero_process_exit(self):
+        for action in ("open-website", "return-termux"):
+            with self.subTest(action=action):
+                report, run, _ = self.request(action, native_receipt(action, raw=102, reported_component=None))
+                self.assertEqual(report["state"], "failed")
+                self.assertFalse(report.get("launch_requested", report.get("return_requested")))
+                self.assertEqual(report["error_code"], "android-background-launch-blocked")
+                self.assertEqual(report["android_start"]["raw_start_result"], 102)
+                self.assertIn("START_ABORTED", report["error"])
+                self.assertFalse(report["visible_screen_verified"])
+                run.assert_called_once()
+
+    def test_cli_turns_zero_exit_native_background_abort_into_failed_worker_receipt(self):
+        encoded = base64.b64encode(json.dumps({"url":URL}).encode()).decode()
+        run = Mock(return_value=subprocess.CompletedProcess([], 0, json.dumps(native_receipt(raw=102, reported_component=None)), ""))
+        with patch.dict(helper.os.environ, TERMUX, clear=True), \
+                patch.object(helper.os, "getuid", return_value=10191, create=True), \
+                patch.object(helper, "android_native_cache", return_value="/private/pinned.dex"), \
+                patch.object(helper.subprocess, "run", run), \
+                patch("sys.argv", ["worker", "--settings-b64", encoded]), redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(helper.main(), 1)
+        report = json.loads(output.getvalue())
+        self.assertEqual(report["error_code"], "android-background-launch-blocked")
+        self.assertEqual(report["android_start"]["raw_start_result"], 102)
+        self.assertFalse(report["launch_requested"])
+        run.assert_called_once()
+
+    def test_positive_android_results_are_requests_only_for_both_actions(self):
+        for action in ("open-website", "return-termux"):
+            for raw in (0, 2, 3):
+                with self.subTest(action=action, raw=raw):
+                    report, run, _ = self.request(action, native_receipt(action, raw=raw))
+                    self.assertTrue(report.get("launch_requested", report.get("return_requested")))
+                    self.assertFalse(report["visible_screen_verified"])
+                    self.assertIsNone(report["error"])
+                    self.assertEqual(report["android_start"]["raw_start_result"], raw)
+                    run.assert_called_once()
+
+    def test_return_command_has_no_external_url_or_arbitrary_component_parameter(self):
+        report, run, _ = self.request("return-termux")
+        self.assertEqual(run.call_args.args[0], ["/system/bin/app_process", "/", "CurtStartActivityWait", "return-termux"])
+        self.assertTrue(report["return_requested"])
+        self.assertNotIn("url", report)
+        self.assertIn("Browser is not closed", report["scope"])
+
+    def test_missing_receipts_legacy_am_text_and_malformed_json_never_become_success(self):
+        for text in ("Starting: Intent", "", "null", "[]", "{", '"START_SUCCESS"', "x"*16385):
+            with self.subTest(text=text[:20]):
+                report, run, _ = self.request(completed=subprocess.CompletedProcess([], 0, text, ""))
+                self.assertFalse(report["launch_requested"])
+                self.assertEqual(report["error_code"], "android-launch-unconfirmed")
+                run.assert_called_once()
+
+    def test_timeout_unknown_raw_invalid_component_and_wrong_attribution_never_retry(self):
+        variants = [dict(raw_start_result=999, classification="UNRECOGNIZED_RESULT"),
+                    dict(raw_start_result=True), dict(wait_timed_out=True), dict(wait_result_received=False),
+                    dict(reported_component=None), dict(reported_component="invalid"),
+                    dict(binder_call_timed_out=True), dict(error_class="java.lang.SecurityException"),
+                    dict(uid=2000), dict(user_id=1), dict(sdk=34), dict(action="return-termux"),
+                    dict(package_attribution_verified=False), dict(options_are_null=False),
+                    dict(calling_package="com.other"), dict(permissions_changed=True),
+                    dict(url="https://other.example.com/"), dict(no_retry=False)]
+        for variant in variants:
+            with self.subTest(variant=variant):
+                report, run, _ = self.request(receipt=native_receipt(**variant))
+                self.assertFalse(report["launch_requested"])
+                self.assertEqual(report["error_code"], "android-launch-unconfirmed")
+                run.assert_called_once()
+        for action in ("open-website", "return-termux"):
+            run = Mock(side_effect=subprocess.TimeoutExpired(["app_process"], 15))
+            report, run, _ = self.request(action, run=run)
+            self.assertEqual(report["error_code"], "android-launch-unconfirmed")
+            self.assertIn("No retry", report["error"])
+            run.assert_called_once()
+
+    def test_nonzero_process_is_unconfirmed_even_with_otherwise_positive_wait_result(self):
+        report, run, _ = self.request(completed=subprocess.CompletedProcess([], 2, json.dumps(native_receipt()), ""))
+        self.assertFalse(report["launch_requested"])
+        self.assertEqual(report["error_code"], "android-launch-unconfirmed")
+        run.assert_called_once()
+
+    def test_fixed_return_rejects_unexpected_reported_component(self):
+        report, run, _ = self.request("return-termux", native_receipt("return-termux", reported_component="com.other/.Activity"))
+        self.assertFalse(report["return_requested"])
+        run.assert_called_once()
+
+    def test_failed_cache_or_non_app_uid_stops_before_any_activity_request(self):
+        for options in (dict(uid=0), dict(uid=2000), dict(uid=9999),
+                        dict(environ={"TERMUX_VERSION":"0.118","PREFIX":"/usr"})):
+            report, run, prepare = self.request(**options)
+            self.assertFalse(report["launch_requested"])
+            run.assert_not_called()
+            prepare.assert_not_called()
+        prepare = Mock(side_effect=helper.LaunchError("Pinned code cache did not verify"))
+        report, run, _ = self.request(prepare=prepare)
+        self.assertIn("cache", report["error"])
+        run.assert_not_called()
+
+    def test_environment_does_not_inherit_loader_overrides(self):
+        env = dict(TERMUX, LD_PRELOAD="untrusted", LD_LIBRARY_PATH="untrusted", CLASSPATH="untrusted")
+        report, run, _ = self.request(environ=env)
+        self.assertTrue(report["launch_requested"])
+        self.assertNotIn("LD_PRELOAD", run.call_args.kwargs["env"])
+        self.assertNotIn("LD_LIBRARY_PATH", run.call_args.kwargs["env"])
+        self.assertEqual(run.call_args.kwargs["env"]["CLASSPATH"], "/private/pinned.dex")
+
+    def test_public_native_payload_matches_reproducible_source_manifest(self):
+        root = pathlib.Path(__file__).resolve().parents[1]
+        manifest = json.loads((root/"scripts/android/cluster-browser-open-build.json").read_text())
+        data = base64.b64decode(helper.ANDROID_NATIVE_DEX_B64, validate=True)
+        self.assertEqual(hashlib.sha256(data).hexdigest(), helper.ANDROID_NATIVE_SHA256)
+        self.assertEqual(helper.ANDROID_NATIVE_SHA256, manifest["dex_sha256"])
+        self.assertEqual(len(data), manifest["dex_bytes"])
+        source = (root/manifest["source"]).read_text().replace("\r\n", "\n").encode()
+        self.assertEqual(hashlib.sha256(source).hexdigest(), manifest["source_sha256"])
+        self.assertFalse(manifest["apk_install_required"])
+
+    @unittest.skipUnless(hasattr(os, "O_DIRECTORY") and hasattr(os, "O_NOFOLLOW") and hasattr(os, "getuid"), "POSIX cache descriptor guards")
+    def test_cache_is_private_pinned_and_rejects_tamper_without_overwriting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            os.chmod(directory, 0o700)
+            env = {"HOME":directory}
+            path = pathlib.Path(helper.android_native_cache(env, os.getuid()))
+            self.assertEqual(stat.S_IMODE(path.parent.stat().st_mode), 0o700)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o400)
+            self.assertEqual(helper.android_native_cache(env, os.getuid()), str(path))
+            original = path.read_bytes()
+            path.chmod(0o600)
+            path.write_bytes(b"x"*len(original))
+            path.chmod(0o400)
+            with self.assertRaises(helper.LaunchError): helper.android_native_cache(env, os.getuid())
+            self.assertEqual(path.read_bytes(), b"x"*len(original))
+
+    @unittest.skipUnless(hasattr(os, "O_DIRECTORY") and hasattr(os, "O_NOFOLLOW") and hasattr(os, "getuid"), "POSIX cache descriptor guards")
+    def test_cache_rejects_symlinked_parent_and_never_reads_other_directory(self):
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as elsewhere:
+            os.chmod(directory, 0o700)
+            (pathlib.Path(directory)/"cluster").symlink_to(elsewhere, target_is_directory=True)
+            with self.assertRaises(helper.LaunchError): helper.android_native_cache({"HOME":directory}, os.getuid())
+            self.assertEqual(list(pathlib.Path(elsewhere).iterdir()), [])
 
 
 if __name__ == "__main__":
