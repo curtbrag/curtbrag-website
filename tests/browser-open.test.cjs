@@ -456,6 +456,52 @@ test('Android abort cannot become a successful Return to Termux receipt',()=>{
   }
 });
 
+test('phone-worker returns require matching focused and visible own-task evidence before foreground verification',()=>{
+  const parsed={kind:'phone-termux-return',state:'termux-foreground',return_requested:true,request_completed:true,visible_screen_verified:false,foreground_app_verified:true,error:null,android_start:{raw_start_result:3},termux_visibility:{query_succeeded:true,task_snapshot_complete:true,focused_visible_termux_task_count:1}};
+  const h=harness();h.api.setReturn(returnReport());
+  h.api.renderTermuxReturn([returnResult({stdout:JSON.stringify(parsed)})]);
+  assert.equal(h.api.getReturn().tasks[0].state,'termux-foreground');
+  assert.match(h.elements['termux-return-state'].textContent,/1 Termux foreground verified/);
+  assert.match(h.elements['termux-return-report'].textContent,/physical screen unconfirmed/);
+  assert.equal(h.calls.length,0);
+  const variants=[
+    {...parsed,foreground_app_verified:false},
+    {...parsed,android_start:{raw_start_result:102}},
+    {...parsed,android_start:{}},
+    {...parsed,termux_visibility:undefined},
+    {...parsed,termux_visibility:{query_succeeded:false,task_snapshot_complete:true,focused_visible_termux_task_count:1}},
+    {...parsed,termux_visibility:{query_succeeded:true,task_snapshot_complete:false,focused_visible_termux_task_count:1}},
+    {...parsed,termux_visibility:{query_succeeded:true,task_snapshot_complete:true,focused_visible_termux_task_count:0}},
+    {...parsed,termux_visibility:{query_succeeded:true,task_snapshot_complete:true,focused_visible_termux_task_count:'1'}},
+    {...parsed,termux_visibility:{query_succeeded:true,task_snapshot_complete:true,focused_visible_termux_task_count:17}},
+    {...parsed,termux_visibility:{query_succeeded:true,task_snapshot_complete:true,focused_visible_termux_task_count:1,query_timed_out:true}},
+    {...parsed,termux_visibility:{query_succeeded:true,task_snapshot_complete:true,focused_visible_termux_task_count:1,query_timed_out:'false'}},
+    {...parsed,error_code:'android-termux-not-foreground'},
+    {...parsed,error:'Query failed'},
+    {...parsed,visible_screen_verified:true},
+  ];
+  for(const candidate of variants){const bad=harness();bad.api.setReturn(returnReport());bad.api.renderTermuxReturn([returnResult({stdout:JSON.stringify(candidate)})]);assert.equal(bad.api.getReturn().tasks[0].state,'failed');assert.equal(bad.calls.length,0);}
+});
+
+test('delivered but hidden Termux is a failed return and cannot fall back to a legacy accepted receipt',()=>{
+  const h=harness();h.api.setReturn(returnReport());
+  const parsed={kind:'phone-termux-return',state:'return-requested',return_requested:true,request_completed:true,visible_screen_verified:false,foreground_app_verified:false,error_code:'android-termux-not-foreground',error:'Android delivered the request, but Termux is not visible and focused.',android_start:{raw_start_result:3},termux_visibility:{query_succeeded:true,task_snapshot_complete:true,focused_visible_termux_task_count:0}};
+  h.api.renderTermuxReturn([returnResult({exit_code:0,stdout:JSON.stringify(parsed)})]);
+  assert.equal(h.api.getReturn().tasks[0].state,'failed');
+  assert.match(h.elements['termux-return-report'].textContent,/not visible and focused/);
+  assert.match(h.elements['termux-return-state'].textContent,/0 Termux foreground verified/);
+  assert.equal(h.calls.length,0);
+});
+
+test('missing or coercible worker exits cannot verify website opening or Termux foreground',()=>{
+  const parsed={kind:'phone-termux-return',state:'termux-foreground',return_requested:true,request_completed:true,visible_screen_verified:false,foreground_app_verified:true,error:null,android_start:{raw_start_result:3},termux_visibility:{query_succeeded:true,task_snapshot_complete:true,focused_visible_termux_task_count:1}};
+  for(const code of [null,'',false,'0',undefined]){
+    const browser=harness();browser.api.set(report());browser.api.renderBrowserOpen([result({exit_code:code})]);assert.equal(browser.api.get().tasks[0].state,'failed');
+    const phone=harness();phone.api.setReturn(returnReport());phone.api.renderTermuxReturn([returnResult({exit_code:code,stdout:JSON.stringify(parsed)})]);assert.equal(phone.api.getReturn().tasks[0].state,'failed');
+    assert.equal(browser.calls.length,0);assert.equal(phone.calls.length,0);
+  }
+});
+
 test('closing return reports refuses active jobs and closes old missing jobs without cancellation or retry',async()=>{
   for(const fixture of [
     {nodes:[],jobs:[{id:'return-191',status:'queued'}],results:[]},
