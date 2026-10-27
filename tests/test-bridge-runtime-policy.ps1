@@ -166,6 +166,7 @@ try{
         function Process-Command{$script:processCalls++;throw 'MonitorOnly must never process commands.'}
         function Apply-Desired{$script:applyCalls++;throw 'MonitorOnly must never reconcile desired state.'}
         function Get-FleetConnections{return [pscustomobject]@{devices=@()}}
+        function Get-PhoneControllerAvailability{return [pscustomobject]@{schema=1;devices=@()}}
         $phones=@([pscustomobject]@{Hostname='phone253';IP='192.168.1.253'})
         $lastFleetCheck=[DateTime]::MinValue;$lastHeartbeat=[DateTime]::MinValue;$lastRefresh=[DateTime]::MinValue
         $body=$loops[0].Body.Extent.Text

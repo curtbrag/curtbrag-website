@@ -34,7 +34,7 @@ catch {
 
 $api = if ($config.api_url) { [string]$config.api_url } else { 'https://curtbrag.com/.netlify/functions/cluster-api' }
 $swarmApi = 'https://curtbrag.com/api/cluster'
-$bridgeVersion = '2.6.0'
+$bridgeVersion = '2.6.1'
 $wallet = [string]$config.wallet
 $poolHost = if ($config.pool_host) { [string]$config.pool_host } else { 'gulf.moneroocean.stream' }
 $poolPort = if ($config.pool_port) { [int]$config.pool_port } else { 10128 }
@@ -821,6 +821,80 @@ function Resolve-PhoneControllerTransport([string]$Unit, [string]$Devices, [stri
     return [pscustomobject]@{ Transport=$null; ControllerState=$state }
 }
 
+function Get-PhoneControllerAvailability {
+    # Availability is read from the existing controller only. No ADB executable,
+    # connection request, shell operation or private identity is used here.
+    $units = @('phone173','phone174','phone176','phone177','phone191','phone195','phone253','phone254')
+    $report = [ordered]@{
+        schema = 1
+        checked_at = [DateTimeOffset]::UtcNow.ToString('o')
+        server_state = 'unknown'
+        devices = @($units | ForEach-Object { [pscustomobject]@{ unit=$_; state='unknown' } })
+    }
+    if (Test-PhoneControllerOverrides) { return [pscustomobject]$report }
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        $devices = [string](Invoke-ExistingPhoneController 'devices' '' $watch)
+        $entries = @()
+        foreach ($line in ($devices -split "`n")) {
+            if (-not $line.Trim()) { continue }
+            if ($line -cnotmatch '^([A-Za-z0-9._:-]{1,200})\s+(device|offline|unauthorized)\b[^\r\n]*\r?$') {
+                return [pscustomobject]$report
+            }
+            $entries += $Matches[1]
+            if ($entries.Count -gt 64) { return [pscustomobject]$report }
+        }
+        $report.server_state = 'available'
+        $aliases = @($entries | Where-Object { $_ -cnotmatch '^192\.168\.1\.\d{1,3}:\d{1,5}$' })
+        $discovery = ''
+        if ($aliases.Count) {
+            # An unresolved alias might be a worker phone, even if another
+            # entry uses its IP. Fail closed rather than miss an ambiguity.
+            try { $discovery = [string](Invoke-ExistingPhoneController 'discovery' '' $watch) }
+            catch { return [pscustomobject]$report }
+            $names = @{}
+            foreach ($line in ($discovery -split "`n")) {
+                if ($line -cmatch '^\s*([A-Za-z0-9._-]{1,200})\s+_adb-tls-connect\._tcp\.?\s+(192\.168\.1\.\d{1,3}):(\d{1,5})\s*$') {
+                    $name = $Matches[1].TrimEnd('.')
+                    $address = $Matches[2]
+                    $port = [int]$Matches[3]
+                    $parsedAddress = $null
+                    if ($port -lt 1 -or $port -gt 65535 -or -not [Net.IPAddress]::TryParse($address,[ref]$parsedAddress)) { continue }
+                    foreach ($alias in @($name,($name -creplace '\._adb-tls-connect\._tcp$','')) | Select-Object -Unique) {
+                        if (-not $names.ContainsKey($alias)) { $names[$alias] = @() }
+                        $names[$alias] = @($names[$alias]) + $address
+                    }
+                }
+            }
+            foreach ($serial in $aliases) {
+                $alias = $serial.TrimEnd('.') -creplace '\._adb-tls-connect\._tcp$',''
+                if (-not $names.ContainsKey($alias) -or @($names[$alias] | Select-Object -Unique).Count -ne 1) {
+                    return [pscustomobject]$report
+                }
+            }
+        }
+        foreach ($row in $report.devices) {
+            $null = Get-PhoneControllerRemaining $watch
+            try {
+                $resolved = Resolve-PhoneControllerTransport $row.unit $devices $discovery
+                if ($resolved.ControllerState -cin @('connected','unauthorized','disconnected')) { $row.state = $resolved.ControllerState }
+            } catch { $row.state = 'unknown' }
+        }
+        return [pscustomobject]$report
+    } catch {
+        # A refused/unreachable local socket means no existing server is
+        # available. Protocol failures and deadlines remain unknown.
+        $failure = $_.Exception
+        for ($depth=0; $depth -lt 8 -and $failure; $depth++) {
+            if ($failure -is [Net.Sockets.SocketException]) { $report.server_state = 'unavailable'; break }
+            $failure = $failure.InnerException
+        }
+        if ($report.server_state -cne 'unavailable') { $report.server_state = 'unknown' }
+        foreach ($row in $report.devices) { $row.state = 'unknown' }
+        return [pscustomobject]$report
+    } finally { $watch.Stop() }
+}
+
 function Invoke-PhoneControllerReturn($Command) {
     $unit = [string]$Command.target
     $report = [ordered]@{ kind='phone-controller-return'; unit=$unit; state='failed'; foreground_app_verified=$false; visible_screen_verified=$false; error=$null; controller_state='disconnected' }
@@ -1185,6 +1259,7 @@ Invoke-ApiPost 'bridge-heartbeat' @{
     hostname = $env:COMPUTERNAME
     bridge_version = $bridgeVersion
     summary = 'Windows live bridge starting'
+    phone_controller = (Get-PhoneControllerAvailability)
 } | Out-Null
 
 if (-not $MonitorOnly -and -not $NoMining) { Reconcile-Registry }
@@ -1206,6 +1281,7 @@ while ($true) {
                 bridge_version = $bridgeVersion
                 summary = $(if($MonitorOnly){'Windows bridge: monitoring only; device commands paused'}elseif($NoMining){'Dashboard controls active; mining disabled; previous reconcile request held'}else{'Windows live bridge polling 13-device fleet'})
                 fleet_connections = $fleetConnections
+                phone_controller = (Get-PhoneControllerAvailability)
             } | Out-Null
             $lastHeartbeat = Get-Date
         }

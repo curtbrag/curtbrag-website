@@ -965,7 +965,7 @@
   markUnsubmittedBrowserTasks(browserOpenReport);saveBrowserOpen();
   let termuxReturnReport=null,termuxReturnBusy=false,termuxControllerReady=false;
   let termuxControllerCommands={queue:[],history:[]};
-  let phoneNativeReport=null,phoneNativeBusy=false,phoneNativeReady=false;
+  let phoneNativeReport=null,phoneNativeBusy=false,phoneNativeReady=false,phoneControllerSnapshot=null;
   try{
     const saved=JSON.parse(localStorage.getItem('curt-phone-native-v1'));
     if(saved&&['back','open-website'].includes(saved.action)&&Array.isArray(saved.tasks)&&saved.tasks.length<=8&&Array.isArray(saved.skipped)&&
@@ -980,12 +980,12 @@
   function browserRequestsPending(report){return !!report?.tasks.some(t=>['planned','queued','submitting','unconfirmed'].includes(t.state));}
   function updateBrowserButtons(){
     const busy=browserOpenBusy||termuxReturnBusy||phoneNativeBusy;
-    document.getElementById('browser-open-run').disabled=busy||(document.getElementById('browser-open-route')?.value==='pc-controller'&&!phoneNativeReady);
+    document.getElementById('browser-open-run').disabled=busy||(document.getElementById('browser-open-route')?.value==='pc-controller'&&(!phoneNativeReady||!selectedControllerReady()));
     const refresh=document.getElementById('browser-open-refresh');if(refresh)refresh.disabled=busy||!browserOpenReport||!!browserOpenReport.closed_at;
     document.getElementById('browser-open-close').disabled=busy||!browserOpenReport||!!browserOpenReport.closed_at;
-    document.getElementById('termux-return-run').disabled=busy||(document.getElementById('termux-return-route')?.value==='pc-controller'&&!termuxControllerReady);
+    document.getElementById('termux-return-run').disabled=busy||(document.getElementById('termux-return-route')?.value==='pc-controller'&&!selectedControllerReady());
     document.getElementById('termux-return-close').disabled=busy||!termuxReturnReport||!!termuxReturnReport.closed_at;
-    const back=document.getElementById('phone-native-back');if(back)back.disabled=busy||!phoneNativeReady;
+    const back=document.getElementById('phone-native-back');if(back)back.disabled=busy||!phoneNativeReady||!selectedControllerReady();
     const nativeRefresh=document.getElementById('phone-native-refresh');if(nativeRefresh)nativeRefresh.disabled=busy||!phoneNativeReport||!!phoneNativeReport.closed_at;
     const nativeClose=document.getElementById('phone-native-close');if(nativeClose)nativeClose.disabled=busy||!phoneNativeReport||!!phoneNativeReport.closed_at;
   }
@@ -1006,12 +1006,13 @@
     const routeSelect=document.createElement('select');routeSelect.id='browser-open-route';routeSelect.innerHTML='<option value="phone-worker">Existing worker connection</option><option value="pc-controller">Paired PC controller · phones only</option>';
     card.querySelector('#browser-open-run').parentElement.before(route,routeSelect);
     const native=document.createElement('section');native.innerHTML='<h4>Paired phone controller</h4><p>Send Back or open the entered website through the PC’s already-authorized connection. These actions use the device selection above and apply only to the eight worker phones. No pairing or automatic retries occur. Accepted input does not prove the resulting screen.</p><button id="phone-native-back" type="button" disabled>Back on selected phones</button> <button id="phone-native-refresh" type="button" disabled>Refresh controller results</button> <button id="phone-native-close" type="button" disabled>Close controller report</button><p id="phone-native-state" role="status" aria-live="polite"></p><pre id="phone-native-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto"></pre>';
-    card.append(native);
+    const availability=document.createElement('section');availability.innerHTML='<p id="phone-controller-availability" role="status" aria-live="polite"></p><pre id="phone-controller-devices" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>';
+    native.querySelector('#phone-native-back').before(availability);card.append(native);
     fleet.prepend(card);card.querySelector('#browser-open-run').onclick=dispatchBrowserOpen;card.querySelector('#browser-open-refresh').onclick=refreshBrowserOpen;card.querySelector('#browser-open-close').onclick=closeBrowserOpen;card.querySelector('#termux-return-run').onclick=dispatchTermuxReturn;card.querySelector('#termux-return-close').onclick=closeTermuxReturn;card.querySelector('#termux-return-route').onchange=()=>{renderTermuxReturn(current?.results||[]);updateBrowserButtons();};
-    routeSelect.onchange=()=>{renderPhoneNative();updateBrowserButtons();};card.querySelector('#phone-native-back').onclick=()=>dispatchPhoneNative('back');card.querySelector('#phone-native-refresh').onclick=refreshPhoneNative;card.querySelector('#phone-native-close').onclick=closePhoneNative;
+    routeSelect.onchange=()=>{renderPhoneNative();renderPhoneControllerAvailability();updateBrowserButtons();};card.querySelector('#browser-open-target').onchange=()=>{renderPhoneControllerAvailability();renderPhoneNative();renderTermuxReturn(current?.results||[]);updateBrowserButtons();};card.querySelector('#phone-native-back').onclick=()=>dispatchPhoneNative('back');card.querySelector('#phone-native-refresh').onclick=refreshPhoneNative;card.querySelector('#phone-native-close').onclick=closePhoneNative;
     if(browserOpenReport?.url)card.querySelector('#browser-open-url').value=browserOpenReport.url;
     if(['all','computers','phones'].includes(browserOpenReport?.target)||IDS.has(browserOpenReport?.target))card.querySelector('#browser-open-target').value=browserOpenReport.target;
-    renderBrowserOpen(current?.results||[]);renderTermuxReturn(current?.results||[]);renderPhoneNative();updateBrowserButtons();
+    renderBrowserOpen(current?.results||[]);renderTermuxReturn(current?.results||[]);renderPhoneNative();renderPhoneControllerAvailability();updateBrowserButtons();
   }
   function renderBrowserOpen(results){
     const state=document.getElementById('browser-open-state');if(!state||!browserOpenReport)return;
@@ -1106,16 +1107,46 @@
     const age=Date.now()-Date.parse(bridge?.last_seen_at);
     return bridge?.alive===true&&Number.isFinite(age)&&age>=0&&age<60000&&/^\d+\.\d+\.\d+$/.test(String(bridge.bridge_version||''))&&versionAtLeast(bridge.bridge_version,'2.5.0');
   }
+  function readPhoneControllerSnapshot(value){
+    if(value?.schema!==1||!['available','unavailable','unknown'].includes(value.server_state)||!Array.isArray(value.devices)||value.devices.length!==PHONE_IDS.size)return null;
+    const age=Date.now()-Date.parse(value.checked_at),seen=new Set(),devices=[];
+    if(typeof value.checked_at!=='string'||!Number.isFinite(age)||age < -30000||age>90000)return null;
+    for(const row of value.devices){
+      if(!PHONE_IDS.has(row?.unit)||seen.has(row.unit)||!['connected','unauthorized','disconnected','unknown'].includes(row.state)||(row.state==='connected'&&value.server_state!=='available'))return null;
+      seen.add(row.unit);devices.push({unit:row.unit,state:row.state});
+    }
+    return {schema:1,checked_at:value.checked_at,server_state:value.server_state,devices};
+  }
+  function phoneControllerState(unit){
+    const snapshot=readPhoneControllerSnapshot(phoneControllerSnapshot);
+    return snapshot?.devices.find(row=>row.unit===unit)?.state||'unknown';
+  }
+  function selectedControllerUnits(){
+    const target=document.getElementById('browser-open-target')?.value;
+    return [...PHONE_IDS].filter(unit=>target==='all'||target==='phones'||target===unit);
+  }
+  function selectedControllerReady(){return termuxControllerReady&&selectedControllerUnits().some(unit=>phoneControllerState(unit)==='connected');}
+  function renderPhoneControllerAvailability(){
+    const state=document.getElementById('phone-controller-availability'),output=document.getElementById('phone-controller-devices');if(!state||!output)return;
+    const snapshot=readPhoneControllerSnapshot(phoneControllerSnapshot),units=selectedControllerUnits();
+    if(!termuxControllerReady){state.textContent='Phone control connection unavailable: the PC bridge is offline or its status expired.';output.textContent='';return;}
+    if(!snapshot){state.textContent='Phone control connection status is unavailable or expired. Back and paired-controller actions stay disabled until a fresh check arrives.';output.textContent='';return;}
+    const connected=units.filter(unit=>phoneControllerState(unit)==='connected').length;
+    state.textContent=units.length?`${connected}/${units.length} selected phone control connections available. Checked ${new Date(snapshot.checked_at).toLocaleString()}. Worker online status and physical screen state are separate.`:'Select All eight phones or one worker phone for phone controls.';
+    const labels={connected:'Controller connected',unauthorized:'Controller not authorized',disconnected:'No active controller connection',unknown:'Connection status unavailable'};
+    output.textContent=units.map(unit=>unit+' · '+labels[phoneControllerState(unit)]).join('\n');
+  }
   function updateTermuxController(bridge,commands){
     termuxControllerReady=termuxControllerAvailable(bridge);
     phoneNativeReady=termuxControllerReady&&versionAtLeast(bridge.bridge_version,'2.6.0');
+    phoneControllerSnapshot=readPhoneControllerSnapshot(bridge?.phone_controller);
     if(commands&&Array.isArray(commands.queue)&&Array.isArray(commands.history))termuxControllerCommands=commands;
-    renderTermuxReturn(current?.results||[]);renderPhoneNative(commands);updateBrowserButtons();
+    renderTermuxReturn(current?.results||[]);renderPhoneNative(commands);renderPhoneControllerAvailability();updateBrowserButtons();
   }
   function renderTermuxReturn(results,commands=null){
     const state=document.getElementById('termux-return-state');if(!state)return;
     if(commands&&Array.isArray(commands.queue)&&Array.isArray(commands.history))termuxControllerCommands=commands;
-    if(!termuxReturnReport){state.textContent=document.getElementById('termux-return-route')?.value!=='pc-controller'?'Ready to request Termux through the existing phone connection and check whether it becomes visible and focused. This does not wake a sleeping screen.':termuxControllerReady?'PC controller ready. Foreground verification needs a paired Android connection.':'Remote return unavailable: the PC controller is offline or needs an update. Choose Existing phone connection to check the phone’s own Termux app.';updateBrowserButtons();return;}
+    if(!termuxReturnReport){state.textContent=document.getElementById('termux-return-route')?.value!=='pc-controller'?'Ready to request Termux through the existing phone connection and check whether it becomes visible and focused. This does not wake a sleeping screen.':termuxControllerReady?(selectedControllerReady()?'PC controller ready for selected connected phones.':'No selected phone has an authorized controller connection.'):'Remote return unavailable: the PC controller is offline or needs an update. Choose Existing phone connection to check the phone’s own Termux app.';updateBrowserButtons();return;}
     const controller=termuxReturnReport.transport==='pc-controller';
     for(const task of termuxReturnReport.tasks){
       if(['return-requested','termux-foreground','failed','closed'].includes(task.state))continue;
@@ -1163,12 +1194,14 @@
         document.getElementById('termux-return-state').textContent='Checking the PC controller…';
         const bridge=await controlApi('bridge-status');updateTermuxController(bridge,null);
         if(!termuxControllerReady)throw Error('Remote return unavailable: online PC controller 2.5.0 required.');
+        if(!selectedControllerReady())throw Error('No selected phone has an authorized controller connection. No phone request was sent.');
       }else document.getElementById('termux-return-state').textContent='Checking the existing phone connection…';
       const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes))throw Error('Worker availability could not be verified.');
-      const fleet=canonicalize(raw),selected=fleet.nodes.filter(n=>PHONE_IDS.has(n.id)&&(target==='all'||target==='phones'||n.id===target)),ready=selected.filter(n=>n.online&&!n.busy);
+      const fleet=canonicalize(raw),selected=fleet.nodes.filter(n=>PHONE_IDS.has(n.id)&&(target==='all'||target==='phones'||n.id===target)),ready=selected.filter(n=>n.online&&!n.busy&&(route!=='pc-controller'||phoneControllerState(n.id)==='connected'));
       const id='termux-return-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
-      termuxReturnReport={id,target,transport:route,created_at:new Date().toISOString(),tasks:ready.map((n,i)=>route==='pc-controller'?{unit:n.id,command_id:null,state:'planned'}:{unit:n.id,job_id:id+'-'+i,state:'planned'}),skipped:selected.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:!n.online?'offline':'busy'}))};saveTermuxReturn();renderTermuxReturn(current?.results||[]);
+      termuxReturnReport={id,target,transport:route,created_at:new Date().toISOString(),tasks:ready.map((n,i)=>route==='pc-controller'?{unit:n.id,command_id:null,state:'planned'}:{unit:n.id,job_id:id+'-'+i,state:'planned'}),skipped:selected.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:!n.online?'offline':n.busy?'busy':'controller-'+phoneControllerState(n.id)}))};saveTermuxReturn();renderTermuxReturn(current?.results||[]);
       for(const task of termuxReturnReport.tasks){
+        if(route==='pc-controller'&&(!termuxControllerReady||phoneControllerState(task.unit)!=='connected')){markUnsubmittedBrowserTasks(termuxReturnReport);renderTermuxReturn(current?.results||[]);throw Error('Phone control connection changed. Remaining phones were not sent.');}
         task.state='submitting';saveTermuxReturn();renderTermuxReturn(current?.results||[]);
         try{
           if(route==='pc-controller'){
@@ -1217,7 +1250,7 @@
   }
   function renderPhoneNative(commands=null){
     const state=document.getElementById('phone-native-state'),output=document.getElementById('phone-native-report');if(!state||!output)return;
-    if(!phoneNativeReport){state.textContent=phoneNativeReady?'PC bridge ready. Each phone still needs an existing authorized controller connection.':'Back and paired-controller website opening require online PC bridge 2.6.0. A connected worker alone does not provide input control.';return;}
+    if(!phoneNativeReport){state.textContent=phoneNativeReady?(selectedControllerReady()?'Selected connected phones can receive controller requests. Resulting screens stay unverified.':'No selected phone control connection is available. No phone request was sent.'):'Back and paired-controller website opening require online PC bridge 2.6.0 and fresh phone connection status.';return;}
     if(commands&&Array.isArray(commands.queue)&&Array.isArray(commands.history)){
       for(const task of phoneNativeReport.tasks){
         if(!['queued','submitting','unconfirmed'].includes(task.state))continue;
@@ -1255,15 +1288,17 @@
       state.textContent='Checking the paired PC controller…';
       const bridge=await controlApi('bridge-status');updateTermuxController(bridge,null);
       if(!phoneNativeReady)throw Error('Native phone controls require online Windows bridge 2.6.0. No phone request was sent.');
+      if(!selectedControllerReady())throw Error('No selected phone has an authorized controller connection. No phone request was sent.');
       const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes))throw Error('Worker availability could not be verified.');
       const selected=canonicalize(raw).nodes.filter(n=>PHONE_IDS.has(n.id)&&(target==='all'||target==='phones'||n.id===target));
       // Native control uses ADB, independently of the Termux heartbeat. Only a
       // positively busy worker is skipped; controller authority is checked per phone.
-      const ready=selected.filter(n=>!n.busy);
+      const ready=selected.filter(n=>!n.busy&&phoneControllerState(n.id)==='connected');
       const id='phone-native-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
-      phoneNativeReport={id,action,target,...(url?{url}:{}),created_at:new Date().toISOString(),tasks:ready.map(n=>({unit:n.id,request_id:id+'-'+n.id,command_id:null,state:'planned'})),skipped:selected.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:'busy'}))};
+      phoneNativeReport={id,action,target,...(url?{url}:{}),created_at:new Date().toISOString(),tasks:ready.map(n=>({unit:n.id,request_id:id+'-'+n.id,command_id:null,state:'planned'})),skipped:selected.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:n.busy?'busy':'controller-'+phoneControllerState(n.id)}))};
       submittedBatch=phoneNativeReport;savePhoneNative();renderPhoneNative();
       for(const task of phoneNativeReport.tasks){
+        if(!phoneNativeReady||phoneControllerState(task.unit)!=='connected')throw Error('Phone control connection changed. Remaining phones were not sent.');
         task.state='submitting';savePhoneNative();renderPhoneNative();
         try{
           const queued=await controlApi('queue-command','POST',{type:action==='back'?'phone-back':'phone-open-website',target:task.unit,payload:url?{url}:{},request_id:task.request_id});

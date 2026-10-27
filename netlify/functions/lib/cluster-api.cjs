@@ -30,6 +30,34 @@ const PHONE_RETURN_TARGETS = new Set(
   CANONICAL_HOSTNAMES.filter((name) => /^phone\d+$/.test(name))
 );
 
+function phoneControllerSnapshot(value, now) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || value.schema !== 1 ||
+      !["available", "unavailable", "unknown"].includes(value.server_state) ||
+      typeof value.checked_at !== "string" || !Array.isArray(value.devices) ||
+      value.devices.length !== PHONE_RETURN_TARGETS.size) return null;
+  // PowerShell's round-trip UTC format may carry seven fractional digits.
+  // Accept that format without accepting rolled-over or non-UTC dates.
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,7}))?(?:Z|\+00:00)$/.exec(value.checked_at);
+  if (!parts) return null;
+  const checkedAt = Date.parse(value.checked_at), age = now - checkedAt;
+  if (!Number.isFinite(checkedAt) || age < -30000 || age > 90000) return null;
+  const date = new Date(checkedAt);
+  if ([date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds()]
+      .some((part, index) => part !== Number(parts[index + 1]))) return null;
+  const states = new Map();
+  for (const device of value.devices) {
+    if (!device || typeof device !== "object" || Array.isArray(device) ||
+        !PHONE_RETURN_TARGETS.has(device.unit) || states.has(device.unit) ||
+        !["connected", "unauthorized", "disconnected", "unknown"].includes(device.state) ||
+        device.state === "connected" && value.server_state !== "available") return null;
+    states.set(device.unit, device.state);
+  }
+  // Rebuild the small public shape. Never store or return transport names,
+  // addresses, credentials, or personal-phone fields supplied with a snapshot.
+  return { schema: 1, checked_at: date.toISOString(), server_state: value.server_state,
+    devices: [...PHONE_RETURN_TARGETS].map(unit => ({ unit, state: states.get(unit) })) };
+}
+
 function phoneReturnBridgeReady(bridge, now) {
   const age = now - new Date(bridge?.last_seen_at).getTime();
   const version = String(bridge?.bridge_version || "");
@@ -703,6 +731,7 @@ return async (event, context) => {
         bridge_version: hb?.bridge_version || null,
         summary: hb?.summary || null,
         fleet_connections: hb?.fleet_connections || null,
+        phone_controller: phoneControllerSnapshot(hb?.phone_controller, now),
       });
     }
 
@@ -980,12 +1009,14 @@ return async (event, context) => {
     }
 
     if (postAction === "bridge-heartbeat") {
+      const now = Date.now();
       const payload = {
-        last_seen_at: new Date().toISOString(),
+        last_seen_at: new Date(now).toISOString(),
         hostname: body.hostname || "unknown",
         bridge_version: body.bridge_version || null,
         summary: body.summary || "",
         fleet_connections: body.fleet_connections || null,
+        phone_controller: phoneControllerSnapshot(body.phone_controller, now),
       };
       await openStore("cp-bridge").setJSON("heartbeat", payload);
       return json(200, hdrs, { ok: true, bridge: payload });
