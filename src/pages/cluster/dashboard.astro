@@ -392,6 +392,8 @@ Observed hashes from online devices:
 const API = '/.netlify/functions/cluster-api';
 let password = sessionStorage.getItem('cp_password');
 let currentEventFilter = 'all';
+let dashboardPollTimer = null;
+let dashboardFetchPending = null;
 
 const state = {
   devices: [],
@@ -471,7 +473,7 @@ async function login() {
     document.getElementById('loginGate').style.display = 'none';
     document.getElementById('panel').style.display = 'block';
     fetchAll();
-    setInterval(fetchAll, 15000);
+    startDashboardPolling();
   } catch (e) {
     error.textContent = e.message || 'Unable to sign in. Please retry.';
     error.style.display = 'block';
@@ -483,8 +485,25 @@ function logout() {
   window.location.href = '/cluster';
 }
 
-async function fetchAll() {
-  if (!sessionStorage.getItem('cp_password')) return;
+function startDashboardPolling() {
+  if (dashboardPollTimer !== null) return;
+  dashboardPollTimer = setInterval(() => {
+    if (document.hidden) return;
+    const administration = document.getElementById('cluster-administration');
+    const workspace = document.querySelector('.tab-btn.active')?.dataset.tab === 'swarm';
+    if (administration && workspace && !administration.open) return;
+    fetchAll();
+  }, 60000);
+}
+
+function fetchAll() {
+  if (!sessionStorage.getItem('cp_password')) return Promise.resolve(null);
+  if (dashboardFetchPending) return dashboardFetchPending;
+  dashboardFetchPending = performDashboardFetch().finally(() => { dashboardFetchPending = null; });
+  return dashboardFetchPending;
+}
+
+async function performDashboardFetch() {
   try {
     const [s, d, a, c, e, b] = await Promise.all([
       callApi('summary'),
@@ -1178,6 +1197,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => btn.onclick = () => {
   document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
   btn.classList.add('active');
   document.getElementById(`tab-${btn.dataset.tab}`).style.display = 'block';
+  if (btn.dataset.tab !== 'swarm') fetchAll();
 });
 document.getElementById('pwInput').onkeypress = (e) => e.key === 'Enter' && login();
 
@@ -1189,7 +1209,7 @@ if (password) {
   document.getElementById('loginGate').style.display = 'none';
   document.getElementById('panel').style.display = 'block';
   fetchAll();
-  setInterval(fetchAll, 15000);
+  startDashboardPolling();
 }
 
 // Swarm tab behavior is owned by /scripts/cluster-swarm-live-v8.js.

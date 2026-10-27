@@ -1140,6 +1140,8 @@
     termuxControllerReady=termuxControllerAvailable(bridge);
     phoneNativeReady=termuxControllerReady&&versionAtLeast(bridge.bridge_version,'2.6.0');
     phoneControllerSnapshot=readPhoneControllerSnapshot(bridge?.phone_controller);
+    const indicator=document.getElementById('bridgeStatus');
+    if(indicator){const seen=Date.parse(bridge?.last_seen_at);indicator.textContent='Bridge: '+(termuxControllerReady?'online':'offline')+' · last seen '+(Number.isFinite(seen)?new Date(seen).toLocaleString():'never')+(typeof bridge?.hostname==='string'?' · '+bridge.hostname.slice(0,200):'');}
     if(commands&&Array.isArray(commands.queue)&&Array.isArray(commands.history))termuxControllerCommands=commands;
     renderTermuxReturn(current?.results||[]);renderPhoneNative(commands);renderPhoneControllerAvailability();updateBrowserButtons();
   }

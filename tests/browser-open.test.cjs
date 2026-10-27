@@ -26,6 +26,7 @@ function harness(options={}){
     'phone-native-back':{disabled:true},'phone-native-refresh':{disabled:true},'phone-native-close':{disabled:true},
     'phone-native-state':{textContent:''},'phone-native-report':{textContent:''},
     'phone-controller-availability':{textContent:''},'phone-controller-devices':{textContent:''},
+    'bridgeStatus':{textContent:''},
   };
   let loads=0;
   const context=vm.createContext({
@@ -773,6 +774,13 @@ test('connection loss during a paired Return batch does not submit the next phon
   }});
   await h.api.dispatchTermuxReturn();assert.equal(posts,1);
   assert.equal(h.api.getReturn().tasks[0].state,'queued');assert.equal(h.api.getReturn().tasks[1].state,'not-submitted');
+});
+
+test('existing controller refresh keeps the header current without a legacy telemetry batch',()=>{
+  const h=harness();h.api.updateTermuxController({...nativeBridge(),hostname:'fixture-pc'});
+  assert.match(h.elements.bridgeStatus.textContent,/Bridge: online/);assert.match(h.elements.bridgeStatus.textContent,/fixture-pc/);
+  h.api.updateTermuxController(null);assert.match(h.elements.bridgeStatus.textContent,/Bridge: offline/);assert.match(h.elements.bridgeStatus.textContent,/never/);
+  assert.equal(h.calls.length,0);
 });
 
 test('accepted phone-return results never claim screen wake or verified foreground',()=>{
