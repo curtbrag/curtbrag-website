@@ -965,16 +965,29 @@
   markUnsubmittedBrowserTasks(browserOpenReport);saveBrowserOpen();
   let termuxReturnReport=null,termuxReturnBusy=false,termuxControllerReady=false;
   let termuxControllerCommands={queue:[],history:[]};
+  let phoneNativeReport=null,phoneNativeBusy=false,phoneNativeReady=false;
+  try{
+    const saved=JSON.parse(localStorage.getItem('curt-phone-native-v1'));
+    if(saved&&['back','open-website'].includes(saved.action)&&Array.isArray(saved.tasks)&&saved.tasks.length<=8&&Array.isArray(saved.skipped)&&
+      Number.isFinite(Date.parse(saved.created_at))&&new Set(saved.tasks.map(t=>t?.unit)).size===saved.tasks.length&&
+      saved.tasks.every(t=>PHONE_IDS.has(t?.unit)&&typeof t.request_id==='string'&&/^[a-zA-Z0-9:_-]{8,128}$/.test(t.request_id))&&
+      (saved.action==='back'||validateBrowserOpenUrl(saved.url)===saved.url))phoneNativeReport=saved;
+  }catch{}
+  function savePhoneNative(){try{localStorage.setItem('curt-phone-native-v1',JSON.stringify(phoneNativeReport));}catch{}}
+  markUnsubmittedBrowserTasks(phoneNativeReport);savePhoneNative();
   try{const saved=JSON.parse(localStorage.getItem('curt-termux-return-v1'));if(saved&&Array.isArray(saved.tasks)&&Array.isArray(saved.skipped))termuxReturnReport=saved;}catch{}
   function saveTermuxReturn(){try{localStorage.setItem('curt-termux-return-v1',JSON.stringify(termuxReturnReport));}catch{}}
   function browserRequestsPending(report){return !!report?.tasks.some(t=>['planned','queued','submitting','unconfirmed'].includes(t.state));}
   function updateBrowserButtons(){
-    const busy=browserOpenBusy||termuxReturnBusy;
-    document.getElementById('browser-open-run').disabled=busy;
+    const busy=browserOpenBusy||termuxReturnBusy||phoneNativeBusy;
+    document.getElementById('browser-open-run').disabled=busy||(document.getElementById('browser-open-route')?.value==='pc-controller'&&!phoneNativeReady);
     const refresh=document.getElementById('browser-open-refresh');if(refresh)refresh.disabled=busy||!browserOpenReport||!!browserOpenReport.closed_at;
     document.getElementById('browser-open-close').disabled=busy||!browserOpenReport||!!browserOpenReport.closed_at;
     document.getElementById('termux-return-run').disabled=busy||(document.getElementById('termux-return-route')?.value==='pc-controller'&&!termuxControllerReady);
     document.getElementById('termux-return-close').disabled=busy||!termuxReturnReport||!!termuxReturnReport.closed_at;
+    const back=document.getElementById('phone-native-back');if(back)back.disabled=busy||!phoneNativeReady;
+    const nativeRefresh=document.getElementById('phone-native-refresh');if(nativeRefresh)nativeRefresh.disabled=busy||!phoneNativeReport||!!phoneNativeReport.closed_at;
+    const nativeClose=document.getElementById('phone-native-close');if(nativeClose)nativeClose.disabled=busy||!phoneNativeReport||!!phoneNativeReport.closed_at;
   }
   function validateBrowserOpenUrl(value){
     if(typeof value!=='string'||value.length>2048||/[\u0000-\u0020\u007f\\]/.test(value))throw Error('Enter a complete public HTTPS address of up to 2048 characters without spaces, control characters or backslashes.');
@@ -988,10 +1001,17 @@
     const fleet=document.getElementById('cluster-view-fleet');if(!fleet||document.getElementById('cluster-browser-open'))return;
     const card=document.createElement('section');card.id='cluster-browser-open';card.className='cluster-control-card';
     card.innerHTML='<h3>Open website on device screens</h3><p>Request a browser to open a website once on your selected devices. Browser launch requests do not verify screen or page visibility.</p><label for="browser-open-url">Website to open on device screens</label><input id="browser-open-url" type="url" maxlength="2048" value="https://curtbrag.com/" style="display:block;width:100%;box-sizing:border-box;margin:8px 0;padding:10px"><label for="browser-open-target">Devices</label> <select id="browser-open-target"><option value="all">All available units</option><option value="computers">Computers &amp; laptops</option>'+FLEET.map(([id])=>'<option value="'+id+'">'+({Alina:'ASUS laptop (Alina)',Nexus:'Dell laptop (Nexus)',viki:'Small desktop (viki)',RenderRig:'Main PC (RenderRig)'}[id]||id)+'</option>').join('')+'</select><div class="cluster-action-row"><button id="browser-open-run" type="button" class="cluster-primary-action">Open website in device browsers</button><button id="browser-open-refresh" type="button" disabled>Refresh launch results</button><button id="browser-open-close" type="button" disabled>Close report</button></div><p>Busy and offline units are skipped. Refresh looks up this report’s receipts without opening pages again. Close report preserves the record without cancelling or retrying jobs.</p><p id="browser-open-state" role="status" aria-live="polite">Ready. No browser launch requested.</p><pre id="browser-open-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto"></pre><h4>Return phones to Termux</h4><p>Request Termux through each phone’s existing connection. A paired PC controller can also verify the foreground app. Neither method proves the display is awake.</p><label for="termux-return-route">Return method</label> <select id="termux-return-route"><option value="phone-worker">Existing phone connection</option><option value="pc-controller">Paired PC controller (verify foreground)</option></select><div class="cluster-action-row"><button id="termux-return-run" type="button" disabled>Return selected phones to Termux</button><button id="termux-return-close" type="button" disabled>Close return report</button></div><p id="termux-return-state" role="status" aria-live="polite">Ready. No return requested. A sleeping display may stay dark.</p><pre id="termux-return-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto"></pre>';
+    const phones=document.createElement('option');phones.value='phones';phones.textContent='All eight phones';card.querySelector('#browser-open-target').options[0].after(phones);
+    const route=document.createElement('label');route.htmlFor='browser-open-route';route.textContent='Website opening method';
+    const routeSelect=document.createElement('select');routeSelect.id='browser-open-route';routeSelect.innerHTML='<option value="phone-worker">Existing worker connection</option><option value="pc-controller">Paired PC controller · phones only</option>';
+    card.querySelector('#browser-open-run').parentElement.before(route,routeSelect);
+    const native=document.createElement('section');native.innerHTML='<h4>Paired phone controller</h4><p>Send Back or open the entered website through the PC’s already-authorized connection. These actions use the device selection above and apply only to the eight worker phones. No pairing or automatic retries occur. Accepted input does not prove the resulting screen.</p><button id="phone-native-back" type="button" disabled>Back on selected phones</button> <button id="phone-native-refresh" type="button" disabled>Refresh controller results</button> <button id="phone-native-close" type="button" disabled>Close controller report</button><p id="phone-native-state" role="status" aria-live="polite"></p><pre id="phone-native-report" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto"></pre>';
+    card.append(native);
     fleet.prepend(card);card.querySelector('#browser-open-run').onclick=dispatchBrowserOpen;card.querySelector('#browser-open-refresh').onclick=refreshBrowserOpen;card.querySelector('#browser-open-close').onclick=closeBrowserOpen;card.querySelector('#termux-return-run').onclick=dispatchTermuxReturn;card.querySelector('#termux-return-close').onclick=closeTermuxReturn;card.querySelector('#termux-return-route').onchange=()=>{renderTermuxReturn(current?.results||[]);updateBrowserButtons();};
+    routeSelect.onchange=()=>{renderPhoneNative();updateBrowserButtons();};card.querySelector('#phone-native-back').onclick=()=>dispatchPhoneNative('back');card.querySelector('#phone-native-refresh').onclick=refreshPhoneNative;card.querySelector('#phone-native-close').onclick=closePhoneNative;
     if(browserOpenReport?.url)card.querySelector('#browser-open-url').value=browserOpenReport.url;
-    if(['all','computers'].includes(browserOpenReport?.target)||IDS.has(browserOpenReport?.target))card.querySelector('#browser-open-target').value=browserOpenReport.target;
-    renderBrowserOpen(current?.results||[]);renderTermuxReturn(current?.results||[]);updateBrowserButtons();
+    if(['all','computers','phones'].includes(browserOpenReport?.target)||IDS.has(browserOpenReport?.target))card.querySelector('#browser-open-target').value=browserOpenReport.target;
+    renderBrowserOpen(current?.results||[]);renderTermuxReturn(current?.results||[]);renderPhoneNative();updateBrowserButtons();
   }
   function renderBrowserOpen(results){
     const state=document.getElementById('browser-open-state');if(!state||!browserOpenReport)return;
@@ -1019,16 +1039,20 @@
     return `curl -fLsS --max-time 20 'https://raw.githubusercontent.com/curtbrag/curtbrag-website/0e06ec46f59c7e5748962afb36d569a130609a67/scripts/cluster-browser-open.py' -o "$HOME/cluster-browser-open.py" && { if command -v python3 >/dev/null 2>&1; then P=python3; else P=python; fi; "$P" "$HOME/cluster-browser-open.py" --settings-b64 '${encoded}'; }`;
   }
   async function dispatchBrowserOpen(){
-    if(browserOpenBusy||termuxReturnBusy)return;browserOpenBusy=true;updateBrowserButtons();
+    const route=document.getElementById('browser-open-route')?.value||'phone-worker';
+    if(route==='pc-controller')return dispatchPhoneNative('open-website');
+    if(route!=='phone-worker'){document.getElementById('browser-open-state').textContent='Choose a supported website opening method.';return;}
+    if(browserOpenBusy||termuxReturnBusy||phoneNativeBusy)return;browserOpenBusy=true;updateBrowserButtons();
     let submittedBatch=null;
     try{
       const url=validateBrowserOpenUrl(document.getElementById('browser-open-url').value),target=document.getElementById('browser-open-target').value;
-      if(!['all','computers'].includes(target)&&!IDS.has(target))throw Error('Select a canonical cluster unit.');
+      if(!['all','computers','phones'].includes(target)&&!IDS.has(target))throw Error('Select a canonical cluster unit.');
       if(browserRequestsPending(browserOpenReport))throw Error('Previous launch requests are pending. Refresh launch results, or close the old report after checking the queue, before opening another batch.');
       if(browserRequestsPending(termuxReturnReport))throw Error('Return requests are pending. Review Queue & results before opening another website.');
+      if(browserRequestsPending(phoneNativeReport))throw Error('Controller requests are pending. Refresh controller results before sending another screen action.');
       document.getElementById('browser-open-state').textContent='Checking available devices…';
       const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes))throw Error('Worker availability could not be verified.');
-      const fleet=canonicalize(raw),selected=fleet.nodes.filter(n=>IDS.has(n.id)&&(target==='all'||target==='computers'&&PC_IDS.has(n.id)||n.id===target));
+      const fleet=canonicalize(raw),selected=fleet.nodes.filter(n=>IDS.has(n.id)&&(target==='all'||target==='phones'&&PHONE_IDS.has(n.id)||target==='computers'&&PC_IDS.has(n.id)||n.id===target));
       const ready=selected.filter(n=>n.online&&!n.busy&&(n.id!=='RenderRig'||versionAtLeast(n.agent_version,'3.7.2')));
       const id='browser-open-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
       browserOpenReport={id,url,target,created_at:new Date().toISOString(),scope:'One browser launch request per selected available unit; physical screen and target page visibility are unverified.',tasks:ready.map((n,i)=>({unit:n.id,job_id:id+'-'+i,state:'planned'})),skipped:selected.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:!n.online?'offline':n.busy?'busy':'agent update required'}))};saveBrowserOpen();renderBrowserOpen(current?.results||[]);
@@ -1084,8 +1108,9 @@
   }
   function updateTermuxController(bridge,commands){
     termuxControllerReady=termuxControllerAvailable(bridge);
+    phoneNativeReady=termuxControllerReady&&versionAtLeast(bridge.bridge_version,'2.6.0');
     if(commands&&Array.isArray(commands.queue)&&Array.isArray(commands.history))termuxControllerCommands=commands;
-    renderTermuxReturn(current?.results||[]);updateBrowserButtons();
+    renderTermuxReturn(current?.results||[]);renderPhoneNative(commands);updateBrowserButtons();
   }
   function renderTermuxReturn(results,commands=null){
     const state=document.getElementById('termux-return-state');if(!state)return;
@@ -1124,22 +1149,23 @@
     updateBrowserButtons();
   }
   async function dispatchTermuxReturn(){
-    if(browserOpenBusy||termuxReturnBusy)return;termuxReturnBusy=true;updateBrowserButtons();
+    if(browserOpenBusy||termuxReturnBusy||phoneNativeBusy)return;termuxReturnBusy=true;updateBrowserButtons();
     try{
       const target=document.getElementById('browser-open-target').value;
       const route=document.getElementById('termux-return-route')?.value||'phone-worker';
       if(!['phone-worker','pc-controller'].includes(route))throw Error('Choose a supported return method.');
-      if(!['all','computers'].includes(target)&&!IDS.has(target))throw Error('Select a canonical cluster unit.');
+      if(!['all','computers','phones'].includes(target)&&!IDS.has(target))throw Error('Select a canonical cluster unit.');
       if(target==='computers'||PC_IDS.has(target))throw Error('Return to Termux is available for phones only. Select all units or a phone.');
       if(browserRequestsPending(browserOpenReport))throw Error('Launch requests are pending. Review Queue & results before returning phones.');
       if(browserRequestsPending(termuxReturnReport))throw Error('Previous return requests are pending. Review the return report before trying again.');
+      if(browserRequestsPending(phoneNativeReport))throw Error('Controller requests are pending. Refresh controller results before returning phones.');
       if(route==='pc-controller'){
         document.getElementById('termux-return-state').textContent='Checking the PC controller…';
         const bridge=await controlApi('bridge-status');updateTermuxController(bridge,null);
         if(!termuxControllerReady)throw Error('Remote return unavailable: online PC controller 2.5.0 required.');
       }else document.getElementById('termux-return-state').textContent='Checking the existing phone connection…';
       const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes))throw Error('Worker availability could not be verified.');
-      const fleet=canonicalize(raw),selected=fleet.nodes.filter(n=>PHONE_IDS.has(n.id)&&(target==='all'||n.id===target)),ready=selected.filter(n=>n.online&&!n.busy);
+      const fleet=canonicalize(raw),selected=fleet.nodes.filter(n=>PHONE_IDS.has(n.id)&&(target==='all'||target==='phones'||n.id===target)),ready=selected.filter(n=>n.online&&!n.busy);
       const id='termux-return-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
       termuxReturnReport={id,target,transport:route,created_at:new Date().toISOString(),tasks:ready.map((n,i)=>route==='pc-controller'?{unit:n.id,command_id:null,state:'planned'}:{unit:n.id,job_id:id+'-'+i,state:'planned'}),skipped:selected.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:!n.online?'offline':'busy'}))};saveTermuxReturn();renderTermuxReturn(current?.results||[]);
       for(const task of termuxReturnReport.tasks){
@@ -1184,6 +1210,99 @@
     finally{termuxReturnBusy=false;updateBrowserButtons();}
   }
 
+
+  function nativeCommandMatches(command,task,report=phoneNativeReport){
+    return command?.target===task.unit&&command.type===(report.action==='back'?'phone-back':'phone-open-website')&&
+      command.request_id===task.request_id&&(!task.command_id||command.id===task.command_id);
+  }
+  function renderPhoneNative(commands=null){
+    const state=document.getElementById('phone-native-state'),output=document.getElementById('phone-native-report');if(!state||!output)return;
+    if(!phoneNativeReport){state.textContent=phoneNativeReady?'PC bridge ready. Each phone still needs an existing authorized controller connection.':'Back and paired-controller website opening require online PC bridge 2.6.0. A connected worker alone does not provide input control.';return;}
+    if(commands&&Array.isArray(commands.queue)&&Array.isArray(commands.history)){
+      for(const task of phoneNativeReport.tasks){
+        if(!['queued','submitting','unconfirmed'].includes(task.state))continue;
+        const result=commands.history.find(c=>nativeCommandMatches(c,task));
+        if(!result){const queued=commands.queue.find(c=>nativeCommandMatches(c,task));if(queued){task.command_id=queued.id;task.state='queued';}continue;}
+        task.command_id=result.id;
+        let value;try{value=JSON.parse(result.output||'');}catch{}
+        const expected=phoneNativeReport.action==='back'?'back-requested':'launch-requested';
+        const valid=value?.kind==='phone-controller-action'&&value.unit===task.unit&&value.action===phoneNativeReport.action&&
+          value.foreground_app_verified===false&&value.visible_screen_verified===false&&typeof value.request_accepted==='boolean'&&
+          typeof value.controller_state==='string'&&/^[a-z][a-z0-9-]{0,39}$/.test(value.controller_state)&&
+          (phoneNativeReport.action==='open-website'?value.url===phoneNativeReport.url:!Object.hasOwn(value,'url'));
+        const accepted=valid&&result.status==='completed'&&value.state===expected&&value.request_accepted===true&&value.controller_state==='connected'&&value.error===null;
+        task.state=accepted?expected:'failed';task.report=valid?value:null;
+        task.error=accepted?'':String(valid?value.error||'The controller did not confirm this fixed request.':'Controller returned an invalid native phone report.').slice(0,500);
+      }
+      savePhoneNative();
+    }
+    const tasks=phoneNativeReport.tasks,accepted=tasks.filter(t=>['back-requested','launch-requested'].includes(t.state)).length,failed=tasks.filter(t=>t.state==='failed').length;
+    state.textContent=`${accepted+failed}/${tasks.length} controller results · ${accepted} requests accepted · ${failed} failed · ${phoneNativeReport.skipped.length} skipped. Resulting screens and page visibility are unverified.`;
+    output.textContent=(phoneNativeReport.action==='back'?'Back':phoneNativeReport.url)+'\n'+new Date(phoneNativeReport.created_at).toLocaleString()+'\n\n'+tasks.map(t=>`${t.unit} · ${t.state}${t.report?.controller_state?' · controller '+t.report.controller_state:''}${t.error?'\n'+t.error:''}`).join('\n\n')+(phoneNativeReport.skipped.length?'\n\nSkipped: '+phoneNativeReport.skipped.map(n=>n.unit+' ('+n.reason+')').join(', '):'');
+    updateBrowserButtons();
+  }
+  async function dispatchPhoneNative(action){
+    if(browserOpenBusy||termuxReturnBusy||phoneNativeBusy)return;
+    phoneNativeBusy=true;updateBrowserButtons();
+    let submittedBatch=null;
+    const state=document.getElementById('phone-native-state');
+    try{
+      if(!['back','open-website'].includes(action))throw Error('Choose a supported fixed phone action.');
+      const target=document.getElementById('browser-open-target').value;
+      if(!['all','phones'].includes(target)&&!PHONE_IDS.has(target))throw Error('Select All eight phones or one worker phone for paired-controller actions.');
+      const url=action==='open-website'?validateBrowserOpenUrl(document.getElementById('browser-open-url').value):null;
+      if(browserRequestsPending(browserOpenReport)||browserRequestsPending(termuxReturnReport)||browserRequestsPending(phoneNativeReport))throw Error('Previous screen requests are pending. Review their results before sending another action.');
+      state.textContent='Checking the paired PC controller…';
+      const bridge=await controlApi('bridge-status');updateTermuxController(bridge,null);
+      if(!phoneNativeReady)throw Error('Native phone controls require online Windows bridge 2.6.0. No phone request was sent.');
+      const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes))throw Error('Worker availability could not be verified.');
+      const selected=canonicalize(raw).nodes.filter(n=>PHONE_IDS.has(n.id)&&(target==='all'||target==='phones'||n.id===target));
+      // Native control uses ADB, independently of the Termux heartbeat. Only a
+      // positively busy worker is skipped; controller authority is checked per phone.
+      const ready=selected.filter(n=>!n.busy);
+      const id='phone-native-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+      phoneNativeReport={id,action,target,...(url?{url}:{}),created_at:new Date().toISOString(),tasks:ready.map(n=>({unit:n.id,request_id:id+'-'+n.id,command_id:null,state:'planned'})),skipped:selected.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:'busy'}))};
+      submittedBatch=phoneNativeReport;savePhoneNative();renderPhoneNative();
+      for(const task of phoneNativeReport.tasks){
+        task.state='submitting';savePhoneNative();renderPhoneNative();
+        try{
+          const queued=await controlApi('queue-command','POST',{type:action==='back'?'phone-back':'phone-open-website',target:task.unit,payload:url?{url}:{},request_id:task.request_id});
+          if(queued?.ok!==true||typeof queued.command_id!=='string'||!queued.command_id)throw Error('Controller command receipt missing');
+          task.command_id=queued.command_id;task.state='queued';
+        }catch{task.state='unconfirmed';task.error='Submission unconfirmed. Refresh controller results; this action will not be sent again automatically.';throw Error('Controller submission is unconfirmed. Remaining phones were not sent.');}
+        finally{savePhoneNative();}
+      }
+      if(ready.length){const commands=await controlApi('commands');if(!Array.isArray(commands?.queue)||!Array.isArray(commands.history))throw Error('Controller result lookup is incomplete. Refresh results; nothing was sent again.');renderPhoneNative(commands);}
+    }catch(error){
+      if(submittedBatch){markUnsubmittedBrowserTasks(submittedBatch);savePhoneNative();renderPhoneNative();}
+      if(state)state.textContent=error.message;
+    }finally{phoneNativeBusy=false;updateBrowserButtons();savePhoneNative();}
+  }
+  async function refreshPhoneNative(){
+    if(browserOpenBusy||termuxReturnBusy||phoneNativeBusy||!phoneNativeReport||phoneNativeReport.closed_at)return;
+    phoneNativeBusy=true;updateBrowserButtons();
+    try{
+      const commands=await controlApi('commands');
+      if(!Array.isArray(commands?.queue)||!Array.isArray(commands.history))throw Error('Controller result lookup is incomplete. No actions were resent.');
+      renderPhoneNative(commands);
+    }catch(error){document.getElementById('phone-native-state').textContent=error.message;}
+    finally{phoneNativeBusy=false;updateBrowserButtons();}
+  }
+  async function closePhoneNative(){
+    if(browserOpenBusy||termuxReturnBusy||phoneNativeBusy||!phoneNativeReport||phoneNativeReport.closed_at)return;
+    phoneNativeBusy=true;updateBrowserButtons();
+    try{
+      const commands=await controlApi('commands');
+      if(!Array.isArray(commands?.queue)||!Array.isArray(commands.history))throw Error('Controller status is incomplete. The report remains open.');
+      renderPhoneNative(commands);
+      if(commands.queue.some(c=>phoneNativeReport.tasks.some(t=>nativeCommandMatches(c,t))))throw Error('Controller requests are still queued or running. Wait for results before closing.');
+      const age=Date.now()-Date.parse(phoneNativeReport.created_at);
+      if(browserRequestsPending(phoneNativeReport)&&(!Number.isFinite(age)||age<120000))throw Error('Wait at least two minutes before closing unconfirmed requests. No action will be resent.');
+      for(const task of phoneNativeReport.tasks)if(['queued','submitting','unconfirmed'].includes(task.state))task.state='closed';
+      phoneNativeReport.closed_at=new Date().toISOString();savePhoneNative();renderPhoneNative();
+    }catch(error){document.getElementById('phone-native-state').textContent=error.message;}
+    finally{phoneNativeBusy=false;updateBrowserButtons();}
+  }
 
   let siteTest=null, siteTestBusy=false;
   try{const saved=JSON.parse(localStorage.getItem('curt-site-test-v1'));if(saved?.tasks)siteTest=saved;}catch{}

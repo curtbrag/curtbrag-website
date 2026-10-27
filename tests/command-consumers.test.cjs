@@ -186,7 +186,7 @@ test("unlisted and unclaimed agents cannot complete assigned work", async () => 
 });
 
 test("bridge-only type stays unavailable even with forged agent routing", async () => {
-  for (const type of ["phone-return-termux", "fleet-check", "fleet-diagnose", "fleet-discover", "swarm-recover", "swarm-recover-pcs"]) {
+  for (const type of ["phone-return-termux", "phone-back", "phone-open-website", "fleet-check", "fleet-diagnose", "fleet-discover", "swarm-recover", "swarm-recover-pcs"]) {
     const h = harness({ queue: [command({ type, route: "agent", recipient_ids: ["dev253"] })], history: [] });
     assert.equal((await h.agent("commands")).body.commands.length, 0, type);
     assert.equal((await h.agent("command-result", { method: "POST", body: complete() })).status, 409, type);

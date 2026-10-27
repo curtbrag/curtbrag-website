@@ -18,10 +18,13 @@ function harness(options={}){
   const elements={
     'browser-open-run':{disabled:false},'browser-open-refresh':{disabled:true},'browser-open-close':{disabled:true},
     'browser-open-url':{value:'https://curtbrag.com/'},'browser-open-target':{value:'all'},
+    'browser-open-route':{value:options.openRoute||'phone-worker'},
     'browser-open-state':{textContent:''},'browser-open-report':{textContent:''},
     'termux-return-run':{disabled:false},'termux-return-close':{disabled:true},
     'termux-return-route':{value:options.returnRoute||'pc-controller'},
     'termux-return-state':{textContent:''},'termux-return-report':{textContent:''},
+    'phone-native-back':{disabled:true},'phone-native-refresh':{disabled:true},'phone-native-close':{disabled:true},
+    'phone-native-state':{textContent:''},'phone-native-report':{textContent:''},
   };
   let loads=0;
   const context=vm.createContext({
@@ -34,7 +37,7 @@ function harness(options={}){
     controlApi:async(...args)=>{calls.push([args[0],args[1],args[2],'control']);if(options.controlApi)return options.controlApi(...args);if(args[0]==='bridge-status')return freshBridge();if(args[0]==='queue-command')return {ok:true,command_id:'controller-'+args[2].target};if(args[0]==='commands')return options.commands||{queue:[],history:[]};throw Error('Unexpected controller action');},
     load:async()=>{loads++;},
   });
-  vm.runInContext(source+'\nglobalThis.api={validateBrowserOpenUrl,browserOpenCommand,dispatchBrowserOpen,refreshBrowserOpen,closeBrowserOpen,renderBrowserOpen,dispatchTermuxReturn,closeTermuxReturn,renderTermuxReturn,get:()=>browserOpenReport,set:value=>browserOpenReport=value,busy:()=>browserOpenBusy,updateTermuxController,termuxControllerAvailable,getReturn:()=>termuxReturnReport,setReturn:value=>termuxReturnReport=value,returnBusy:()=>termuxReturnBusy};',context);
+  vm.runInContext(source+'\nglobalThis.api={validateBrowserOpenUrl,browserOpenCommand,dispatchBrowserOpen,refreshBrowserOpen,closeBrowserOpen,renderBrowserOpen,dispatchTermuxReturn,closeTermuxReturn,renderTermuxReturn,get:()=>browserOpenReport,set:value=>browserOpenReport=value,busy:()=>browserOpenBusy,updateTermuxController,termuxControllerAvailable,getReturn:()=>termuxReturnReport,setReturn:value=>termuxReturnReport=value,returnBusy:()=>termuxReturnBusy,dispatchPhoneNative,refreshPhoneNative,closePhoneNative,renderPhoneNative,getNative:()=>phoneNativeReport,setNative:value=>phoneNativeReport=value,nativeBusy:()=>phoneNativeBusy};',context);
   return {api:context.api,elements,storage,calls,loads:()=>loads};
 }
 function report(state='queued'){
@@ -566,6 +569,113 @@ test('an ambiguous phone return submission never replays or sends the next phone
   assert.equal(h.api.getReturn().tasks[1].state,'planned');
   await h.api.dispatchTermuxReturn();await h.api.dispatchBrowserOpen();
   assert.equal(h.calls.filter(c=>c[0]==='enqueue').length,1);
+});
+
+function nativeBridge(){return {...freshBridge(),bridge_version:'2.6.0'};}
+function nativeControl(action){
+  return async(name,_method,body)=>name==='bridge-status'?nativeBridge():name==='commands'?{queue:[],history:[]}:
+    name==='queue-command'?{ok:true,command_id:'native-'+body.target}:Promise.reject(Error('Unexpected action '+action));
+}
+function nativeReport(action='back',state='queued'){
+  return {id:'phone-native-fixture',action,target:'phone191',...(action==='open-website'?{url:'https://curtbrag.com/'}:{}),created_at:new Date(Date.now()-180000).toISOString(),tasks:[{unit:'phone191',request_id:'phone-native-fixture-phone191',command_id:'native-phone191',state}],skipped:[]};
+}
+function nativeCompletion(report,overrides={}){
+  const task=report.tasks[0],action=report.action;
+  return {id:task.command_id,request_id:task.request_id,target:task.unit,type:action==='back'?'phone-back':'phone-open-website',status:'completed',
+    output:JSON.stringify({kind:'phone-controller-action',action,unit:task.unit,...(action==='open-website'?{url:report.url}:{}),state:action==='back'?'back-requested':'launch-requested',request_accepted:true,foreground_app_verified:false,visible_screen_verified:false,controller_state:'connected',error:null}),...overrides};
+}
+test('paired website route sends typed URL settings only to available canonical worker phones',async()=>{
+  const h=harness({openRoute:'pc-controller',controlApi:nativeControl(),nodes:[...FLEET.map(([id])=>({id,online:true,busy:id==='phone253'})),{id:'s26ultra',online:true,busy:false}]});
+  h.elements['browser-open-target'].value='phones';
+  h.elements['browser-open-url'].value="https://example.com/path?q=$(touch%20sentinel)&a=';echo%20unsafe;#`id`";
+  await h.api.dispatchBrowserOpen();
+  const calls=h.calls.filter(c=>c[0]==='queue-command');assert.equal(calls.length,7);
+  assert.ok(calls.every(c=>PHONE_IDS.has(c[2].target)&&c[2].type==='phone-open-website'));
+  assert.ok(calls.every(c=>Object.keys(c[2].payload).join(',')==='url'&&c[2].payload.url===new URL(h.elements['browser-open-url'].value).href));
+  assert.equal(new Set(calls.map(c=>c[2].request_id)).size,7);assert.equal(h.calls.some(c=>c[0]==='enqueue'),false);
+  assert.equal(h.api.getNative().skipped[0].unit,'phone253');assert.equal(h.api.get(),null);
+});
+test('Back uses a fixed empty payload and one selected phone, never the website value',async()=>{
+  const h=harness({controlApi:nativeControl()});h.elements['browser-open-target'].value='phone191';h.elements['browser-open-url'].value='javascript:malicious';
+  await h.api.dispatchPhoneNative('back');
+  const calls=h.calls.filter(c=>c[0]==='queue-command');assert.equal(calls.length,1);
+  assert.equal(calls[0][2].type,'phone-back');assert.equal(Object.keys(calls[0][2].payload).length,0);assert.equal(Object.hasOwn(h.api.getNative(),'url'),false);
+});
+test('native controls reject computers, personal phones, bad actions and invalid URLs before any request',async()=>{
+  for(const target of ['computers','RenderRig','s26ultra','unknown','phone191;input keyevent 4']){
+    const h=harness({controlApi:nativeControl()});h.elements['browser-open-target'].value=target;
+    await h.api.dispatchPhoneNative('back');assert.equal(h.calls.length,0,target);
+  }
+  const h=harness({controlApi:nativeControl()});await h.api.dispatchPhoneNative('keyevent 4');assert.equal(h.calls.length,0);
+  for(const url of ['javascript:alert(1)','https://127.0.0.1/','https://example.com/\nunsafe']){
+    const h=harness({openRoute:'pc-controller',controlApi:nativeControl()});h.elements['browser-open-url'].value=url;
+    await h.api.dispatchBrowserOpen();assert.equal(h.calls.length,0,url);
+  }
+});
+test('old and unavailable PC bridges cannot submit native actions while worker opening stays available',async()=>{
+  for(const bridge of [freshBridge(),{...nativeBridge(),alive:false},{...nativeBridge(),last_seen_at:new Date(Date.now()-61000).toISOString()}]){
+    const h=harness({openRoute:'pc-controller',controlApi:async name=>name==='bridge-status'?bridge:{queue:[],history:[]}});
+    h.api.updateTermuxController(bridge);assert.equal(h.elements['phone-native-back'].disabled,true);assert.equal(h.elements['browser-open-run'].disabled,true);
+    await h.api.dispatchBrowserOpen();assert.equal(h.calls.filter(c=>c[0]==='queue-command').length,0);assert.match(h.elements['phone-native-state'].textContent,/2.6.0/);
+    h.elements['browser-open-route'].value='phone-worker';await h.api.dispatchBrowserOpen();assert.equal(h.calls.filter(c=>c[0]==='enqueue').length,1);
+  }
+});
+test('ambiguous native submission preserves an exact request ID and refresh recovers without resending',async()=>{
+  let submitted;
+  const h=harness({controlApi:async(name,_method,body)=>{
+    if(name==='bridge-status')return nativeBridge();
+    if(name==='queue-command'){submitted=body;throw Error('Receipt lost');}
+    if(name==='commands')return {queue:[{id:'accepted-command',request_id:submitted.request_id,type:submitted.type,target:submitted.target}],history:[]};
+  }});
+  await h.api.dispatchPhoneNative('back');const first=h.api.getNative();assert.equal(first.tasks[0].state,'unconfirmed');
+  await h.api.dispatchPhoneNative('back');assert.equal(h.calls.filter(c=>c[0]==='queue-command').length,1);
+  await h.api.refreshPhoneNative();assert.equal(first.tasks[0].command_id,'accepted-command');assert.equal(first.tasks[0].state,'queued');
+  assert.equal(h.calls.filter(c=>c[0]==='queue-command').length,1);
+  assert.match(h.elements['phone-native-report'].textContent,/queued/);
+});
+test('native partial submission never sends the remaining devices or replays on reload',async()=>{
+  let requests=0;
+  const h=harness({nodes:[{id:'phone173',online:true},{id:'phone174',online:true},{id:'phone176',online:true}],controlApi:async(name,_method,body)=>{
+    if(name==='bridge-status')return nativeBridge();
+    if(name==='queue-command'){if(++requests===2)throw Error('Lost response');return {ok:true,command_id:'native-'+body.target};}
+  }});
+  await h.api.dispatchPhoneNative('back');
+  assert.deepEqual(Array.from(h.api.getNative().tasks,t=>t.state).slice(0,3),['queued','unconfirmed','not-submitted']);assert.ok(h.api.getNative().tasks.slice(2).every(t=>t.state==='not-submitted'));assert.equal(requests,2);
+  const restored=harness({storage:h.storage,controlApi:nativeControl()});await restored.api.dispatchPhoneNative('back');assert.equal(restored.calls.length,0);
+});
+test('controller receipts require matching request, command, phone, action, URL and honest visibility fields',()=>{
+  for(const action of ['back','open-website']){
+    const h=harness();const r=nativeReport(action);h.api.setNative(r);
+    h.api.renderPhoneNative({queue:[],history:[nativeCompletion(r,{request_id:'wrong'})]});assert.equal(r.tasks[0].state,'queued');
+    h.api.renderPhoneNative({queue:[],history:[nativeCompletion(r)]});assert.equal(r.tasks[0].state,action==='back'?'back-requested':'launch-requested');
+    assert.match(h.elements['phone-native-state'].textContent,/1 requests accepted/);assert.match(h.elements['phone-native-state'].textContent,/visibility are unverified/);
+  }
+  const h=harness(),r=nativeReport();h.api.setNative(r);const c=nativeCompletion(r);c.output=JSON.stringify({...JSON.parse(c.output),visible_screen_verified:true});
+  h.api.renderPhoneNative({queue:[],history:[c]});assert.equal(r.tasks[0].state,'failed');
+  const h2=harness(),r2=nativeReport('open-website');h2.api.setNative(r2);const c2=nativeCompletion(r2);c2.output=JSON.stringify({...JSON.parse(c2.output),url:'https://other.example.net/'});
+  h2.api.renderPhoneNative({queue:[],history:[c2]});assert.equal(r2.tasks[0].state,'failed');
+});
+test('unavailable phone authorization is shown as failed rather than accepted controller input',()=>{
+  const h=harness(),r=nativeReport();h.api.setNative(r);const c=nativeCompletion(r,{status:'failed'});
+  c.output=JSON.stringify({...JSON.parse(c.output),state:'failed',request_accepted:false,controller_state:'unauthorized',error:'No authorized connection'});
+  h.api.renderPhoneNative({queue:[],history:[c]});assert.equal(r.tasks[0].state,'failed');assert.match(h.elements['phone-native-report'].textContent,/unauthorized/);assert.match(h.elements['phone-native-state'].textContent,/0 requests accepted/);
+});
+test('native close never cancels or resends, refuses running work, and preserves terminal evidence',async()=>{
+  const r=nativeReport();let queue=[{id:r.tasks[0].command_id,request_id:r.tasks[0].request_id,type:'phone-back',target:'phone191'}];
+  const h=harness({controlApi:async()=>({queue,history:[]})});h.api.setNative(r);
+  await h.api.closePhoneNative();assert.equal(r.closed_at,undefined);assert.match(h.elements['phone-native-state'].textContent,/still queued/);
+  queue=[];await h.api.closePhoneNative();assert.ok(r.closed_at);assert.equal(r.tasks[0].state,'closed');
+  assert.ok(h.calls.every(c=>c[0]==='commands'));await h.api.refreshPhoneNative();assert.equal(h.calls.length,2);
+});
+test('native control can use an authorized controller when the Termux worker heartbeat is offline',async()=>{
+  const h=harness({nodes:[{id:'phone253',online:false,busy:false}],controlApi:async(name,_method,body)=>{
+    if(name==='bridge-status')return nativeBridge();
+    if(name==='queue-command')return {ok:true,command_id:'native-'+body.target};
+    if(name==='commands')return {queue:[],history:[nativeCompletion(h.api.getNative())]};
+  }});
+  h.elements['browser-open-target'].value='phone253';await h.api.dispatchPhoneNative('back');
+  assert.equal(h.calls.filter(c=>c[0]==='queue-command').length,1);assert.equal(h.api.getNative().skipped.length,0);
+  assert.equal(h.api.getNative().tasks[0].state,'back-requested');assert.equal(h.api.getNative().tasks[0].report.controller_state,'connected');
 });
 
 test('accepted phone-return results never claim screen wake or verified foreground',()=>{
