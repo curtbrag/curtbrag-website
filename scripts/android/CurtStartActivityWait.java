@@ -11,7 +11,9 @@ import java.util.concurrent.TimeoutException;
 /** One ordinary same-UID request; never grants authority or retries a launch. */
 public final class CurtStartActivityWait {
     private static final String PACKAGE = "com.termux";
+    private static final String TERMUX_ACTIVITY = "com.termux.app.TermuxActivity";
     private static final int WAIT_SECONDS = 10;
+    private static final int VISIBILITY_WAIT_SECONDS = 2;
 
     private static String escape(String value) {
         StringBuilder out = new StringBuilder();
@@ -58,6 +60,70 @@ public final class CurtStartActivityWait {
         if (result == 3) return "START_DELIVERED_TO_TOP";
         if (result == 102) return "START_ABORTED";
         return "UNRECOGNIZED_RESULT";
+    }
+
+    private static final class VisibilitySnapshot {
+        final boolean complete;
+        final int focusedVisible;
+        VisibilitySnapshot(boolean complete, int focusedVisible) {
+            this.complete = complete;
+            this.focusedVisible = focusedVisible;
+        }
+        String toJson(int samples) {
+            return "{\"query_succeeded\":true,\"task_snapshot_complete\":" + complete
+                + ",\"focused_visible_termux_task_count\":" + focusedVisible + ",\"visibility_samples\":" + samples + "}";
+        }
+    }
+
+    private static VisibilitySnapshot ownTermuxVisibility(Class<?> contextType, Object context) throws Exception {
+        Object manager = invoke(contextType, context, "getSystemService", new Class<?>[]{ String.class }, "activity");
+        java.util.List<?> tasks = (java.util.List<?>) invoke(Class.forName("android.app.ActivityManager"), manager, "getAppTasks", new Class<?>[0]);
+        if (tasks == null) throw new IllegalStateException("Own task query unavailable");
+        Class<?> appTaskType = Class.forName("android.app.ActivityManager$AppTask");
+        Class<?> componentType = Class.forName("android.content.ComponentName");
+        int inspected = 0, focusedVisible = 0;
+        for (Object task : tasks) {
+            if (inspected++ >= 16) break;
+            Object info = invoke(appTaskType, task, "getTaskInfo", new Class<?>[0]);
+            Object top = info.getClass().getField("topActivity").get(info);
+            // Own-app tasks may contain another app's activity. Ignore those
+            // components without including their names or details in the result.
+            if (top == null || !PACKAGE.equals(invoke(componentType, top, "getPackageName", new Class<?>[0]))) continue;
+            if (!TERMUX_ACTIVITY.equals(invoke(componentType, top, "getClassName", new Class<?>[0]))) continue;
+            boolean visible = info.getClass().getField("isVisible").getBoolean(info);
+            boolean focused = info.getClass().getField("isFocused").getBoolean(info);
+            int displayId = info.getClass().getField("displayId").getInt(info);
+            boolean sleeping = info.getClass().getField("isSleeping").getBoolean(info);
+            // One exact Termux task must be focused and visible on the awake
+            // main phone display. Focus on another display is insufficient.
+            if (visible && focused && displayId == 0 && !sleeping) focusedVisible++;
+        }
+        return new VisibilitySnapshot(tasks.size() <= 16, focusedVisible);
+    }
+
+    private static String boundedTermuxVisibility(final Class<?> contextType, final Object context) {
+        FutureTask<String> inspection = new FutureTask<String>(new Callable<String>() {
+            public String call() throws Exception {
+                for (int sample = 1; sample <= 4; sample++) {
+                    VisibilitySnapshot snapshot = ownTermuxVisibility(contextType, context);
+                    if (snapshot.focusedVisible > 0 || !snapshot.complete || sample == 4) return snapshot.toJson(sample);
+                    // Observe a possible UI transition; never send another
+                    // launch or move a task while waiting for the snapshot.
+                    Thread.sleep(150);
+                }
+                throw new IllegalStateException("Own visibility observation did not finish");
+            }
+        });
+        Thread worker = new Thread(inspection, "CurtOwnTermuxVisibility");
+        worker.setDaemon(true);
+        worker.start();
+        try {
+            return inspection.get(VISIBILITY_WAIT_SECONDS, TimeUnit.SECONDS);
+        } catch (TimeoutException error) {
+            return "{\"query_succeeded\":false,\"task_snapshot_complete\":false,\"focused_visible_termux_task_count\":0,\"query_timed_out\":true}";
+        } catch (Exception error) {
+            return "{\"query_succeeded\":false,\"task_snapshot_complete\":false,\"focused_visible_termux_task_count\":0}";
+        }
     }
 
     public static void main(String[] arguments) {
@@ -115,7 +181,7 @@ public final class CurtStartActivityWait {
             } else {
                 intent = intentType.getConstructor(String.class).newInstance("android.intent.action.MAIN");
                 invoke(intentType, intent, "addCategory", new Class<?>[]{ String.class }, "android.intent.category.LAUNCHER");
-                invoke(intentType, intent, "setClassName", new Class<?>[]{ String.class, String.class }, PACKAGE, "com.termux.app.TermuxActivity");
+                invoke(intentType, intent, "setClassName", new Class<?>[]{ String.class, String.class }, PACKAGE, TERMUX_ACTIVITY);
                 invoke(intentType, intent, "addFlags", new Class<?>[]{ int.class }, 0x10000000);
             }
             final Object service = invoke(Class.forName("android.app.ActivityTaskManager"), null, "getService", new Class<?>[0]);
@@ -137,14 +203,18 @@ public final class CurtStartActivityWait {
             Class<?> waitType = Class.forName("android.app.WaitResult");
             if (wait == null || !waitType.isInstance(wait)) throw new IllegalStateException("No Android WaitResult");
             int raw = waitType.getField("result").getInt(wait);
+            boolean waitTimedOut = waitType.getField("timeout").getBoolean(wait);
             Object who = waitType.getField("who").get(wait);
             String component = who == null ? null : (String) invoke(Class.forName("android.content.ComponentName"), who, "flattenToShortString", new Class<?>[0]);
             report.append(",\"wait_result_received\":true,\"raw_start_result\":").append(raw)
-                .append(",\"classification\":\"").append(classification(raw)).append("\",\"wait_timed_out\":").append(waitType.getField("timeout").getBoolean(wait))
+                .append(",\"classification\":\"").append(classification(raw)).append("\",\"wait_timed_out\":").append(waitTimedOut)
                 .append(",\"reported_component\":");
             if (component == null) report.append("null");
             else report.append('"').append(escape(component.substring(0, Math.min(component.length(), 180)))).append('"');
             report.append(",\"reported_total_time_ms\":").append(waitType.getField("totalTime").getLong(wait));
+            if (action.equals("return-termux") && !waitTimedOut && (raw == 0 || raw == 2 || raw == 3)) {
+                report.append(",\"termux_visibility\":").append(boundedTermuxVisibility(contextType, context));
+            }
         } catch (TimeoutException error) {
             report.append(",\"binder_call_timed_out\":true,\"wait_result_received\":false");
             exit = 2;

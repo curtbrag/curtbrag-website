@@ -82,6 +82,38 @@ test('indexed receipt survives the latest-fifty window without reading history o
   assert.deepEqual(h.lists, []); assert.deepEqual(h.reads, [indexKey(request), key]); assert.deepEqual(h.writes, []);
 });
 
+test('receipt lookup preserves unknown exits instead of coercing them into success', async () => {
+  for (const code of [null, undefined, false, true, '', ' ', [], {}, 1.5, Number.MAX_SAFE_INTEGER+1]) {
+    const h = harness(), request = pair();
+    const key = resultKey(request);
+    h.values.set(key, {...receipt(request), exit_code:code});
+    h.values.set(indexKey(request), {...request, result_key:key});
+    const response = await h.lookup([request]);
+    assert.equal(response.data.results[0].exit_code, null);
+    assert.deepEqual(h.writes, []); assert.deepEqual(h.deletes, []);
+  }
+  for (const [input, expected] of [[0,0],[1,1],[-15,-15],['0',0],['17',17],['-15',-15]]) {
+    const h = harness(), request = pair(), key = resultKey(request);
+    h.values.set(key, {...receipt(request), exit_code:input});h.values.set(indexKey(request), {...request, result_key:key});
+    assert.equal((await h.lookup([request])).data.results[0].exit_code, expected);
+  }
+});
+
+test('completion acknowledges an unknown exit without inventing success or replaying the job', async () => {
+  for (const code of [null, undefined, false, '', ' ', {}]) {
+    const h = harness(), request = pair('unknown-exit');
+    h.values.set(`job--${request.job_id}`, {id:request.job_id,type:'shell'});
+    h.values.set(`assignment--${request.job_id}--${request.device_id}`, {...request});
+    const response = await h.call('job-complete', {...request, stdout:'delivered but unverified', exit_code:code});
+    assert.equal(response.status,200);assert.equal(response.data.remaining,0);
+    const index = h.values.get(indexKey(request));
+    assert.equal(h.values.get(index.result_key).exit_code,null);
+    assert.equal(h.values.has(`assignment--${request.job_id}--${request.device_id}`),false);
+    assert.equal(h.values.has(`job--${request.job_id}`),false);
+    assert.equal((await h.lookup([request])).data.results[0].exit_code,null);
+  }
+});
+
 test('older receipts use bounded paginated key metadata and read only the requested body', async () => {
   const h = harness({ history: 1200 }), request = pair('old-1');
   const response = await h.lookup([request]);

@@ -7,6 +7,7 @@ import io
 import json
 import os
 import pathlib
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -35,6 +36,8 @@ def native_receipt(action="open-website", url=URL, raw=0, **changes):
                "wait_timed_out": False, "reported_component": "org.lineageos.jelly/.MainActivity" if action=="open-website" else "com.termux/.app.TermuxActivity",
                "reported_total_time_ms": 10}
     if action == "open-website": receipt["url"] = url
+    elif action == "return-termux":
+        receipt["termux_visibility"] = {"query_succeeded":True, "task_snapshot_complete":True, "focused_visible_termux_task_count":1}
     receipt.update(changes)
     return receipt
 
@@ -282,7 +285,7 @@ class TermuxReturnTests(unittest.TestCase):
     def test_cli_exact_return_settings_route_and_success_exit_contract(self):
         encoded = base64.b64encode(json.dumps({"action": "return-termux"}).encode()).decode()
         accepted = {"kind": "phone-termux-return", "return_requested": True, "request_completed": True,
-                    "state": "return-requested", "visible_screen_verified": False}
+                    "state": "termux-foreground", "foreground_app_verified": True, "visible_screen_verified": False}
         with patch("sys.argv", ["worker", "--settings-b64", encoded]), \
                 patch.object(helper, "return_termux", return_value=accepted) as return_app, \
                 patch.object(helper, "open_browser") as navigate, redirect_stdout(io.StringIO()) as output:
@@ -400,7 +403,7 @@ class AndroidNativeReceiptTests(unittest.TestCase):
         self.assertFalse(report["launch_requested"])
         run.assert_called_once()
 
-    def test_positive_android_results_are_requests_only_for_both_actions(self):
+    def test_positive_android_results_require_own_focused_visible_task_for_return(self):
         for action in ("open-website", "return-termux"):
             for raw in (0, 2, 3):
                 with self.subTest(action=action, raw=raw):
@@ -409,7 +412,72 @@ class AndroidNativeReceiptTests(unittest.TestCase):
                     self.assertFalse(report["visible_screen_verified"])
                     self.assertIsNone(report["error"])
                     self.assertEqual(report["android_start"]["raw_start_result"], raw)
+                    if action == "return-termux":
+                        self.assertEqual(report["state"], "termux-foreground")
+                        self.assertTrue(report["foreground_app_verified"])
+                        self.assertTrue(report["termux_visibility"]["query_succeeded"])
+                    else:
+                        self.assertEqual(report["state"], "launch-requested")
+                        self.assertNotIn("termux_visibility", report)
                     run.assert_called_once()
+
+    def test_delivered_return_that_is_not_focused_and_visible_is_failed_without_retry(self):
+        for raw in (0, 2, 3):
+            receipt = native_receipt("return-termux", raw=raw, termux_visibility={
+                "query_succeeded":True,"task_snapshot_complete":True,"focused_visible_termux_task_count":0})
+            report, run, _ = self.request("return-termux", receipt)
+            self.assertTrue(report["return_requested"])
+            self.assertTrue(report["request_completed"])
+            self.assertEqual(report["state"], "failed")
+            self.assertFalse(report["foreground_app_verified"])
+            self.assertEqual(report["error_code"], "android-termux-not-foreground")
+            self.assertFalse(report["visible_screen_verified"])
+            run.assert_called_once()
+
+    def test_return_visibility_unknown_timeout_truncated_and_wrong_types_cannot_verify_foreground(self):
+        variants = [None, [], {},
+                    {"query_succeeded":False,"task_snapshot_complete":False,"focused_visible_termux_task_count":0},
+                    {"query_succeeded":True,"task_snapshot_complete":False,"focused_visible_termux_task_count":1},
+                    {"query_succeeded":True,"task_snapshot_complete":True,"focused_visible_termux_task_count":True},
+                    {"query_succeeded":True,"task_snapshot_complete":True,"focused_visible_termux_task_count":-1},
+                    {"query_succeeded":True,"task_snapshot_complete":True,"focused_visible_termux_task_count":17},
+                    {"query_succeeded":True,"task_snapshot_complete":True,"focused_visible_termux_task_count":1,"query_timed_out":True},
+                    # Separate flags must not replace a joint count from the same task.
+                    {"query_succeeded":True,"task_snapshot_complete":True,"visible":True,"focused":True}]
+        for visibility in variants:
+            with self.subTest(visibility=visibility):
+                report, run, _ = self.request("return-termux", native_receipt("return-termux", raw=3, termux_visibility=visibility))
+                self.assertEqual(report["state"], "failed")
+                self.assertTrue(report["return_requested"])
+                self.assertFalse(report["foreground_app_verified"])
+                self.assertEqual(report["error_code"], "android-return-unconfirmed")
+                run.assert_called_once()
+
+    def test_return_foreground_claim_requires_matching_activity_receipt(self):
+        for changes in (dict(reported_component="com.other/.Activity"), dict(uid=2000), dict(calling_package="com.other"),
+                        dict(raw_start_result=102, classification="START_ABORTED"), dict(wait_timed_out=True)):
+            report, run, _ = self.request("return-termux", native_receipt("return-termux", **changes))
+            self.assertEqual(report["state"], "failed")
+            self.assertFalse(report["foreground_app_verified"])
+            run.assert_called_once()
+
+    def test_cli_hidden_delivered_return_is_exit1_and_only_verified_foreground_is_exit0(self):
+        encoded = base64.b64encode(json.dumps({"action":"return-termux"}).encode()).decode()
+        for count, exit_code in ((0,1),(1,0)):
+            receipt = native_receipt("return-termux", raw=3, termux_visibility={
+                "query_succeeded":True,"task_snapshot_complete":True,"focused_visible_termux_task_count":count})
+            run = Mock(return_value=subprocess.CompletedProcess([],0,json.dumps(receipt),""))
+            with self.subTest(count=count), patch.dict(helper.os.environ, TERMUX, clear=True), \
+                    patch.object(helper.os,"getuid",return_value=10191,create=True), \
+                    patch.object(helper,"android_native_cache",return_value="/private/pinned.dex"), \
+                    patch.object(helper.subprocess,"run",run), \
+                    patch("sys.argv",["worker","--settings-b64",encoded]), redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(helper.main(),exit_code)
+            report = json.loads(output.getvalue())
+            self.assertTrue(report["return_requested"])
+            self.assertEqual(report["foreground_app_verified"],count>0)
+            self.assertFalse(report["visible_screen_verified"])
+            run.assert_called_once()
 
     def test_return_command_has_no_external_url_or_arbitrary_component_parameter(self):
         report, run, _ = self.request("return-termux")
@@ -489,6 +557,121 @@ class AndroidNativeReceiptTests(unittest.TestCase):
         source = (root/manifest["source"]).read_text().replace("\r\n", "\n").encode()
         self.assertEqual(hashlib.sha256(source).hexdigest(), manifest["source_sha256"])
         self.assertFalse(manifest["apk_install_required"])
+
+    def test_native_visibility_requires_focus_and_visibility_on_the_same_exact_termux_task(self):
+        configured = pathlib.Path(os.environ["CURT_TEST_JDK_BIN"]) if os.environ.get("CURT_TEST_JDK_BIN") else None
+        javac = str(configured/"javac.exe") if configured else shutil.which("javac")
+        java = str(configured/"java.exe") if configured else shutil.which("java")
+        if not javac or not java:
+            self.skipTest("JDK is required for the read-only Android task fixtures")
+        sources = {
+            "android/content/ComponentName.java": r'''
+package android.content;
+public final class ComponentName {
+  private final String pkg, name;
+  public ComponentName(String pkg, String name) { this.pkg=pkg; this.name=name; }
+  public String getPackageName() { return pkg; }
+  public String getClassName() { return name; }
+}
+''',
+            "android/app/ActivityManager.java": r'''
+package android.app;
+import java.util.List;
+import android.content.ComponentName;
+public final class ActivityManager {
+  public final List<List<AppTask>> snapshots;
+  public int reads=0;
+  public ActivityManager(List<List<AppTask>> snapshots) { this.snapshots=snapshots; }
+  public List<AppTask> getAppTasks() { return snapshots.get(Math.min(reads++,snapshots.size()-1)); }
+  public static final class AppTask {
+    private final TaskInfo info;
+    public AppTask(TaskInfo info) { this.info=info; }
+    public TaskInfo getTaskInfo() { return info; }
+  }
+  public static final class TaskInfo {
+    public ComponentName topActivity;
+    public boolean isVisible, isFocused;
+    public int displayId=0;
+    public boolean isSleeping=false;
+    public TaskInfo(String pkg, String name, boolean visible, boolean focused) {
+      topActivity=new ComponentName(pkg,name); isVisible=visible; isFocused=focused;
+    }
+  }
+}
+''',
+            "VisibilityHarness.java": r'''
+import java.lang.reflect.Method;
+import java.util.*;
+import android.app.ActivityManager;
+public final class VisibilityHarness {
+  static final String TERMUX="com.termux.app.TermuxActivity";
+  public static final class FixtureContext {
+    final ActivityManager manager;
+    public FixtureContext(ActivityManager manager) { this.manager=manager; }
+    public Object getSystemService(String name) { return manager; }
+  }
+  static ActivityManager.AppTask task(String pkg,String name,boolean visible,boolean focused) {
+    return new ActivityManager.AppTask(new ActivityManager.TaskInfo(pkg,name,visible,focused));
+  }
+  static ActivityManager.AppTask displayTask(int displayId,boolean sleeping) {
+    ActivityManager.TaskInfo info=new ActivityManager.TaskInfo("com.termux",TERMUX,true,true);
+    info.displayId=displayId; info.isSleeping=sleeping;
+    return new ActivityManager.AppTask(info);
+  }
+  static void sample(String name,List<ActivityManager.AppTask>... snapshots) throws Exception {
+    ActivityManager manager=new ActivityManager(Arrays.asList(snapshots));
+    Method inspect=CurtStartActivityWait.class.getDeclaredMethod("boundedTermuxVisibility",Class.class,Object.class);
+    inspect.setAccessible(true);
+    String result=(String)inspect.invoke(null,FixtureContext.class,new FixtureContext(manager));
+    System.out.println(name+"\t"+result+"\t"+manager.reads);
+  }
+  public static void main(String[] args) throws Exception {
+    List<ActivityManager.AppTask> unfocused=Arrays.asList(task("com.termux",TERMUX,true,false));
+    sample("visible_unfocused",unfocused);
+    sample("focused_hidden",Arrays.asList(task("com.termux",TERMUX,false,true)));
+    sample("split_tasks",Arrays.asList(task("com.termux",TERMUX,true,false),task("com.termux",TERMUX,false,true)));
+    sample("wrong_component",Arrays.asList(task("com.other","com.other.Activity",true,true),task("com.termux","com.termux.SettingsActivity",true,true)));
+    sample("other_display",Arrays.asList(displayTask(1,false)));
+    sample("sleeping_task",Arrays.asList(displayTask(0,true)));
+    List<ActivityManager.AppTask> focused=Arrays.asList(task("com.termux",TERMUX,true,true));
+    sample("verified",focused);
+    sample("transition",unfocused,focused);
+    List<ActivityManager.AppTask> truncated=new ArrayList<ActivityManager.AppTask>();
+    for(int i=0;i<17;i++)truncated.add(task("com.termux",TERMUX,true,true));
+    sample("truncated",truncated);
+    sample("unknown",(List<ActivityManager.AppTask>)null);
+  }
+}
+'''}
+        root = pathlib.Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            folder = pathlib.Path(directory)
+            paths = []
+            for name, contents in sources.items():
+                path = folder/name
+                path.parent.mkdir(parents=True,exist_ok=True)
+                path.write_text(contents,encoding="utf-8")
+                paths.append(str(path))
+            paths.append(str(root/"scripts/android/CurtStartActivityWait.java"))
+            options = {"capture_output":True,"text":True,"timeout":30,"check":False}
+            if os.name == "nt": options["creationflags"] = subprocess.CREATE_NO_WINDOW
+            built = subprocess.run([javac,"--release","8","-d",str(folder),*paths],**options)
+            self.assertEqual(built.returncode,0,built.stderr)
+            checked = subprocess.run([java,"-cp",str(folder),"VisibilityHarness"],**options)
+            self.assertEqual(checked.returncode,0,checked.stderr)
+            cases = {name:(json.loads(result),int(reads)) for name,result,reads in (line.split("\t") for line in checked.stdout.splitlines())}
+        self.assertEqual(set(cases),{"visible_unfocused","focused_hidden","split_tasks","wrong_component","other_display","sleeping_task","verified","transition","truncated","unknown"})
+        for name in ("visible_unfocused","focused_hidden","split_tasks","wrong_component","other_display","sleeping_task"):
+            self.assertEqual(cases[name][0]["focused_visible_termux_task_count"],0)
+            self.assertEqual(cases[name][1],4)
+        self.assertEqual(cases["verified"][0]["focused_visible_termux_task_count"],1)
+        self.assertEqual(cases["verified"][1],1)
+        self.assertEqual(cases["transition"][0]["focused_visible_termux_task_count"],1)
+        self.assertEqual(cases["transition"][1],2)
+        self.assertFalse(cases["truncated"][0]["task_snapshot_complete"])
+        self.assertEqual(cases["truncated"][1],1)
+        self.assertFalse(cases["unknown"][0]["query_succeeded"])
+        self.assertEqual(cases["unknown"][1],1)
 
     @unittest.skipUnless(hasattr(os, "O_DIRECTORY") and hasattr(os, "O_NOFOLLOW") and hasattr(os, "getuid"), "POSIX cache descriptor guards")
     def test_cache_is_private_pinned_and_rejects_tamper_without_overwriting(self):

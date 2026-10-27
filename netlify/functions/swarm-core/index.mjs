@@ -93,6 +93,17 @@ function matchingResultKey(key, request) {
     key.endsWith(`--${request.job_id}--${request.device_id}`);
 }
 
+function reportedExitCode(value) {
+  if (Number.isSafeInteger(value)) return value;
+  // Older workers may send an integer as text. Missing values, booleans and
+  // blank strings are unknown, never successful exits.
+  if (typeof value === "string" && /^-?(?:0|[1-9][0-9]{0,15})$/.test(value)) {
+    const code = Number(value);
+    if (Number.isSafeInteger(code)) return code;
+  }
+  return null;
+}
+
 function resultForRequest(value, request) {
   if (!value || value.job_id !== request.job_id || value.device_id !== request.device_id) return null;
   // A launch report needs its receipt, not the original shell command. Return
@@ -100,7 +111,7 @@ function resultForRequest(value, request) {
   return {
     job_id: value.job_id, device_id: value.device_id,
     type: String(value.type || "").slice(0, 96),
-    exit_code: Number.isFinite(Number(value.exit_code)) ? Number(value.exit_code) : null,
+    exit_code: reportedExitCode(value.exit_code),
     stdout: String(value.stdout || "").slice(0, MAX_STDOUT),
     stderr: String(value.stderr || "").slice(0, MAX_STDOUT),
     completed_at: Number(value.completed_at) || null,
@@ -498,7 +509,7 @@ export default async (request) => {
     const result = {
       job_id: jobId,
       device_id: deviceId,
-      exit_code: Number.isFinite(Number(body.exit_code)) ? Number(body.exit_code) : 0,
+      exit_code: reportedExitCode(body.exit_code),
       stdout: String(body.stdout || "").slice(0, MAX_STDOUT),
       stderr: String(body.stderr || "").slice(0, MAX_STDOUT),
       cmd: job?.cmd || "",

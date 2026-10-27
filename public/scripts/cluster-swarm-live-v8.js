@@ -1001,7 +1001,7 @@
       let report;try{report=JSON.parse(result.stdout||'');}catch{}
       if(report?.kind==='website-browser-open'&&report.url===browserOpenReport.url&&typeof report.launch_requested==='boolean'&&report.visible_screen_verified===false){
         const blocked=report.error_code==='android-background-launch-blocked'||report.android_start?.raw_start_result===102;
-        task.report=report;task.state=!blocked&&Number(result.exit_code)===0&&report.launch_requested===true&&report.state==='launch-requested'?'launch-requested':'failed';
+        task.report=report;task.state=!blocked&&result.exit_code===0&&report.launch_requested===true&&report.state==='launch-requested'?'launch-requested':'failed';
         task.error=task.state==='failed'?String(blocked?'Android blocked website opening from the background. This request did not open the page; retrying this connection cannot grant phone-control permission.':report.error||result.stderr||'The worker did not report a successful browser launch request.').slice(0,500):'';
       }else{task.state='failed';task.error=String(result.stderr||'Worker returned an invalid browser launch report.').slice(0,500);}
     }
@@ -1090,7 +1090,7 @@
   function renderTermuxReturn(results,commands=null){
     const state=document.getElementById('termux-return-state');if(!state)return;
     if(commands&&Array.isArray(commands.queue)&&Array.isArray(commands.history))termuxControllerCommands=commands;
-    if(!termuxReturnReport){state.textContent=document.getElementById('termux-return-route')?.value!=='pc-controller'?'Ready to request Termux through the existing phone connection. Screen wake and foreground changes are unverified.':termuxControllerReady?'PC controller ready. Foreground verification needs a paired Android connection.':'Remote return unavailable: the PC controller is offline or needs an update. Choose Existing phone connection to send an unverified request.';updateBrowserButtons();return;}
+    if(!termuxReturnReport){state.textContent=document.getElementById('termux-return-route')?.value!=='pc-controller'?'Ready to request Termux through the existing phone connection and check whether it becomes visible and focused. This does not wake a sleeping screen.':termuxControllerReady?'PC controller ready. Foreground verification needs a paired Android connection.':'Remote return unavailable: the PC controller is offline or needs an update. Choose Existing phone connection to check the phone’s own Termux app.';updateBrowserButtons();return;}
     const controller=termuxReturnReport.transport==='pc-controller';
     for(const task of termuxReturnReport.tasks){
       if(['return-requested','termux-foreground','failed','closed'].includes(task.state))continue;
@@ -1106,7 +1106,12 @@
         let report;try{report=JSON.parse(result.stdout||'');}catch{}
         if(PHONE_IDS.has(task.unit)&&report?.kind==='phone-termux-return'&&typeof report.return_requested==='boolean'&&report.visible_screen_verified===false){
           const blocked=report.error_code==='android-background-launch-blocked'||report.android_start?.raw_start_result===102;
-          task.report=report;task.state=!blocked&&Number(result.exit_code)===0&&report.return_requested===true&&report.request_completed===true&&report.state==='return-requested'?'return-requested':'failed';
+          const delivered=!blocked&&result.exit_code===0&&report.return_requested===true&&report.request_completed===true;
+          const visibility=report.termux_visibility;
+          const verified=delivered&&report.state==='termux-foreground'&&report.foreground_app_verified===true&&report.error===null&&!report.error_code&&[0,2,3].includes(report.android_start?.raw_start_result)&&visibility?.query_succeeded===true&&visibility.task_snapshot_complete===true&&(visibility.query_timed_out===undefined||visibility.query_timed_out===false)&&Number.isInteger(visibility.focused_visible_termux_task_count)&&visibility.focused_visible_termux_task_count>0&&visibility.focused_visible_termux_task_count<=16;
+          // Preserve old delivered-only receipts without treating them as proof.
+          const legacy=delivered&&report.state==='return-requested'&&report.foreground_app_verified===undefined&&visibility===undefined;
+          task.report=report;task.state=verified?'termux-foreground':legacy?'return-requested':'failed';
           task.error=task.state==='failed'?String(blocked?'Android blocked the return to Termux. This request did not press Back or close the browser.':report.error||result.stderr||'The worker did not accept the return request.').slice(0,500):'';
         }else{task.state='failed';task.error=String(result.stderr||'Worker returned an invalid return report.').slice(0,500);}
       }
