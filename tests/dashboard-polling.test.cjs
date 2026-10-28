@@ -37,7 +37,7 @@ function harness(options={}){
     toast:(message,type)=>{notices.push({message,type});if(options.toast)options.toast(message,type);},
     ...Object.fromEntries(renderNames.map(name=>[name,()=>{renders.push(name);if(options.render)options.render(name);}]))});
   vm.runInContext([globals,polling,login,tabs,restored,
-    'this.api={fetchAll,startDashboardPolling,login,pending:()=>dashboardFetchPending};'].join('\n'),context);
+    'this.api={fetchAll,startDashboardPolling,login,pending:()=>dashboardFetchPending,state:()=>state};'].join('\n'),context);
   return {api:context.api,calls,timers,notices,renders,storage,document,elements,buttons,
     async finish(){const pending=context.api.pending();if(pending)await pending;},
     async tick(){assert.equal(timers.length,1);timers[0].callback();await this.finish();}};
@@ -112,10 +112,61 @@ test('overlapping automatic and manual refreshes share one pending batch and rel
 test('failed API batches release the guard and a later explicit refresh can recover',async()=>{
   let fail=true;
   const h=harness({callApi:action=>{if(fail&&action==='summary')throw Error('Fixture service unavailable');return {};}});
-  await h.finish();assert.equal(h.api.pending(),null);assert.equal(h.calls.length,6);
+  await h.finish();assert.equal(h.api.pending(),null);assert.equal(h.calls.length,10);
   assert.match(h.notices[0].message,/Fixture service unavailable/);
+  assert.ok(h.renders.includes('renderBridgeStatus'),'A failed summary does not suppress the working bridge.');
   fail=false;await h.api.fetchAll();
-  assert.equal(h.calls.length,16);assert.equal(h.api.pending(),null);assert.ok(h.renders.length>0);
+  assert.equal(h.calls.length,20);assert.equal(h.api.pending(),null);assert.ok(h.renders.length>0);
+});
+
+test('bridge and command results render before a stalled summary or optional report finishes',async()=>{
+  let releaseSummary,releaseAnalytics;
+  const summary=new Promise(resolve=>{releaseSummary=resolve;});
+  const analytics=new Promise(resolve=>{releaseAnalytics=resolve;});
+  const h=harness({callApi:action=>action==='summary'?summary:action==='fleet-analytics'?analytics:action==='bridge-status'?{alive:true}:action==='commands'?{history:[{id:'finished-command'}]}:{}});
+  for(let i=0;i<8;i++)await Promise.resolve();
+  assert.ok(h.renders.includes('renderBridgeStatus'));
+  assert.ok(h.renders.includes('renderCommands'));
+  assert.equal(h.api.state().bridge.alive,true);
+  assert.equal(h.api.state().commands.history[0].id,'finished-command');
+  assert.equal(h.renders.includes('renderSummary'),false);
+  releaseSummary({summary:{total:13}});
+  for(let i=0;i<12;i++)await Promise.resolve();
+  assert.ok(h.renders.includes('renderSummary'));
+  assert.ok(h.renders.includes('renderThermalReport'));
+  assert.equal(h.renders.includes('renderAnalytics'),false);
+  releaseAnalytics({ready:true});await h.finish();
+  assert.ok(h.renders.includes('renderAnalytics'));assert.equal(h.api.pending(),null);
+});
+
+test('failed device refresh preserves the previous devices while other controls keep updating',async()=>{
+  let failDevices=false,bridgeSequence=0;
+  const h=harness({callApi:action=>{
+    if(action==='devices'){if(failDevices)throw Error('Device read unavailable');return {devices:[{id:'phone253'}]};}
+    return action==='bridge-status'?{alive:true,sequence:++bridgeSequence}:{};
+  }});
+  await h.finish();failDevices=true;await h.api.fetchAll();
+  assert.equal(h.api.state().devices[0].id,'phone253');
+  assert.equal(h.api.state().bridge.sequence,2);
+  assert.match(h.notices.at(-1).message,/devices: Device read unavailable/);
+  assert.equal(h.api.pending(),null);
+});
+
+test('group profile choices update when profiles arrive after groups',async()=>{
+  let releaseProfiles;
+  const profiles=new Promise(resolve=>{releaseProfiles=resolve;});
+  const choices=[];
+  const h=harness({
+    callApi:action=>action==='profiles'?profiles:action==='groups'?{groups:[{id:'phones'}]}:{},
+    render:name=>{if(name==='renderGroups')choices.push(Object.keys(h.api.state().profiles));},
+  });
+  for(let i=0;i<12;i++)await Promise.resolve();
+  assert.equal(h.api.state().groups[0].id,'phones');
+  assert.deepEqual(choices,[[]]);
+  releaseProfiles({profiles:{'current-profile':{name:'Current profile'}}});
+  await h.finish();
+  assert.deepEqual(choices,[[],['current-profile']]);
+  assert.equal(h.api.pending(),null);
 });
 
 test('even an unexpected error while reporting a failure releases the in-flight guard',async()=>{

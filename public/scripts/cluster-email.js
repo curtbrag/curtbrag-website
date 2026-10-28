@@ -8,7 +8,8 @@
   panel.append(card);
   const shortcut=document.createElement('a');shortcut.href='#fleet-email-controls';shortcut.textContent='Fleet email';shortcut.style.cssText='display:inline-block;margin-top:8px;text-decoration:underline';
   panel.querySelector('h1')?.parentElement.append(shortcut);
-  let snapshot=null, busy=false, pendingTests=null;
+  let snapshot=null, busy=false, pendingTests=null, refreshing=null, statusAvailable=false;
+  const unconfirmedSubmissions=new Map();
   const state=card.querySelector('#mail-state');
   const confirmation=document.createElement('div');
   confirmation.id='mail-confirmation';confirmation.hidden=true;
@@ -18,10 +19,21 @@
   async function api(action,body) {
     const token=sessionStorage.getItem('cp_password');
     if(!token) throw Error('Sign in to use email controls');
-    const response=await fetch('/.netlify/functions/fleet-email?action='+action,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,cache:'no-store',signal:AbortSignal.timeout(15000)});
-    const data=await response.json();
-    if(!response.ok) throw Error(data.error||'Email connection unavailable');
-    return data;
+    const controller=new AbortController();let timer;
+    const deadline=new Promise((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Error('Email connection timed out.'));},15000);});
+    try {
+      return await Promise.race([deadline,(async()=>{
+        const response=await fetch('/.netlify/functions/fleet-email?action='+action,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,cache:'no-store',signal:controller.signal});
+        const data=await response.json();
+        if(!response.ok){const error=Error(data?.error||'Email connection unavailable');error.rejected=response.status>=400&&response.status<500;throw error;}
+        if(body&&data?.ok!==true)throw Error(data?.error||'Email queue response could not be confirmed');
+        return data;
+      })()]);
+    } catch(error) {
+      if(body&&!error.rejected){const uncertain=Error((controller.signal.aborted?'Email connection timed out. ':'')+'Queueing outcome unconfirmed; it was not automatically retried. Refresh status before a new request.');uncertain.unconfirmed=true;throw uncertain;}
+      if(controller.signal.aborted)throw Error('Email status timed out. Refresh email status to try again.');
+      throw error;
+    } finally {clearTimeout(timer);}
   }
   function resultText(job) {
     if(!job) return 'Not checked on device';
@@ -34,13 +46,15 @@
   }
   function render() {
     const tbody=card.querySelector('#mail-units'); tbody.replaceChildren();
-    const age=Date.now()-(snapshot.bridge?.at||0), live=age>=0&&age<120000;
+    card.querySelector('#mail-refresh').disabled=busy;
+    if(!snapshot){card.querySelector('#mail-check-all').disabled=true;card.querySelector('#mail-test-all').disabled=true;return;}
+    const age=Date.now()-(snapshot.bridge?.at||0), live=statusAvailable&&age>=0&&age<120000;
     for(const unit of snapshot.units) {
       const tr=document.createElement('tr');
       const latest=snapshot.jobs.filter(j=>j.unit===unit.unit).sort((a,b)=>b.created_at-a.created_at)[0];
       const active=snapshot.jobs.some(j=>j.unit===unit.unit && ['queued','running'].includes(j.status));
-      const result=resultText(latest);
-      for(const text of [unit.unit+' · '+unit.address,unit.installed?(live&&unit.connected?'Installed · connected':'Installed · disconnected'):'Setup pending',result]) {
+      const result=unconfirmedSubmissions.has(unit.unit)?'Queueing outcome unconfirmed; not automatically retried. Refresh status before a new request.':resultText(latest);
+      for(const text of [unit.unit+' · '+unit.address,unit.installed?(statusAvailable?(live&&unit.connected?'Installed · connected':'Installed · disconnected'):'Installed · status unconfirmed'):'Setup pending',result]) {
         const td=document.createElement('td');td.style.cssText='padding:10px 6px;border-top:1px solid var(--color-border);overflow-wrap:anywhere';td.textContent=text;tr.append(td);
       }
       const controls=document.createElement('td');
@@ -54,17 +68,29 @@
     card.querySelector('#mail-test-all').disabled=busy||!available;
     state.textContent=live?'Main PC email connection is online.':'Main PC email connection is offline or not installed. No requests will be queued.';
   }
-  async function refresh() {
-    if(!sessionStorage.getItem('cp_password')) return;
-    try {snapshot=await api('status');render();} catch(error) {state.textContent=error.message;}
+  function refresh() {
+    if(!sessionStorage.getItem('cp_password')) return Promise.resolve();
+    if(refreshing)return refreshing;
+    refreshing=(async()=>{
+      try {
+        const next=await api('status');
+        if(!next||!Array.isArray(next.units)||!Array.isArray(next.jobs)||!next.units.every(unit=>unit&&typeof unit.unit==='string'&&typeof unit.address==='string')||!next.jobs.every(job=>job&&typeof job==='object'))throw Error('Email status could not be confirmed. Refresh email status to try again.');
+        snapshot=next;statusAvailable=true;
+        for(const [unit,pending] of unconfirmedSubmissions)if(snapshot.jobs.some(job=>job.id===pending.id))unconfirmedSubmissions.delete(unit);
+        render();
+      } catch(error) {statusAvailable=false;render();state.textContent=error.message;}
+      finally {refreshing=null;}
+    })();
+    return refreshing;
   }
   function clearTestConfirmation() {pendingTests=null;confirmation.hidden=true;}
   function request(units,action) {
     if(busy) return;
+    if(!statusAvailable){state.textContent='Refresh email status before submitting a new request.';return;}
     if(!units.length){state.textContent='No connected mailboxes are available for this request.';return;}
     if(action!=='test'){clearTestConfirmation();return submit(units,action);}
     pendingTests=[...new Set(units)];
-    const uncertain=units.some(unit=>{const latest=snapshot.jobs.filter(job=>job.unit===unit&&job.action==='test').sort((a,b)=>b.created_at-a.created_at)[0];return latest?.status==='interrupted'&&latest.result?.delivery_verified!==true;});
+    const uncertain=units.some(unit=>{const latest=snapshot.jobs.filter(job=>job.unit===unit&&job.action==='test').sort((a,b)=>b.created_at-a.created_at)[0];return unconfirmedSubmissions.get(unit)?.action==='test'||latest?.status==='interrupted'&&latest.result?.delivery_verified!==true;});
     const notice=uncertain?'An earlier test has an unconfirmed sending outcome. This sends a new test; it does not retry the earlier request. ':'';
     confirmation.querySelector('#mail-confirm-message').textContent=notice+'Send one test email to each of these '+pendingTests.length+' units’ own inboxes?';
     confirmation.querySelector('#mail-confirm-units').textContent=pendingTests.map(name=>name+' → '+snapshot.units.find(unit=>unit.unit===name)?.address).join('\n');
@@ -75,15 +101,28 @@
   }
   async function submit(units,action) {
     if(busy) return;
-    busy=true;render();
-    card.querySelectorAll('button').forEach(b=>b.disabled=true);
+    if(!statusAvailable){state.textContent='Refresh email status before submitting a new request.';return;}
+    busy=true;
     const outcomes=[];
     try {
-      for(const unit of units) {
-        try {await api('enqueue',{id:crypto.randomUUID(),unit,action});outcomes.push(unit+': queued');}
-        catch(error) {outcomes.push(unit+': '+error.message);}
+      render();card.querySelectorAll('button').forEach(b=>b.disabled=true);
+      for(let index=0;index<units.length;index++) {
+        const unit=units[index],id=crypto.randomUUID();state.textContent='Submitting '+action+' request for '+unit+'…';
+        try {await api('enqueue',{id,unit,action});outcomes.push({unit,id,message:'queued'});}
+        catch(error) {
+          outcomes.push({unit,id,message:error.message,unconfirmed:error.unconfirmed===true});
+          if(error.unconfirmed){unconfirmedSubmissions.set(unit,{id,action});for(const remaining of units.slice(index+1))outcomes.push({unit:remaining,message:'not submitted after an unconfirmed request'});break;}
+        }
       }
-    } finally {busy=false;card.querySelector('#mail-refresh').disabled=false;await refresh();if(snapshot)render();state.textContent=outcomes.join(' · ');}
+    } finally {
+      state.textContent=outcomes.map(row=>row.unit+': '+row.message).join(' · ')+' Refreshing email status…';
+      // An older background read cannot verify a request submitted after it began.
+      try {if(refreshing)await refreshing;await refresh();}
+      finally {
+        busy=false;render();card.querySelector('#mail-refresh').disabled=false;
+        state.textContent=outcomes.map(row=>{const known=row.unconfirmed&&statusAvailable&&snapshot?.jobs.find(job=>job.id===row.id);return row.unit+': '+(known?resultText(known)+' (confirmed by refreshed status)':row.message);}).join(' · ')+(statusAvailable?'':' Email status is unavailable; refresh email status to restore controls.');
+      }
+    }
   }
   const connected=()=>snapshot?.units.filter(u=>u.installed&&u.connected&&!snapshot.jobs.some(j=>j.unit===u.unit&&['queued','running'].includes(j.status))).map(u=>u.unit)||[];
   confirmation.querySelector('#mail-confirm-cancel').onclick=()=>{clearTestConfirmation();state.textContent='Test cancelled. No email was queued.';};
@@ -91,6 +130,6 @@
   card.querySelector('#mail-refresh').onclick=refresh;
   card.querySelector('#mail-check-all').onclick=()=>request(connected(),'check');
   card.querySelector('#mail-test-all').onclick=()=>request(connected(),'test');
-  refresh();setInterval(()=>{if(!document.hidden&&!busy)refresh();},30000);
+  render();refresh();setInterval(()=>{if(!document.hidden&&!busy)refresh();},30000);
 })();
 

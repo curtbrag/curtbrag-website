@@ -10,7 +10,7 @@ function harness({target='all',mode='activity',connect=false,nodes=[],failAvaila
  const element=id=>elements[id]||=( {id,disabled:false,value:id==='display-target'?target:id==='display-mode'?mode:'',checked:id==='display-connect'&&connect,textContent:'',href:''} );
  elements['cluster-view-fleet']={children:[{}],insertBefore(card){elements[card.id]=card;}};
  const document={getElementById:id=>elements[id]||null,createElement(){return {set innerHTML(html){for(const match of html.matchAll(/id="([^"]+)"/g))element(match[1]);}};}};
- const context=vm.createContext({document,Array,Set,URL,Error,location:{origin:'https://curtbrag.com'},PHONE_IDS:new Set(units),token:()=> 'fixture',setControlView(){},
+ const context=vm.createContext({document,Array,Set,URL,Error,AbortController,setTimeout,clearTimeout,location:{origin:'https://curtbrag.com'},PHONE_IDS:new Set(units),token:()=> 'fixture',setControlView(){},
   canonicalize:r=>r,
   swarmApi:async action=>{statusCalls.push(action);if(failAvailability)throw Error('Availability unavailable');return {nodes};},
   fetch:async(url,options)=>{const body=JSON.parse(options.body);requests.push({url,body});if(requests.length===1)await gate;return {ok:body.phone!==failPhone,json:async()=>({display_url:'https://curtbrag.com/cluster/display.html?mode='+body.mode+'&name='+body.phone+'&display_ticket='+'f'.repeat(64)})};},
