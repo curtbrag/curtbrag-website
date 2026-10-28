@@ -17,17 +17,19 @@ function harness(options={}){
   elements['display-connect']={checked:options.connect===true};
   const element=id=>elements[id]||=( {id,disabled:false,value:'',textContent:'',href:''} );
   elements['cluster-view-fleet']={children:[{}],insertBefore(card){elements[card.id]=card;}};
-  const events=[],saves=[],enqueues=[];let loads=0;
+  const events=[],saves=[],enqueues=[],timeouts=[];let loads=0;
   const context=vm.createContext({
     document:{getElementById:id=>elements[id]||null,createElement(){return {set innerHTML(html){for(const match of html.matchAll(/id="([^"]+)"/g))element(match[1]);}};}},URL,location:{origin:'https://curtbrag.com'},TextEncoder,btoa:value=>Buffer.from(value,'binary').toString('base64'),
     PHONE_IDS:new Set(phones),token:()=> 'test-operator-session',
+    AbortController,setTimeout:(callback,ms)=>{const id=timeouts.length;timeouts.push({callback,ms,cleared:false});return id;},clearTimeout:id=>{timeouts[id].cleared=true;},
     swarmApi:async(...args)=>{events.push({kind:'availability',args});if(options.api)return options.api(...args);return {nodes:options.nodes||[{id:'phone253',online:true,busy:false}],jobs:[],results:[]};},
     fetch:async(url,request)=>{const body=JSON.parse(request.body);saves.push({url,request,body});events.push({kind:'save',phone:body.phone});return options.fetch?options.fetch(url,request,body):{ok:true};},
     enqueueSwarm:async(type,cmd,targets)=>{const launch={type,cmd,targets:Array.from(targets)};enqueues.push(launch);events.push({kind:'launch',phone:launch.targets[0]});if(options.enqueue)return options.enqueue(launch);return {ok:true};},
     load:async force=>{loads++;events.push({kind:'load',force});},
   });
   vm.runInContext('const FLEET='+fleetExpression+';const IDS=new Set(FLEET.map(([id])=>id));\n'+canonicalize+'\n'+browserCommand+'\n'+displayControls+'\nensureDisplayControls();',context);
-  return {apply:()=>elements['display-send'].onclick(),elements,events,saves,enqueues,loads:()=>loads};
+  return {apply:()=>elements['display-send'].onclick(),elements,events,saves,enqueues,timeouts,loads:()=>loads,
+    expireSave(){const timer=timeouts.find(t=>!t.cleared);assert.ok(timer,'An active display deadline must exist');assert.equal(timer.ms,12000);timer.callback();}};
 }
 function launchUrl(launch){
   const match=launch.cmd.match(/--settings-b64 '([A-Za-z0-9+/=]+)'/);assert.ok(match,'Candidate launch must use the actual base64 helper command');
@@ -84,6 +86,37 @@ test('a blocked save displays progress, disables Apply and waits before queueing
   const h=harness({fetch:async()=>{entered();return blocked;}});const pending=h.apply();await started;
   assert.equal(h.elements['display-send'].disabled,true);assert.equal(h.elements['display-state'].textContent,'Saving display for phone253…');assert.equal(h.enqueues.length,0);
   release({ok:true});await pending;assert.equal(h.enqueues.length,1);assert.equal(h.elements['display-send'].disabled,false);
+});
+
+test('a stalled save expires without replay or launches, unlocks every control and permits a later successful action',async()=>{
+  let entered;const started=new Promise(resolve=>{entered=resolve;});let attempts=0;
+  const h=harness({target:'all',nodes:phones.map(id=>({id,online:true,busy:false})),fetch:async(url,request)=>{
+    if(++attempts!==1)return {ok:true};
+    entered();return new Promise((resolve,reject)=>request.signal.addEventListener('abort',()=>reject(Error('Request aborted')),{once:true}));
+  }});
+  const pending=h.apply();await started;
+  for(const id of ['display-update','display-send','display-sleep','display-target','display-mode','display-connect'])assert.equal(h.elements[id].disabled,true);
+  await h.apply();assert.equal(h.saves.length,1,'Concurrent clicks cannot submit another save');
+  h.expireSave();await pending;
+  assert.equal(h.saves.length,1,'A timed-out write is not retried and later phones are not saved');
+  assert.equal(h.saves[0].request.signal.aborted,true);assert.equal(h.enqueues.length,0);assert.equal(h.loads(),0);
+  assert.match(h.elements['display-state'].textContent,/phone173 timed out; outcome unconfirmed/);
+  assert.match(h.elements['display-state'].textContent,/No browser launch was sent for this phone/);
+  for(const id of ['display-update','display-send','display-sleep','display-target','display-mode','display-connect'])assert.equal(h.elements[id].disabled,false);
+  assert.ok(h.timeouts.every(timer=>timer.cleared));
+  h.elements['display-target'].value='phone253';await h.apply();
+  assert.deepEqual(h.saves.map(s=>s.body.phone),['phone173','phone253']);assert.deepEqual(h.enqueues.map(e=>e.targets),[['phone253']]);
+  assert.match(h.elements['display-state'].textContent,/Browser launch queued for phone253/);assert.equal(h.elements['display-send'].disabled,false);
+  assert.ok(h.timeouts.every(timer=>timer.cleared));
+});
+
+test('the same deadline covers a stalled private connection receipt and prevents a browser launch',async()=>{
+  let entered;const started=new Promise(resolve=>{entered=resolve;});
+  const h=harness({connect:true,fetch:async(url,request)=>({ok:true,json:()=>{entered();return new Promise((resolve,reject)=>request.signal.addEventListener('abort',()=>reject(Error('Receipt aborted')),{once:true}));}})});
+  const pending=h.apply();await started;h.expireSave();await pending;
+  assert.equal(h.saves.length,1);assert.equal(h.enqueues.length,0);assert.equal(h.loads(),0);
+  assert.match(h.elements['display-state'].textContent,/outcome unconfirmed/);assert.equal(h.elements['display-send'].disabled,false);
+  assert.ok(h.timeouts.every(timer=>timer.cleared));
 });
 
 test('a later save failure reports earlier saves and queued launches without claiming a complete batch',async()=>{

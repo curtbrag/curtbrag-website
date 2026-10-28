@@ -342,7 +342,7 @@ Observed hashes from online devices:
 
 </div>
 </section>
-<script is:inline src="/scripts/cluster-email.js?v=3"></script>
+<script is:inline src="/scripts/cluster-email.js?v=4"></script>
 </Layout>
 
 <style>
@@ -514,56 +514,37 @@ function fetchAll() {
 }
 
 async function performDashboardFetch() {
-  try {
-    const [s, d, a, c, e, b] = await Promise.all([
-      callApi('summary'),
-      callApi('devices'),
-      callApi('alerts'),
-      callApi('commands'),
-      callApi('events'),
-      callApi('bridge-status'),
-    ]);
-    state.summary = s.summary;
-    state.devices = d.devices || [];
-    state.alerts = a.alerts || [];
-    state.commands = { queue: [...(c.queue || []), ...(c.pending || [])], history: c.history || [] };
-    state.events = e.events || [];
-    state.bridge = b || null;
-
+  const failures = [];
+  // Render each successful section immediately. An unrelated report must not
+  // hold the bridge, command results or worker controls in their loading state.
+  async function readSection(action, apply, renderers, reportFailure = true) {
     try {
-      const analytics = await callApi('fleet-analytics');
-      state.analytics = analytics;
-    } catch {}
-
-    try {
-      const thermal = await callApi('thermal-report');
-      state.thermalReport = thermal;
-    } catch {}
-
-    try {
-      const prof = await callApi('profiles');
-      state.profiles = prof.profiles || {};
-    } catch {}
-
-    try {
-      const grp = await callApi('groups');
-      state.groups = grp.groups || [];
-    } catch {}
-
-    renderSummary();
-    renderFleet();
-    renderDevicesTable();
-    renderCommands();
-    renderAlerts();
-    renderAnalytics();
-    renderThermalReport();
-    renderProfiles();
-    renderGroups();
-    renderEvents();
-    renderHashReport();
-    renderCommandTargets();
-    renderBridgeStatus();
-  } catch (e) { toast(`Fetch failed: ${e.message}`, 'error'); }
+      const data = await callApi(action);
+      apply(data);
+      for (const render of renderers) render();
+      return true;
+    } catch (error) {
+      if (reportFailure) failures.push(`${action}: ${error.message || 'Connection failed'}`);
+      return false;
+    }
+  }
+  const core = await Promise.all([
+    readSection('summary', data => { state.summary = data.summary; }, [renderSummary]),
+    readSection('devices', data => { state.devices = data.devices || []; }, [renderFleet, renderDevicesTable, renderCommandTargets, renderHashReport]),
+    readSection('alerts', data => { state.alerts = data.alerts || []; }, [renderAlerts]),
+    readSection('commands', data => { state.commands = { queue: [...(data.queue || []), ...(data.pending || [])], history: data.history || [] }; }, [renderCommands]),
+    readSection('events', data => { state.events = data.events || []; }, [renderEvents]),
+    readSection('bridge-status', data => { state.bridge = data; }, [renderBridgeStatus]),
+  ]);
+  if (failures.length) toast(`Some controls could not refresh: ${failures.join('; ')}`, 'error');
+  if (!core.some(Boolean)) return;
+  // These reports are independent and already have per-request deadlines.
+  await Promise.all([
+    readSection('fleet-analytics', data => { state.analytics = data; }, [renderAnalytics], false),
+    readSection('thermal-report', data => { state.thermalReport = data; }, [renderThermalReport], false),
+    readSection('profiles', data => { state.profiles = data.profiles || {}; }, [renderProfiles, renderGroups], false),
+    readSection('groups', data => { state.groups = data.groups || []; }, [renderGroups], false),
+  ]);
 }
 
 

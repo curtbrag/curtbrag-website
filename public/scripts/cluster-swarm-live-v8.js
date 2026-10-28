@@ -339,6 +339,17 @@
     document.getElementById('display-target').onchange=updateDisplayLink;document.getElementById('display-mode').onchange=updateDisplayLink;updateDisplayLink();
     document.getElementById('display-results').onclick=()=>setControlView('results',true);
     let displayBusy=false;
+    const saveDisplay=async(phone,settings,readReceipt)=>{
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+      try{
+        const response=await fetch('/.netlify/functions/phone-display',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:JSON.stringify(settings),signal:controller.signal});
+        if(!response.ok)throw new Error('Could not save display mode for '+phone);
+        return readReceipt?await response.json():null;
+      }catch(error){
+        if(controller.signal.aborted)throw new Error('Display save for '+phone+' timed out; outcome unconfirmed. No browser launch was sent for this phone. Check the current display state before retrying.');
+        throw error;
+      }finally{clearTimeout(timer);}
+    };
     const applyDisplay=async(launch,sleepTest=false)=>{
       if(displayBusy)return;
       displayBusy=true;
@@ -358,13 +369,12 @@
         for(const phone of phones){
           state.textContent='Saving display for '+phone+'…';
           const node=fresh?.nodes.find(n=>n.id===phone),connecting=connect&&node?.online&&!node.busy;
-          const response=await fetch('/.netlify/functions/phone-display',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:JSON.stringify({phone,mode,...(sleepTest?{sleepTest:true}:{}),...(connecting?{connect:true}:{})})});
-          if(!response.ok)throw new Error('Could not save display mode for '+phone);saved.push(phone);
+          const receipt=await saveDisplay(phone,{phone,mode,...(sleepTest?{sleepTest:true}:{}),...(connecting?{connect:true}:{})},connecting);saved.push(phone);
           if(!launch)continue;
           if(node?.online&&!node.busy){
             let url='https://curtbrag.com/cluster/display.html?mode='+encodeURIComponent(mode)+'&name='+encodeURIComponent(phone)+'&immersive=1&v=63';
             if(connecting){
-              const receipt=await response.json();let parsed;try{parsed=new URL(receipt.display_url);}catch{throw Error('Private display connection receipt missing for '+phone);}
+              let parsed;try{parsed=new URL(receipt.display_url);}catch{throw Error('Private display connection receipt missing for '+phone);}
               if(parsed.origin!==location.origin||parsed.pathname!=='/cluster/display.html'||parsed.searchParams.get('name')!==phone||!/^[a-f0-9]{64}$/.test(parsed.searchParams.get('display_ticket')||''))throw Error('Invalid private display connection receipt for '+phone);
               url=parsed.href;
             }
