@@ -21,3 +21,12 @@ test('wrong authentication and invalid selections cannot create display tickets'
   const s=setup(),r=await s.handler(request(body,password));assert.equal(r.status,status);assert.equal(s.tickets.length,0);assert.equal(s.writes.length,0);
  }
 });
+
+
+test('successful mode-save receipts bind the selected phone without changing ticket issuance',async()=>{
+ for(const phone of ['phone173','phone174','phone176','phone177','phone191','phone195','phone253','phone254']){
+  const s=setup(),r=await s.handler(request({phone,mode:'activity'})),data=await r.json();
+  assert.equal(r.status,200);assert.equal(data.ok,true);assert.equal(data.phone,phone);assert.equal(data.mode,'activity');assert.match(data.revision,/^[a-f0-9-]{36}$/);
+  assert.equal(s.writes[0][0],phone);assert.equal(s.tickets.length,0);assert.equal(data.display_url,undefined);
+ }
+});
