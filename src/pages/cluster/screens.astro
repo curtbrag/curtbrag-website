@@ -1,0 +1,99 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const devices = [
+  ...['173', '174', '176', '177', '191', '195', '253', '254'].map(number => ({ id: `phone${number}`, name: `phone${number}`, kind: 'Phone', detail: 'Live phone screen and input', icon: 'fa-mobile-screen' })),
+  { id: 'S26', name: 'Curtis S26 Ultra', kind: 'Personal phone', detail: 'Live phone screen and input', icon: 'fa-mobile-screen' },
+  { id: 'Alina', name: 'Alina', kind: 'ASUS laptop', detail: 'Desktop viewer', icon: 'fa-laptop' },
+  { id: 'Nexus', name: 'Nexus', kind: 'Dell laptop', detail: 'Desktop viewer', icon: 'fa-laptop' },
+  { id: 'viki', name: 'viki', kind: 'Mini ATX', detail: 'Desktop viewer', icon: 'fa-desktop' },
+  { id: 'SteamDeck', name: 'Steam Deck', kind: 'Handheld PC', detail: 'Live desktop sharing', icon: 'fa-gamepad' },
+  { id: 'RenderRig', name: 'RenderRig', kind: 'This PC', detail: 'You are using this computer', icon: 'fa-display' },
+];
+---
+
+<Layout title="Remote screens — CurtBrag" description="Open live device viewers from your cluster workspace.">
+  <section class="screens-page">
+    <a class="back-link" href="/cluster/dashboard/">← Cluster dashboard</a>
+    <div class="screens-heading">
+      <div>
+        <p class="eyebrow">CLUSTER WORKSPACE</p>
+        <h1>Remote screens</h1>
+        <p class="intro">View and control your devices from this PC.</p>
+      </div>
+      <span class="device-count">14 devices</span>
+    </div>
+
+    <div class="viewer-intro">
+      <div class="intro-icon"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></div>
+      <div>
+        <h2>One viewer for each device</h2>
+        <p>Choose a device to request its live viewer. Fleet Screens on this PC checks its screen connection and opens the matching window. If your browser asks, choose <strong>Open Fleet Screens</strong>.</p>
+        <p class="connection-note">A device can be online for cluster work while its screen connection is unavailable. The viewer reports that connection separately.</p>
+      </div>
+    </div>
+
+    <p id="screen-launch-status" class="launch-status" role="status" aria-live="polite">Choose a device below. No viewer has been requested from this page.</p>
+    <div class="phone-check"><button type="button" id="check-phone-screens">Check phone screen connections</button><span id="phone-screen-status" role="status" aria-live="polite">Worker phone screen access has not been checked.</span></div>
+
+    <div class="screens-grid">
+      {devices.map(device => (
+        <article class="screen-card" data-unit={device.id}>
+          <div class="device-icon"><i class={`fa-solid ${device.icon}`} aria-hidden="true"></i></div>
+          <p class="device-kind">{device.kind}</p>
+          <h2>{device.name}</h2>
+          <p class="device-detail">{device.detail}</p>
+          {device.id === 'RenderRig' ? (
+            <span class="local-device">Already on this PC</span>
+          ) : device.id.startsWith('phone') ? (
+            <button class="open-viewer" type="button" data-phone-viewer={device.id} data-viewer-name={device.name} disabled>Screen connection needed</button>
+          ) : (
+            <a class="open-viewer" href={`curtcluster-screen://open/${device.id}`} data-viewer-name={device.name}>Open viewer <span aria-hidden="true">↗</span></a>
+          )}
+        </article>
+      ))}
+    </div>
+
+    <div class="viewer-help">
+      <h2>Using a live screen</h2>
+      <p>Click inside the viewer to use its mouse and keyboard. Close its window when you finish. A desktop viewer may ask you to sign in from this PC.</p>
+      <p>If Fleet Screens reports an unavailable connection, keep that result open while checking the device. Opening a viewer does not pair a phone, grant screen access, or confirm that a picture appeared.</p>
+    </div>
+  </section>
+</Layout>
+
+<script is:inline type="module" src="/scripts/cluster-screens.js"></script>
+
+<style>
+  .screens-page { max-width: 1180px; margin: 0 auto; padding: 36px 24px 64px; }
+  .back-link { display: inline-block; margin-bottom: 30px; color: var(--color-muted); text-decoration: none; }
+  .back-link:hover { color: var(--color-text); }
+  .screens-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 26px; }
+  .eyebrow { color: var(--color-brand); font-size: 12px; letter-spacing: .15em; font-weight: 700; margin: 0 0 8px; }
+  h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.15; font-weight: 750; margin: 0; }
+  .intro { color: var(--color-muted); margin: 12px 0 0; font-size: 17px; }
+  .device-count { flex-shrink: 0; background: var(--color-panel); border: 1px solid var(--color-border); padding: 9px 14px; border-radius: 999px; font-size: 13px; }
+  .viewer-intro { display: flex; gap: 18px; padding: 24px; background: var(--color-panel); border: 1px solid var(--color-border); border-radius: 16px; }
+  .intro-icon { flex-shrink: 0; font-size: 23px; color: var(--color-brand); padding-top: 3px; }
+  .viewer-intro h2, .viewer-help h2 { font-size: 18px; font-weight: 650; margin: 0 0 8px; }
+  .viewer-intro p, .viewer-help p { line-height: 1.65; margin: 0; color: var(--color-muted); }
+  .viewer-intro .connection-note { font-size: 13px; margin-top: 10px; }
+  .launch-status { min-height: 24px; padding: 18px 0; font-size: 14px; color: var(--color-muted); }
+  .phone-check { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 0 0 22px; font-size: 13px; color: var(--color-muted); }
+  .phone-check button { border: 1px solid var(--color-border); border-radius: 8px; padding: 9px 12px; color: var(--color-text); background: var(--color-panel); }
+  .screens-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+  .screen-card { display: flex; flex-direction: column; align-items: flex-start; background: var(--color-panel); border: 1px solid var(--color-border); border-radius: 16px; padding: 22px; }
+  .device-icon { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; background: var(--color-bg); color: var(--color-brand); font-size: 21px; margin-bottom: 18px; }
+  .device-kind { color: var(--color-muted); font-size: 12px; margin: 0 0 6px; }
+  .screen-card h2 { font-size: 20px; font-weight: 650; margin: 0; }
+  .device-detail { color: var(--color-muted); font-size: 13px; margin: 9px 0 22px; }
+  .open-viewer { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: auto; background: var(--color-brand); color: white; padding: 11px 14px; border-radius: 9px; text-decoration: none; font-size: 14px; font-weight: 650; }
+  .open-viewer:hover { filter: brightness(1.12); }
+  button.open-viewer { border: 0; text-align: left; cursor: pointer; }
+  button.open-viewer:disabled { background: var(--color-bg); color: var(--color-muted); cursor: default; }
+  .open-viewer:focus-visible, .back-link:focus-visible { outline: 3px solid var(--color-text); outline-offset: 4px; }
+  .local-device { margin-top: auto; color: var(--color-muted); font-size: 14px; padding: 11px 0; }
+  .viewer-help { margin-top: 30px; padding: 24px; border: 1px solid var(--color-border); border-radius: 16px; }
+  .viewer-help p + p { margin-top: 10px; }
+  @media (max-width: 520px) { .screens-page { padding: 24px 16px 44px; } .screens-heading { align-items: flex-start; } .device-count { padding: 7px 10px; font-size: 12px; } .viewer-intro { padding: 18px; gap: 12px; } .screens-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .screen-card { padding: 16px 12px; } .screen-card h2 { font-size: 17px; } .open-viewer { padding: 10px; font-size: 13px; } }
+</style>
