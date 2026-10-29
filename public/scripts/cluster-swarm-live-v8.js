@@ -333,34 +333,74 @@
   function ensureDisplayControls(){
     const panel=document.getElementById('cluster-view-fleet');if(!panel||document.getElementById('cluster-display-control'))return;
     const card=document.createElement('section');card.id='cluster-display-control';card.className='cluster-control-card';
-    card.innerHTML='<h3>Phone screens</h3><p>Change what the open phone displays show. Connected pages update automatically every 10 seconds. Use Open / reconnect displays when a phone is showing another app.</p><label for="display-target">Phone</label><select id="display-target"><option value="all">All phones</option>'+Array.from(PHONE_IDS).map(p=>'<option>'+p+'</option>').join('')+'</select> <label for="display-mode">Display</label><select id="display-mode"><option value="activity">This unit’s activity</option><option value="visuals">Animations</option><option value="clock">Clock</option><option value="test">Screen test</option><option value="dashboard">Unit activity dashboard</option><option value="home">Display overview</option></select><p><label><input type="checkbox" id="display-connect"> Connect these phone displays privately for 24 hours (view only)</label><br>Lets each phone show its own activity, clock and animations without entering the site password. It cannot open private pages or use dashboard controls.</p><div class="cluster-action-row"><button id="display-update" type="button" class="cluster-primary-action">Update connected screens</button><button id="display-send" type="button">Open / reconnect displays</button><button id="display-sleep" type="button">Allow sleep for 2 minutes</button><a id="display-open" href="/cluster/display.html" target="_blank" rel="noopener">Open display hub</a><button id="display-results" type="button">View launch results</button></div><p id="display-state" role="status"></p>';
+    card.innerHTML='<h3>Phone screens</h3><p>Change what the open phone displays show. Connected pages update automatically every 10 seconds. Use Open / reconnect displays when a phone is showing another app.</p><label for="display-target">Phone</label><select id="display-target"><option value="all">All phones</option>'+Array.from(PHONE_IDS).map(p=>'<option>'+p+'</option>').join('')+'</select> <label for="display-mode">Display</label><select id="display-mode"><option value="activity">This unit’s activity</option><option value="visuals">Animations</option><option value="clock">Clock</option><option value="test">Screen test</option><option value="dashboard">Unit activity dashboard</option><option value="home">Display overview</option></select><p><label><input type="checkbox" id="display-connect"> Connect these phone displays privately for 24 hours (view only)</label><br>Lets each phone show its own activity, clock and animations without entering the site password. It cannot open private pages or use dashboard controls.</p><div class="cluster-action-row"><button id="display-update" type="button" class="cluster-primary-action">Update connected screens</button><button id="display-check" type="button">Check saved settings</button><button id="display-send" type="button">Open / reconnect displays</button><button id="display-sleep" type="button">Allow sleep for 2 minutes</button><a id="display-open" href="/cluster/display.html" target="_blank" rel="noopener">Open display hub</a><button id="display-results" type="button">View launch results</button></div><p id="display-state" role="status"></p><pre id="display-report" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>';
     panel.insertBefore(card,panel.children[1]);
     const updateDisplayLink=()=>{const phone=document.getElementById('display-target').value,mode=document.getElementById('display-mode').value;document.getElementById('display-open').href='/cluster/display.html?mode='+encodeURIComponent(mode)+(PHONE_IDS.has(phone)?'&name='+encodeURIComponent(phone):'');};
     document.getElementById('display-target').onchange=updateDisplayLink;document.getElementById('display-mode').onchange=updateDisplayLink;updateDisplayLink();
     document.getElementById('display-results').onclick=()=>setControlView('results',true);
     let displayBusy=false;
-    const saveDisplay=async(phone,settings,readReceipt)=>{
+    const displayModes={activity:'Activity',visuals:'Animations',clock:'Clock',test:'Screen test',dashboard:'Unit activity dashboard',home:'Display overview'};
+    const displayRevision=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+    const displayControls=()=>['display-update','display-check','display-send','display-sleep','display-target','display-mode','display-connect'].map(id=>document.getElementById(id));
+    const selectedDisplayPhones=()=>{const selected=document.getElementById('display-target').value;const phones=selected==='all'?Array.from(PHONE_IDS):PHONE_IDS.has(selected)?[selected]:[];if(!phones.length)throw Error('Select a phone');return phones;};
+    const displaySaveError=(message,state='unconfirmed')=>Object.assign(new Error(message),{displaySaveState:state});
+    const saveDisplay=async(phone,settings)=>{
       const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
       try{
         const response=await fetch('/.netlify/functions/phone-display',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:JSON.stringify(settings),signal:controller.signal});
-        if(!response.ok)throw new Error('Could not save display mode for '+phone);
-        return readReceipt?await response.json():null;
+        if(!response.ok){
+          const rejected=[400,401,403,405,422].includes(response.status);
+          throw displaySaveError('Could not save display mode for '+phone+(rejected?': request rejected.':'; outcome unconfirmed. Check saved settings before retrying.'),rejected?'failed':'unconfirmed');
+        }
+        const receipt=await response.json(),now=Date.now();
+        if(receipt?.ok!==true||receipt.phone!==phone||receipt.mode!==settings.mode||!displayRevision.test(receipt.revision||'')||
+          (settings.sleepTest===true?receipt.sleepTest?.id!==receipt.revision||!Number.isFinite(receipt.sleepTest?.expiresAt)||receipt.sleepTest.expiresAt<=now||receipt.sleepTest.expiresAt>now+120000:receipt.sleepTest!==undefined))
+          throw displaySaveError('Display save receipt for '+phone+' was invalid; outcome unconfirmed. No browser launch was sent for this phone. Check saved settings before retrying.');
+        return receipt;
       }catch(error){
-        if(controller.signal.aborted)throw new Error('Display save for '+phone+' timed out; outcome unconfirmed. No browser launch was sent for this phone. Check the current display state before retrying.');
-        throw error;
+        if(controller.signal.aborted)throw displaySaveError('Display save for '+phone+' timed out; outcome unconfirmed. No browser launch was sent for this phone. Check saved settings before retrying.');
+        if(error.displaySaveState)throw error;
+        throw displaySaveError('Display save for '+phone+' was not confirmed. No browser launch was sent for this phone. Check saved settings before retrying.');
       }finally{clearTimeout(timer);}
+    };
+    const readDisplay=async phone=>{
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+      try{
+        const response=await fetch('/.netlify/functions/phone-display?phone='+encodeURIComponent(phone)+'&activity=1',{method:'GET',headers:{Authorization:'Bearer '+token()},signal:controller.signal});
+        if(!response.ok)throw Error('Saved settings unavailable');
+        const receipt=await response.json(),empty=receipt?.mode===null&&receipt?.revision===null;
+        if(receipt?.activity?.unit!==phone||(!empty&&(!Object.hasOwn(displayModes,receipt.mode)||typeof receipt.revision!=='string'||!displayRevision.test(receipt.revision.replace(/:expired$/,'')))))throw Error('Invalid saved settings');
+        return receipt;
+      }catch{
+        throw Error('Could not read saved settings for '+phone+(controller.signal.aborted?': check timed out.':'.'));
+      }finally{clearTimeout(timer);}
+    };
+    const checkDisplays=async()=>{
+      if(displayBusy)return;
+      displayBusy=true;const controls=displayControls();controls.forEach(control=>control.disabled=true);
+      const state=document.getElementById('display-state'),report=document.getElementById('display-report'),rows=[];let checked=0;
+      report.textContent='';state.textContent='Checking saved display settings…';
+      try{
+        const phones=selectedDisplayPhones();
+        for(const phone of phones){
+          state.textContent='Checking saved settings for '+phone+'…';
+          try{const receipt=await readDisplay(phone);checked++;rows.push(phone+' · '+(receipt.mode===null?'No display setting saved':displayModes[receipt.mode]+' saved'));}
+          catch(error){rows.push(phone+' · '+error.message);}
+          report.textContent=rows.join('\n');
+        }
+        state.textContent=checked+'/'+phones.length+' saved settings checked. This checks saved choices, not what the screens show. No settings were changed or pages opened.';
+      }catch(error){state.textContent=error.message;}
+      finally{displayBusy=false;controls.forEach(control=>control.disabled=false);}
     };
     const applyDisplay=async(launch,sleepTest=false)=>{
       if(displayBusy)return;
       displayBusy=true;
-      const controls=['display-update','display-send','display-sleep','display-target','display-mode','display-connect'].map(id=>document.getElementById(id));
-      controls.forEach(control=>control.disabled=true);
-      const state=document.getElementById('display-state'),selected=document.getElementById('display-target').value,mode=sleepTest?'dashboard':document.getElementById('display-mode').value;
-      const saved=[],launched=[],skipped=[],connect=launch&&document.getElementById('display-connect')?.checked===true;
-      state.textContent=launch?'Checking phone availability…':'Updating connected displays…';try{
-        if(!['activity','visuals','clock','test','dashboard','home'].includes(mode))throw new Error('Select a display mode');
-        const phones=selected==='all'?Array.from(PHONE_IDS):PHONE_IDS.has(selected)?[selected]:[];
-        if(!phones.length)throw new Error('Select a phone');
+      const controls=displayControls();controls.forEach(control=>control.disabled=true);
+      const state=document.getElementById('display-state'),report=document.getElementById('display-report'),mode=sleepTest?'dashboard':document.getElementById('display-mode').value;
+      const saved=[],launched=[],skipped=[],issues=[],rows=[],connect=launch&&document.getElementById('display-connect')?.checked===true;
+      report.textContent='';state.textContent=launch?'Checking phone availability…':'Updating connected displays…';try{
+        if(!Object.hasOwn(displayModes,mode))throw new Error('Select a display mode');
+        const phones=selectedDisplayPhones();
         let fresh=null;
         if(launch){
           const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes))throw new Error('Worker availability could not be verified.');
@@ -369,7 +409,16 @@
         for(const phone of phones){
           state.textContent='Saving display for '+phone+'…';
           const node=fresh?.nodes.find(n=>n.id===phone),connecting=connect&&node?.online&&!node.busy;
-          const receipt=await saveDisplay(phone,{phone,mode,...(sleepTest?{sleepTest:true}:{}),...(connecting?{connect:true}:{})},connecting);saved.push(phone);
+          let receipt;
+          try{
+            receipt=await saveDisplay(phone,{phone,mode,...(sleepTest?{sleepTest:true}:{}),...(connecting?{connect:true}:{})});saved.push(phone);
+            rows.push(phone+' · '+(sleepTest?'Sleep test':displayModes[mode])+' saved');
+          }catch(error){
+            issues.push({phone,state:error.displaySaveState||'unconfirmed'});rows.push(phone+' · '+(error.displaySaveState==='failed'?'Save rejected. ':'Save unconfirmed. ')+error.message);report.textContent=rows.join('\n');
+            if(launch)throw error;
+            continue;
+          }
+          report.textContent=rows.join('\n');
           if(!launch)continue;
           if(node?.online&&!node.busy){
             let url='https://curtbrag.com/cluster/display.html?mode='+encodeURIComponent(mode)+'&name='+encodeURIComponent(phone)+'&immersive=1&v=63';
@@ -381,11 +430,15 @@
             await enqueueSwarm('shell',browserOpenCommand(url),[phone]);launched.push(phone);
           }else skipped.push(phone+' ('+(node?.online?'busy':'offline')+')');
         }
-        state.textContent=sleepTest?'Sleep test saved for '+saved.join(', ')+'. Connected displays will allow normal screen sleep for up to two minutes, then return to activity. This does not force screens off or verify a wake.':'Display mode saved for '+saved.join(', ')+'. '+(launched.length?'Browser launch queued for '+launched.join(', ')+'. ':'')+(skipped.length?'Browser launch skipped: '+skipped.join(', ')+'. ':'')+(launch?'Connected displays also update automatically within 10 seconds.':'Open display pages will update within 10 seconds. For phones showing another app, use Open / reconnect displays.')+(connect?' Private view-only connections expire in 24 hours.':'');
+        const summary=sleepTest?(saved.length?'Sleep test saved for '+saved.join(', ')+'. Those connected displays will allow normal screen sleep for up to two minutes, then return to activity. This does not force screens off or verify a wake.':'No sleep test was confirmed. No screen sleep or wake was verified.'):
+          (saved.length?'Display mode saved'+(issues.length?': ':' for ')+saved.join(', ')+'. ':'')+(launched.length?'Browser launch queued for '+launched.join(', ')+'. ':'')+(skipped.length?'Browser launch skipped: '+skipped.join(', ')+'. ':'')+(launch?'Connected displays also check for changes every 10 seconds.':'Open display pages check for changes every 10 seconds. For phones showing another app, use Open / reconnect displays.')+(connect?' Private view-only connections expire in 24 hours.':'');
+        state.textContent=(issues.length?issues.length+'/'+phones.length+' saves failed or unconfirmed. ':'')+summary+(issues.length?' Check saved settings before retrying affected phones. No requests were repeated.':'')+' Saved settings do not confirm the screens changed.';
         if(launch)await load(true);
-      }catch(e){state.textContent=(saved.length?'Display mode saved: '+saved.join(', ')+'. ':'')+(launched.length?'Browser launch queued: '+launched.join(', ')+'. ':'')+e.message;}finally{displayBusy=false;controls.forEach(control=>control.disabled=false);}
+      }catch(e){state.textContent=(saved.length?'Display mode saved: '+saved.join(', ')+'. ':'')+(launched.length?'Browser launch queued: '+launched.join(', ')+'. ':'')+e.message;}
+      finally{displayBusy=false;controls.forEach(control=>control.disabled=false);}
     };
     document.getElementById('display-update').onclick=()=>applyDisplay(false);
+    document.getElementById('display-check').onclick=checkDisplays;
     document.getElementById('display-send').onclick=()=>applyDisplay(true);
     document.getElementById('display-sleep').onclick=()=>applyDisplay(false,true);
   }

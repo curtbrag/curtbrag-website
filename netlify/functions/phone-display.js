@@ -56,7 +56,7 @@ async function handle(event){
    const ticket=await issueDisplayTicket({store:store('device-display-sessions','strong'),phone:body.phone,host:event.host,password});
    display_url='https://'+event.host+'/cluster/display.html?mode='+encodeURIComponent(body.mode)+'&name='+body.phone+'&immersive=1&display_ticket='+ticket;
   }
-  return response(200,{ok:true,...value,...(display_url?{display_url}: {})});
+  return response(200,{ok:true,phone:body.phone,...value,...(display_url?{display_url}: {})});
  }catch{return response(503,{error:'Display service unavailable'});}
 };
 export default async request=>{

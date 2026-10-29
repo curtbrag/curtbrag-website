@@ -6,6 +6,8 @@ const vm=require('node:vm');
 const {TextEncoder}=require('node:util');
 const source=fs.readFileSync(path.join(__dirname,'../public/scripts/cluster-swarm-live-v8.js'),'utf8').replace(/\r\n/g,'\n');
 const phones=['phone173','phone174','phone176','phone177','phone191','phone195','phone253','phone254'];
+const revision='11111111-1111-4111-8111-111111111111';
+const savedResponse=(body,extra={})=>({ok:true,json:async()=>({ok:true,phone:body.phone,mode:body.mode,revision,...extra})});
 function section(start,end){const a=source.indexOf(start),b=source.indexOf(end,a);assert.ok(a>=0&&b>a,'Actual candidate section must exist: '+start);return source.slice(a,b);}
 const displayControls=section('  function ensureDisplayControls(){','\n  function ensureControlLayout()');
 const canonicalize=section('  function canonicalize(raw) {','\n  function ensureStateNote()');
@@ -23,7 +25,7 @@ function harness(options={}){
     PHONE_IDS:new Set(phones),token:()=> 'test-operator-session',
     AbortController,setTimeout:(callback,ms)=>{const id=timeouts.length;timeouts.push({callback,ms,cleared:false});return id;},clearTimeout:id=>{timeouts[id].cleared=true;},
     swarmApi:async(...args)=>{events.push({kind:'availability',args});if(options.api)return options.api(...args);return {nodes:options.nodes||[{id:'phone253',online:true,busy:false}],jobs:[],results:[]};},
-    fetch:async(url,request)=>{const body=JSON.parse(request.body);saves.push({url,request,body});events.push({kind:'save',phone:body.phone});return options.fetch?options.fetch(url,request,body):{ok:true};},
+    fetch:async(url,request)=>{const body=JSON.parse(request.body);saves.push({url,request,body});events.push({kind:'save',phone:body.phone});return options.fetch?options.fetch(url,request,body):savedResponse(body);},
     enqueueSwarm:async(type,cmd,targets)=>{const launch={type,cmd,targets:Array.from(targets)};enqueues.push(launch);events.push({kind:'launch',phone:launch.targets[0]});if(options.enqueue)return options.enqueue(launch);return {ok:true};},
     load:async force=>{loads++;events.push({kind:'load',force});},
   });
@@ -85,24 +87,24 @@ test('a blocked save displays progress, disables Apply and waits before queueing
   let release,entered;const blocked=new Promise(resolve=>{release=resolve;}),started=new Promise(resolve=>{entered=resolve;});
   const h=harness({fetch:async()=>{entered();return blocked;}});const pending=h.apply();await started;
   assert.equal(h.elements['display-send'].disabled,true);assert.equal(h.elements['display-state'].textContent,'Saving display for phone253…');assert.equal(h.enqueues.length,0);
-  release({ok:true});await pending;assert.equal(h.enqueues.length,1);assert.equal(h.elements['display-send'].disabled,false);
+  release(savedResponse({phone:'phone253',mode:'activity'}));await pending;assert.equal(h.enqueues.length,1);assert.equal(h.elements['display-send'].disabled,false);
 });
 
 test('a stalled save expires without replay or launches, unlocks every control and permits a later successful action',async()=>{
   let entered;const started=new Promise(resolve=>{entered=resolve;});let attempts=0;
   const h=harness({target:'all',nodes:phones.map(id=>({id,online:true,busy:false})),fetch:async(url,request)=>{
-    if(++attempts!==1)return {ok:true};
+    if(++attempts!==1)return savedResponse(JSON.parse(request.body));
     entered();return new Promise((resolve,reject)=>request.signal.addEventListener('abort',()=>reject(Error('Request aborted')),{once:true}));
   }});
   const pending=h.apply();await started;
-  for(const id of ['display-update','display-send','display-sleep','display-target','display-mode','display-connect'])assert.equal(h.elements[id].disabled,true);
+  for(const id of ['display-update','display-check','display-send','display-sleep','display-target','display-mode','display-connect'])assert.equal(h.elements[id].disabled,true);
   await h.apply();assert.equal(h.saves.length,1,'Concurrent clicks cannot submit another save');
   h.expireSave();await pending;
   assert.equal(h.saves.length,1,'A timed-out write is not retried and later phones are not saved');
   assert.equal(h.saves[0].request.signal.aborted,true);assert.equal(h.enqueues.length,0);assert.equal(h.loads(),0);
   assert.match(h.elements['display-state'].textContent,/phone173 timed out; outcome unconfirmed/);
   assert.match(h.elements['display-state'].textContent,/No browser launch was sent for this phone/);
-  for(const id of ['display-update','display-send','display-sleep','display-target','display-mode','display-connect'])assert.equal(h.elements[id].disabled,false);
+  for(const id of ['display-update','display-check','display-send','display-sleep','display-target','display-mode','display-connect'])assert.equal(h.elements[id].disabled,false);
   assert.ok(h.timeouts.every(timer=>timer.cleared));
   h.elements['display-target'].value='phone253';await h.apply();
   assert.deepEqual(h.saves.map(s=>s.body.phone),['phone173','phone253']);assert.deepEqual(h.enqueues.map(e=>e.targets),[['phone253']]);
@@ -120,7 +122,7 @@ test('the same deadline covers a stalled private connection receipt and prevents
 });
 
 test('a later save failure reports earlier saves and queued launches without claiming a complete batch',async()=>{
-  const h=harness({target:'all',nodes:phones.map(id=>({id,online:true,busy:false})),fetch:async(url,request,body)=>({ok:body.phone!=='phone174'})});await h.apply();
+  const h=harness({target:'all',nodes:phones.map(id=>({id,online:true,busy:false})),fetch:async(url,request,body)=>body.phone==='phone174'?{ok:false,status:401}:savedResponse(body)});await h.apply();
   assert.deepEqual(h.saves.map(s=>s.body.phone),['phone173','phone174']);assert.deepEqual(h.enqueues.map(e=>e.targets),[['phone173']]);
   assert.match(h.elements['display-state'].textContent,/Display mode saved: phone173/);assert.match(h.elements['display-state'].textContent,/Browser launch queued: phone173/);
   assert.match(h.elements['display-state'].textContent,/Could not save display mode for phone174/);assert.equal(h.elements['display-send'].disabled,false);
@@ -139,14 +141,14 @@ test('a non-phone target causes no mode save or browser launch',async()=>{
 
 test('private display access is explicitly selected and launches only the matching same-site receipt',async()=>{
   const display_url='https://curtbrag.com/cluster/display.html?mode=activity&name=phone253&immersive=1&display_ticket='+'a'.repeat(64);
-  const h=harness({connect:true,fetch:async()=>({ok:true,json:async()=>({ok:true,display_url})})});await h.apply();
+  const h=harness({connect:true,fetch:async(url,request,body)=>savedResponse(body,{display_url})});await h.apply();
   assert.deepEqual(h.saves[0].body,{phone:'phone253',mode:'activity',connect:true});
   assert.equal(launchUrl(h.enqueues[0]).href,display_url);
   assert.match(h.elements['display-state'].textContent,/expire in 24 hours/);
 });
 test('private display access rejects missing, cross-site and wrong-unit receipts before launching',async()=>{
   for(const display_url of [undefined,'https://evil.example/cluster/display.html?name=phone253&display_ticket='+'a'.repeat(64),'https://curtbrag.com/cluster/display.html?name=phone191&display_ticket='+'a'.repeat(64)]){
-    const h=harness({connect:true,fetch:async()=>({ok:true,json:async()=>({display_url})})});await h.apply();
+    const h=harness({connect:true,fetch:async(url,request,body)=>savedResponse(body,{display_url})});await h.apply();
     assert.equal(h.enqueues.length,0);assert.match(h.elements['display-state'].textContent,/connection receipt/);
   }
 });
