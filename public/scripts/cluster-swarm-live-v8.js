@@ -1076,9 +1076,108 @@
   }
 
 
-  let browserOpenReport=null,browserOpenBusy=false;
-  try{const saved=JSON.parse(localStorage.getItem('curt-browser-open-v1'));if(saved&&Array.isArray(saved.tasks)&&Array.isArray(saved.skipped)&&typeof saved.url==='string')browserOpenReport=saved;}catch{}
-  function saveBrowserOpen(){try{localStorage.setItem('curt-browser-open-v1',JSON.stringify(browserOpenReport));}catch{}}
+  let browserOpenReport=null,browserOpenBusy=false,browserOpenHistory=[],browserReportStorageUnreadable=false;
+  const browserReportStorageKey='curt-browser-open-reports-v2',browserCompletedReportLimit=20;
+  const browserSnapshotPrefix='curt-browser-open-snapshot-v2:',browserSnapshotOwner=globalThis.crypto?.randomUUID?.();
+  let browserSnapshotSequence=0;
+  const browserSnapshotCache=new Map(),browserObservedSnapshots=new Map();
+  const browserTaskStates=new Set(['planned','not-submitted','submitting','unconfirmed','queued','launch-requested','failed','closed']);
+  function validBrowserOpenReport(report){return !!report&&typeof report.url==='string'&&Array.isArray(report.tasks)&&Array.isArray(report.skipped)&&report.tasks.every(t=>t&&typeof t.unit==='string'&&typeof t.job_id==='string'&&browserTaskStates.has(t.state));}
+  function browserReportKey(report){return JSON.stringify([report.id||'',report.created_at||'',report.url,report.tasks.map(t=>[t.unit,t.job_id])]);}
+  function allBrowserOpenReports(){
+    const reports=[],keys=new Set();
+    for(const report of [browserOpenReport,...browserOpenHistory])if(validBrowserOpenReport(report)&&!keys.has(browserReportKey(report))){reports.push(report);keys.add(browserReportKey(report));}
+    return reports;
+  }
+  function mergeBrowserOpenReport(saved){
+    const existing=allBrowserOpenReports().find(r=>browserReportKey(r)===browserReportKey(saved));
+    if(!existing){if(!browserOpenReport)browserOpenReport=saved;else browserOpenHistory.push(saved);return;}
+    // Merge stale tabs monotonically: submitted intent cannot become not-sent,
+    // and an exact receipt or explicitly closed task cannot become queued again.
+    const rank={planned:0,'not-submitted':1,submitting:2,unconfirmed:3,queued:4,'launch-requested':5,failed:5,closed:5};
+    // Only the owning enqueue path can prove its network call never happened;
+    // passive cleanup of another tab's planned tasks never gets this precedence.
+    const score=task=>task.state==='not-submitted'&&task.not_submitted_before_enqueue===true?5:rank[task.state]??2;
+    for(const task of existing.tasks){const newer=saved.tasks.find(t=>t.unit===task.unit&&t.job_id===task.job_id);if(newer&&score(newer)>score(task))Object.assign(task,newer);}
+    if(saved.closed_at&&!browserRequestsPending(existing))existing.closed_at=saved.closed_at;
+  }
+  function mergeStoredBrowserOpenReports(){
+    try{
+      // Immutable snapshots are authoritative. A stale tab may overwrite the
+      // selected-view index, but cannot overwrite another tab's submitted intent.
+      const storageKeys=()=>{const count=localStorage.length,keys=[];for(let i=0;i<count;i++){const key=localStorage.key(i);if(typeof key!=='string'||keys.includes(key))return null;keys.push(key);}return keys;};
+      let snapshots=null;
+      for(let attempt=0;attempt<3;attempt++){
+        const before=storageKeys();if(!before)continue;
+        const rows=[];let stable=true;
+        for(const key of before)if(key.startsWith(browserSnapshotPrefix)){
+          const raw=localStorage.getItem(key);if(raw===null){stable=false;break;}
+          const report=JSON.parse(raw);if(!validBrowserOpenReport(report))throw Error('Invalid saved launch snapshot.');
+          rows.push({key,raw,report});
+        }
+        const after=storageKeys();
+        if(stable&&after&&before.length===after.length&&before.every(key=>after.includes(key))){snapshots=rows;break;}
+      }
+      if(!snapshots)throw Error('Saved launch history changed during the check.');
+      browserObservedSnapshots.clear();
+      for(const {key,raw,report} of snapshots){mergeBrowserOpenReport(report);browserSnapshotCache.set(raw,key);browserObservedSnapshots.set(key,browserReportKey(report));}
+      const raw=localStorage.getItem(browserReportStorageKey);
+      if(raw){
+        const ledger=JSON.parse(raw);
+        if(ledger?.schema!==2||!Array.isArray(ledger.reports)||!ledger.reports.every(validBrowserOpenReport))throw Error('Invalid saved launch history.');
+        for(const report of ledger.reports)mergeBrowserOpenReport(report);
+      }
+      const legacy=JSON.parse(localStorage.getItem('curt-browser-open-v1'));
+      if(legacy){if(!validBrowserOpenReport(legacy))throw Error('Invalid saved launch report.');mergeBrowserOpenReport(legacy);}
+    }catch{browserReportStorageUnreadable=true;}
+  }
+  try{
+    const raw=localStorage.getItem(browserReportStorageKey);
+    if(raw){
+      const ledger=JSON.parse(raw);
+      if(ledger?.schema!==2||!Array.isArray(ledger.reports)||!ledger.reports.every(validBrowserOpenReport))throw Error('Invalid saved launch history.');
+      browserOpenReport=ledger.reports.find(r=>browserReportKey(r)===ledger.current_key)||ledger.reports[0]||null;
+      browserOpenHistory=ledger.reports.filter(r=>r!==browserOpenReport);
+    }
+  }catch{browserReportStorageUnreadable=true;}
+  mergeStoredBrowserOpenReports();
+  function saveBrowserOpen(required=false){
+    mergeStoredBrowserOpenReports();
+    if(browserReportStorageUnreadable){if(required)throw Error('Saved launch history could not be read. No new requests were sent.');return false;}
+    const reports=allBrowserOpenReports(),completed=reports.filter(r=>!browserRequestsPending(r)).sort((a,b)=>(Date.parse(b.created_at)||0)-(Date.parse(a.created_at)||0));
+    const retained=new Set(completed.slice(0,browserCompletedReportLimit));
+    if(browserOpenReport&&!browserRequestsPending(browserOpenReport)&&!retained.has(browserOpenReport)){retained.delete([...retained].at(-1));retained.add(browserOpenReport);}
+    const kept=reports.filter(r=>browserRequestsPending(r)||retained.has(r));
+    const observed=new Map(browserObservedSnapshots),snapshotKeys=new Set(),active=new Set(kept.filter(browserRequestsPending).map(browserReportKey));
+    try{
+      if(!browserSnapshotOwner)throw Error('Durable launch snapshots are unavailable.');
+      for(const report of kept){
+        const value=JSON.stringify(report);let key=browserSnapshotCache.get(value);
+        if(!key||localStorage.getItem(key)!==value){key=browserSnapshotPrefix+browserSnapshotOwner+'-'+(++browserSnapshotSequence);localStorage.setItem(key,value);browserSnapshotCache.set(value,key);}
+        snapshotKeys.add(key);
+      }
+    }catch{if(required)throw Error('Launch history could not be saved. No additional requests were sent.');return false;}
+    try{localStorage.setItem(browserReportStorageKey,JSON.stringify({schema:2,current_key:browserOpenReport?browserReportKey(browserOpenReport):null,reports:kept}));}
+    catch{if(required)throw Error('Launch history could not be saved. No additional requests were sent.');return false;}
+    browserOpenHistory=kept.filter(r=>r!==browserOpenReport);
+    // An older dashboard still sees a pending report and keeps its conservative
+    // guard. The v2 ledger is authoritative for this dashboard's selected report.
+    try{localStorage.setItem('curt-browser-open-v1',JSON.stringify(kept.find(browserRequestsPending)||browserOpenReport));}
+    catch{if(required)throw Error('The launch compatibility record could not be saved. No additional requests were sent.');return false;}
+    // Never remove active snapshots. Compact completed records only after their
+    // merged replacement is durable, and only keys this save actually observed.
+    for(const [key,reportKey] of observed)if(!snapshotKeys.has(key)&&!active.has(reportKey))try{localStorage.removeItem(key);}catch{}
+    return true;
+  }
+  function replaceBrowserOpenReport(report){
+    const previous=browserOpenReport,history=[...browserOpenHistory];
+    browserOpenHistory=allBrowserOpenReports();browserOpenReport=report;
+    try{saveBrowserOpen(true);}catch(error){
+      // v2 may have been saved before its legacy mirror failed. No enqueue has
+      // happened, so preserve this record as not sent rather than pending intent.
+      markUnsubmittedBrowserTasks(report);browserOpenReport=previous;browserOpenHistory=[...history,report];saveBrowserOpen();throw error;
+    }
+  }
   function markUnsubmittedBrowserTasks(report){
     for(const task of report?.tasks||[])if(task.state==='planned'){
       task.state='not-submitted';task.error='Not sent: this batch stopped before submitting this device.';
@@ -1086,7 +1185,7 @@
   }
   // Submitting is saved before enqueue. A saved planned task never reached the
   // server, so release it without retrying or changing any submitted request.
-  markUnsubmittedBrowserTasks(browserOpenReport);saveBrowserOpen();
+  for(const report of allBrowserOpenReports())markUnsubmittedBrowserTasks(report);saveBrowserOpen();
   let termuxReturnReport=null,termuxReturnBusy=false,termuxControllerReady=false;
   let termuxControllerCommands={queue:[],history:[]};
   let phoneNativeReport=null,phoneNativeBusy=false,phoneNativeReady=false,phoneControllerSnapshot=null;
@@ -1102,8 +1201,38 @@
   try{const saved=JSON.parse(localStorage.getItem('curt-termux-return-v1'));if(saved&&Array.isArray(saved.tasks)&&Array.isArray(saved.skipped))termuxReturnReport=saved;}catch{}
   function saveTermuxReturn(){try{localStorage.setItem('curt-termux-return-v1',JSON.stringify(termuxReturnReport));}catch{}}
   function browserRequestsPending(report){return !!report?.tasks.some(t=>['planned','queued','submitting','unconfirmed'].includes(t.state));}
+  function pendingBrowserUnits(units,reports=allBrowserOpenReports()){
+    const selected=new Set(units),pending=new Set();
+    for(const report of reports)for(const task of report?.tasks||[])if(selected.has(task.unit)&&['planned','queued','submitting','unconfirmed'].includes(task.state))pending.add(task.unit);
+    return pending;
+  }
+  function relatedScreenReports(){
+    const reports=[...allBrowserOpenReports(),termuxReturnReport,phoneNativeReport];
+    // Another tab may have submitted a phone action while this one was waiting.
+    // Only consult its pending intent; never replay or replace its singleton report.
+    for(const key of ['curt-termux-return-v1','curt-phone-native-v1'])try{const saved=JSON.parse(localStorage.getItem(key));if(Array.isArray(saved?.tasks))reports.push(saved);}catch{}
+    return reports;
+  }
+  function renderBrowserOpenHistory(){
+    const picker=document.getElementById('browser-open-history');if(!picker)return;
+    const reports=allBrowserOpenReports().sort((a,b)=>(Date.parse(b.created_at)||0)-(Date.parse(a.created_at)||0));
+    picker.replaceChildren(...reports.map(report=>{
+      const option=document.createElement('option');option.value=browserReportKey(report);
+      const pending=report.tasks.filter(t=>['planned','queued','submitting','unconfirmed'].includes(t.state)).length;
+      option.textContent=`${report.created_at||'Earlier request'} · ${report.target||'selected devices'} · ${pending?pending+' pending':'finished'} · ${report.url}`;
+      return option;
+    }));
+    picker.value=browserOpenReport?browserReportKey(browserOpenReport):'';
+    picker.disabled=browserOpenBusy||termuxReturnBusy||phoneNativeBusy||!reports.length;
+  }
+  function selectBrowserOpenReport(key){
+    if(browserOpenBusy||termuxReturnBusy||phoneNativeBusy)return;
+    mergeStoredBrowserOpenReports();const report=allBrowserOpenReports().find(r=>browserReportKey(r)===key);if(!report)return;
+    try{replaceBrowserOpenReport(report);renderBrowserOpen(current?.results||[]);}catch(error){document.getElementById('browser-open-state').textContent=error.message;}
+  }
   function updateBrowserButtons(){
     const busy=browserOpenBusy||termuxReturnBusy||phoneNativeBusy;
+    const history=document.getElementById('browser-open-history');if(history)history.disabled=busy||!allBrowserOpenReports().length;
     document.getElementById('browser-open-run').disabled=busy||(document.getElementById('browser-open-route')?.value==='pc-controller'&&(!phoneNativeReady||!selectedControllerReady()));
     const refresh=document.getElementById('browser-open-refresh');if(refresh)refresh.disabled=busy||!browserOpenReport||!!browserOpenReport.closed_at;
     document.getElementById('browser-open-close').disabled=busy||!browserOpenReport||!!browserOpenReport.closed_at;
@@ -1134,27 +1263,46 @@
     native.querySelector('#phone-native-back').before(availability);card.append(native);
     fleet.prepend(card);card.querySelector('#browser-open-run').onclick=dispatchBrowserOpen;card.querySelector('#browser-open-refresh').onclick=refreshBrowserOpen;card.querySelector('#browser-open-close').onclick=closeBrowserOpen;card.querySelector('#termux-return-run').onclick=dispatchTermuxReturn;card.querySelector('#termux-return-close').onclick=closeTermuxReturn;card.querySelector('#termux-return-route').onchange=()=>{renderTermuxReturn(current?.results||[]);updateBrowserButtons();};
     routeSelect.onchange=()=>{renderPhoneNative();renderPhoneControllerAvailability();updateBrowserButtons();};card.querySelector('#browser-open-target').onchange=()=>{renderPhoneControllerAvailability();renderPhoneNative();renderTermuxReturn(current?.results||[]);updateBrowserButtons();};card.querySelector('#phone-native-back').onclick=()=>dispatchPhoneNative('back');card.querySelector('#phone-native-refresh').onclick=refreshPhoneNative;card.querySelector('#phone-native-close').onclick=closePhoneNative;
+    const historyLabel=document.createElement('label');historyLabel.htmlFor='browser-open-history';historyLabel.textContent='Current and previous launch reports';
+    const history=document.createElement('select');history.id='browser-open-history';history.style.maxWidth='100%';history.onchange=()=>selectBrowserOpenReport(history.value);
+    card.querySelector('#browser-open-report').before(historyLabel,history);
     if(browserOpenReport?.url)card.querySelector('#browser-open-url').value=browserOpenReport.url;
     if(['all','computers','phones'].includes(browserOpenReport?.target)||IDS.has(browserOpenReport?.target))card.querySelector('#browser-open-target').value=browserOpenReport.target;
     renderBrowserOpen(current?.results||[]);renderTermuxReturn(current?.results||[]);renderPhoneNative();renderPhoneControllerAvailability();updateBrowserButtons();
   }
   function renderBrowserOpen(results){
-    const state=document.getElementById('browser-open-state');if(!state||!browserOpenReport)return;
-    for(const task of browserOpenReport.tasks){
+    mergeStoredBrowserOpenReports();
+    for(const batch of allBrowserOpenReports())for(const task of batch.tasks){
       if(['launch-requested','failed','closed','not-submitted'].includes(task.state))continue;
       const result=results.find(r=>r.job_id===task.job_id&&r.device_id===task.unit);if(!result)continue;
       let report;try{report=JSON.parse(result.stdout||'');}catch{}
-      if(report?.kind==='website-browser-open'&&report.url===browserOpenReport.url&&typeof report.launch_requested==='boolean'&&report.visible_screen_verified===false){
+      if(report?.kind==='website-browser-open'&&report.url===batch.url&&typeof report.launch_requested==='boolean'&&report.visible_screen_verified===false){
         const blocked=report.error_code==='android-background-launch-blocked'||report.android_start?.raw_start_result===102;
         task.report=report;task.state=!blocked&&result.exit_code===0&&report.launch_requested===true&&report.state==='launch-requested'?'launch-requested':'failed';
         task.error=task.state==='failed'?String(blocked?'Android blocked website opening from the background. This request did not open the page; retrying this connection cannot grant phone-control permission.':report.error||result.stderr||'The worker did not report a successful browser launch request.').slice(0,500):'';
       }else{task.state='failed';task.error=String(result.stderr||'Worker returned an invalid browser launch report.').slice(0,500);}
     }
-    saveBrowserOpen();
+    saveBrowserOpen();renderBrowserOpenHistory();
+    const state=document.getElementById('browser-open-state');if(!state||!browserOpenReport)return;
     const tasks=browserOpenReport.tasks,requested=tasks.filter(t=>t.state==='launch-requested').length,failed=tasks.filter(t=>t.state==='failed').length,closed=tasks.filter(t=>t.state==='closed').length,notSubmitted=tasks.filter(t=>t.state==='not-submitted').length;
     state.textContent=(tasks.length?'':'No available selected devices. ')+`${requested+failed}/${tasks.length} launch results · ${requested} launch requested · ${failed} failed · ${closed} closed · ${notSubmitted} not sent · ${browserOpenReport.skipped.length} skipped. `+(requested?'Browser launch requested; screen/page visibility unverified.':'Screen/page visibility is unverified.');
     updateBrowserButtons();
     document.getElementById('browser-open-report').textContent=browserOpenReport.url+'\n\n'+tasks.map(t=>`${t.unit} · ${t.state}${t.report?.launcher?' · '+String(t.report.launcher):''}${t.error?'\n'+t.error:''}`).join('\n\n')+(browserOpenReport.skipped.length?'\n\nSkipped: '+browserOpenReport.skipped.map(n=>n.unit+' ('+n.reason+')').join(', '):'');
+  }
+  async function reconcilePendingBrowserUnits(units){
+    mergeStoredBrowserOpenReports();const selected=new Set(units),seen=new Set(),requests=[];
+    for(const report of allBrowserOpenReports())for(const task of report.tasks)if(selected.has(task.unit)&&['queued','submitting','unconfirmed'].includes(task.state)){
+      const key=JSON.stringify([task.job_id,task.unit]);if(!seen.has(key)){seen.add(key);requests.push({job_id:task.job_id,device_id:task.unit});}
+    }
+    // This only reads exact receipts. Missing, bounded or unavailable history
+    // never means that a previous request is safe to submit again.
+    for(let i=0;i<requests.length;i+=16){
+      try{
+        const receipt=await swarmApi('job-results','POST',{requests:requests.slice(i,i+16)});
+        if(Array.isArray(receipt?.results)&&Array.isArray(receipt.pending)&&Array.isArray(receipt.missing)&&typeof receipt.complete==='boolean')renderBrowserOpen(receipt.results);
+      }catch{}
+    }
+    mergeStoredBrowserOpenReports();
   }
   function browserOpenCommand(url){
     return browserRequestCommand({url});
@@ -1172,21 +1320,37 @@
     try{
       const url=validateBrowserOpenUrl(document.getElementById('browser-open-url').value),target=document.getElementById('browser-open-target').value;
       if(!['all','computers','phones'].includes(target)&&!IDS.has(target))throw Error('Select a canonical cluster unit.');
-      if(browserRequestsPending(browserOpenReport))throw Error('Previous launch requests are pending. Refresh launch results, or close the old report after checking the queue, before opening another batch.');
-      if(browserRequestsPending(termuxReturnReport))throw Error('Return requests are pending. Review Queue & results before opening another website.');
-      if(browserRequestsPending(phoneNativeReport))throw Error('Controller requests are pending. Refresh controller results before sending another screen action.');
+      if(!globalThis.navigator?.locks?.request)throw Error('This browser cannot safely coordinate device launches. Use an updated browser. No requests were sent.');
+      if(browserReportStorageUnreadable)throw Error('Saved launch history could not be read. No new requests were sent.');
       document.getElementById('browser-open-state').textContent='Checking available devices…';
       const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes))throw Error('Worker availability could not be verified.');
       const fleet=canonicalize(raw),selected=fleet.nodes.filter(n=>IDS.has(n.id)&&(target==='all'||target==='phones'&&PHONE_IDS.has(n.id)||target==='computers'&&PC_IDS.has(n.id)||n.id===target));
-      const ready=selected.filter(n=>n.online&&!n.busy&&(n.id!=='RenderRig'||versionAtLeast(n.agent_version,'3.7.2')));
+      renderBrowserOpen(fleet.results);
+      const available=selected.filter(n=>n.online&&!n.busy&&(n.id!=='RenderRig'||versionAtLeast(n.agent_version,'3.7.2')));
+      await reconcilePendingBrowserUnits(available.map(n=>n.id));
+      const pending=pendingBrowserUnits(available.map(n=>n.id),relatedScreenReports());
+      const ready=available.filter(n=>!pending.has(n.id));
+      if(available.length&&!ready.length)throw Error('Previous screen requests are pending for '+[...pending].join(', ')+'. Refresh the matching launch, return or controller report. No requests were sent again.');
       const id='browser-open-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
-      browserOpenReport={id,url,target,created_at:new Date().toISOString(),scope:'One browser launch request per selected available unit; physical screen and target page visibility are unverified.',tasks:ready.map((n,i)=>({unit:n.id,job_id:id+'-'+i,state:'planned'})),skipped:selected.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:!n.online?'offline':n.busy?'busy':'agent update required'}))};saveBrowserOpen();renderBrowserOpen(current?.results||[]);
+      replaceBrowserOpenReport({id,url,target,created_at:new Date().toISOString(),scope:'One browser launch request per selected available unit; physical screen and target page visibility are unverified.',tasks:ready.map((n,i)=>({unit:n.id,job_id:id+'-'+i,state:'planned'})),skipped:selected.filter(n=>!ready.includes(n)).map(n=>({unit:n.id,reason:!n.online?'offline':n.busy?'busy':pending.has(n.id)?'earlier screen request pending':'agent update required'}))});renderBrowserOpen(current?.results||[]);
       submittedBatch=browserOpenReport;
-      for(const task of browserOpenReport.tasks){
-        const windows=task.unit==='RenderRig',cmd=windows?JSON.stringify({url}):browserOpenCommand(url);task.state='submitting';saveBrowserOpen();renderBrowserOpen(current?.results||[]);
+      for(const task of submittedBatch.tasks){
+        await navigator.locks.request('curt-browser-open-unit-'+task.unit,{mode:'exclusive'},async()=>{
+        mergeStoredBrowserOpenReports();
+        if(task.state!=='planned')return;
+        if(pendingBrowserUnits([task.unit],relatedScreenReports().filter(r=>r!==submittedBatch)).size){
+          task.state='not-submitted';task.error='Not sent: another screen request for this device is pending.';saveBrowserOpen();renderBrowserOpen(current?.results||[]);return;
+        }
+        const windows=task.unit==='RenderRig',cmd=windows?JSON.stringify({url}):browserOpenCommand(url);task.state='submitting';
+        try{saveBrowserOpen(true);}catch(error){task.state='not-submitted';task.not_submitted_before_enqueue=true;task.error='Not sent: the launch intent could not be saved.';throw error;}
+        renderBrowserOpen(current?.results||[]);
+        if(browserReportStorageUnreadable||pendingBrowserUnits([task.unit],relatedScreenReports().filter(r=>r!==submittedBatch)).size){
+          task.state='not-submitted';task.not_submitted_before_enqueue=true;task.error='Not sent: pending device requests could not be safely excluded.';saveBrowserOpen();renderBrowserOpen(current?.results||[]);return;
+        }
         try{await swarmApi('enqueue','POST',{job:{id:task.job_id,type:windows?'website-open':'shell',cmd,command:cmd},target_device_ids:[task.unit]});task.state='queued';}
         catch{task.state='unconfirmed';task.error='Submission receipt missing. Refresh launch results; this request will not be sent again automatically.';saveBrowserOpen();throw Error('Browser launch submission is unconfirmed. Refresh launch results before retrying. Remaining devices were not sent.');}
         saveBrowserOpen();renderBrowserOpen(current?.results||[]);
+        });
       }
       if(ready.length)await load(true);
     }catch(error){
@@ -1196,7 +1360,7 @@
     finally{browserOpenBusy=false;updateBrowserButtons();saveBrowserOpen();}
   }
   async function refreshBrowserOpen(){
-    if(browserOpenBusy||termuxReturnBusy||!browserOpenReport||browserOpenReport.closed_at)return;
+    if(browserOpenBusy||termuxReturnBusy||phoneNativeBusy||!browserOpenReport||browserOpenReport.closed_at)return;
     browserOpenBusy=true;updateBrowserButtons();
     try{
       const requests=browserOpenReport.tasks.filter(t=>['queued','submitting','unconfirmed'].includes(t.state)).map(t=>({job_id:t.job_id,device_id:t.unit}));
@@ -1212,7 +1376,7 @@
     finally{browserOpenBusy=false;updateBrowserButtons();saveBrowserOpen();}
   }
   async function closeBrowserOpen(){
-    if(browserOpenBusy||termuxReturnBusy||!browserOpenReport||browserOpenReport.closed_at)return;
+    if(browserOpenBusy||termuxReturnBusy||phoneNativeBusy||!browserOpenReport||browserOpenReport.closed_at)return;
     browserOpenBusy=true;updateBrowserButtons();
     try{
       const raw=await swarmApi('queue-status');if(!Array.isArray(raw?.nodes)||!Array.isArray(raw.jobs)||!Array.isArray(raw.results))throw Error('Queue status is incomplete. The report remains open.');
@@ -1313,7 +1477,9 @@
       if(!['phone-worker','pc-controller'].includes(route))throw Error('Choose a supported return method.');
       if(!['all','computers','phones'].includes(target)&&!IDS.has(target))throw Error('Select a canonical cluster unit.');
       if(target==='computers'||PC_IDS.has(target))throw Error('Return to Termux is available for phones only. Select all units or a phone.');
-      if(browserRequestsPending(browserOpenReport))throw Error('Launch requests are pending. Review Queue & results before returning phones.');
+      mergeStoredBrowserOpenReports();
+      if(browserReportStorageUnreadable)throw Error('Saved launch history could not be read. No phone requests were sent.');
+      if(pendingBrowserUnits(selectedControllerUnits()).size)throw Error('Launch requests are pending for the selected phones. Review their launch reports before returning phones.');
       if(browserRequestsPending(termuxReturnReport))throw Error('Previous return requests are pending. Review the return report before trying again.');
       if(browserRequestsPending(phoneNativeReport))throw Error('Controller requests are pending. Refresh controller results before returning phones.');
       if(route==='pc-controller'){
@@ -1410,7 +1576,9 @@
       const target=document.getElementById('browser-open-target').value;
       if(!['all','phones'].includes(target)&&!PHONE_IDS.has(target))throw Error('Select All eight phones or one worker phone for paired-controller actions.');
       const url=action==='open-website'?validateBrowserOpenUrl(document.getElementById('browser-open-url').value):null;
-      if(browserRequestsPending(browserOpenReport)||browserRequestsPending(termuxReturnReport)||browserRequestsPending(phoneNativeReport))throw Error('Previous screen requests are pending. Review their results before sending another action.');
+      mergeStoredBrowserOpenReports();
+      if(browserReportStorageUnreadable)throw Error('Saved launch history could not be read. No phone requests were sent.');
+      if(pendingBrowserUnits(selectedControllerUnits()).size||browserRequestsPending(termuxReturnReport)||browserRequestsPending(phoneNativeReport))throw Error('Previous screen requests are pending. Review their results before sending another action.');
       state.textContent='Checking the paired PC controller…';
       const bridge=await controlApi('bridge-status');updateTermuxController(bridge,null);
       if(!phoneNativeReady)throw Error('Native phone controls require online Windows bridge 2.6.0. No phone request was sent.');

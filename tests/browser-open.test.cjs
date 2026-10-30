@@ -4,11 +4,14 @@ const path=require('node:path');
 const vm=require('node:vm');
 const test=require('node:test');
 const {TextEncoder}=require('node:util');
+const {webcrypto}=require('node:crypto');
 const dashboard=fs.readFileSync(path.join(__dirname,'../public/scripts/cluster-swarm-live-v8.js'),'utf8');
 const start=dashboard.indexOf('  let browserOpenReport='),end=dashboard.indexOf('  let siteTest=',start);
 assert.ok(start>=0&&end>start,'Published browser control must be present');
 const source=dashboard.slice(start,end);
 const key='curt-browser-open-v1';
+const ledgerKey='curt-browser-open-reports-v2';
+const snapshotPrefix='curt-browser-open-snapshot-v2:';
 const FLEET=[['phone173','worker'],['phone174','worker'],['phone176','worker'],['phone177','worker'],['phone191','worker'],['phone195','worker'],['phone253','worker'],['phone254','worker'],['Alina','pc'],['Nexus','pc'],['SteamDeck','pc'],['viki','pc'],['RenderRig','gpu-worker']];
 const IDS=new Set(FLEET.map(([id])=>id));
 const PHONE_IDS=new Set(FLEET.filter(([,kind])=>kind==='worker').map(([id])=>id));
@@ -20,6 +23,7 @@ function harness(options={}){
     'browser-open-url':{value:'https://curtbrag.com/'},'browser-open-target':{value:'all'},
     'browser-open-route':{value:options.openRoute||'phone-worker'},
     'browser-open-state':{textContent:''},'browser-open-report':{textContent:''},
+    'browser-open-history':{disabled:true,value:'',options:[],replaceChildren(...rows){this.options=rows;}},
     'termux-return-run':{disabled:false},'termux-return-close':{disabled:true},
     'termux-return-route':{value:options.returnRoute||'pc-controller'},
     'termux-return-state':{textContent:''},'termux-return-report':{textContent:''},
@@ -30,16 +34,16 @@ function harness(options={}){
   };
   let loads=0;
   const context=vm.createContext({
-    URL,TextEncoder,FLEET,IDS,PHONE_IDS,PC_IDS,btoa:value=>Buffer.from(value,'binary').toString('base64'),
-    localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v)},
-    document:{getElementById:id=>elements[id]||null},current:{results:[]},
+    URL,TextEncoder,FLEET,IDS,PHONE_IDS,PC_IDS,crypto:webcrypto,navigator:options.noLocks?{}:{locks:options.locks||{request:(_name,_options,fn)=>fn()}},btoa:value=>Buffer.from(value,'binary').toString('base64'),
+    localStorage:{get length(){return storage.size;},key:i=>options.storageKey?options.storageKey(i,storage):[...storage.keys()][i]??null,getItem:k=>storage.get(k)??null,setItem:(k,v)=>{if(options.save)options.save(k,v);storage.set(k,v);},removeItem:k=>storage.delete(k)},
+    document:{getElementById:id=>elements[id]||null,createElement:()=>({})},current:{results:[]},
     canonicalize:raw=>({...raw,nodes:FLEET.map(([id,node_class])=>raw.nodes.find(n=>n.id===id)||{id,node_class,online:false,busy:false,active_jobs:[]}),jobs:raw.jobs||[],results:raw.results||[]}),
     versionAtLeast:(a,r)=>{const x=String(a||'0.0.0').split('.').map(Number),y=r.split('.').map(Number);for(let i=0;i<3;i++){if((x[i]||0)>(y[i]||0))return true;if((x[i]||0)<(y[i]||0))return false;}return true;},
     swarmApi:async(...args)=>{calls.push(args);if(options.api)return options.api(...args);return args[0]==='queue-status'?{nodes:options.nodes||[{id:'phone191',online:true,busy:false}],jobs:[],results:[]}:{ok:true};},
     controlApi:async(...args)=>{calls.push([args[0],args[1],args[2],'control']);if(options.controlApi)return options.controlApi(...args);if(args[0]==='bridge-status')return freshBridge();if(args[0]==='queue-command')return {ok:true,command_id:'controller-'+args[2].target};if(args[0]==='commands')return options.commands||{queue:[],history:[]};throw Error('Unexpected controller action');},
     load:async()=>{loads++;},
   });
-  vm.runInContext(source+'\nglobalThis.api={validateBrowserOpenUrl,browserOpenCommand,dispatchBrowserOpen,refreshBrowserOpen,closeBrowserOpen,renderBrowserOpen,dispatchTermuxReturn,closeTermuxReturn,renderTermuxReturn,get:()=>browserOpenReport,set:value=>browserOpenReport=value,busy:()=>browserOpenBusy,updateTermuxController,termuxControllerAvailable,getReturn:()=>termuxReturnReport,setReturn:value=>termuxReturnReport=value,returnBusy:()=>termuxReturnBusy,dispatchPhoneNative,refreshPhoneNative,closePhoneNative,renderPhoneNative,getNative:()=>phoneNativeReport,setNative:value=>phoneNativeReport=value,nativeBusy:()=>phoneNativeBusy};',context);
+  vm.runInContext(source+'\nglobalThis.api={validateBrowserOpenUrl,browserOpenCommand,dispatchBrowserOpen,refreshBrowserOpen,closeBrowserOpen,renderBrowserOpen,dispatchTermuxReturn,closeTermuxReturn,renderTermuxReturn,get:()=>browserOpenReport,set:value=>browserOpenReport=value,getReports:allBrowserOpenReports,reportKey:browserReportKey,select:selectBrowserOpenReport,save:saveBrowserOpen,busy:()=>browserOpenBusy,updateTermuxController,termuxControllerAvailable,getReturn:()=>termuxReturnReport,setReturn:value=>termuxReturnReport=value,returnBusy:()=>termuxReturnBusy,dispatchPhoneNative,refreshPhoneNative,closePhoneNative,renderPhoneNative,getNative:()=>phoneNativeReport,setNative:value=>phoneNativeReport=value,nativeBusy:()=>phoneNativeBusy};',context);
   return {api:context.api,elements,storage,calls,loads:()=>loads};
 }
 function report(state='queued'){
@@ -47,6 +51,14 @@ function report(state='queued'){
 }
 function result(overrides={}){
   return {job_id:'open-191',device_id:'phone191',exit_code:0,stdout:JSON.stringify({kind:'website-browser-open',url:'https://curtbrag.com/',state:'launch-requested',launch_requested:true,visible_screen_verified:false,launcher:'termux-am'}),...overrides};
+}
+function sharedUnitLocks(){
+  const tails=new Map();
+  return {request:async(name,options,fn)=>{
+    assert.equal(options.mode,'exclusive');const earlier=tails.get(name)||Promise.resolve();let release;
+    const owned=new Promise(resolve=>release=resolve);tails.set(name,owned);await earlier;
+    try{return await fn();}finally{release();if(tails.get(name)===owned)tails.delete(name);}
+  }};
 }
 
 test('normal HTTPS navigation preserves query and fragment and rejects local, credential, port and control URLs',()=>{
@@ -178,7 +190,8 @@ test('Android abort overrides a zero worker exit or an inconsistent launch recei
 test('persisted queued or ambiguous requests block a new batch without replay',async()=>{
   for(const state of ['queued','submitting','unconfirmed']){
     const h=harness({storage:new Map([[key,JSON.stringify(report(state))]])});await h.api.dispatchBrowserOpen();
-    assert.equal(h.calls.length,0);assert.match(h.elements['browser-open-state'].textContent,/Previous launch requests are pending/);
+    assert.deepEqual(h.calls.map(c=>c[0]),['queue-status','job-results']);
+    assert.equal(h.calls.some(c=>['enqueue','queue-command'].includes(c[0])),false);assert.match(h.elements['browser-open-state'].textContent,/Previous screen requests are pending for phone191/);
   }
 });
 
@@ -200,10 +213,11 @@ test('a partial batch keeps only attempted requests pending and never sends the 
   assert.deepEqual(Array.from(h.api.get().tasks,t=>t.state),['queued','unconfirmed','not-submitted']);
   assert.equal(submissions,2);
   assert.match(h.elements['browser-open-report'].textContent,/phone176 · not-submitted/);
-  const reload=harness({storage:h.storage});
+  const reload=harness({storage:h.storage,nodes});
   assert.deepEqual(Array.from(reload.api.get().tasks,t=>t.state),['queued','unconfirmed','not-submitted']);
+  reload.elements['browser-open-target'].value='phone173';
   await reload.api.dispatchBrowserOpen();
-  assert.equal(reload.calls.length,0,'An ambiguous attempted request must not be replayed');
+  assert.equal(reload.calls.some(c=>['enqueue','queue-command'].includes(c[0])),false,'An ambiguous attempted request must not be replayed');
 });
 
 test('old saved planned tasks become not submitted without requests and do not lock the next explicit launch',async()=>{
@@ -215,6 +229,267 @@ test('old saved planned tasks become not submitted without requests and do not l
   assert.equal(h.api.get().tasks[0].state,'not-submitted','A never-submitted task must not become a launch result');
   await h.api.dispatchBrowserOpen();
   assert.equal(h.calls.filter(c=>c[0]==='enqueue').length,1);
+});
+
+test('pending phone launches do not block an unrelated PC, and both reports survive reload',async()=>{
+  for(const state of ['queued','submitting','unconfirmed']){
+    const saved=report(state),storage=new Map([[key,JSON.stringify(saved)]]);
+    const h=harness({storage,nodes:[{id:'Nexus',online:true,busy:false}]});h.elements['browser-open-target'].value='Nexus';
+    await h.api.dispatchBrowserOpen();
+    assert.deepEqual(h.calls.filter(c=>c[0]==='enqueue').map(c=>Array.from(c[2].target_device_ids)),[['Nexus']]);
+    assert.equal(h.calls.some(c=>c[0]==='job-results'),false,'Unrelated phone receipts need no lookup');
+    assert.equal(h.api.getReports().length,2);assert.equal(h.api.getReports().find(r=>r.id===saved.id).tasks[0].state,state);
+    const reload=harness({storage});assert.equal(reload.api.get().target,'Nexus');assert.equal(reload.api.getReports().length,2);
+    assert.ok(['queued','submitting','unconfirmed'].includes(JSON.parse(storage.get(key)).tasks[0].state),'Legacy dashboards retain a conservative pending guard');
+  }
+});
+
+test('all-device opening skips overlapping intent while queuing the disjoint available computer',async()=>{
+  const h=harness({storage:new Map([[key,JSON.stringify(report())]]),nodes:[{id:'phone191',online:true,busy:false},{id:'Nexus',online:true,busy:false}]});
+  await h.api.dispatchBrowserOpen();
+  assert.deepEqual(h.calls.filter(c=>c[0]==='enqueue').map(c=>Array.from(c[2].target_device_ids)),[['Nexus']]);
+  assert.ok(h.api.get().skipped.some(t=>t.unit==='phone191'&&t.reason==='earlier screen request pending'));
+  assert.equal(h.api.getReports().find(r=>r.id==='browser-open-fixture').tasks[0].state,'queued');
+});
+
+test('pending returns and native controller actions block only their own units during worker website opening',async()=>{
+  for(const family of ['return','native']){
+    const h=harness({nodes:[{id:'Nexus',online:true,busy:false},{id:'phone191',online:true,busy:false}]});
+    const pending={tasks:[{unit:'phone191',state:'unconfirmed'}],skipped:[]};
+    if(family==='return')h.api.setReturn(pending);else h.api.setNative(pending);
+    h.elements['browser-open-target'].value='Nexus';await h.api.dispatchBrowserOpen();
+    assert.deepEqual(h.calls.filter(c=>c[0]==='enqueue').map(c=>Array.from(c[2].target_device_ids)),[['Nexus']]);
+    h.elements['browser-open-target'].value='phone191';await h.api.dispatchBrowserOpen();
+    assert.equal(h.calls.filter(c=>c[0]==='enqueue').length,1);assert.match(h.elements['browser-open-state'].textContent,/pending for phone191/);
+  }
+});
+
+test('checking browser availability cannot overwrite a newer saved phone Return with stale terminal state',async()=>{
+  const h=harness();h.api.setReturn({...returnReport('return-requested'),id:'old-terminal'});
+  const newer={...returnReport('unconfirmed'),id:'new-live'};h.storage.set('curt-termux-return-v1',JSON.stringify(newer));
+  await h.api.dispatchBrowserOpen();
+  assert.equal(h.calls.some(c=>c[0]==='enqueue'),false);assert.equal(JSON.parse(h.storage.get('curt-termux-return-v1')).id,'new-live');
+  assert.match(h.elements['browser-open-state'].textContent,/pending for phone191/);
+});
+
+test('older active reports remain selectable and still block duplicate effects on their own phone',async()=>{
+  const h=harness({storage:new Map([[key,JSON.stringify(report('unconfirmed'))]]),nodes:[{id:'Nexus',online:true,busy:false},{id:'phone191',online:true,busy:false}]});
+  h.elements['browser-open-target'].value='Nexus';await h.api.dispatchBrowserOpen();
+  const old=h.api.getReports().find(r=>r.id==='browser-open-fixture');
+  assert.equal(h.elements['browser-open-history'].options.length,2);
+  h.elements['browser-open-target'].value='phone191';await h.api.dispatchBrowserOpen();
+  assert.equal(h.calls.filter(c=>c[0]==='enqueue').length,1);assert.equal(old.tasks[0].state,'unconfirmed');
+  const before=h.calls.length;h.elements['browser-open-url'].value='https://example.com/next';
+  h.api.select(h.api.reportKey(old));
+  assert.equal(h.api.get().id,old.id);assert.match(h.elements['browser-open-report'].textContent,/phone191 · unconfirmed/);
+  assert.equal(h.elements['browser-open-url'].value,'https://example.com/next');assert.equal(h.calls.length,before,'Viewing history must not send or replay requests');
+  assert.equal(harness({storage:h.storage}).api.get().id,old.id,'The selected report survives reload');
+});
+
+test('recent results reconcile archived reports against their own exact job, device and URL',async()=>{
+  const h=harness({storage:new Map([[key,JSON.stringify(report())]]),nodes:[{id:'Nexus',online:true,busy:false}]});
+  h.elements['browser-open-target'].value='Nexus';h.elements['browser-open-url'].value='https://example.com/';await h.api.dispatchBrowserOpen();
+  const selected=h.api.get(),before=h.calls.length;h.api.renderBrowserOpen([result()]);
+  assert.equal(h.api.get(),selected);assert.equal(selected.tasks[0].state,'queued');
+  assert.equal(h.api.getReports().find(r=>r.id==='browser-open-fixture').tasks[0].state,'launch-requested');
+  assert.equal(h.calls.length,before);assert.match(h.elements['browser-open-report'].textContent,/https:\/\/example.com\//);
+});
+
+test('an exact old receipt is reconciled before the next explicit same-device launch',async()=>{
+  const h=harness({storage:new Map([[key,JSON.stringify(report('unconfirmed'))]]),api:async action=>{
+    if(action==='queue-status')return {nodes:[{id:'phone191',online:true,busy:false}],jobs:[],results:[]};
+    if(action==='job-results')return {complete:true,pending:[],missing:[],results:[result()]};
+    return {ok:true};
+  }});
+  await h.api.dispatchBrowserOpen();
+  assert.deepEqual(h.calls.map(c=>c[0]),['queue-status','job-results','enqueue']);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls[1][2])),{requests:[{job_id:'open-191',device_id:'phone191'}]});
+  assert.notEqual(h.calls[2][2].job.id,'open-191','A newly requested action has a new identity; the earlier job is never replayed');
+  assert.equal(h.api.getReports().find(r=>r.id==='browser-open-fixture').tasks[0].state,'launch-requested');
+});
+
+test('incomplete, missing and unrelated lookup receipts preserve same-unit blockers',async()=>{
+  for(const receipt of [
+    {results:[result()],pending:[],missing:[]},
+    {complete:false,results:[],pending:[],missing:[{job_id:'open-191',device_id:'phone191'}]},
+    {complete:true,results:[result({device_id:'Nexus'}),result({job_id:'other'})],pending:[],missing:[]},
+  ]){
+    const h=harness({storage:new Map([[key,JSON.stringify(report('unconfirmed'))]]),api:async action=>action==='queue-status'?{nodes:[{id:'phone191',online:true,busy:false}],jobs:[],results:[]}:receipt});
+    await h.api.dispatchBrowserOpen();assert.equal(h.calls.some(c=>c[0]==='enqueue'),false);assert.equal(h.api.get().tasks[0].state,'unconfirmed');
+  }
+});
+
+test('completed history is bounded but every active report and the selected older report survive',()=>{
+  const reports=Array.from({length:55},(_,i)=>({...report(i<25?'unconfirmed':'launch-requested'),id:'history-'+i,created_at:new Date(1700000000000+i*1000).toISOString(),tasks:[{unit:'phone191',job_id:'history-job-'+i,state:i<25?'unconfirmed':'launch-requested'}]}));
+  const h=harness({storage:new Map([[ledgerKey,JSON.stringify({schema:2,current_key:JSON.stringify([reports[25].id,reports[25].created_at,reports[25].url,reports[25].tasks.map(t=>[t.unit,t.job_id])]),reports})]])});
+  assert.equal(h.api.getReports().filter(r=>r.tasks[0].state==='unconfirmed').length,25);
+  assert.equal(h.api.getReports().filter(r=>r.tasks[0].state==='launch-requested').length,20);
+  assert.equal(h.api.get().id,'history-25');assert.equal(JSON.parse(h.storage.get(ledgerKey)).reports.length,45);
+});
+
+test('scoped history reconciliation chunks exact requests to the server limit without any replay',async()=>{
+  const reports=Array.from({length:25},(_,i)=>({...report('unconfirmed'),id:'pending-'+i,tasks:[{unit:'phone191',job_id:'pending-job-'+i,state:'unconfirmed'}]}));
+  const h=harness({storage:new Map([[ledgerKey,JSON.stringify({schema:2,reports})]]),api:async action=>action==='queue-status'?{nodes:[{id:'phone191',online:true,busy:false}],jobs:[],results:[]}:{complete:false,results:[],pending:[],missing:[]}});
+  await h.api.dispatchBrowserOpen();
+  assert.deepEqual(h.calls.filter(c=>c[0]==='job-results').map(c=>c[2].requests.length),[16,9]);
+  assert.equal(h.calls.some(c=>c[0]==='enqueue'),false);assert.equal(h.api.getReports().length,25);
+});
+
+test('stale tabs merge disjoint pending reports rather than erasing them on the next save',async()=>{
+  const storage=new Map(),first=harness({storage,nodes:[{id:'Nexus',online:true,busy:false}]}),second=harness({storage});
+  first.elements['browser-open-target'].value='Nexus';await first.api.dispatchBrowserOpen();await second.api.dispatchBrowserOpen();
+  first.api.renderBrowserOpen([]);
+  const reload=harness({storage});assert.equal(reload.api.getReports().length,2);
+  assert.deepEqual(Array.from(reload.api.getReports(),r=>r.tasks[0].unit).sort(),['Nexus','phone191']);
+  assert.ok(reload.api.getReports().every(r=>r.tasks[0].state==='queued'));
+});
+
+test('an interleaved stale index write cannot erase another tab’s durable submitted intent',()=>{
+  const storage=new Map();let foreign,interleave=false;
+  const first=harness({storage,save:k=>{if(interleave&&k===ledgerKey){interleave=false;foreign.api.set({...report('submitting'),id:'foreign-nexus',target:'Nexus',tasks:[{unit:'Nexus',job_id:'foreign-nexus-job',state:'submitting'}]});foreign.api.save();}}});
+  foreign=harness({storage});first.api.set(report('submitting'));interleave=true;first.api.save();
+  assert.equal(JSON.parse(storage.get(ledgerKey)).reports.some(r=>r.id==='foreign-nexus'),false,'The deliberately stale view index loses this batch');
+  const reload=harness({storage});assert.equal(reload.api.getReports().length,2);
+  assert.equal(reload.api.getReports().find(r=>r.id==='foreign-nexus').tasks[0].state,'submitting','Authoritative immutable snapshots recover its blocker');
+});
+
+test('an interleaved stale report save cannot erase an exact completed receipt',()=>{
+  const storage=new Map();let other,interleave=false;
+  const first=harness({storage,save:k=>{if(interleave&&k===ledgerKey){interleave=false;other.api.renderBrowserOpen([result()]);}}});
+  first.api.set(report());first.api.save();other=harness({storage});interleave=true;first.api.save();
+  const restored=harness({storage}).api.getReports().find(r=>r.id==='browser-open-fixture');
+  assert.equal(restored.tasks[0].state,'launch-requested');assert.equal(restored.tasks[0].report.url,'https://curtbrag.com/');
+});
+
+test('snapshot compaction shifting an active record during enumeration restarts the scan before enqueue',async()=>{
+  const storage=new Map(),oldKey=snapshotPrefix+'completed-old',newKey=snapshotPrefix+'completed-new',activeKey=snapshotPrefix+'active-nexus';let armed=false;
+  const completed={...report('launch-requested'),id:'completed-history'},active={...report('submitting'),id:'foreign-nexus',target:'Nexus',tasks:[{unit:'Nexus',job_id:'foreign-nexus-job',state:'submitting'}]};
+  const h=harness({storage,nodes:[{id:'Nexus',online:true,busy:false}],locks:{request:(_name,_options,fn)=>{
+    storage.set(oldKey,JSON.stringify(completed));storage.set(activeKey,JSON.stringify(active));armed=true;return fn();
+  }},storageKey:(i,items)=>{
+    const key=[...items.keys()][i]??null;
+    if(armed&&key===oldKey){armed=false;items.delete(oldKey);items.set(newKey,JSON.stringify(completed));}
+    return key;
+  }});h.elements['browser-open-target'].value='Nexus';await h.api.dispatchBrowserOpen();
+  assert.equal(h.calls.some(c=>c[0]==='enqueue'),false);assert.equal(h.api.getReports().find(r=>r.id==='foreign-nexus').tasks[0].state,'submitting');
+});
+
+test('a blocker discovered by the final durable-save merge cancels our known never-enqueued intent',async()=>{
+  const storage=new Map();let injected=false;
+  const h=harness({storage,nodes:[{id:'Nexus',online:true,busy:false}],save:(key,value)=>{
+    if(!injected&&key.startsWith(snapshotPrefix)&&JSON.parse(value).tasks.some(t=>t.state==='submitting')){
+      injected=true;storage.set(snapshotPrefix+'late-foreign',JSON.stringify({...report('submitting'),id:'late-foreign',target:'Nexus',tasks:[{unit:'Nexus',job_id:'late-foreign-job',state:'submitting'}]}));
+    }
+  }});h.elements['browser-open-target'].value='Nexus';await h.api.dispatchBrowserOpen();
+  assert.equal(h.calls.some(c=>c[0]==='enqueue'),false);assert.equal(h.api.get().tasks[0].state,'not-submitted');assert.equal(h.api.get().tasks[0].not_submitted_before_enqueue,true);
+  assert.equal(h.api.getReports().find(r=>r.id==='late-foreign').tasks[0].state,'submitting');
+});
+
+test('two simultaneous same-device requests use the same exclusive unit lock and enqueue only once',async()=>{
+  const storage=new Map(),locks=sharedUnitLocks(),first=harness({storage,locks}),second=harness({storage,locks});
+  await Promise.all([first.api.dispatchBrowserOpen(),second.api.dispatchBrowserOpen()]);
+  assert.equal([...first.calls,...second.calls].filter(c=>c[0]==='enqueue').length,1);
+  assert.equal(harness({storage}).api.getReports().filter(r=>r.tasks.some(t=>t.state==='queued')).length,1);
+});
+
+test('a device lock held by an in-flight phone submission does not block an unrelated PC',async()=>{
+  const storage=new Map(),locks=sharedUnitLocks();let begin,release;
+  const started=new Promise(resolve=>begin=resolve),gate=new Promise(resolve=>release=resolve);
+  const first=harness({storage,locks,api:async action=>{if(action==='queue-status')return {nodes:[{id:'phone191',online:true,busy:false}],jobs:[],results:[]};if(action==='enqueue'){begin();return gate;}return {ok:true};}});
+  const pending=first.api.dispatchBrowserOpen();await started;
+  const second=harness({storage,locks,nodes:[{id:'Nexus',online:true,busy:false}]});second.elements['browser-open-target'].value='Nexus';await second.api.dispatchBrowserOpen();
+  assert.equal(second.calls.filter(c=>c[0]==='enqueue').length,1);release({ok:true});await pending;
+});
+
+test('missing cross-tab locking support fails closed without any launch request',async()=>{
+  const h=harness({noLocks:true});await h.api.dispatchBrowserOpen();
+  assert.equal(h.calls.length,0);assert.match(h.elements['browser-open-state'].textContent,/cannot safely coordinate device launches/);
+});
+
+test('a concurrent new same-phone intent discovered after receipt lookup is not duplicated',async()=>{
+  const storage=new Map([[key,JSON.stringify(report('unconfirmed'))]]);let begin,release;
+  const started=new Promise(resolve=>begin=resolve),gate=new Promise(resolve=>release=resolve);
+  const first=harness({storage,api:async action=>{if(action==='queue-status')return {nodes:[{id:'phone191',online:true,busy:false}],jobs:[],results:[]};if(action==='job-results'){begin();return gate;}return {ok:true};}});
+  const second=harness({storage});const pending=first.api.dispatchBrowserOpen();await started;
+  second.api.renderBrowserOpen([result()]);await second.api.dispatchBrowserOpen();
+  release({complete:true,pending:[],missing:[],results:[result()]});await pending;
+  assert.equal(second.calls.filter(c=>c[0]==='enqueue').length,1);assert.equal(first.calls.some(c=>c[0]==='enqueue'),false);
+  assert.equal(harness({storage}).api.getReports().length,2);
+});
+
+test('a reload cannot make a paused earlier batch later submit the same device as a new batch',async()=>{
+  const storage=new Map(),nodes=[{id:'phone191',online:true,busy:false},{id:'Nexus',online:true,busy:false}];let begin,release;
+  const started=new Promise(resolve=>begin=resolve),gate=new Promise(resolve=>release=resolve);
+  const first=harness({storage,api:async action=>{if(action==='queue-status')return {nodes,jobs:[],results:[]};if(action==='enqueue'){begin();return gate;}return {complete:true,results:[],pending:[],missing:[]};}});
+  const pending=first.api.dispatchBrowserOpen();await started;
+  const second=harness({storage,nodes});second.elements['browser-open-target'].value='Nexus';await second.api.dispatchBrowserOpen();
+  release({ok:true});await pending;
+  assert.deepEqual(first.calls.filter(c=>c[0]==='enqueue').map(c=>Array.from(c[2].target_device_ids)),[['phone191']]);
+  assert.deepEqual(second.calls.filter(c=>c[0]==='enqueue').map(c=>Array.from(c[2].target_device_ids)),[['Nexus']]);
+  const saved=harness({storage});assert.equal(saved.api.getReports().length,2);
+  assert.equal(saved.api.getReports().find(r=>r.tasks.length===2).tasks.find(t=>t.unit==='Nexus').state,'not-submitted');
+});
+
+test('a failed disjoint submission preserves both records and reload never replays the ambiguous job',async()=>{
+  const h=harness({storage:new Map([[key,JSON.stringify(report())]]),api:async action=>{
+    if(action==='queue-status')return {nodes:[{id:'Nexus',online:true,busy:false}],jobs:[],results:[]};
+    throw Error('Connection lost');
+  }});h.elements['browser-open-target'].value='Nexus';await h.api.dispatchBrowserOpen();
+  assert.equal(h.api.getReports().length,2);assert.equal(h.api.get().tasks[0].state,'unconfirmed');
+  const reload=harness({storage:h.storage,nodes:[{id:'Nexus',online:true,busy:false}]});reload.elements['browser-open-target'].value='Nexus';await reload.api.dispatchBrowserOpen();
+  assert.equal(reload.api.getReports().length,2);assert.equal(reload.calls.some(c=>c[0]==='enqueue'),false);
+});
+
+test('launch intent must be saved before enqueue, and storage failure preserves the earlier report',async()=>{
+  const h=harness({storage:new Map([[key,JSON.stringify(report())]]),nodes:[{id:'Nexus',online:true,busy:false}],save:(k,value)=>{
+    if(k===ledgerKey&&JSON.parse(value).reports.some(r=>r.tasks.some(t=>t.state==='submitting')))throw Error('Quota exceeded');
+  }});h.elements['browser-open-target'].value='Nexus';await h.api.dispatchBrowserOpen();
+  assert.equal(h.calls.some(c=>c[0]==='enqueue'),false);assert.match(h.elements['browser-open-state'].textContent,/could not be saved/);
+  assert.equal(h.api.get().tasks[0].state,'not-submitted');assert.ok(JSON.parse(h.storage.get(ledgerKey)).reports.some(r=>r.id==='browser-open-fixture'&&r.tasks[0].state==='queued'));
+});
+
+test('a storage failure after acknowledged enqueue leaves durable submitting intent and cannot replay on reload',async()=>{
+  let acknowledged=false;const storage=new Map();
+  const h=harness({storage,save:k=>{if(k===ledgerKey&&acknowledged)throw Error('Storage unavailable');},api:async action=>{
+    if(action==='queue-status')return {nodes:[{id:'phone191',online:true,busy:false}],jobs:[],results:[]};
+    if(action==='enqueue'){acknowledged=true;return {ok:true};}throw Error('No lookup expected');
+  }});await h.api.dispatchBrowserOpen();
+  assert.equal(h.calls.filter(c=>c[0]==='enqueue').length,1);assert.equal(JSON.parse(storage.get(ledgerKey)).reports[0].tasks[0].state,'submitting');
+  const reload=harness({storage});await reload.api.dispatchBrowserOpen();assert.equal(reload.calls.some(c=>c[0]==='enqueue'),false);
+});
+
+test('pre-enqueue intent also fails closed when only the legacy compatibility write fails',async()=>{
+  const h=harness({save:(k,value)=>{if(k===key&&JSON.parse(value)?.tasks.some(t=>t.state==='submitting'))throw Error('Legacy storage write failed');}});
+  await h.api.dispatchBrowserOpen();
+  assert.equal(h.calls.some(c=>c[0]==='enqueue'),false);assert.match(h.elements['browser-open-state'].textContent,/compatibility record could not be saved/);
+  assert.equal(h.api.get().tasks[0].state,'not-submitted');assert.equal(h.api.get().tasks[0].not_submitted_before_enqueue,true);
+  const reload=harness({storage:h.storage});assert.equal(reload.calls.length,0,'Recovery never automatically sends the cancelled intent');
+  await reload.api.dispatchBrowserOpen();assert.equal(reload.calls.filter(c=>c[0]==='enqueue').length,1,'A later explicit action is allowed once storage works');
+});
+
+test('a partial initial ledger/mirror write preserves the never-submitted report without a phantom pending blocker',async()=>{
+  const h=harness({save:k=>{if(k===key)throw Error('Legacy storage unavailable');}});await h.api.dispatchBrowserOpen();
+  assert.equal(h.calls.some(c=>c[0]==='enqueue'),false);assert.ok(h.api.getReports().every(r=>r.tasks.every(t=>t.state==='not-submitted')));
+  const reload=harness({storage:h.storage});assert.ok(reload.api.getReports().every(r=>r.tasks.every(t=>t.state==='not-submitted')));
+});
+
+test('a corrupt authoritative history is preserved and cannot trigger a new screen request',async()=>{
+  const raw='{not valid JSON',h=harness({storage:new Map([[ledgerKey,raw],[key,JSON.stringify(report())]])});
+  await h.api.dispatchBrowserOpen();assert.equal(h.calls.length,0);assert.equal(h.storage.get(ledgerKey),raw);assert.match(h.elements['browser-open-state'].textContent,/history could not be read/);
+});
+
+test('unknown saved task states cannot be pruned as completed or silently release submitted intent',async()=>{
+  const saved=report('unknown-submission-state'),raw=JSON.stringify({schema:2,reports:[saved]});
+  const h=harness({storage:new Map([[ledgerKey,raw]])});await h.api.dispatchBrowserOpen();
+  assert.equal(h.calls.length,0);assert.equal(h.storage.get(ledgerKey),raw);assert.match(h.elements['browser-open-state'].textContent,/history could not be read/);
+});
+
+test('archived browser intent also blocks same-phone Return and Back without hiding unrelated PCs',async()=>{
+  const h=harness({storage:new Map([[key,JSON.stringify(report())]]),nodes:[{id:'Nexus',online:true,busy:false}]});
+  h.elements['browser-open-target'].value='Nexus';await h.api.dispatchBrowserOpen();
+  h.elements['browser-open-target'].value='phone191';const before=h.calls.length;
+  await h.api.dispatchTermuxReturn();await h.api.dispatchPhoneNative('back');assert.equal(h.calls.length,before);
+  assert.match(h.elements['termux-return-state'].textContent,/Launch requests are pending/);assert.match(h.elements['phone-native-state'].textContent,/Previous screen requests are pending/);
 });
 
 test('manual refresh resolves this report beyond recent results using scoped receipt lookup only',async()=>{
@@ -378,7 +653,7 @@ test('a pending controller check prevents concurrent returns and website launche
 test('pending old or new returns block new batches without changing the existing report',async()=>{
   for(const state of ['queued','submitting','unconfirmed'])for(const saved of [returnReport(state),controllerReport(state)]){
     const h=harness();h.api.setReturn(saved);await h.api.dispatchTermuxReturn();await h.api.dispatchBrowserOpen();
-    assert.equal(h.calls.length,0);assert.equal(h.api.getReturn(),saved);
+    assert.deepEqual(h.calls.map(c=>c[0]),['queue-status']);assert.equal(h.api.getReturn(),saved);
   }
 });
 
