@@ -1,11 +1,11 @@
 #!/bin/sh
-# node-swarm.sh — Curt Cluster Swarm worker agent v2.2.1
+# node-swarm.sh — Curt Cluster Swarm worker agent v2.2.2
 # Polls curtbrag.com Swarm, executes assigned jobs, and reports results.
 # Works on Termux and Linux. Requires curl + sh; jq or python3 recommended.
 
 set -u
 
-AGENT_VERSION="2.2.1"
+AGENT_VERSION="2.2.2"
 SWARM_URL="${SWARM_URL:-https://curtbrag.com/api/cluster}"
 POLL_INTERVAL="${POLL_INTERVAL:-60}"
 DEVICE_ID="${DEVICE_ID:-}"
@@ -82,6 +82,26 @@ echo $$ > "$PID_FILE" 2>/dev/null || true
 
 log() {
   printf '[%s] [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$DEVICE_ID" "$1"
+}
+
+# Recovery can start this script without going through Termux:Boot. Keep the
+# existing Termux service's CPU wake lock requested while the worker is running,
+# including after that service is recreated. This does not turn on the screen,
+# unlock the phone or grant any Android permission. Do not release the shared
+# lock on exit: other Termux sessions may still need it.
+LAST_WAKE_LOCK_REQUEST=0
+maintain_termux_wake_lock() {
+  [ "${TERMUX_CPU_WAKE_LOCK:-1}" = 1 ] || return 0
+  [ "${PREFIX:-}" = /data/data/com.termux/files/usr ] || return 0
+  command -v termux-wake-lock >/dev/null 2>&1 || return 0
+  command -v timeout >/dev/null 2>&1 || return 0
+  if [ "$LAST_WAKE_LOCK_REQUEST" -ne 0 ] && [ $((NOW - LAST_WAKE_LOCK_REQUEST)) -lt 300 ]; then
+    return 0
+  fi
+  LAST_WAKE_LOCK_REQUEST=$NOW
+  if ! timeout 8 termux-wake-lock >/dev/null 2>&1; then
+    log 'Termux CPU wake-lock request failed; worker will continue and retry in five minutes'
+  fi
 }
 
 cleanup() {
@@ -592,6 +612,8 @@ CYCLE=0
 while true; do
   CYCLE=$((CYCLE + 1))
   NOW=$(date +%s)
+
+  maintain_termux_wake_lock
 
   if [ $((NOW - LAST_HEARTBEAT)) -ge 60 ]; then
     send_heartbeat || true
