@@ -14,6 +14,7 @@
 <section id="clock" class="panel clock" hidden><span class="label" data-label>Cluster screen</span><time id="time"></time><p id="date"></p><p id="screen-state" role="status" aria-live="polite"></p></section>
 <section id="test" class="panel" hidden><h2>Screen test</h2><div id="metrics" class="grid"></div><p>These readings describe this browser and its current screen; they do not detect cables or other monitors.</p><label>Test pattern <select id="pattern"><option value="">Color bars</option><option value="checker">Checkerboard</option><option value="gray">Grayscale</option></select></label><div class="pattern" id="test-pattern" style="margin-top:16px"></div></section>
 </main><footer id="message" role="status" aria-live="polite">Ready</footer><script>
+window.__curtDisplayClientVersion=78;
 const $=id=>document.getElementById(id),modes=['home','dashboard','visuals','clock','test','activity'];let mode='home',lock=null,wantsAwake=false,wakeRequestPending=false,wakeRetryTimer=null,sleepTestUntil=0,sleepTestRestoreAwake=false;
 function save(){try{localStorage.setItem('curt-display-v1',JSON.stringify({mode,name:$('name').value,animation:$('animation').value,keepAwake:sleepTestUntil?sleepTestRestoreAwake:wantsAwake}));}catch{$('message').textContent='Browser storage unavailable; settings apply for this session.';}}
 function show(value){mode=modes.includes(value)?value:'home';for(const id of modes)$(id).hidden=id!==mode;document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)));const dash=$('dashboard').querySelector('iframe'),visual=$('visuals').querySelector('iframe');if(mode==='dashboard'){const unit=$('name').value.trim();const target=/^(phone(173|174|176|177|191|195|253|254)|Alina|Nexus|SteamDeck|viki|RenderRig)$/.test(unit)?'/cluster/display.html?mode=activity&name='+encodeURIComponent(unit)+'&immersive=1&embedded=1&v=55':dash.dataset.src;if(dash.getAttribute('src')!==target)dash.src=target;}else dash.removeAttribute('src');if(mode==='visuals')visual.src='/cluster/eyecandy.html#'+($('animation').value?$('animation').value+'+lock':'');else visual.removeAttribute('src');save();}
@@ -87,6 +88,23 @@ function renderActivity(data){
  $('unit-connection').textContent='Live updates every 10 seconds';activityAge();
 }
 
+// A freshly loaded own-status frame can refresh its matching legacy container.
+// It uses the existing own-display GET session and never navigates other pages.
+let upgradingLegacyParent=false;
+function upgradeLegacyDisplayParent(data){
+ if(upgradingLegacyParent||params.get('embedded')!=='1'||window.parent===window)return false;
+ const unit=$('name').value.trim();
+ if(!/^phone(173|174|176|177|191|195|253|254)$/.test(unit)||data?.activity?.unit!==unit||!modes.includes(data.mode))return false;
+ try{
+  const parent=window.parent,url=new URL(parent.location.href);
+  if(url.origin!==location.origin||url.pathname!=='/cluster/display.html'||Number(parent.__curtDisplayClientVersion)>=78||parent.document.getElementById('name')?.value.trim()!==unit||parent.document.getElementById('dashboard')?.querySelector('iframe')!==window.frameElement)return false;
+  const target=new URL('/cluster/display.html',location.origin);
+  target.searchParams.set('name',unit);target.searchParams.set('mode',data.mode);target.searchParams.set('v','78');
+  if(url.searchParams.get('immersive')==='1')target.searchParams.set('immersive','1');
+  upgradingLegacyParent=true;parent.location.replace(target.pathname+target.search);return true;
+ }catch{return false;}
+}
+
 // New embedded pages can cooperate with an already-open, same-origin display.
 // This releases only our own browser wake locks; it never sends Android input.
 let remoteSleepTestId=null,parentSleepTestActive=false;
@@ -117,8 +135,8 @@ async function syncDisplay(){
   const r=await fetch('/.netlify/functions/phone-display?phone='+encodeURIComponent(phone)+'&activity=1',{cache:'no-store',signal:controller.signal});
   if(!r.ok)throw Error();const d=await r.json();
   if(phone!==$('name').value.trim())return;
-  renderActivity(d.activity);applyRemoteSleepTest(d);
-  if(params.get('embedded')!=='1'&&d.revision&&d.revision!==displayRevision&&modes.includes(d.mode)){displayRevision=d.revision;show(d.mode);$('message').textContent='Remote display updated';}
+  renderActivity(d.activity);if(upgradeLegacyDisplayParent(d))return;applyRemoteSleepTest(d);
+  if((params.get('embedded')!=='1'||window.parent===window)&&d.revision&&d.revision!==displayRevision&&modes.includes(d.mode)){displayRevision=d.revision;show(d.mode);$('message').textContent='Remote display updated';}
  }catch{
   $('message').textContent='Display connection unavailable; keeping current mode';
   $('activity').dataset.state='unavailable';$('unit-status').textContent='Connection unavailable';$('unit-connection').textContent='Retrying automatically — previous details may be out of date';
