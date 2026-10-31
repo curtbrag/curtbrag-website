@@ -42,8 +42,8 @@ public final class CurtPhoneDisplay {
         StringBuilder result = new StringBuilder("{\"kind\":\"phone-display-wake\",\"permissions_changed\":false,\"lockscreen_unlocked\":false");
         int exit = 0;
         try {
-            if (arguments.length != 1 || !(arguments[0].equals("inspect") || arguments[0].equals("wake") || arguments[0].equals("watch-wake"))) {
-                throw new IllegalArgumentException("Choose inspect, wake or watch-wake only");
+            if (arguments.length != 1 || !(arguments[0].equals("inspect") || arguments[0].equals("wake") || arguments[0].equals("watch-wake") || arguments[0].equals("wake-hold"))) {
+                throw new IllegalArgumentException("Choose inspect, wake, watch-wake or wake-hold only");
             }
             Class<?> processType = Class.forName("android.os.Process");
             int uid = (Integer) invoke(processType, null, "myUid", new Class<?>[0]);
@@ -108,8 +108,12 @@ public final class CurtPhoneDisplay {
                 lock = invoke(powerType, power, "newWakeLock", new Class<?>[]{int.class, String.class}, WAKE_FLAGS, TAG);
                 lockType = Class.forName("android.os.PowerManager$WakeLock");
                 invoke(lockType, lock, "setReferenceCounted", new Class<?>[]{boolean.class}, false);
-                invoke(lockType, lock, "acquire", new Class<?>[]{long.class}, 3000L);
-                result.append(",\"wake_request_accepted\":true,\"maximum_lock_ms\":3000");
+                long maximum = arguments[0].equals("wake-hold") ? 600000L : 3000L;
+                invoke(lockType, lock, "acquire", new Class<?>[]{long.class}, maximum);
+                result.append(",\"wake_request_accepted\":true,\"maximum_lock_ms\":").append(maximum);
+                if (arguments[0].equals("wake-hold")) {
+                    result.append(",\"hold_started_ms\":").append(System.currentTimeMillis());
+                }
                 final Object appContext = context;
                 awaitDisplayOn(new DisplayStateReader() {
                     public boolean interactive() throws Exception { return CurtPhoneDisplay.interactive(powerType, power); }
@@ -123,6 +127,21 @@ public final class CurtPhoneDisplay {
             result.append(",\"off_to_on_verified\":").append(!arguments[0].equals("inspect") && !before && after && state == 2);
             if (!arguments[0].equals("inspect") && (!after || state != 2)) {
                 throw new IllegalStateException("Android did not turn on the main display");
+            }
+            if (arguments[0].equals("wake-hold")) {
+                // Report readiness, then keep this process and its bounded lock alive.
+                // A manual screen-off ends the hold; never repeatedly wake a sleeping phone.
+                result.append(",\"holder_pid\":")
+                    .append((Integer) invoke(processType, null, "myPid", new Class<?>[0]));
+                System.out.println(result.toString() + ",\"hold_active\":true,\"wake_lock_released\":false}");
+                System.out.flush();
+                long deadline = System.nanoTime() + 600000000000L;
+                while (System.nanoTime() < deadline &&
+                       (Boolean) invoke(lockType, lock, "isHeld", new Class<?>[0]) &&
+                       interactive(powerType, power)) {
+                    Thread.sleep(1000);
+                }
+                result.append(",\"hold_active\":false");
             }
         } catch (Throwable error) {
             while (error instanceof InvocationTargetException && error.getCause() != null) error = error.getCause();
