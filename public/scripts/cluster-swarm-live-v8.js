@@ -134,7 +134,14 @@
           if(controller.signal.aborted)throw new Error('Connection timed out. Please retry.');
           continue;
         }
-        if (!response.ok || data.ok === false) throw new Error(data.error || `HTTP ${response.status}`);
+        if (!response.ok || data.ok === false) {
+          const error = new Error(data.error || `HTTP ${response.status}`);
+          error.notQueued = base === SWARM_API && action === 'enqueue' && method === 'POST' &&
+            response.status === 400 && data.ok === false && data.enqueued === false &&
+            data.code === 'enqueue-validation-rejected' && typeof body?.job?.id === 'string' &&
+            data.job_id === body.job.id;
+          throw error;
+        }
         return data;
       }
     } catch (error) {
@@ -1348,7 +1355,14 @@
           task.state='not-submitted';task.not_submitted_before_enqueue=true;task.error='Not sent: pending device requests could not be safely excluded.';saveBrowserOpen();renderBrowserOpen(current?.results||[]);return;
         }
         try{await swarmApi('enqueue','POST',{job:{id:task.job_id,type:windows?'website-open':'shell',cmd,command:cmd},target_device_ids:[task.unit]});task.state='queued';}
-        catch{task.state='unconfirmed';task.error='Submission receipt missing. Refresh launch results; this request will not be sent again automatically.';saveBrowserOpen();throw Error('Browser launch submission is unconfirmed. Refresh launch results before retrying. Remaining devices were not sent.');}
+        catch(error){
+          if(error.notQueued===true){
+            task.state='not-submitted';task.not_submitted_before_enqueue=true;
+            task.error='Not sent: '+String(error.message||'The server rejected this request.').slice(0,500);
+            saveBrowserOpen();throw Error(task.error+' Remaining devices were not sent. Correct the request before trying again.');
+          }
+          task.state='unconfirmed';task.error='Submission receipt missing. Refresh launch results; this request will not be sent again automatically.';saveBrowserOpen();throw Error('Browser launch submission is unconfirmed. Refresh launch results before retrying. Remaining devices were not sent.');
+        }
         saveBrowserOpen();renderBrowserOpen(current?.results||[]);
         });
       }

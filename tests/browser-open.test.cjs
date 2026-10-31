@@ -201,6 +201,24 @@ test('an enqueue connection failure persists ambiguity and blocks automatic resu
   await h.api.dispatchBrowserOpen();assert.equal(h.calls.filter(c=>c[0]==='enqueue').length,1);assert.match(h.elements['browser-open-state'].textContent,/pending/);
 });
 
+test('explicit queue rejection records no submission and permits a later corrected manual request',async()=>{
+  const nodes=['phone173','phone174'].map(id=>({id,online:true,busy:false}));
+  const h=harness({api:async action=>{
+    if(action==='queue-status')return {nodes,jobs:[],results:[]};
+    if(action==='enqueue')throw Object.assign(Error('Command exceeds the limit; no job was queued.'),{notQueued:true});
+    return {ok:true};
+  }});
+  await h.api.dispatchBrowserOpen();
+  assert.equal(h.calls.filter(c=>c[0]==='enqueue').length,1,'No automatic retries or remaining-unit dispatch');
+  assert.deepEqual(Array.from(h.api.get().tasks,t=>t.state),['not-submitted','not-submitted']);
+  assert.equal(h.api.get().tasks[0].not_submitted_before_enqueue,true);
+  assert.match(h.elements['browser-open-state'].textContent,/Not sent: Command exceeds/);
+  const reload=harness({storage:h.storage,nodes});
+  assert.equal(reload.calls.length,0,'Loading the report must not retry');
+  await reload.api.dispatchBrowserOpen();
+  assert.equal(reload.calls.filter(c=>c[0]==='enqueue').length,2,'A new explicit request is not blocked by rejected work');
+});
+
 test('a partial batch keeps only attempted requests pending and never sends the remaining devices',async()=>{
   let submissions=0;
   const nodes=['phone173','phone174','phone176'].map(id=>({id,online:true,busy:false}));

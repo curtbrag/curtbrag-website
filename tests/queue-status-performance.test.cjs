@@ -96,6 +96,7 @@ test('oversized commands are rejected before any migration, reads or assignments
     const r=await h.call('enqueue',{job:{id:'too-long',type:'shell',...fields},target_device_ids:['phone253']});
     assert.equal(r.status,400);assert.equal(r.data.ok,false);
     assert.match(r.data.error,/4000-character limit; no job was queued/);
+    assert.equal(r.data.code,'enqueue-validation-rejected');assert.equal(r.data.enqueued,false);assert.equal(r.data.job_id,'too-long');
     assert.equal(h.reads.length,0);assert.equal(h.lists.length,0);assert.equal(h.writes.length,0);
   }
 });
