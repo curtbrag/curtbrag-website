@@ -19,7 +19,7 @@ const healthyNetwork='site=curtbrag.com http=401 dns_s=0.001 connect_s=0.01 tota
 function harness(options={}){
   const storage=options.storage||new Map(),calls=[],loads=[],exports=[],revoked=[],copied=[],storageWrites=[];
   if(Object.prototype.hasOwnProperty.call(options,'saved'))storage.set(KEY,JSON.stringify(options.saved));
-  const elements=Object.fromEntries(['fleet-health-run','fleet-health-retry','fleet-health-export','fleet-health-state','fleet-health-report'].map(id=>[id,{id,disabled:false,textContent:''}]));
+  const elements=Object.fromEntries(['fleet-health-run','fleet-health-refresh','fleet-health-history','fleet-health-retry','fleet-health-export','fleet-health-state','fleet-health-report'].map(id=>[id,{id,disabled:false,textContent:''}]));
   let card=null,random=0,autoClicks=0;
   const register=element=>{if(element.id)elements[element.id]=element;for(const child of element.children||[])register(child);};
   function element(tag){
@@ -47,7 +47,7 @@ function harness(options={}){
     load:async force=>{loads.push(force);return options.load?options.load(loads.length):fresh;},
     swarmApi:async(...args)=>{calls.push(args);return options.api?options.api(...args):{ok:true};},
   });
-  vm.runInContext(source+'\nglobalThis.api={ensureFleetHealth,renderFleetHealth,dispatchFleetHealth,retryFleetHealth,normalizeHealthRun,healthCanRetry,updateHealthButtons,openHealthExport,closeHealthExport,get:()=>healthRun,busy:()=>healthSubmitting};',context);
+  vm.runInContext(source+'\nglobalThis.api={ensureFleetHealth,renderFleetHealth,dispatchFleetHealth,retryFleetHealth,refreshFleetHealth,normalizeHealthRun,healthCanRetry,updateHealthButtons,openHealthExport,closeHealthExport,get:()=>healthRun,busy:()=>healthSubmitting};',context);
   return {api:context.api,elements,storage,storageWrites,calls,loads,exports,revoked,copied,autoClicks:()=>autoClicks,card:()=>card};
 }
 
@@ -471,4 +471,80 @@ test('export preserves raw zero-exit HTTP failure plus a successful retry and it
   assert.equal(history[0].http_status,503);assert.match(history[0].health_error,/HTTP 503/);
   assert.equal(history[1].state,'passed');assert.equal(history[1].exit_code,0);assert.equal(history[1].http_status,401);assert.equal(history[1].health_error,'');
   assert.equal(h.calls.length,1);assert.deepEqual(JSON.parse(await h.exports.at(-1).text()),exported);
+});
+
+const lookupReply=(results=[],extra={})=>({results,pending:[],missing:[],complete:true,...extra});
+
+test('saved health results carry their original date and identify historical skipped workers',()=>{
+  const h=harness({saved:saved([task()],{skipped:[{unit:'phone191',reason:'offline'}]})});h.api.ensureFleetHealth();
+  assert.match(h.elements['fleet-health-history'].textContent,/Saved report started /);
+  assert.match(h.elements['fleet-health-history'].textContent,/not current worker availability or screen state/);
+  assert.match(h.elements['fleet-health-report'].textContent,/Skipped when this report started: phone191 \(offline\)/);
+  assert.equal(h.calls.length,0);
+  for(const created_at of [undefined,'broken']){
+    const old=harness({saved:saved([task()],{created_at})});old.api.renderFleetHealth([]);
+    assert.match(old.elements['fleet-health-history'].textContent,/start time unavailable/);
+    assert.doesNotMatch(old.elements['fleet-health-history'].textContent,/Invalid Date/);
+  }
+});
+
+test('explicit refresh resolves a receipt absent from the recent feed without submitting a job',async()=>{
+  const h=harness({saved:saved([task({state:'queued',exit_code:null,output:'',error:''})]),
+    api:async()=>lookupReply([receipt({exit_code:0,stdout:healthyNetwork,stderr:''})])});
+  h.api.ensureFleetHealth();await h.elements['fleet-health-refresh'].onclick();
+  assert.deepEqual(plain(h.calls),[['job-results','POST',{requests:[{job_id:task().job_id,device_id:'phone253'}]}]]);
+  assert.equal(h.api.get().tasks[0].state,'passed');assert.equal(h.api.get().tasks[0].attempts.length,1);
+  assert.equal(h.api.get().last_refreshed_at,new Date(NOW).toISOString());
+  assert.match(h.elements['fleet-health-state'].textContent,/No checks were rerun/);
+  assert.match(h.elements['fleet-health-history'].textContent,/Results last retrieved/);
+  assert.equal(h.elements['fleet-health-run'].disabled,false);
+});
+
+test('refresh keeps missing and pending results unresolved and blocks new batches',async()=>{
+  for(const field of ['pending','missing']){
+    const h=harness({saved:saved([task({state:'unconfirmed',exit_code:null,output:'',error:''})]),
+      api:async()=>lookupReply([],{[field]:[{job_id:task().job_id,device_id:'phone253'}],complete:false})});
+    await h.api.refreshFleetHealth();await h.api.dispatchFleetHealth();
+    assert.equal(h.api.get().tasks[0].state,'unconfirmed');assert.equal(h.api.get().tasks[0].attempts.length,1);
+    assert.equal(h.elements['fleet-health-run'].disabled,true);assert.equal(h.calls.length,1);assert.equal(h.calls[0][0],'job-results');
+  }
+});
+
+test('failed or malformed refresh preserves existing evidence and remains available for another read',async()=>{
+  for(const response of [null,{},lookupReply([],{complete:'yes'}),'throw']){
+    const h=harness({saved:saved(),api:async()=>{if(response==='throw')throw new Error('Unavailable');return response;}});
+    h.api.renderFleetHealth([]);const before=plain(h.api.get());await h.api.refreshFleetHealth();
+    assert.deepEqual(plain(h.api.get()),before);assert.equal(h.calls.length,1);
+    assert.equal(h.elements['fleet-health-refresh'].disabled,false);
+    assert.match(h.elements['fleet-health-state'].textContent,/Could not retrieve all saved results/);
+  }
+});
+
+test('refresh ignores a receipt for another worker or job',async()=>{
+  const h=harness({saved:saved([task({state:'queued',exit_code:null})]),api:async()=>lookupReply([
+    receipt({device_id:'phone191',exit_code:0,stdout:healthyNetwork}),receipt({job_id:'other',exit_code:0,stdout:healthyNetwork})])});
+  await h.api.refreshFleetHealth();assert.equal(h.api.get().tasks[0].state,'queued');
+});
+
+test('refresh batches all 78 saved attempt receipts with at most sixteen exact lookups per request',async()=>{
+  const tasks=[...IDS].flatMap(unit=>['storage-status','network-check'].map(check=>task({unit,check,
+    attempts:Array.from({length:3},(_,i)=>({...task(),job_id:'fleet-health-'+unit+'-'+check+'-'+i}))})));
+  const h=harness({saved:saved(tasks),api:async()=>lookupReply()});await h.api.refreshFleetHealth();
+  assert.equal(h.calls.length,5);
+  const requests=h.calls.flatMap(c=>{assert.equal(c[0],'job-results');assert.equal(c[1],'POST');assert.ok(c[2].requests.length<=16);return c[2].requests;});
+  assert.equal(requests.length,78);assert.equal(new Set(requests.map(r=>r.job_id+'|'+r.device_id)).size,78);
+});
+
+test('an outstanding receipt lookup prevents duplicate refreshes, retries and replacement batches',async()=>{
+  let release;const h=harness({saved:saved(),api:()=>new Promise(resolve=>{release=resolve;})});
+  const pending=h.api.refreshFleetHealth();
+  assert.equal(h.elements['fleet-health-refresh'].disabled,true);assert.equal(h.elements['fleet-health-run'].disabled,true);assert.equal(h.elements['fleet-health-retry'].disabled,true);
+  await h.api.refreshFleetHealth();await h.api.retryFleetHealth();await h.api.dispatchFleetHealth();assert.equal(h.calls.length,1);
+  release(lookupReply());await pending;assert.equal(h.elements['fleet-health-refresh'].disabled,false);
+});
+
+test('receipt lookup is unavailable without a report and never runs automatically on load',async()=>{
+  const h=harness();h.api.ensureFleetHealth();await h.api.refreshFleetHealth();
+  assert.equal(h.elements['fleet-health-refresh'].disabled,true);assert.equal(h.calls.length,0);
+  const loaded=harness({saved:saved()});loaded.api.ensureFleetHealth();loaded.api.renderFleetHealth([]);assert.equal(loaded.calls.length,0);
 });
