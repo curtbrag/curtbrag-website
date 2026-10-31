@@ -51,3 +51,40 @@ test('small and empty histories retain the same status contract',async()=>{
     assert.equal(r.data.results.length,count);assert.equal(r.data.total_completed,count);assert.equal(r.data.nodes.length,1);
   }
 });
+
+test('malformed explicit selections cannot expand into commands for every online device',async()=>{
+  for(const targets of ['phone253',null,false,0,[],[''],[null],[123],['phone253',''],['../phone253'],{},['x'.repeat(97)]]){
+    const h=harness({count:0});h.values.delete('migration--v2');
+    h.values.set('node--RenderRig',{id:'RenderRig',last_seen:Date.now()});
+    const r=await h.call('enqueue',{job:{id:'scoped',type:'status'},target_device_ids:targets});
+    assert.equal(r.status,400,JSON.stringify(targets));assert.equal(r.data.ok,false);
+    assert.equal(h.writes.length,0,'Reject before migration, job or assignment writes');
+    assert.equal(h.lists.length,0,'Do not enumerate the fleet to replace an invalid selection');
+  }
+});
+
+test('nested target lists and single-device targets reject malformed values too',async()=>{
+  for(const fields of [{target_device_ids:'phone253'},{target_device_ids:[]},{target_device_ids:null},{device_id:[]},{device_id:''},{device_id:null},{device_id:253}]){
+    const h=harness({count:0}),r=await h.call('enqueue',{job:{id:'nested',type:'status',...fields}});
+    assert.equal(r.status,400);assert.equal(h.writes.length,0);
+  }
+});
+
+test('valid single-device selections assign only that device with other online workers present',async()=>{
+  for(const fields of [{target_device_ids:['phone253']},{job:{target_device_ids:['phone253']}},{job:{device_id:'phone253'}}]){
+    const h=harness({count:0});h.values.set('node--RenderRig',{id:'RenderRig',last_seen:Date.now()});
+    const r=await h.call('enqueue',{...fields,job:{id:'scoped',type:'status',...fields.job}});
+    assert.equal(r.status,200);assert.deepEqual(r.data.target_device_ids,['phone253']);
+    assert.equal(h.values.has('assignment--scoped--RenderRig'),false);
+    assert.equal(h.values.has('assignment--scoped--phone253'),true);
+  }
+});
+
+test('valid fleet lists deduplicate and fully omitted targeting retains legacy behavior',async()=>{
+  for(const fields of [{target_device_ids:['phone253','RenderRig','phone253']},{}]){
+    const h=harness({count:0});h.values.set('node--RenderRig',{id:'RenderRig',last_seen:Date.now()});
+    const r=await h.call('enqueue',{job:{id:'fleet',type:'status'},...fields});
+    assert.equal(r.status,200);assert.deepEqual(r.data.target_device_ids.sort(),['RenderRig','phone253']);
+    assert.equal(h.writes.filter(key=>key.startsWith('assignment--')).length,2);
+  }
+});

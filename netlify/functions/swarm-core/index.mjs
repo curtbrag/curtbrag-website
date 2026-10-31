@@ -249,10 +249,26 @@ function onlineNodeIds(nodes) {
     .map(n => n.id);
 }
 
-async function createV2Job(job, explicitTargets = null) {
+function selectedJobTargets(job, explicitTargets) {
+  const validId = value => typeof value === "string" && /^[A-Za-z0-9._-]{1,96}$/.test(value);
+  for (const value of [explicitTargets, job.target_device_ids]) {
+    if (value !== undefined && (!Array.isArray(value) || !value.length || !value.every(validId))) {
+      throw new TypeError("target_device_ids must be a non-empty array of device IDs; no job was queued");
+    }
+  }
+  if (job.device_id !== undefined && !validId(job.device_id)) {
+    throw new TypeError("device_id must be a valid device ID; no job was queued");
+  }
+  // Only completely omitted targeting retains the legacy online-fleet default.
+  // A malformed or empty selection must never turn into a fleet-wide command.
+  return explicitTargets ?? job.target_device_ids ?? (job.device_id === undefined ? null : [job.device_id]);
+}
+
+async function createV2Job(job, explicitTargets) {
   const jobId = String(job.id || "").trim();
   const type = String(job.type || "").trim();
   if (!jobId || !type) throw new Error("invalid job payload");
+  const selected = selectedJobTargets(job, explicitTargets);
 
   const existing = await getJson(keyJob(jobId), null);
   if (existing) {
@@ -265,13 +281,7 @@ async function createV2Job(job, explicitTargets = null) {
   }
 
   const nodes = await readNodes();
-  let targets = Array.isArray(explicitTargets) ? explicitTargets.filter(Boolean) : [];
-
-  if (!targets.length && Array.isArray(job.target_device_ids)) {
-    targets = job.target_device_ids.filter(Boolean);
-  }
-  if (!targets.length && job.device_id) targets = [job.device_id];
-  if (!targets.length) targets = onlineNodeIds(nodes);
+  let targets = selected ?? onlineNodeIds(nodes);
 
   targets = [...new Set(targets.map(String))];
   if (!targets.length) throw new Error("no online swarm nodes available for this job");
@@ -447,6 +457,10 @@ export default async (request) => {
 
   // Receipt reconciliation is read-only, including on a store awaiting legacy
   // migration. Other actions retain their existing migration behavior.
+  if (request.method === "POST" && action === "enqueue") {
+    try { selectedJobTargets(body.job || {}, body.target_device_ids); }
+    catch (error) { return jsonResponse(400, { ok: false, error: error.message }); }
+  }
   await migrateLegacy();
 
   if (request.method === "POST" && action === "enqueue") {
@@ -456,7 +470,7 @@ export default async (request) => {
     }
 
     try {
-      const created = await createV2Job(job, body.target_device_ids || null);
+      const created = await createV2Job(job, body.target_device_ids);
       // The job and its assignments are durable at this point. Do not make
       // acknowledgment depend on an unrelated full history/status read.
       return jsonResponse(200, {
