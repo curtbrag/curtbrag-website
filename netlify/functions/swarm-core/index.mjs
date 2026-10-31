@@ -477,7 +477,11 @@ export default async (request) => {
       selectedJobTargets(body?.job || {}, body?.target_device_ids);
       jobCommands(body?.job || {});
     }
-    catch (error) { return jsonResponse(400, { ok: false, error: error.message }); }
+    catch (error) {
+      return jsonResponse(400, { ok: false, error: error.message,
+        code: "enqueue-validation-rejected", enqueued: false,
+        job_id: typeof body?.job?.id === "string" ? body.job.id : null });
+    }
   }
   await migrateLegacy();
 

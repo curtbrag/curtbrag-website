@@ -194,3 +194,27 @@ test('workspace: missing session never sends a status request',async()=>{
   const h=harness('workspace',[],{token:false});await assert.rejects(h.read(),/not authenticated/);
   assert.equal(h.calls.length,0);assert.equal(h.controllers.length,0);
 });
+
+test('workspace: only a matching explicit pre-enqueue rejection proves that no job was queued',async()=>{
+  const rejected={ok:false,error:'Command rejected',code:'enqueue-validation-rejected',enqueued:false,job_id:'fixture-job'};
+  const settings={base:SWARM_API,method:'POST',body:{job:{id:'fixture-job'}}};
+  const h=harness('workspace',[response(400,rejected)]);
+  await assert.rejects(h.read('enqueue',settings),error=>error.notQueued===true&&/Command rejected/.test(error.message));
+  assert.equal(h.calls.length,1,'Rejections must not trigger automatic retries');
+  for(const [status,data,options,action] of [
+    [409,rejected,settings,'enqueue'],[503,rejected,settings,'enqueue'],
+    [400,{...rejected,job_id:'other'},settings,'enqueue'],
+    [400,{...rejected,enqueued:undefined},settings,'enqueue'],
+    [400,{...rejected,code:undefined},settings,'enqueue'],
+    [400,{...rejected,ok:true},settings,'enqueue'],
+    [400,rejected,{...settings,base:CONTROL_API},'enqueue'],
+    [400,rejected,{...settings,method:'GET'},'enqueue'],
+    [400,rejected,settings,'queue-command']
+  ]){
+    const candidate=harness('workspace',[response(status,data)]);
+    await assert.rejects(candidate.read(action,options),error=>error.notQueued!==true);
+    assert.equal(candidate.calls.length,1);
+  }
+  const offline=harness('workspace',[new TypeError('Connection lost')]);
+  await assert.rejects(offline.read('enqueue',settings),error=>error.notQueued!==true);
+});
