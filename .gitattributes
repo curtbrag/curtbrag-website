@@ -7,3 +7,5 @@
 *.json            text eol=lf
 *.toml            text eol=lf
 *.sh              text eol=lf
+scripts/cluster-phone-wake-hold.py text eol=lf
+scripts/cluster-phone-control-status.py text eol=lf

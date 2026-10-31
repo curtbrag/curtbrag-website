@@ -88,3 +88,37 @@ test('valid fleet lists deduplicate and fully omitted targeting retains legacy b
     assert.equal(h.writes.filter(key=>key.startsWith('assignment--')).length,2);
   }
 });
+
+test('oversized commands are rejected before any migration, reads or assignments',async()=>{
+  for(const fields of [{cmd:'x'.repeat(4001)},{command:'x'.repeat(4001)},
+    {cmd:'echo valid',command:'x'.repeat(4001)},{cmd:'x'.repeat(4001),command:'echo valid'}]){
+    const h=harness({count:0});h.values.delete('migration--v2');
+    const r=await h.call('enqueue',{job:{id:'too-long',type:'shell',...fields},target_device_ids:['phone253']});
+    assert.equal(r.status,400);assert.equal(r.data.ok,false);
+    assert.match(r.data.error,/4000-character limit; no job was queued/);
+    assert.equal(h.reads.length,0);assert.equal(h.lists.length,0);assert.equal(h.writes.length,0);
+  }
+});
+
+test('commands at the length limit and shell quoting arrive unchanged at the worker',async()=>{
+  for(const text of ['x'.repeat(3999),'x'.repeat(4000),'é'.repeat(4000),"printf '%s\\n' 'a&b'\necho \"$HOME\""]){
+    for(const field of ['cmd','command']){
+      const h=harness({count:0});
+      const r=await h.call('enqueue',{job:{id:'exact-command',type:'shell',[field]:text},target_device_ids:['phone253']});
+      assert.equal(r.status,200);
+      const stored=h.values.get('assignment--exact-command--phone253').job;
+      assert.equal(stored.cmd,text);assert.equal(stored.command,text);
+    }
+  }
+});
+
+test('non-text commands cannot be coerced into executable instructions',async()=>{
+  for(const value of [[],{},true,123]){
+    for(const field of ['cmd','command']){
+      const h=harness({count:0});
+      const r=await h.call('enqueue',{job:{id:'wrong-command',type:'shell',[field]:value},target_device_ids:['phone253']});
+      assert.equal(r.status,400);assert.match(r.data.error,/must be text; no job was queued/);
+      assert.equal(h.writes.length,0);assert.equal(h.reads.length,0);
+    }
+  }
+});
