@@ -24,7 +24,8 @@ test('one fixed reviewed batch targets exactly all eight phones and cannot doubl
  const posts=h.calls.filter(c=>c.method==='POST');assert.equal(posts.length,1);
  const body=JSON.parse(posts[0].body);assert.deepEqual(body.target_device_ids,units);assert.equal(body.job.cmd,body.job.command);
  const encoded=body.job.cmd.match(/decode\("([A-Za-z0-9+/=]+)"\)/)[1];
- assert.equal(Buffer.from(encoded,'base64').toString(),fs.readFileSync(path.join(root,'scripts/cluster-phone-wake-hold.py'),'utf8'));
+ assert.ok(body.job.cmd.length<=4000,'command must fit the production queue without truncation');
+ assert.equal(require('node:zlib').inflateSync(Buffer.from(encoded,'base64')).toString(),fs.readFileSync(path.join(root,'scripts/cluster-phone-wake-hold.py'),'utf8'));
  assert.equal(h.el['phone-wake-run'].disabled,true);assert.equal(h.el['phone-wake-target'].disabled,true);
 });
 test('each individual listed phone can be selected, without changing other targets',async()=>{
