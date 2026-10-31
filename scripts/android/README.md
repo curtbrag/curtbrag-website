@@ -1,5 +1,28 @@
 # Bounded display wake
 
+## Ten-minute screen hold (October 30 repair)
+
+The dashboard now uses `scripts/cluster-phone-wake-hold.py` and the `wake-hold`
+mode. The earlier three-second helper released immediately after observing ON;
+a lock screen could briefly flash and then sleep. The new mode retains the
+existing Termux screen wake lock for at most 600,000 ms in a detached process.
+It releases automatically, exits on manual screen-off, and never unlocks a
+phone. Repeated requests reuse an active hold without extending its deadline.
+
+The runner serializes starts with a private file lock, checks the holder's UID,
+process command and deadline, and independently checks display state after four
+seconds. The dashboard shows the scheduled expiry rather than claiming a
+permanently awake or unlocked screen. A longer independent fleet check is still
+needed when validating a deployment; the receipt is a point-in-time observation.
+
+Current hold DEX: `curt-display-0b124dfbcc5c.dex`, 11,012 bytes, SHA-256
+`0b124dfbcc5c308dfd36c48248aa09b16863bbefe714d7befab500a0351f6b0c`.
+Build all generated `CurtPhoneDisplay*.class` files with D8, including the
+display-reader interfaces and anonymous implementation. Preserve the older DEX
+and runner for already-queued legacy jobs.
+
+## Earlier one-shot helper
+
 `CurtPhoneDisplay.java` runs under the existing ordinary Termux UID and its
 already-granted `WAKE_LOCK` permission. It does not install an APK, grant
 permissions, pair a controller, unlock a screen, change apps, or alter workers.

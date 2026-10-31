@@ -16,7 +16,7 @@ function harness({nodes=online,failPost=false,failGet=false,saved=null,legacy=nu
  return {api:context.api,el,calls};
 }
 function result(h,unit='phone253',patch={},envelope={}) {
- return {job_id:h.api.get().job_id,device_id:unit,exit_code:0,stdout:JSON.stringify({kind:'phone-display-wake',uid:10191,context_uid:10191,context_package:'com.termux',op_package:'com.termux',package_attribution_verified:true,existing_wake_lock_permission:true,permissions_changed:false,lockscreen_unlocked:false,wake_request_accepted:true,maximum_lock_ms:3000,wake_lock_released:true,interactive_before_request:true,interactive_after:true,display_state:2,off_to_on_verified:false,...patch}),...envelope};
+ const now=Date.now();return {job_id:h.api.get().job_id,device_id:unit,exit_code:0,stdout:JSON.stringify({kind:'phone-display-wake',uid:10191,context_uid:10191,context_package:'com.termux',op_package:'com.termux',package_attribution_verified:true,existing_wake_lock_permission:true,permissions_changed:false,lockscreen_unlocked:false,wake_request_accepted:true,maximum_lock_ms:600000,wake_lock_released:false,hold_active:true,holder_pid:1234,hold_started_ms:now-5000,hold_until_ms:now+595000,hold_verified_at_ms:now,sustained_check_ms:4000,interactive_before_request:true,interactive_after:true,display_state:2,off_to_on_verified:false,...patch}),...envelope};
 }
 const states=h=>h.api.get().phones.map(p=>p.state);
 test('one fixed reviewed batch targets exactly all eight phones and cannot double-submit',async()=>{
@@ -24,7 +24,7 @@ test('one fixed reviewed batch targets exactly all eight phones and cannot doubl
  const posts=h.calls.filter(c=>c.method==='POST');assert.equal(posts.length,1);
  const body=JSON.parse(posts[0].body);assert.deepEqual(body.target_device_ids,units);assert.equal(body.job.cmd,body.job.command);
  const encoded=body.job.cmd.match(/decode\("([A-Za-z0-9+/=]+)"\)/)[1];
- assert.equal(Buffer.from(encoded,'base64').toString(),fs.readFileSync(path.join(root,'scripts/cluster-phone-wake.py'),'utf8'));
+ assert.equal(Buffer.from(encoded,'base64').toString(),fs.readFileSync(path.join(root,'scripts/cluster-phone-wake-hold.py'),'utf8'));
  assert.equal(h.el['phone-wake-run'].disabled,true);assert.equal(h.el['phone-wake-target'].disabled,true);
 });
 test('each individual listed phone can be selected, without changing other targets',async()=>{
@@ -43,7 +43,7 @@ test('each already-on result is matched to its own phone without claiming a wake
  assert.equal(h.el['phone-wake-run'].disabled,false);assert.equal(h.el['phone-wake-report'].textContent.split('\n').length,8);
 });
 test('one phone waking and another failing do not change the other six results',async()=>{
- const h=harness();await h.api.wake();h.api.collect({results:[result(h,'phone173',{interactive_before_request:false,off_to_on_verified:true}),result(h,'phone174',{wake_lock_released:false}),...units.slice(2).map(unit=>result(h,unit))]});
+ const h=harness();await h.api.wake();h.api.collect({results:[result(h,'phone173',{interactive_before_request:false,off_to_on_verified:true}),result(h,'phone174',{wake_lock_released:true}),...units.slice(2).map(unit=>result(h,unit))]});
  assert.equal(states(h)[0],'woke');assert.equal(states(h)[1],'failed');assert.ok(states(h).slice(2).every(s=>s==='already-on'));
  assert.match(h.el['phone-wake-state'].textContent,/1 off-to-on verified; 6 already on; 1 failed/);
 });
@@ -52,7 +52,7 @@ test('unrelated jobs, unknown units and duplicate results cannot confirm a wake'
  h.api.collect({results:[result(h,'phone173'),result(h,'phone173')]});assert.equal(states(h)[0],'failed');
 });
 test('incorrect identity, permissions, display, lock or inconsistent transition fails closed',async()=>{
- for(const patch of [{context_uid:0},{op_package:'android'},{uid:0},{package_attribution_verified:false},{existing_wake_lock_permission:false},{permissions_changed:true},{lockscreen_unlocked:true},{wake_request_accepted:false},{maximum_lock_ms:30000},{wake_lock_released:false},{interactive_after:false},{display_state:1},{interactive_before_request:undefined},{off_to_on_verified:true},{error:'Denied'}]){
+ for(const patch of [{context_uid:0},{op_package:'android'},{uid:0},{package_attribution_verified:false},{existing_wake_lock_permission:false},{permissions_changed:true},{lockscreen_unlocked:true},{wake_request_accepted:false},{maximum_lock_ms:30000},{wake_lock_released:true},{interactive_after:false},{display_state:1},{interactive_before_request:undefined},{off_to_on_verified:true},{error:'Denied'}]){
   const h=harness({target:'phone253'});await h.api.wake();h.api.collect({results:[result(h,'phone253',patch)]});assert.equal(states(h)[0],'failed',JSON.stringify(patch));
  }
  for(const exit_code of [null,'0',1]){const h=harness({target:'phone253'});await h.api.wake();h.api.collect({results:[result(h,'phone253',{}, {exit_code})]});assert.equal(states(h)[0],'failed');}
@@ -72,4 +72,23 @@ test('malformed, future, duplicate or out-of-scope saved records are discarded',
  for(const saved of [{unit:'phone191'},{...base,created_at:new Date(Date.now()+60000).toISOString()},{...base,phones:units.map(()=>({unit:'phone253',state:'queued'}))},{...base,target:'phone253'}]){
   const h=harness({saved});h.api.render();assert.equal(h.api.get(),null);assert.equal(h.calls.length,0);assert.equal(h.el['phone-wake-run'].disabled,false);
  }
+});
+test('a brief screen flash cannot satisfy a new ten-minute hold request',async()=>{
+ const h=harness({target:'phone253'});await h.api.wake();
+ assert.equal(h.api.get().hold_required,true);
+ h.api.collect({results:[result(h,'phone253',{maximum_lock_ms:3000,wake_lock_released:true,hold_active:false})]});
+ assert.equal(states(h)[0],'failed');
+});
+test('missing hold proof, short observation and invalid expiry fail closed',async()=>{
+ for(const patch of [{hold_active:false},{holder_pid:undefined},{sustained_check_ms:1000},{hold_started_ms:0},{hold_until_ms:Date.now()+86400000},{hold_verified_at_ms:0}]){
+  const h=harness({target:'phone253'});await h.api.wake();h.api.collect({results:[result(h,'phone253',patch)]});
+  assert.equal(states(h)[0],'failed',JSON.stringify(patch));
+ }
+});
+test('the displayed hold expires instead of permanently claiming an awake screen',async()=>{
+ const h=harness({target:'phone253'});await h.api.wake();h.api.collect({results:[result(h)]});
+ assert.match(h.el['phone-wake-report'].textContent,/scheduled until/);
+ h.api.get().phones[0].hold_until_ms=Date.now()-1;h.api.render();
+ assert.match(h.el['phone-wake-report'].textContent,/hold ended/);
+ assert.doesNotMatch(h.el['phone-wake-report'].textContent,/scheduled until/);
 });
