@@ -264,11 +264,27 @@ function selectedJobTargets(job, explicitTargets) {
   return explicitTargets ?? job.target_device_ids ?? (job.device_id === undefined ? null : [job.device_id]);
 }
 
+function jobCommands(job) {
+  for (const field of ["cmd", "command"]) {
+    const value = job[field];
+    if (value != null && typeof value !== "string") {
+      throw new TypeError(`${field} must be text; no job was queued`);
+    }
+    if (typeof value === "string" && value.length > MAX_CMD) {
+      throw new RangeError(`Command exceeds the ${MAX_CMD}-character limit; no job was queued. Shorten the command and try again.`);
+    }
+  }
+  // Never truncate executable text: even a one-character cut can change its
+  // meaning or leave a shell command partially executable.
+  return { cmd: job.cmd ?? job.command ?? "", command: job.command ?? job.cmd ?? "" };
+}
+
 async function createV2Job(job, explicitTargets) {
   const jobId = String(job.id || "").trim();
   const type = String(job.type || "").trim();
   if (!jobId || !type) throw new Error("invalid job payload");
   const selected = selectedJobTargets(job, explicitTargets);
+  const commands = jobCommands(job);
 
   const existing = await getJson(keyJob(jobId), null);
   if (existing) {
@@ -290,8 +306,7 @@ async function createV2Job(job, explicitTargets) {
   const normalized = {
     id: jobId,
     type,
-    cmd: String(job.cmd ?? job.command ?? "").slice(0, MAX_CMD),
-    command: String(job.command ?? job.cmd ?? "").slice(0, MAX_CMD),
+    ...commands,
     queued_at: Number(job.queued_at) || now,
     target_device_ids: targets,
     target_count: targets.length,
@@ -458,7 +473,10 @@ export default async (request) => {
   // Receipt reconciliation is read-only, including on a store awaiting legacy
   // migration. Other actions retain their existing migration behavior.
   if (request.method === "POST" && action === "enqueue") {
-    try { selectedJobTargets(body.job || {}, body.target_device_ids); }
+    try {
+      selectedJobTargets(body?.job || {}, body?.target_device_ids);
+      jobCommands(body?.job || {});
+    }
     catch (error) { return jsonResponse(400, { ok: false, error: error.message }); }
   }
   await migrateLegacy();
