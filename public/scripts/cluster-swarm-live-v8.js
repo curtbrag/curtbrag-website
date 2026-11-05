@@ -1018,6 +1018,14 @@
 
 
   let changeMonitor = {baselines:{},batch:null}, changeBusy=false;
+  const changeMonitorPaths=new Set(['/', '/gallery/', '/gallery/cars/', '/gallery/snapon/', '/shop/', '/rig/', '/cluster/', '/contact/', '/addyourride/', '/yougood/', '/zelle/', '/privacy/', '/terms/', '/thanks/']);
+  function validatedChangePaths(value){
+    const paths=[...new Set(value.split(/\s+/).filter(Boolean))];
+    if(paths.length<1||paths.length>12)throw Error('Choose 1–12 supported page paths.');
+    const unsupported=paths.filter(path=>!changeMonitorPaths.has(path));
+    if(unsupported.length)throw Error('Unsupported page paths: '+unsupported.join(', ')+'. Supported paths: '+[...changeMonitorPaths].join(', '));
+    return paths;
+  }
   try { const saved=JSON.parse(localStorage.getItem('curt-change-monitor-v1')); if(saved?.baselines)changeMonitor=saved; } catch {}
   function saveChangeMonitor(){try{localStorage.setItem('curt-change-monitor-v1',JSON.stringify(changeMonitor));}catch{}}
   function ensureChangeMonitor(){
@@ -1096,8 +1104,7 @@
   async function dispatchChangeMonitor(){
     if(changeBusy)return;changeBusy=true;const button=document.getElementById('change-check');button.disabled=true;
     try{
-      const paths=[...new Set(document.getElementById('change-paths').value.split(/\s+/).filter(Boolean))];
-      if(paths.length<1||paths.length>12||paths.some(path=>!/^\/(?!\/)[A-Za-z0-9/_-]*$/.test(path)||path.startsWith('/cluster/dashboard')))throw Error('Use 1–12 public paths starting with /. Dashboard pages are excluded.');
+      const paths=validatedChangePaths(document.getElementById('change-paths').value);
       if(changeMonitor.batch?.tasks.some(t=>['queued','submitting','unconfirmed'].includes(t.state)))throw Error('Previous checks are pending. Review Queue & results before sending another batch.');
       const fresh=canonicalize(await swarmApi('queue-status'));
       const workers=fresh.nodes.filter(n=>n.online&&!n.busy&&n.id!=='RenderRig');if(!workers.length)throw Error('No idle phone or Linux workers available.');
