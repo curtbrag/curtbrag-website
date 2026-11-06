@@ -364,10 +364,22 @@ function Send-Result($Config, $Job, $Result) {
     $null = Invoke-Swarm -Action 'job-complete' -Method POST -Body $body -Config $Config
 }
 
+function Invoke-ClusterMediaRequest($Config, [hashtable]$Request) {
+    if (-not (Get-Command Invoke-CurtClusterRequest -ErrorAction SilentlyContinue)) {
+        $sessionHelper = Join-Path $env:LOCALAPPDATA 'CurtCluster\cluster-site-session.ps1'
+        if (-not (Test-Path -LiteralPath $sessionHelper)) {
+            $sessionHelper = Join-Path $PSScriptRoot 'cluster-site-session.ps1'
+        }
+        if (-not (Test-Path -LiteralPath $sessionHelper)) { throw 'The existing cluster site session helper is required for media uploads.' }
+        . $sessionHelper
+    }
+    Invoke-CurtClusterRequest -Password $Config.password -Request $Request
+}
+
 function Upload-Reel($Config, [string]$JobId, [string]$Path) {
     $origin = ([uri]$Config.swarm_url).GetLeftPart([System.UriPartial]::Authority)
     $uri = "$origin/api/reel-media?id=$([uri]::EscapeDataString($JobId))"
-    Invoke-RestMethod -Uri $uri -Method Post -Headers @{Authorization="Bearer $($Config.password)"} -ContentType 'video/mp4' -InFile $Path -TimeoutSec 90
+    Invoke-ClusterMediaRequest $Config @{Uri=$uri;Method='Post';Headers=@{Authorization="Bearer $($Config.password)"};ContentType='video/mp4';InFile=$Path;TimeoutSec=90}
 }
 
 function Upload-Episode($Config, [string]$JobId, [string]$Variant, [string]$Path) {
@@ -385,10 +397,10 @@ function Upload-Episode($Config, [string]$JobId, [string]$Variant, [string]$Path
             $read = $stream.Read($buffer, 0, $length)
             if ($read -ne $length) { throw 'Episode file changed during upload.' }
             $hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($buffer)).ToLowerInvariant()
-            $reply = Invoke-RestMethod -Uri "$base&part=$part&total=$total" -Method Post -Headers @{Authorization="Bearer $($Config.password)";'x-chunk-sha256'=$hash} -ContentType 'video/mp4' -Body $buffer -TimeoutSec 90
+            $reply = Invoke-ClusterMediaRequest $Config @{Uri="$base&part=$part&total=$total";Method='Post';Headers=@{Authorization="Bearer $($Config.password)";'x-chunk-sha256'=$hash};ContentType='video/mp4';Body=$buffer;TimeoutSec=90}
             if (-not $reply.ok -or $reply.sha256 -ne $hash) { throw "Episode part $part upload failed." }
         }
-        $manifest = Invoke-RestMethod -Uri "$base&finalize=1&total=$total" -Method Post -Headers @{Authorization="Bearer $($Config.password)"} -TimeoutSec 90
+        $manifest = Invoke-ClusterMediaRequest $Config @{Uri="$base&finalize=1&total=$total";Method='Post';Headers=@{Authorization="Bearer $($Config.password)"};TimeoutSec=90}
         if (-not $manifest.ok -or $manifest.bytes -ne $stream.Length) { throw 'Episode manifest verification failed.' }
         return $manifest
     } finally { $stream.Dispose() }

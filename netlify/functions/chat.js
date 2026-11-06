@@ -31,12 +31,12 @@ const SYSTEM_PROMPT = `You are Alina, Curtis Bragdon's AI assistant on his perso
 - Boston sports: Red Sox, Patriots, Celtics, Bruins, Revolution - bleeds Boston!
 - DraftKings sports betting
 - Trading cards (baseball, basketball, Pokemon) - eBay store: curtbrag
-- Tech projects including a 10-phone Kubernetes cluster (OnePlus 6T phones running postmarketOS and K3s) - check /cluster
+- Tech projects include a compute cluster with eight Android/Termux phones, four Linux systems and one Windows workstation. A separate personal S26 Ultra is a controller, not a worker. Check /cluster for the overview and /cluster/dashboard/ for current availability and job results. Do not invent live status or describe the fleet as a Kubernetes/K3s cluster.
 
 ## Website Features
 - /shop - Card shop with eBay listings
 - /gallery - Photo galleries (cars, Snap-on)
-- /cluster - Phone cluster dashboard (10 OnePlus 6T Kubernetes cluster)
+- /cluster - Compute fleet overview; /cluster/dashboard/ - authenticated worker status, shared job queue, website audits, research and media workflows
 - /contact - Contact form
 - /addyourride - Submit your vehicle photos
 
@@ -66,7 +66,7 @@ const FALLBACKS = {
   schedule: 'Want to schedule a truck stop? Text Curtis at 781-417-0692 - he covers the Boston area!',
   tools: 'Curtis runs a Snap-on tool truck in the Boston area. Looking for something specific? Text 781-417-0692 to schedule a stop!',
   contact: 'Best way to reach Curtis: Text 781-417-0692 or email curtbrag@yahoo.com',
-  cluster: 'Curtis built a Kubernetes cluster out of 10 OnePlus 6T phones! Check it out at /cluster - shows live node status and running pods.',
+  cluster: 'Curtis’s compute fleet has eight Android/Termux phones, four Linux systems and one Windows workstation. Visit /cluster for the overview or sign in at /cluster/dashboard/ for current worker availability, jobs, website audits and research.',
   default: 'Hey! I\'m having trouble connecting right now. Text Curtis directly at 781-417-0692 - he\'ll get back to you quick!'
 };
 
@@ -89,11 +89,11 @@ function getFallbackResponse(message) {
   if (/tool|wrench|socket|snap-?on|buy|purchase/i.test(msg)) {
     return FALLBACKS.tools;
   }
-  if (/contact|call|text|email|reach|phone/i.test(msg)) {
-    return FALLBACKS.contact;
-  }
   if (/cluster|kubernetes|k3s|k8s|oneplus|phone.*(server|cluster)/i.test(msg)) {
     return FALLBACKS.cluster;
+  }
+  if (/contact|call|text|email|reach|phone/i.test(msg)) {
+    return FALLBACKS.contact;
   }
   return FALLBACKS.default;
 }
