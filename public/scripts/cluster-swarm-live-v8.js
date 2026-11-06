@@ -694,7 +694,7 @@
           <option value="blender-render">Render Blender project</option>
           <option value="comfyui-workflow">Run ComfyUI workflow</option>
           <option value="ffmpeg-transcode">GPU video transcode</option>
-          <option value="whisper-transcribe">GPU transcription</option>
+          <option value="whisper-transcribe">Transcribe on RenderRig</option>
         </optgroup>
         <optgroup label="Linux workers">
         <option value="transcribe">Transcribe audio or video</option>

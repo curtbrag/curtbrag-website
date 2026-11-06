@@ -28,3 +28,21 @@ irm https://raw.githubusercontent.com/curtbrag/curtbrag-website/main/scripts/ins
 ```
 
 The agent accepts only an allowlist of workloads; it does not expose arbitrary remote shell execution. Root paths are rejected, results are size-limited, and every operation requires authentication.
+
+## Local RenderRig transcription
+
+From a checked-out copy of this repository, prepare the isolated transcription environment and the selected model once:
+
+```powershell
+& scripts/setup-transcription.ps1 -Model small.en
+```
+
+This installs faster-whisper 1.2.1 in `%LOCALAPPDATA%\CurtCompute\transcription-venv`, caches the selected model, and installs the worker expected by the existing `whisper-transcribe` job. It uses CPU INT8 inference; it does not require GPU drivers or a paid transcription API. Model downloads happen during setup. Jobs require the prepared local model and do not download models.
+
+Choose **Transcribe on RenderRig** in the dashboard, supply an existing local input file, and choose a fresh output directory. For example:
+
+```json
+{"input":"C:\\Jobs\\sample.mp4","output":"C:\\Jobs\\transcripts\\sample-run-1","model":"small.en"}
+```
+
+The result includes transcript text and paths for UTF-8 text, structured JSON with segment timing, and SRT subtitles. Existing transcript files are preserved; use a new output directory to rerun the same source.
