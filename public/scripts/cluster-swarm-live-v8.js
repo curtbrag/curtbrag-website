@@ -261,7 +261,7 @@
       'blender-render':'{"input":"C:\\\\Jobs\\\\scene.blend","output":"C:\\\\Jobs\\\\renders\\\\frame_","engine":"cycles"}',
       'ffmpeg-transcode':'{"input":"C:\\\\Jobs\\\\source.mov","output":"C:\\\\Jobs\\\\output.mp4","preset":"medium"}',
       'whisper-transcribe':'{"input":"C:\\\\Jobs\\\\audio.mp3","output":"C:\\\\Jobs\\\\transcripts","model":"small.en"}',
-      'comfyui-workflow':'{"workflow":"C:\\\\Jobs\\\\workflow.json"}',
+      'comfyui-workflow':'{"workflow":"%LOCALAPPDATA%\\\\CurtCompute\\\\workflows\\\\workshop-example.json","timeout_seconds":300}',
       'reel-create':'{"input":"%USERPROFILE%\\\\Videos\\\\shop-clip.mp4","hook":"What I check before a stuck bolt strips","tip":"Seat a 6-point socket fully and keep it square before the first pull.","cta":"Follow @curtbrag for shop tips"}',
       'episode-create':'Paste episode JSON or use Produce Episode to load a complete example.',
     };

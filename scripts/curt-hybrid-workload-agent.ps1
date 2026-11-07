@@ -260,6 +260,29 @@ function Invoke-WorkstationSelfTest {
     }
 }
 
+function Invoke-ComfyWorkflow([string]$Workflow, [string]$Endpoint, [int]$TimeoutSeconds=300) {
+    if ($Endpoint -notmatch '^http://(127\.0\.0\.1|localhost):\d+/prompt$') { throw 'ComfyUI endpoint must be local.' }
+    if ($TimeoutSeconds -lt 1 -or $TimeoutSeconds -gt 1800) { throw 'ComfyUI timeout must be between 1 and 1800 seconds.' }
+    $reply = Invoke-RestMethod -Uri $Endpoint -Method Post -ContentType 'application/json' -Body (Get-Content -LiteralPath $Workflow -Raw) -TimeoutSec 30
+    $promptId = [string]$reply.prompt_id
+    if ($promptId -notmatch '^[A-Za-z0-9-]{1,100}$') { throw 'ComfyUI did not return a valid prompt ID.' }
+    $historyUrl = $Endpoint.Substring(0,$Endpoint.Length-7)+'/history/'+[uri]::EscapeDataString($promptId)
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    while ($timer.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+        $remaining = [math]::Max(1,[int][math]::Ceiling($TimeoutSeconds-$timer.Elapsed.TotalSeconds))
+        $history = Invoke-RestMethod -Uri $historyUrl -Method Get -TimeoutSec ([math]::Min(30,$remaining))
+        $entry = $history.$promptId
+        if ($entry.status.status_str -eq 'error') { throw "ComfyUI execution failed for prompt $promptId; inspect its local execution history." }
+        if ($entry.status.completed -eq $true) {
+            if ($entry.status.status_str -ne 'success') { throw "ComfyUI did not report successful completion for prompt $promptId." }
+            $result = [ordered]@{prompt_id=$promptId;status='completed';outputs=$entry.outputs}
+            return [ordered]@{exit_code=0;stdout=($result|ConvertTo-Json -Depth 12 -Compress);stderr=''}
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "ComfyUI completion was not confirmed within $TimeoutSeconds seconds for prompt $promptId. The workflow may still be running; inspect history before submitting again."
+}
+
 function Invoke-Workload([string]$Type, [string]$Command) {
     $spec = Parse-JobSpec $Command
     switch ($Type) {
@@ -345,9 +368,8 @@ function Invoke-Workload([string]$Type, [string]$Command) {
         'comfyui-workflow' {
             $workflow = Resolve-SafePath ([string]$spec.workflow)
             $endpoint = if ($spec.endpoint) { [string]$spec.endpoint } else { 'http://127.0.0.1:8188/prompt' }
-            if ($endpoint -notmatch '^http://(127\.0\.0\.1|localhost):\d+/prompt$') { throw 'ComfyUI endpoint must be local.' }
-            $reply = Invoke-RestMethod -Uri $endpoint -Method Post -ContentType 'application/json' -Body (Get-Content -LiteralPath $workflow -Raw) -TimeoutSec 30
-            return [ordered]@{ exit_code=0; stdout=($reply | ConvertTo-Json -Depth 8 -Compress); stderr='' }
+            $timeout = if ($spec.timeout_seconds) { [int]$spec.timeout_seconds } else { 300 }
+            return Invoke-ComfyWorkflow -Workflow $workflow -Endpoint $endpoint -TimeoutSeconds $timeout
         }
         default { throw "Unsupported Windows workload: $Type" }
     }
