@@ -724,7 +724,7 @@
     if (dispatchCard && !document.getElementById('swarm-work-note')) {
       dispatchCard.insertAdjacentHTML('afterbegin', `
         <div id="swarm-work-note" style="margin-bottom:12px;color:var(--color-muted);font-size:11px">
-          Check storage, processes, and connectivity across the fleet. RTX work can render, transcribe, or convert media; those jobs pause Salad and resume it afterward.
+          Choose a media job and its settings below. RenderRig jobs pause Salad and resume it afterward. Worker checks are under Fleet → Worker diagnostics.
         </div>
       `);
       const enqueueButton = Array.from(dispatchCard.querySelectorAll('button'))
@@ -2131,7 +2131,7 @@
   }
   function renderWorkspace(results){
     const host=document.getElementById('workspace-report');if(!host)return;
-    if(!workspace){document.getElementById('workspace-state').textContent='Ready for a research brief';return;}
+    if(!workspace){document.getElementById('workspace-state').textContent='Ready for a research brief';renderAI(results);return;}
     let changed=false;
     for(const task of workspace.tasks){
       const result=results.find(r=>r.job_id===task.job_id&&r.device_id===task.worker);
@@ -2241,6 +2241,29 @@
       await load(true);
     }catch(error){notify(error.message,'error');}finally{workspaceBusy=false;renderWorkspace(current?.results||[]);}
   }
+  function updateAIWorkerAvailability(){
+    const select=document.getElementById('workspace-ai-worker');if(!select)return false;
+    const nodes=current?.nodes||[];
+    const ready=id=>nodes.some(n=>n.id===id&&n.online&&!n.busy);
+    for(const option of select.options){
+      const node=nodes.find(n=>n.id===option.value);
+      option.disabled=!ready(option.value);
+      option.textContent=option.value+' · '+(!node?.online?'offline':node.busy?'busy':'available');
+    }
+    // Pick a sensible initial destination, then preserve the operator's choice.
+    // A refresh must never move a pending click to a different computer.
+    if(!select.dataset.availabilityInitialized&&current){
+      const preferred=[workspace?.runtime?.worker,workspace?.draft?.worker,'Alina','viki','Nexus','SteamDeck'].find(ready);
+      if(preferred)select.value=preferred;
+      select.dataset.availabilityInitialized='1';
+    }
+    select.onchange=()=>renderAI(current?.results||[]);
+    let note=document.getElementById('workspace-ai-worker-state');
+    if(!note){note=document.createElement('p');note.id='workspace-ai-worker-state';note.setAttribute('role','status');select.insertAdjacentElement('afterend',note);}
+    const available=ready(select.value);
+    note.textContent=available?select.value+' is available for local AI work.':current?'Selected PC is offline or busy. Choose an available Linux PC.':'Checking Linux PC availability…';
+    return available;
+  }
   function renderAI(results){
     const host=document.getElementById('workspace-ai-report');if(!host)return;
     for(const mode of ['runtime','draft']){
@@ -2263,7 +2286,8 @@
     if(workspace?.publishing?.source_job_id===draft?.job_id&&draft?.status==='succeeded'){
       if(publishingHost.dataset.jobId!==draft.job_id)try{renderPublishingPackage(researchPublishingPackage(draft));}catch{publishingHost.replaceChildren();delete publishingHost.dataset.jobId;}
     }else{publishingHost.replaceChildren();delete publishingHost.dataset.jobId;}
-    for(const id of ['workspace-ai-prepare','workspace-ai-draft'])document.getElementById(id).disabled=workspaceBusy||!workspace;
+    const workerAvailable=updateAIWorkerAvailability();
+    for(const id of ['workspace-ai-prepare','workspace-ai-draft'])document.getElementById(id).disabled=workspaceBusy||!workspace||!workerAvailable;
   }
   function exportWorkspace(){
     if(!workspace)return notify('No batch to export','error');
