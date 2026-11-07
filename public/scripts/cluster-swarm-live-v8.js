@@ -296,7 +296,7 @@
       <button data-v8-type="mining-stop" data-v8-target="__all__">Stop All Miners</button>
     `;
         box.querySelectorAll('[data-v8-type]').forEach((button) => {
-      button.addEventListener('click', () => runAction(button.dataset.v8Type, button.dataset.v8Target));
+      button.addEventListener('click', () => { runAction(button.dataset.v8Type, button.dataset.v8Target).catch(() => {}); });
     });
   }
 
@@ -632,9 +632,9 @@
         input?.focus();
         notify('Sample loaded. Press Start when ready.');
       });
-      document.getElementById('swarm-gpu-status').addEventListener('click', () => runAction('gpu-status', 'RenderRig'));
-      document.getElementById('swarm-salad-status').addEventListener('click', () => runAction('salad-status', 'RenderRig'));
-      document.getElementById('swarm-workstation-test').addEventListener('click', () => runAction('workstation-selftest', 'RenderRig'));
+      document.getElementById('swarm-gpu-status').addEventListener('click', () => { runAction('gpu-status', 'RenderRig').catch(() => {}); });
+      document.getElementById('swarm-salad-status').addEventListener('click', () => { runAction('salad-status', 'RenderRig').catch(() => {}); });
+      document.getElementById('swarm-workstation-test').addEventListener('click', () => { runAction('workstation-selftest', 'RenderRig').catch(() => {}); });
       document.getElementById('swarm-episode-create').addEventListener('click', () => {
         const type = document.getElementById('swarm-job-type');
         const target = document.getElementById('swarm-job-device');
@@ -3111,7 +3111,23 @@ async function syncPcDesired(type, targets) {
     return `cd "$HOME/curt-revenue-worker" && . venv/bin/activate && SOURCE="$(printf '%s' '${encoded}' | base64 -d)" && python transcribe.py "$SOURCE" --model tiny.en --output-dir outputs`;
   }
 
-  async function runAction(type, target='__all__', cmd='') {
+  const pendingActions=new Map();
+  function runAction(type, target='__all__', cmd='') {
+    const normalized=normalizeTarget(target);
+    const canonical=({all:'__all__',phones:'__phones__',pcs:'__pcs__'})[normalized]||normalized;
+    const key=JSON.stringify([type,canonical,cmd]);
+    if(pendingActions.has(key)){
+      notify('This action is already being submitted. Check Queue & results for its progress.');
+      return pendingActions.get(key);
+    }
+    // Register before starting asynchronous work so rapid clicks share one attempt.
+    const request=Promise.resolve().then(()=>performAction(type,target,cmd));
+    pendingActions.set(key,request);
+    const release=()=>{if(pendingActions.get(key)===request)pendingActions.delete(key);};
+    request.then(release,release);
+    return request;
+  }
+  async function performAction(type, target='__all__', cmd='') {
     try {
       if (!await load(true)) throw new Error('Cannot verify current workers. Refresh the connection before starting work.');
       const resolvedTarget = await resolveTarget(target);
