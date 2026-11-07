@@ -263,7 +263,7 @@
       'whisper-transcribe':'{"input":"C:\\\\Jobs\\\\audio.mp3","output":"C:\\\\Jobs\\\\transcripts","model":"small.en"}',
       'comfyui-workflow':'{"workflow":"%LOCALAPPDATA%\\\\CurtCompute\\\\workflows\\\\workshop-example.json","timeout_seconds":300}',
       'reel-create':'{"input":"%USERPROFILE%\\\\Videos\\\\shop-clip.mp4","hook":"What I check before a stuck bolt strips","tip":"Seat a 6-point socket fully and keep it square before the first pull.","cta":"Follow @curtbrag for shop tips"}',
-      'episode-create':'Paste episode JSON or use Produce Episode to load a complete example.',
+      'episode-create':'Paste episode JSON or use Load episode example under Test jobs and examples.',
     };
     const needsCommand = type === 'shell' || type === 'transcribe' || Object.hasOwn(workloadHelp, type);
     input.disabled = !needsCommand;
@@ -509,11 +509,8 @@
     const diagnosticActions=document.createElement('div');diagnosticActions.className='cluster-action-row';diagnostics.append(diagnosticActions);
     for(const id of ['swarm-fleet-storage','swarm-fleet-processes','swarm-fleet-network','swarm-gpu-status','swarm-salad-status','swarm-workstation-test'])diagnosticActions.append(document.getElementById(id));
     toolbar.insertAdjacentElement('afterend',diagnostics);
-    const mediaActions=document.createElement('div');mediaActions.className='cluster-action-row';
-    for(const id of ['swarm-reel-create','swarm-episode-create'])mediaActions.append(document.getElementById(id));
-    job.insertBefore(mediaActions,job.firstChild);
     const examples=document.createElement('details');examples.className='cluster-control-details';examples.innerHTML='<summary>Test jobs and examples</summary><div class="cluster-action-row"></div>';
-    for(const id of ['swarm-reel-gpu-test','swarm-sample'])examples.lastChild.append(document.getElementById(id));job.append(examples);
+    for(const id of ['swarm-episode-create','swarm-reel-gpu-test','swarm-sample'])examples.lastChild.append(document.getElementById(id));job.append(examples);
     results.querySelector('h3').insertAdjacentElement('afterend',document.getElementById('swarm-copy-latest'));
     const recovery=document.getElementById('cluster-phone-recovery');
     const logs=document.createElement('details');logs.className='cluster-control-details';logs.innerHTML='<summary>Connection and recovery logs</summary>';
@@ -604,8 +601,7 @@
           <button type="button" id="swarm-salad-status">Salad Check</button>
           <button type="button" id="swarm-workstation-test">Workstation Test</button>
           <button type="button" id="swarm-reel-gpu-test" title="GPU encode the Reel created on RenderRig in Videos/impact-bolt-poc.mp4">Reel GPU Test</button>
-          <button type="button" id="swarm-reel-create" title="Create an original Reel and preview it here">Produce Reel</button>
-          <button type="button" id="swarm-episode-create" title="Create a narrated animated episode, short cut and full video">Produce Episode</button>
+          <button type="button" id="swarm-episode-create" title="Load a complete sample episode without submitting a job">Load episode example</button>
           <button type="button" id="swarm-fleet-storage">Fleet Storage</button>
           <button type="button" id="swarm-fleet-processes">Fleet Processes</button>
           <button type="button" id="swarm-fleet-network">Fleet Network</button>
@@ -639,17 +635,6 @@
       document.getElementById('swarm-gpu-status').addEventListener('click', () => runAction('gpu-status', 'RenderRig'));
       document.getElementById('swarm-salad-status').addEventListener('click', () => runAction('salad-status', 'RenderRig'));
       document.getElementById('swarm-workstation-test').addEventListener('click', () => runAction('workstation-selftest', 'RenderRig'));
-      document.getElementById('swarm-reel-create').addEventListener('click', () => {
-        const type = document.getElementById('swarm-job-type');
-        const target = document.getElementById('swarm-job-device');
-        const input = document.getElementById('swarm-job-cmd');
-        if (type) type.value = 'reel-create';
-        if (target) target.value = 'RenderRig';
-        syncJobInput();
-    ensureDisplayControls();
-        input?.focus();
-        notify('Enter your clip path and Reel text as JSON, then press Start.');
-      });
       document.getElementById('swarm-episode-create').addEventListener('click', () => {
         const type = document.getElementById('swarm-job-type');
         const target = document.getElementById('swarm-job-device');
@@ -705,9 +690,6 @@
       typeSelect.dataset.clusterV8 = '1';
       typeSelect.innerHTML = `
         <optgroup label="RTX RenderRig">
-          <option value="gpu-status">Check GPUs</option>
-          <option value="salad-status">Check Salad</option>
-          <option value="workstation-selftest">Run complete workstation test</option>
           <option value="reel-create">Produce original Reel</option>
           <option value="episode-create">Produce narrated episode + short cut</option>
           <option value="blender-render">Render Blender project</option>
@@ -717,18 +699,12 @@
         </optgroup>
         <optgroup label="Linux workers">
         <option value="transcribe">Transcribe audio or video</option>
-        <option value="status">Check node status</option>
-        </optgroup>
-        <optgroup label="Read-only diagnostics (all workers)">
-          <option value="storage-status">Check storage space</option>
-          <option value="process-snapshot">Show processes</option>
-          <option value="network-check">Check site connection</option>
         </optgroup>
         <optgroup label="Advanced">
         <option value="shell">Advanced command</option>
         </optgroup>
       `;
-      typeSelect.value = 'gpu-status';
+      typeSelect.value = 'reel-create';
       typeSelect.addEventListener('change', () => {
         if (GPU_WORK_TYPES.has(typeSelect.value)) {
           const target = document.getElementById('swarm-job-device');
@@ -2606,7 +2582,6 @@
     if (!select || select.tagName !== 'SELECT') return;
     const previous = select.value || '__pcs__';
     select.innerHTML = `
-      <option value="RenderRig">RenderRig (RTX, hybrid Salad)</option>
       <option value="__pcs__">All online PCs</option>
       <option value="__all__">All online workers</option>
       <option disabled>──────────────</option>
@@ -2615,7 +2590,7 @@
       const option = document.createElement('option');
       option.value = node.id;
       option.disabled = !node.online;
-      option.textContent = `${node.online ? '●' : '○'} ${node.id} (${node.node_class || 'unknown'})`;
+      option.textContent = `${node.online ? '●' : '○'} ${node.id} (${node.id === 'RenderRig' ? 'RTX, hybrid Salad' : node.node_class || 'unknown'})`;
       select.appendChild(option);
     }
     if (Array.from(select.options).some((o) => o.value === previous && !o.disabled)) select.value = previous;
