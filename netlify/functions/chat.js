@@ -31,12 +31,12 @@ const SYSTEM_PROMPT = `You are Alina, Curtis Bragdon's AI assistant on his perso
 - Boston sports: Red Sox, Patriots, Celtics, Bruins, Revolution - bleeds Boston!
 - DraftKings sports betting
 - Trading cards (baseball, basketball, Pokemon) - eBay store: curtbrag
-- Tech projects including a 10-phone Kubernetes cluster (OnePlus 6T phones running postmarketOS and K3s) - check /cluster
+- Tech projects include a compute cluster with eight Android/Termux phones, four Linux systems and one Windows workstation. A separate personal S26 Ultra is a controller, not a worker. Check /cluster for the overview and /cluster/dashboard/ for current availability and job results. Do not invent live status or describe the fleet as a Kubernetes/K3s cluster.
 
 ## Website Features
 - /shop - Card shop with eBay listings
 - /gallery - Photo galleries (cars, Snap-on)
-- /cluster - Phone cluster dashboard (10 OnePlus 6T Kubernetes cluster)
+- /cluster - Compute fleet overview; /cluster/dashboard/ - authenticated worker status, shared job queue, website audits, research and media workflows
 - /contact - Contact form
 - /addyourride - Submit your vehicle photos
 
@@ -66,7 +66,11 @@ const FALLBACKS = {
   schedule: 'Want to schedule a truck stop? Text Curtis at 781-417-0692 - he covers the Boston area!',
   tools: 'Curtis runs a Snap-on tool truck in the Boston area. Looking for something specific? Text 781-417-0692 to schedule a stop!',
   contact: 'Best way to reach Curtis: Text 781-417-0692 or email curtbrag@yahoo.com',
-  cluster: 'Curtis built a Kubernetes cluster out of 10 OnePlus 6T phones! Check it out at /cluster - shows live node status and running pods.',
+  promos: 'I don’t have a verified list of current promotions. Text Curtis at 781-417-0692 to check the latest offers.',
+  pay: 'Payment links for Zelle, CashApp and Venmo are in Quick Pay on the homepage. Zelle information is also at /zelle/; text Curtis at 781-417-0692 for payment questions.',
+  warranty: 'Start a warranty request at /contact/?subject=Warranty%20help or text Curtis at 781-417-0692 so he can check the tool and eligibility.',
+  joke: 'Why did the wrench get promoted? It was great at turning things around.',
+  cluster: 'Curtis’s compute fleet has eight Android/Termux phones, four Linux systems and one Windows workstation. Visit /cluster for the overview or sign in at /cluster/dashboard/ for current worker availability, jobs, website audits and research.',
   default: 'Hey! I\'m having trouble connecting right now. Text Curtis directly at 781-417-0692 - he\'ll get back to you quick!'
 };
 
@@ -83,17 +87,21 @@ function getFallbackResponse(message) {
   if (/^(hi|hey|hello|yo|sup|what'?s? up)/i.test(msg)) {
     return getRandomResponse(FALLBACKS.greetings);
   }
+  if (/\bpromo|\bspecial|\boffer|\bdiscount/i.test(msg)) return FALLBACKS.promos;
+  if (/warrant|return authorization/i.test(msg)) return FALLBACKS.warranty;
+  if (/\bpay(?:ment|ments)?\b|\bzelle\b|\bvenmo\b|cash\s?app|\bfinancing\b/i.test(msg)) return FALLBACKS.pay;
+  if (/\bjoke\b|\bfunny\b/i.test(msg)) return FALLBACKS.joke;
   if (/schedul|stop|visit|come by|truck|route|appointment/i.test(msg)) {
     return FALLBACKS.schedule;
   }
   if (/tool|wrench|socket|snap-?on|buy|purchase/i.test(msg)) {
     return FALLBACKS.tools;
   }
-  if (/contact|call|text|email|reach|phone/i.test(msg)) {
-    return FALLBACKS.contact;
-  }
   if (/cluster|kubernetes|k3s|k8s|oneplus|phone.*(server|cluster)/i.test(msg)) {
     return FALLBACKS.cluster;
+  }
+  if (/contact|call|text|email|reach|phone/i.test(msg)) {
+    return FALLBACKS.contact;
   }
   return FALLBACKS.default;
 }
