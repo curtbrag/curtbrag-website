@@ -46,3 +46,11 @@ Choose **Transcribe on RenderRig** in the dashboard, supply an existing local in
 ```
 
 The result includes transcript text and paths for UTF-8 text, structured JSON with segment timing, and SRT subtitles. Existing transcript files are preserved; use a new output directory to rerun the same source.
+
+## Local ComfyUI workflows
+
+Prepare ComfyUI and its compatible GPU dependencies in a separate environment using the [official manual installation guide](https://docs.comfy.org/installation/manual_install). The existing worker expects a local API endpoint such as `http://127.0.0.1:8188/prompt` and a workflow JSON file in API format.
+
+For the prepared RenderRig layout (`CurtCompute/ComfyUI` and `CurtCompute/comfy-venv`), `scripts/start-comfy-local.ps1` runs the service on loopback with custom nodes and partner API nodes disabled. It writes `comfy-service.log`. The installed `CurtClusterComfyUI` Windows task starts this launcher at sign-in.
+
+The worker's `comfyui-workflow` receipt contains ComfyUI's prompt ID and queue acknowledgement. Check `/history/<prompt_id>` for successful execution and output files before claiming completion. A model-free EmptyImage → SaveImage graph verifies workflow delivery and execution, but does not verify AI image generation; those workflows require suitable local model files.
