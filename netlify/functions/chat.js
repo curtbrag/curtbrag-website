@@ -66,6 +66,10 @@ const FALLBACKS = {
   schedule: 'Want to schedule a truck stop? Text Curtis at 781-417-0692 - he covers the Boston area!',
   tools: 'Curtis runs a Snap-on tool truck in the Boston area. Looking for something specific? Text 781-417-0692 to schedule a stop!',
   contact: 'Best way to reach Curtis: Text 781-417-0692 or email curtbrag@yahoo.com',
+  promos: 'I don’t have a verified list of current promotions. Text Curtis at 781-417-0692 to check the latest offers.',
+  pay: 'Payment links for Zelle, CashApp and Venmo are in Quick Pay on the homepage. Zelle information is also at /zelle/; text Curtis at 781-417-0692 for payment questions.',
+  warranty: 'Start a warranty request at /contact/?subject=Warranty%20help or text Curtis at 781-417-0692 so he can check the tool and eligibility.',
+  joke: 'Why did the wrench get promoted? It was great at turning things around.',
   cluster: 'Curtis’s compute fleet has eight Android/Termux phones, four Linux systems and one Windows workstation. Visit /cluster for the overview or sign in at /cluster/dashboard/ for current worker availability, jobs, website audits and research.',
   default: 'Hey! I\'m having trouble connecting right now. Text Curtis directly at 781-417-0692 - he\'ll get back to you quick!'
 };
@@ -83,6 +87,10 @@ function getFallbackResponse(message) {
   if (/^(hi|hey|hello|yo|sup|what'?s? up)/i.test(msg)) {
     return getRandomResponse(FALLBACKS.greetings);
   }
+  if (/\bpromo|\bspecial|\boffer|\bdiscount/i.test(msg)) return FALLBACKS.promos;
+  if (/warrant|return authorization/i.test(msg)) return FALLBACKS.warranty;
+  if (/\bpay(?:ment|ments)?\b|\bzelle\b|\bvenmo\b|cash\s?app|\bfinancing\b/i.test(msg)) return FALLBACKS.pay;
+  if (/\bjoke\b|\bfunny\b/i.test(msg)) return FALLBACKS.joke;
   if (/schedul|stop|visit|come by|truck|route|appointment/i.test(msg)) {
     return FALLBACKS.schedule;
   }

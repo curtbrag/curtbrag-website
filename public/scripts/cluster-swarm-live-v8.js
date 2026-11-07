@@ -311,6 +311,24 @@
     try{localStorage.setItem('curt-control-view-v1',name);}catch{}
     if(focus)document.getElementById('cluster-view-tab-'+name)?.focus();
   }
+  function ensureRegistryNotices(work){
+    const sections=[
+      ['fleet','Registry overview','Older device registry','These records are separate from the current worker fleet. Contact times, mining data and temperatures may be stale. Use Workspace for current worker availability.','Open current fleet','fleet'],
+      ['devices','Device setup','Device registry readings','The table below uses the older device registry. A registry contact is not a current worker heartbeat or a screen-control connection.','Open current fleet','fleet'],
+      ['analytics','Registry analytics','Older registry analytics','These totals and temperature readings cover the older registry, not the current thirteen-worker roster.','Open current fleet','fleet'],
+      ['jobs','Legacy jobs','Separate legacy job queue','These assignments require the separate legacy job agent. Current swarm workers use Workspace; jobs in this queue may remain pending without that agent.','Open current jobs','media']
+    ];
+    for(const [id,label,title,description,action,view] of sections){
+      const tab=document.querySelector('[data-tab="'+id+'"]');if(tab)tab.textContent=label;
+      const panel=document.getElementById('tab-'+id);if(!panel||document.getElementById('registry-note-'+id))continue;
+      const note=document.createElement('section');note.id='registry-note-'+id;note.className='cluster-control-card';
+      const heading=document.createElement('h3');heading.textContent=title;
+      const text=document.createElement('p');text.textContent=description;
+      const button=document.createElement('button');button.type='button';button.textContent=action;
+      button.onclick=()=>{work.click();setControlView(view,true);};
+      note.append(heading,text,button);panel.prepend(note);
+    }
+  }
   function ensureAdminNavigation(){
     if(document.getElementById('cluster-administration'))return;
     const work=document.querySelector('[data-tab="swarm"]');if(!work)return;
@@ -323,6 +341,7 @@
       if(button!==work)content.append(button);
     }
     work.textContent='Workspace';bar.append(work,admin);
+    ensureRegistryNotices(work);
     const legacy=document.getElementById('stat-total')?.parentElement?.parentElement;
     if(legacy){
       const details=document.createElement('details');details.className='cluster-legacy-telemetry';

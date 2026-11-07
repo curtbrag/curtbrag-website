@@ -163,7 +163,7 @@ Observed hashes from online devices:
 
 <div id="tab-analytics" class="tab-content" style="display:none">
 <div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;margin-bottom:16px">
-<h3>Fleet Analytics</h3>
+<h3>Registry analytics</h3>
 <div id="fleetAnalytics" style="margin-top:16px;font-size:13px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px"></div>
 </div>
 <div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px">
@@ -593,7 +593,7 @@ function controllerCard(d) {
   return `<div style="background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:16px;cursor:pointer;opacity:0.85" onclick="showDetail('${d.id}')">
     <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
       <div><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${dot}"></span><strong style="margin-left:8px">${d.hostname}</strong></div>
-      <span style="font-size:10px;color:var(--color-muted);border:1px solid var(--color-border);border-radius:4px;padding:2px 5px">CTRL</span>
+      <span style="font-size:10px;color:var(--color-muted);border:1px solid var(--color-border);border-radius:4px;padding:2px 5px">REGISTRY</span>
     </div>
     <div style="font-size:12px;color:var(--color-muted);margin-bottom:8px">${d.current_ip || 'N/A'}</div>
     <div style="font-size:13px;margin-bottom:4px">Class: <strong>${d.device_class || 'pc'}</strong></div>
@@ -614,9 +614,9 @@ function renderFleet() {
   const workers = state.devices.filter(d => d.device_class === 'phone');
   const controllers = state.devices.filter(d => d.device_class !== 'phone');
   grid.innerHTML =
-    sectionHeader('Workers', workers.length) +
+    sectionHeader('Phone registry records', workers.length) +
     workers.map(workerCard).join('') +
-    (controllers.length ? sectionHeader('Controllers', controllers.length) + controllers.map(controllerCard).join('') : '');
+    (controllers.length ? sectionHeader('Computer registry records', controllers.length) + controllers.map(controllerCard).join('') : '');
 }
 
 function deviceRow(d) {
@@ -641,9 +641,9 @@ function renderDevicesTable() {
   const workers = state.devices.filter(d => d.device_class === 'phone');
   const controllers = state.devices.filter(d => d.device_class !== 'phone');
   tbody.innerHTML =
-    tableSection(`Workers (${workers.length})`) +
+    tableSection(`Phone registry records (${workers.length})`) +
     workers.map(deviceRow).join('') +
-    (controllers.length ? tableSection(`Controllers (${controllers.length})`) + controllers.map(deviceRow).join('') : '');
+    (controllers.length ? tableSection(`Computer registry records (${controllers.length})`) + controllers.map(deviceRow).join('') : '');
 }
 
 function renderCommands() {
@@ -687,7 +687,7 @@ function renderAnalytics() {
   const el = document.getElementById('fleetAnalytics');
   el.innerHTML = `
     <div style="background:var(--color-bg);border-radius:6px;padding:12px">
-      <div style="font-size:11px;color:var(--color-muted)">Total Devices</div>
+      <div style="font-size:11px;color:var(--color-muted)">Registry records</div>
       <div style="font-size:18px;font-weight:bold">${state.analytics.devices_total}</div>
     </div>
     <div style="background:var(--color-bg);border-radius:6px;padding:12px">
