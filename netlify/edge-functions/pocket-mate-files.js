@@ -26,7 +26,7 @@ export default async function pocketMateFiles(request) {
   }
 
   const file = release.files[filename];
-  const storagePrefix = `${release.version}/${file.sha256}/`;
+  const storagePrefix = `${file.version ?? release.version}/${file.sha256}/`;
   const keys = file.parts.map((_, index) => storagePrefix + index);
   const store = getStore({ name: 'pocket-mate-releases', consistency: 'strong' });
 
@@ -58,8 +58,8 @@ export default async function pocketMateFiles(request) {
   if (!keys.every(key => available.has(key))) return reply(503, 'Download is being prepared');
 
   const downloadHeaders = {
-    'content-type': filename.endsWith('.apk') ? 'application/vnd.android.package-archive' : 'application/zip',
-    'content-disposition': `attachment; filename="${filename}"`,
+    'content-type': file.mediaType ?? (filename.endsWith('.apk') ? 'application/vnd.android.package-archive' : 'application/zip'),
+    'content-disposition': `${file.mediaType ? 'inline' : 'attachment'}; filename="${filename}"`,
     'content-length': String(file.bytes),
   };
   if (request.method === 'HEAD') return reply(200, null, downloadHeaders);

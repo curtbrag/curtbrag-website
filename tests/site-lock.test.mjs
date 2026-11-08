@@ -26,7 +26,7 @@ async function login(s, target = '/') {
 test('every unauthenticated page, asset, alias and API is blocked before downstream content', async () => {
   const s = setup();
   for (const host of [HOST, 'https://www.curtbrag.com', 'https://voluble-torte-5e1269.netlify.app']) {
-    for (const path of ['/', '/gallery/', '/shop/', '/rig/', '/pocket-mate/', '/pocket-mate/files/Pocket-Mate.apk', '/cluster/dashboard/', '/cluster/display.html', '/assets/logo_header.png', '/scripts/cluster-swarm-live-v8.js', '/_astro/style.css', '/api/cluster', '/.netlify/functions/cluster-api?action=devices', '/.netlify/images?url=/assets/logo_header.png']) {
+    for (const path of ['/', '/gallery/', '/shop/', '/rig/', '/pocket-mate/', '/pocket-mate/files/Pocket-Mate.apk', '/pocket-mate/files/alina-companion.webp', '/cluster/dashboard/', '/cluster/display.html', '/assets/logo_header.png', '/scripts/cluster-swarm-live-v8.js', '/_astro/style.css', '/api/cluster', '/.netlify/functions/cluster-api?action=devices', '/.netlify/images?url=/assets/logo_header.png']) {
       const result = await s.handler(new Request(host + path), s.context);
       assert.equal(result.status, 401, host + path);
       assert.equal(result.headers.get('cache-control'), 'private, no-store, max-age=0');

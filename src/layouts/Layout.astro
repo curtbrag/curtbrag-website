@@ -1,6 +1,7 @@
 ---
 import Nav from '../components/Nav.astro';
 import Footer from '../components/Footer.astro';
+import AlinaCompanion from '../components/AlinaCompanion.astro';
 import '../styles/global.css';
 
 interface Props {
@@ -121,6 +122,7 @@ const structuredData = {
     </main>
 
     <Footer />
+    {!clusterControlPage && <AlinaCompanion />}
 
     <!-- Optional motion never hides content before its observer is ready. -->
     <script>
