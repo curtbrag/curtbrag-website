@@ -1,0 +1,216 @@
+<alina-companion class="mate" data-pose="stand" hidden>
+  <button class="mate-character" type="button" aria-label="Say hi to Alina">
+    <img src="/pocket-mate/files/alina-companion.webp" alt="" width="768" height="512" draggable="false" decoding="async" fetchpriority="low" />
+  </button>
+  <span class="mate-greeting" role="status"></span>
+  <button class="mate-toggle" type="button" aria-controls="alina-controls" aria-expanded="false">Alina</button>
+  <div class="mate-controls" id="alina-controls" hidden>
+    <button type="button" data-mate-perch>Perch here</button>
+    <button type="button" data-mate-hide>Put Alina away</button>
+    <a href="/pocket-mate/">Pocket Mate</a>
+  </div>
+</alina-companion>
+
+<style>
+  .mate {
+    position: fixed;
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    z-index: 30;
+    display: grid;
+    justify-items: center;
+    color: #f8fafc;
+  }
+
+  .mate[hidden], .mate [hidden] { display: none; }
+  .mate-character {
+    position: relative;
+    width: clamp(48px, 10vw, 75px);
+    aspect-ratio: 1 / 2;
+    overflow: hidden;
+    border-radius: 18px;
+    cursor: grab;
+    touch-action: none;
+  }
+  .mate-character:active { cursor: grabbing; }
+  .mate-character img {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 300%;
+    max-width: none;
+    height: 100%;
+    pointer-events: none;
+    filter: drop-shadow(0 2px 2px #000b);
+  }
+  .mate[data-pose="wave"] img { transform: translateX(-33.333%); }
+  .mate[data-pose="sit"] img { transform: translateX(-66.667%); }
+  .mate-toggle, .mate-controls {
+    background: #1c2434;
+    border: 1px solid #536579;
+    box-shadow: 0 3px 12px #0005;
+  }
+  .mate-toggle {
+    border-radius: 999px;
+    min-height: 44px;
+    padding: 0 14px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .mate-controls {
+    position: absolute;
+    bottom: calc(100% + 5px);
+    right: 0;
+    display: grid;
+    min-width: 155px;
+    padding: 4px;
+    border-radius: 12px;
+    font-size: 13px;
+  }
+  .mate[data-menu-below] .mate-controls { top: calc(100% + 5px); bottom: auto; }
+  .mate[data-menu-right] .mate-controls { left: 0; right: auto; }
+  .mate-controls > * {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 9px;
+    border-radius: 8px;
+    white-space: nowrap;
+  }
+  .mate-controls > *:hover { background: #34435a; }
+  .mate :focus-visible { outline: 2px solid #9be5d5; outline-offset: 2px; }
+  .mate-greeting {
+    position: absolute;
+    top: 5px;
+    right: 90%;
+    padding: 4px 8px;
+    border-radius: 8px;
+    background: #1c2434;
+    color: #f8fafc;
+    font-size: 12px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .mate-greeting:empty { padding: 0; }
+  .mate[data-menu-right] .mate-greeting { left: 90%; right: auto; }
+</style>
+
+<script>
+  class AlinaCompanion extends HTMLElement {
+    connectedCallback() {
+      const character = this.querySelector<HTMLButtonElement>('.mate-character')!;
+      const image = character.querySelector('img')!;
+      const toggle = this.querySelector<HTMLButtonElement>('.mate-toggle')!;
+      const controls = this.querySelector<HTMLElement>('.mate-controls')!;
+      const greeting = this.querySelector<HTMLElement>('.mate-greeting')!;
+      const perch = this.querySelector<HTMLButtonElement>('[data-mate-perch]')!;
+      const hide = this.querySelector<HTMLButtonElement>('[data-mate-hide]')!;
+      let putAway = false;
+      let perched = false;
+      let restorePose: number | undefined;
+      let drag: { id: number; x: number; y: number; left: number; top: number; moved: boolean } | undefined;
+      let skipClick = false;
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+      const setMenu = (open: boolean) => {
+        controls.hidden = !open;
+        toggle.setAttribute('aria-expanded', String(open));
+      };
+      const clearGreeting = () => {
+        window.clearTimeout(restorePose);
+        greeting.textContent = '';
+        this.dataset.pose = perched ? 'sit' : 'stand';
+      };
+      const setAway = (away: boolean) => {
+        putAway = away;
+        character.hidden = away;
+        toggle.textContent = away ? 'Show Alina' : 'Alina';
+        if (away) {
+          clearGreeting();
+          setMenu(false);
+        }
+        try { localStorage.setItem('curtbrag-alina-hidden', away ? '1' : '0'); } catch {}
+      };
+      const place = (left: number, top: number) => {
+        const margin = 8;
+        const x = Math.max(margin, Math.min(left, window.innerWidth - this.offsetWidth - margin));
+        const y = Math.max(margin, Math.min(top, window.innerHeight - this.offsetHeight - margin));
+        this.style.inset = `${y}px auto auto ${x}px`;
+        this.toggleAttribute('data-menu-right', x < 155);
+        this.toggleAttribute('data-menu-below', y < 140 && y + this.offsetHeight + 140 < window.innerHeight);
+      };
+      const reveal = () => {
+        if (!image.naturalWidth) return;
+        this.hidden = false;
+        let away = false;
+        try { away = localStorage.getItem('curtbrag-alina-hidden') === '1'; } catch {}
+        setAway(away);
+      };
+      if (image.complete) reveal();
+      else image.addEventListener('load', reveal, { once: true });
+
+      toggle.addEventListener('click', () => {
+        if (putAway) {
+          setAway(false);
+          const box = this.getBoundingClientRect();
+          if (this.style.top) place(box.left, box.top);
+          return;
+        }
+        setMenu(controls.hidden);
+      });
+      hide.addEventListener('click', () => {
+        setAway(true);
+        toggle.focus();
+      });
+      perch.addEventListener('click', () => {
+        perched = !perched;
+        perch.textContent = perched ? 'Stand up' : 'Perch here';
+        clearGreeting();
+        setMenu(false);
+        toggle.focus();
+      });
+      this.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !controls.hidden) {
+          setMenu(false);
+          toggle.focus();
+        }
+      });
+      character.addEventListener('click', (event) => {
+        if (skipClick && event.detail !== 0) return;
+        clearGreeting();
+        if (!reducedMotion.matches) this.dataset.pose = 'wave';
+        greeting.textContent = 'Hi there!';
+        restorePose = window.setTimeout(clearGreeting, 1800);
+      });
+      character.addEventListener('pointerdown', (event) => {
+        if (!event.isPrimary || event.button !== 0) return;
+        skipClick = false;
+        const box = this.getBoundingClientRect();
+        drag = { id: event.pointerId, x: event.clientX, y: event.clientY, left: box.left, top: box.top, moved: false };
+        character.setPointerCapture(event.pointerId);
+      });
+      character.addEventListener('pointermove', (event) => {
+        if (!drag || event.pointerId !== drag.id) return;
+        const dx = event.clientX - drag.x;
+        const dy = event.clientY - drag.y;
+        if (!drag.moved && Math.hypot(dx, dy) < 6) return;
+        drag.moved = true;
+        setMenu(false);
+        place(drag.left + dx, drag.top + dy);
+      });
+      const endDrag = (event: PointerEvent) => {
+        if (!drag || event.pointerId !== drag.id) return;
+        skipClick = drag.moved;
+        drag = undefined;
+      };
+      character.addEventListener('pointerup', endDrag);
+      character.addEventListener('pointercancel', endDrag);
+      window.addEventListener('resize', () => {
+        if (this.style.top) {
+          const box = this.getBoundingClientRect();
+          place(box.left, box.top);
+        }
+      });
+    }
+  }
+  customElements.define('alina-companion', AlinaCompanion);
+</script>

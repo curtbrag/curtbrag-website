@@ -73,6 +73,15 @@
         "2a2bdd1b9ae3c0904355a97d9af9045d0e0449d6459148cfb4882a08aab83c22",
         "297c4c96adac7ef3506cdd3c1d5f15fc0ca333256f28aae77aab14f9efa10513"
       ]
+    },
+    "alina-companion.webp": {
+      "version": "web-1",
+      "mediaType": "image/webp",
+      "bytes": 94664,
+      "sha256": "a5338b4f5969042486179b4b1a4d809f3f30d374f5d486bc45c5d75817c21bb3",
+      "parts": [
+        "a5338b4f5969042486179b4b1a4d809f3f30d374f5d486bc45c5d75817c21bb3"
+      ]
     }
   }
 }
