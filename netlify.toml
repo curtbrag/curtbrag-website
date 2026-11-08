@@ -46,6 +46,10 @@
   function = "site-lock"
   path = "/*"
 
+[[edge_functions]]
+  function = "pocket-mate-files"
+  path = "/pocket-mate/files/*"
+
 # Host-based routing: teathetruth.com serves Tea's site via edge function
 [[edge_functions]]
   function = "tea-router"

@@ -1,0 +1,44 @@
+---
+import Layout from '../layouts/Layout.astro';
+import release from '../../netlify/edge-functions/lib/pocket-mate-release.json';
+
+const downloads = [
+  { platform: 'Android', filename: 'Pocket-Mate.apk', format: 'APK', icon: 'fa-brands fa-android', help: 'Requires Android 8 or later. Install over an earlier Pocket Mate build to keep your progress.' },
+  { platform: 'Windows', filename: 'Pocket-Mate-Windows.zip', format: 'ZIP', icon: 'fa-brands fa-windows', help: 'Extract the ZIP and open PocketMate.exe. No installer is required.' },
+  { platform: 'Steam Deck / Linux', filename: 'Pocket-Mate-Steam-Deck.zip', format: 'ZIP', icon: 'fa-brands fa-steam', help: 'On Steam Deck, extract the ZIP in Desktop Mode. Follow Start-Here.txt to add it to Steam.' },
+  { platform: 'Source code', filename: 'Pocket-Mate-source.zip', format: 'ZIP', icon: 'fa-solid fa-code', help: 'Includes the Android and Godot projects, artwork, and build instructions.' },
+] as const;
+---
+
+<Layout title="Pocket Mate Downloads | CurtBrag" description="Download Pocket Mate for Android, Windows, or Steam Deck.">
+  <section class="mx-auto max-w-5xl px-5 py-14 sm:px-8 md:py-20" aria-labelledby="pocket-mate-title">
+    <p class="mb-3 text-sm font-semibold tracking-widest uppercase text-text-secondary">Version {release.version} · In development</p>
+    <h1 id="pocket-mate-title" class="mb-4 text-5xl font-black sm:text-6xl">Pocket Mate</h1>
+    <p class="max-w-2xl text-lg text-text-secondary">
+      Take care of Alina, play mini-games, and build your bond. In 1.2, Alina ages as she earns bond XP, and timed Workshop jobs earn coins, XP, and keepsakes.
+    </p>
+
+    <h2 class="mt-10 mb-4 text-2xl font-bold">Current downloads</h2>
+    <ul class="grid gap-4 sm:grid-cols-2">
+      {downloads.map(({ platform, filename, format, icon, help }) => (
+        <li class="flex flex-col rounded-2xl border border-border bg-panel p-5">
+          <div class="flex items-center gap-3">
+            <i class={`${icon} text-xl text-brand`} aria-hidden="true"></i>
+            <h3 class="text-lg font-bold">{platform}</h3>
+          </div>
+          <p class="mt-2 mb-5 flex-1 text-sm text-text-secondary">{help}</p>
+          <a
+            class="inline-flex min-h-11 w-fit items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:border-brand focus-visible:outline-2 focus-visible:outline-offset-4"
+            href={`/pocket-mate/files/${filename}`}
+            download={filename}
+            aria-label={`Download ${platform}`}
+          >
+            <i class="fa-solid fa-download" aria-hidden="true"></i>
+            Download {format}
+          </a>
+          <p class="mt-2 text-xs text-text-secondary">{(release.files[filename].bytes / 1_000_000).toFixed(1)} MB</p>
+        </li>
+      ))}
+    </ul>
+  </section>
+</Layout>

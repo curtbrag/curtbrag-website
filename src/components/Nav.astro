@@ -7,6 +7,7 @@ const links = [
 ];
 const pages = [
   ...links.map(link => ({ ...link, detail: ({Home:'Your starting point',Gallery:'Cars, tools and builds',Shop:'Trading cards on eBay',Rig:'CYBERDYNE build and photos',Cluster:'Fleet overview',Contact:'Call, text or send a message'} as Record<string,string>)[link.label] })),
+  { href: '/pocket-mate/', label: 'Pocket Mate', detail: 'App downloads' },
   { href: '/cluster/dashboard/', label: 'Work dashboard', detail: 'Workers, assignments and results' },
   { href: '/cluster/control/', label: 'Phone controller', detail: 'Cluster controls on your phone' },
   { href: '/gallery/cars/', label: 'Cars gallery', detail: 'Customer cars and trucks' },
